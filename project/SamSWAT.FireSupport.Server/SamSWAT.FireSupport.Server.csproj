@@ -1,0 +1,55 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Tylevo.TacticalServicesControl.Server</AssemblyName>
+    <RootNamespace>SamSWAT.FireSupport.ArysReloaded</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <Reference Include="SPTarkov.Common">
+      <HintPath>$(SptDir)SPT\SPTarkov.Common.dll</HintPath>
+    </Reference>
+    <Reference Include="SPTarkov.DI">
+      <HintPath>$(SptDir)SPT\SPTarkov.DI.dll</HintPath>
+    </Reference>
+    <Reference Include="SPTarkov.Server.Core">
+      <HintPath>$(SptDir)SPT\SPTarkov.Server.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="SemanticVersioning">
+      <HintPath>$(SptDir)SPT\SemanticVersioning.dll</HintPath>
+    </Reference>
+    <Reference Include="WTT-ServerCommonLib">
+      <HintPath>$(SptServerModsDir)WTT-ServerCommonLib\WTT-ServerCommonLib.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\SamSWAT.FireSupport\Unity\PaymentMode.cs" Link="Unity\PaymentMode.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\PaymentSource.cs" Link="Unity\PaymentSource.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\ESupportType.cs" Link="Unity\ESupportType.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\RaidOpsFireSupportServerConfig.cs" Link="Unity\RaidOpsFireSupportServerConfig.cs" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <CopyToOutputDir>$(MSBuildThisFileDirectory)CopyToOutput</CopyToOutputDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="build\**" />
+    <Compile Remove="build\**" />
+    <EmbeddedResource Remove="build\**" />
+    <None Remove="obj\**" />
+    <Compile Remove="obj\**" />
+    <EmbeddedResource Remove="obj\**" />
+  </ItemGroup>
+
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
+    <Exec Command="if not exist &quot;$(SptServerModsDir)$(SolutionName)&quot; (&#xA;    mkdir &quot;$(SptServerModsDir)$(SolutionName)&quot;&#xA;)&#xA;&#xA;copy &quot;$(TargetPath)&quot; &quot;$(SptServerModsDir)$(SolutionName)\$(TargetFileName)&quot;&#xA;(robocopy &quot;$(CopyToOutputDir)&quot; &quot;$(SptServerModsDir)$(SolutionName)&quot; /E /XF .gitkeep) ^&amp; if %ERRORLEVEL% leq 3 exit 0" />
+  </Target>
+
+</Project>

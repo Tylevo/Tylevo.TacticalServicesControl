@@ -1,0 +1,25 @@
+{
+  "version": "v9",
+  "recommended": "Swap full matching background screens based on selection state.",
+  "reason": "Explicit variants guarantee identical color, spacing, and icon treatment without runtime border drift.",
+  "categories": {
+    "extraction": {
+      "neutral": "TG_02_ExtractionCategory_Neutral.png",
+      "option_1": "TG_02_ExtractionCategory_1_Selected.png",
+      "option_2": "TG_02_ExtractionCategory_2_Selected.png",
+      "legacy_alias": "TG_02_ExtractionCategory.png"
+    },
+    "fire": {
+      "neutral": "TG_02_FireSupportCategory_Neutral.png",
+      "option_1": "TG_02_FireSupportCategory_1_Selected.png",
+      "option_2": "TG_02_FireSupportCategory_2_Selected.png",
+      "legacy_alias": "TG_02_FireSupportCategory.png"
+    },
+    "recon": {
+      "neutral": "TG_02_ReconCategory_Neutral.png",
+      "option_1": "TG_02_ReconCategory_1_Selected.png",
+      "option_2": "TG_02_ReconCategory_2_Selected.png",
+      "legacy_alias": "TG_02_ReconCategory.png"
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "66f51f3a0000000000000a00": {
+    "_id": "66f51f3a0000000000000a00",
+    "_name": "UavDeviceItem",
+    "_parent": "61605ddea09d851a0a0c1bbc",
+    "_type": "Node",
+    "_props": {
+      "MaximumNumberOfUsage": 0
+    },
+    "addToContainerFilters": false,
+    "containers": []
+  }
+}

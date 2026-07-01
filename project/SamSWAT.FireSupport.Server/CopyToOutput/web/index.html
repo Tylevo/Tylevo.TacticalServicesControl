@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>TerraGroup Tactical Services Control</title>
+	<link rel="stylesheet" href="/tsc/admin/styles.css">
+</head>
+<body>
+	<div class="app-shell">
+		<aside class="sidebar" aria-label="Configuration sections">
+			<div class="brand">
+				<div class="brand-mark" aria-hidden="true"><span></span></div>
+				<div>
+					<h1>TERRAGROUP</h1>
+					<p>Tactical Services Control</p>
+				</div>
+			</div>
+			<nav id="sectionNav" class="section-nav"></nav>
+		</aside>
+
+		<main class="workspace">
+			<header class="topbar">
+				<div class="topbar-title">
+					<strong>TSC DASHBOARD</strong>
+					<span>Tactical Services Control terminal</span>
+				</div>
+				<div class="status-cluster">
+					<span id="routeStatus" class="status-pill">Loading</span>
+					<span id="revisionStatus" class="meta-pill">Revision --</span>
+					<span id="paymentStatus" class="meta-pill">Payment --</span>
+				</div>
+				<div class="actions">
+					<button id="unlockAdminButton" type="button">Unlock Admin</button>
+					<button id="reloadButton" type="button">Reload Config</button>
+					<button id="saveButton" class="primary" type="button">Save Config</button>
+				</div>
+				<div id="adminTokenPanel" class="admin-token-panel" hidden>
+					<label class="token-field">
+						<span class="token-label">Admin Token</span>
+						<input id="adminToken" class="token-input" type="password" autocomplete="off" placeholder="Paste token for this session">
+						<span id="adminTokenHint" class="token-hint">Token file: config/tsc-admin-token.txt</span>
+						<span class="token-warning">Trusted LAN/VPN only. Do not port-forward this dashboard.</span>
+					</label>
+					<button id="applyAdminTokenButton" type="button">Apply Token</button>
+				</div>
+			</header>
+
+			<div class="overview-band" aria-hidden="true">
+				<div>
+					<span>AUTHORITY</span>
+					<strong>HOST CONFIG</strong>
+				</div>
+				<div>
+					<span>WALLET</span>
+					<strong>STASH / CARRIED</strong>
+				</div>
+				<div>
+					<span>SYNC</span>
+					<strong>FIKA READY</strong>
+				</div>
+			</div>
+
+			<div id="formRoot" class="form-root"></div>
+
+			<section class="section-panel diagnostics-panel" aria-labelledby="diagnosticsTitle">
+				<div class="section-heading">
+					<div>
+						<span class="section-kicker">System</span>
+						<h2 id="diagnosticsTitle">Diagnostics</h2>
+					</div>
+					<div class="section-actions">
+						<button id="reloadDiskButton" type="button">Reload From Disk</button>
+						<button id="resetButton" class="danger" type="button">Reset Defaults</button>
+					</div>
+				</div>
+				<dl id="diagnosticsGrid" class="diagnostics-grid"></dl>
+			</section>
+		</main>
+	</div>
+
+	<footer class="bottombar">
+		<span id="changeStatus">0 unsaved changes</span>
+		<span id="lastSavedStatus">Not saved this session</span>
+	</footer>
+
+	<div id="toast" class="toast" role="status" aria-live="polite"></div>
+	<script src="/tsc/admin/app.mjs"></script>
+</body>
+</html>

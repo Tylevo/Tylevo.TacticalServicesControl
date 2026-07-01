@@ -1,0 +1,127 @@
+{
+  "version": "v8",
+  "purpose": "Overlay follows the authored hand swipe; do not bake it into the portrait background.",
+  "recommended_source": "AnimatorStateInfo.normalizedTime for the phone success/confirm animation.",
+  "calibration": {
+    "swipe_start_normalized_time": 0.46,
+    "swipe_end_normalized_time": 0.72,
+    "note": "Initial values only. Log the real hand animation and tune these two thresholds."
+  },
+  "implementation": [
+    "Keep TG_04_*_ConfirmSwipe.png as the static background.",
+    "Place swipe_arrow_sprite.png in a UI Image above the background.",
+    "Map animator normalized time from start/end into 0..1.",
+    "Use the motion frames or interpolate the supplied keyframes.",
+    "Hide the arrow before start and after end."
+  ],
+  "frames": [
+    {
+      "frame": 0,
+      "normalized_progress": 0.0,
+      "center_px_512x1024": [
+        256,
+        650
+      ],
+      "alpha": 0.0
+    },
+    {
+      "frame": 1,
+      "normalized_progress": 0.0909,
+      "center_px_512x1024": [
+        256,
+        644
+      ],
+      "alpha": 0.5051
+    },
+    {
+      "frame": 2,
+      "normalized_progress": 0.1818,
+      "center_px_512x1024": [
+        256,
+        630
+      ],
+      "alpha": 1.0
+    },
+    {
+      "frame": 3,
+      "normalized_progress": 0.2727,
+      "center_px_512x1024": [
+        256,
+        609
+      ],
+      "alpha": 1.0
+    },
+    {
+      "frame": 4,
+      "normalized_progress": 0.3636,
+      "center_px_512x1024": [
+        256,
+        583
+      ],
+      "alpha": 1.0
+    },
+    {
+      "frame": 5,
+      "normalized_progress": 0.4545,
+      "center_px_512x1024": [
+        256,
+        554
+      ],
+      "alpha": 1.0
+    },
+    {
+      "frame": 6,
+      "normalized_progress": 0.5455,
+      "center_px_512x1024": [
+        256,
+        525
+      ],
+      "alpha": 1.0
+    },
+    {
+      "frame": 7,
+      "normalized_progress": 0.6364,
+      "center_px_512x1024": [
+        256,
+        496
+      ],
+      "alpha": 1.0
+    },
+    {
+      "frame": 8,
+      "normalized_progress": 0.7273,
+      "center_px_512x1024": [
+        256,
+        470
+      ],
+      "alpha": 1.0
+    },
+    {
+      "frame": 9,
+      "normalized_progress": 0.8182,
+      "center_px_512x1024": [
+        256,
+        449
+      ],
+      "alpha": 0.8264
+    },
+    {
+      "frame": 10,
+      "normalized_progress": 0.9091,
+      "center_px_512x1024": [
+        256,
+        435
+      ],
+      "alpha": 0.4132
+    },
+    {
+      "frame": 11,
+      "normalized_progress": 1.0,
+      "center_px_512x1024": [
+        256,
+        430
+      ],
+      "alpha": 0.0
+    }
+  ]
+}

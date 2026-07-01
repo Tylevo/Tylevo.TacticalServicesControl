@@ -1,0 +1,62 @@
+{
+  "release": "tsc-public-beta",
+  "screen_count": 18,
+  "landscape_screens": [
+    "TG_00_Boot_ResolvingDNS.png",
+    "TG_01_TacticalServices_Extraction_Selected.png",
+    "TG_01_TacticalServices_Fire_Selected.png",
+    "TG_01_TacticalServices_UAV_Selected.png",
+    "TG_02_ExtractionCategory.png",
+    "TG_02_FireSupportCategory.png",
+    "TG_02_ReconCategory.png",
+    "TG_03_A10_Review_Rotate.png",
+    "TG_03_Extraction_Review_Rotate.png",
+    "TG_03_UAV_Review_Rotate.png"
+  ],
+  "portrait_screens": [
+    "TG_04_A10_ConfirmSwipe.png",
+    "TG_04_Extraction_ConfirmSwipe.png",
+    "TG_04_UAV_ConfirmSwipe.png",
+    "TG_05_Authorizing.png",
+    "TG_06_A10_Authorized.png",
+    "TG_06_Extraction_Authorized.png",
+    "TG_06_UAV_Authorized.png",
+    "TG_07_PaymentDenied.png"
+  ],
+  "components": [
+    "components/landscape/base_header_footer.png",
+    "components/landscape/card_unselected.png",
+    "components/landscape/card_selected.png",
+    "components/landscape/card_locked.png",
+    "components/landscape/card_offline.png",
+    "components/landscape/price_field_unselected.png",
+    "components/landscape/price_field_selected.png",
+    "components/landscape/review_panel.png",
+    "components/landscape/cost_panel.png",
+    "components/landscape/confirm_cta.png",
+    "components/portrait/base_header_footer.png",
+    "components/portrait/service_panel.png",
+    "components/portrait/payment_panel_selected.png",
+    "components/portrait/status_panel.png"
+  ],
+  "icons": [
+    "terragroup_logo",
+    "fire_support_shells",
+    "uav_recon",
+    "extraction",
+    "a10_strafe",
+    "crosshair",
+    "clock",
+    "coverage",
+    "rotate",
+    "lock",
+    "success",
+    "warning"
+  ],
+  "unchanged_bundles": [
+    "firesupport_audio.bundle",
+    "firesupport_spotter.bundle",
+    "firesupport_ui.bundle",
+    "uav_radarhud.bundle"
+  ]
+}

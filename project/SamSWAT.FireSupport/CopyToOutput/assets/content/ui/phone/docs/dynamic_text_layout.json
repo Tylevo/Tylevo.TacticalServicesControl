@@ -1,0 +1,990 @@
+{
+  "version": "v9-two-option-revised",
+  "coordinate_origin": "top-left",
+  "screens": {
+    "TG_02_ExtractionCategory_Neutral.png": {
+      "option_1_price": {
+        "rect_px": [
+          134,
+          405,
+          426,
+          438
+        ],
+        "align": "MiddleCenter",
+        "font_size": 22,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "extraction"
+      },
+      "option_2_price": {
+        "rect_px": [
+          600,
+          405,
+          892,
+          438
+        ],
+        "align": "MiddleCenter",
+        "font_size": 22,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "priority_exfil"
+      },
+      "carried_balance": {
+        "rect_px": [
+          126,
+          478,
+          260,
+          502
+        ],
+        "align": "MiddleRight",
+        "font_size": 16,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "carried_roubles"
+      }
+    },
+    "TG_02_ExtractionCategory_1_Selected.png": {
+      "option_1_price": {
+        "rect_px": [
+          134,
+          405,
+          426,
+          438
+        ],
+        "align": "MiddleCenter",
+        "font_size": 22,
+        "color": "#E8B967",
+        "format": "\u20bd {amount:N0}",
+        "source": "extraction"
+      },
+      "option_2_price": {
+        "rect_px": [
+          600,
+          405,
+          892,
+          438
+        ],
+        "align": "MiddleCenter",
+        "font_size": 22,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "priority_exfil"
+      },
+      "carried_balance": {
+        "rect_px": [
+          126,
+          478,
+          260,
+          502
+        ],
+        "align": "MiddleRight",
+        "font_size": 16,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "carried_roubles"
+      }
+    },
+    "TG_02_ExtractionCategory_2_Selected.png": {
+      "option_1_price": {
+        "rect_px": [
+          134,
+          405,
+          426,
+          438
+        ],
+        "align": "MiddleCenter",
+        "font_size": 22,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "extraction"
+      },
+      "option_2_price": {
+        "rect_px": [
+          600,
+          405,
+          892,
+          438
+        ],
+        "align": "MiddleCenter",
+        "font_size": 22,
+        "color": "#E8B967",
+        "format": "\u20bd {amount:N0}",
+        "source": "priority_exfil"
+      },
+      "carried_balance": {
+        "rect_px": [
+          126,
+          478,
+          260,
+          502
+        ],
+        "align": "MiddleRight",
+        "font_size": 16,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "carried_roubles"
+      }
+    },
+    "TG_02_ExtractionCategory.png": {
+      "option_1_price": {
+        "rect_px": [
+          134,
+          405,
+          426,
+          438
+        ],
+        "align": "MiddleCenter",
+        "font_size": 22,
+        "color": "#E8B967",
+        "format": "\u20bd {amount:N0}",
+        "source": "extraction"
+      },
+      "option_2_price": {
+        "rect_px": [
+          600,
+          405,
+          892,
+          438
+        ],
+        "align": "MiddleCenter",
+        "font_size": 22,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "priority_exfil"
+      },
+      "carried_balance": {
+        "rect_px": [
+          126,
+          478,
+          260,
+          502
+        ],
+        "align": "MiddleRight",
+        "font_size": 16,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "carried_roubles"
+      }
+    },
+    "TG_02_FireSupportCategory_Neutral.png": {
+      "option_1_price": {
+        "rect_px": [
+          134,
+          405,
+          426,
+          438
+        ],
+        "align": "MiddleCenter",
+        "font_size": 22,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "a10"
+      },
+      "option_2_price": {
+        "rect_px": [
+          600,
+          405,
+          892,
+          438
+        ],
+        "align": "MiddleCenter",
+        "font_size": 22,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "double_pass"
+      },
+      "carried_balance": {
+        "rect_px": [
+          126,
+          478,
+          260,
+          502
+        ],
+        "align": "MiddleRight",
+        "font_size": 16,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "carried_roubles"
+      }
+    },
+    "TG_02_FireSupportCategory_1_Selected.png": {
+      "option_1_price": {
+        "rect_px": [
+          134,
+          405,
+          426,
+          438
+        ],
+        "align": "MiddleCenter",
+        "font_size": 22,
+        "color": "#E8B967",
+        "format": "\u20bd {amount:N0}",
+        "source": "a10"
+      },
+      "option_2_price": {
+        "rect_px": [
+          600,
+          405,
+          892,
+          438
+        ],
+        "align": "MiddleCenter",
+        "font_size": 22,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "double_pass"
+      },
+      "carried_balance": {
+        "rect_px": [
+          126,
+          478,
+          260,
+          502
+        ],
+        "align": "MiddleRight",
+        "font_size": 16,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "carried_roubles"
+      }
+    },
+    "TG_02_FireSupportCategory_2_Selected.png": {
+      "option_1_price": {
+        "rect_px": [
+          134,
+          405,
+          426,
+          438
+        ],
+        "align": "MiddleCenter",
+        "font_size": 22,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "a10"
+      },
+      "option_2_price": {
+        "rect_px": [
+          600,
+          405,
+          892,
+          438
+        ],
+        "align": "MiddleCenter",
+        "font_size": 22,
+        "color": "#E8B967",
+        "format": "\u20bd {amount:N0}",
+        "source": "double_pass"
+      },
+      "carried_balance": {
+        "rect_px": [
+          126,
+          478,
+          260,
+          502
+        ],
+        "align": "MiddleRight",
+        "font_size": 16,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "carried_roubles"
+      }
+    },
+    "TG_02_FireSupportCategory.png": {
+      "option_1_price": {
+        "rect_px": [
+          134,
+          405,
+          426,
+          438
+        ],
+        "align": "MiddleCenter",
+        "font_size": 22,
+        "color": "#E8B967",
+        "format": "\u20bd {amount:N0}",
+        "source": "a10"
+      },
+      "option_2_price": {
+        "rect_px": [
+          600,
+          405,
+          892,
+          438
+        ],
+        "align": "MiddleCenter",
+        "font_size": 22,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "double_pass"
+      },
+      "carried_balance": {
+        "rect_px": [
+          126,
+          478,
+          260,
+          502
+        ],
+        "align": "MiddleRight",
+        "font_size": 16,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "carried_roubles"
+      }
+    },
+    "TG_02_ReconCategory_Neutral.png": {
+      "option_1_price": {
+        "rect_px": [
+          134,
+          405,
+          426,
+          438
+        ],
+        "align": "MiddleCenter",
+        "font_size": 22,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "uav"
+      },
+      "option_2_price": {
+        "rect_px": [
+          600,
+          405,
+          892,
+          438
+        ],
+        "align": "MiddleCenter",
+        "font_size": 22,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "focused_sweep"
+      },
+      "carried_balance": {
+        "rect_px": [
+          126,
+          478,
+          260,
+          502
+        ],
+        "align": "MiddleRight",
+        "font_size": 16,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "carried_roubles"
+      }
+    },
+    "TG_02_ReconCategory_1_Selected.png": {
+      "option_1_price": {
+        "rect_px": [
+          134,
+          405,
+          426,
+          438
+        ],
+        "align": "MiddleCenter",
+        "font_size": 22,
+        "color": "#E8B967",
+        "format": "\u20bd {amount:N0}",
+        "source": "uav"
+      },
+      "option_2_price": {
+        "rect_px": [
+          600,
+          405,
+          892,
+          438
+        ],
+        "align": "MiddleCenter",
+        "font_size": 22,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "focused_sweep"
+      },
+      "carried_balance": {
+        "rect_px": [
+          126,
+          478,
+          260,
+          502
+        ],
+        "align": "MiddleRight",
+        "font_size": 16,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "carried_roubles"
+      }
+    },
+    "TG_02_ReconCategory_2_Selected.png": {
+      "option_1_price": {
+        "rect_px": [
+          134,
+          405,
+          426,
+          438
+        ],
+        "align": "MiddleCenter",
+        "font_size": 22,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "uav"
+      },
+      "option_2_price": {
+        "rect_px": [
+          600,
+          405,
+          892,
+          438
+        ],
+        "align": "MiddleCenter",
+        "font_size": 22,
+        "color": "#E8B967",
+        "format": "\u20bd {amount:N0}",
+        "source": "focused_sweep"
+      },
+      "carried_balance": {
+        "rect_px": [
+          126,
+          478,
+          260,
+          502
+        ],
+        "align": "MiddleRight",
+        "font_size": 16,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "carried_roubles"
+      }
+    },
+    "TG_02_ReconCategory.png": {
+      "option_1_price": {
+        "rect_px": [
+          134,
+          405,
+          426,
+          438
+        ],
+        "align": "MiddleCenter",
+        "font_size": 22,
+        "color": "#E8B967",
+        "format": "\u20bd {amount:N0}",
+        "source": "uav"
+      },
+      "option_2_price": {
+        "rect_px": [
+          600,
+          405,
+          892,
+          438
+        ],
+        "align": "MiddleCenter",
+        "font_size": 22,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "focused_sweep"
+      },
+      "carried_balance": {
+        "rect_px": [
+          126,
+          478,
+          260,
+          502
+        ],
+        "align": "MiddleRight",
+        "font_size": 16,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "carried_roubles"
+      }
+    },
+    "TG_03_Extraction_Review_Rotate.png": {
+      "configured_price": {
+        "rect_px": [
+          773,
+          213,
+          935,
+          248
+        ],
+        "align": "MiddleRight",
+        "font_size": 20,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "extraction"
+      },
+      "total_price": {
+        "rect_px": [
+          772,
+          267,
+          935,
+          313
+        ],
+        "align": "MiddleRight",
+        "font_size": 27,
+        "color": "#E8B967",
+        "format": "\u20bd {amount:N0}",
+        "source": "extraction"
+      },
+      "carried_balance": {
+        "rect_px": [
+          126,
+          478,
+          260,
+          502
+        ],
+        "align": "MiddleRight",
+        "font_size": 16,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "carried_roubles"
+      }
+    },
+    "TG_04_Extraction_ConfirmSwipe.png": {
+      "configured_price": {
+        "rect_px": [
+          68,
+          806,
+          444,
+          848
+        ],
+        "align": "MiddleCenter",
+        "font_size": 25,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "extraction"
+      },
+      "total_price": {
+        "rect_px": [
+          68,
+          900,
+          444,
+          942
+        ],
+        "align": "MiddleCenter",
+        "font_size": 30,
+        "color": "#E8B967",
+        "format": "\u20bd {amount:N0}",
+        "source": "extraction"
+      },
+      "carried_balance": {
+        "rect_px": [
+          111,
+          980,
+          220,
+          1008
+        ],
+        "align": "MiddleRight",
+        "font_size": 15,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "carried_roubles"
+      }
+    },
+    "TG_03_PriorityExfil_Review_Rotate.png": {
+      "configured_price": {
+        "rect_px": [
+          773,
+          213,
+          935,
+          248
+        ],
+        "align": "MiddleRight",
+        "font_size": 20,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "priority_exfil"
+      },
+      "total_price": {
+        "rect_px": [
+          772,
+          267,
+          935,
+          313
+        ],
+        "align": "MiddleRight",
+        "font_size": 27,
+        "color": "#E8B967",
+        "format": "\u20bd {amount:N0}",
+        "source": "priority_exfil"
+      },
+      "carried_balance": {
+        "rect_px": [
+          126,
+          478,
+          260,
+          502
+        ],
+        "align": "MiddleRight",
+        "font_size": 16,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "carried_roubles"
+      }
+    },
+    "TG_04_PriorityExfil_ConfirmSwipe.png": {
+      "configured_price": {
+        "rect_px": [
+          68,
+          806,
+          444,
+          848
+        ],
+        "align": "MiddleCenter",
+        "font_size": 25,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "priority_exfil"
+      },
+      "total_price": {
+        "rect_px": [
+          68,
+          900,
+          444,
+          942
+        ],
+        "align": "MiddleCenter",
+        "font_size": 30,
+        "color": "#E8B967",
+        "format": "\u20bd {amount:N0}",
+        "source": "priority_exfil"
+      },
+      "carried_balance": {
+        "rect_px": [
+          111,
+          980,
+          220,
+          1008
+        ],
+        "align": "MiddleRight",
+        "font_size": 15,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "carried_roubles"
+      }
+    },
+    "TG_03_A10_Review_Rotate.png": {
+      "configured_price": {
+        "rect_px": [
+          773,
+          213,
+          935,
+          248
+        ],
+        "align": "MiddleRight",
+        "font_size": 20,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "a10"
+      },
+      "total_price": {
+        "rect_px": [
+          772,
+          267,
+          935,
+          313
+        ],
+        "align": "MiddleRight",
+        "font_size": 27,
+        "color": "#E8B967",
+        "format": "\u20bd {amount:N0}",
+        "source": "a10"
+      },
+      "carried_balance": {
+        "rect_px": [
+          126,
+          478,
+          260,
+          502
+        ],
+        "align": "MiddleRight",
+        "font_size": 16,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "carried_roubles"
+      }
+    },
+    "TG_04_A10_ConfirmSwipe.png": {
+      "configured_price": {
+        "rect_px": [
+          68,
+          806,
+          444,
+          848
+        ],
+        "align": "MiddleCenter",
+        "font_size": 25,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "a10"
+      },
+      "total_price": {
+        "rect_px": [
+          68,
+          900,
+          444,
+          942
+        ],
+        "align": "MiddleCenter",
+        "font_size": 30,
+        "color": "#E8B967",
+        "format": "\u20bd {amount:N0}",
+        "source": "a10"
+      },
+      "carried_balance": {
+        "rect_px": [
+          111,
+          980,
+          220,
+          1008
+        ],
+        "align": "MiddleRight",
+        "font_size": 15,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "carried_roubles"
+      }
+    },
+    "TG_03_DoublePass_Review_Rotate.png": {
+      "configured_price": {
+        "rect_px": [
+          773,
+          213,
+          935,
+          248
+        ],
+        "align": "MiddleRight",
+        "font_size": 20,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "double_pass"
+      },
+      "total_price": {
+        "rect_px": [
+          772,
+          267,
+          935,
+          313
+        ],
+        "align": "MiddleRight",
+        "font_size": 27,
+        "color": "#E8B967",
+        "format": "\u20bd {amount:N0}",
+        "source": "double_pass"
+      },
+      "carried_balance": {
+        "rect_px": [
+          126,
+          478,
+          260,
+          502
+        ],
+        "align": "MiddleRight",
+        "font_size": 16,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "carried_roubles"
+      }
+    },
+    "TG_04_DoublePass_ConfirmSwipe.png": {
+      "configured_price": {
+        "rect_px": [
+          68,
+          806,
+          444,
+          848
+        ],
+        "align": "MiddleCenter",
+        "font_size": 25,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "double_pass"
+      },
+      "total_price": {
+        "rect_px": [
+          68,
+          900,
+          444,
+          942
+        ],
+        "align": "MiddleCenter",
+        "font_size": 30,
+        "color": "#E8B967",
+        "format": "\u20bd {amount:N0}",
+        "source": "double_pass"
+      },
+      "carried_balance": {
+        "rect_px": [
+          111,
+          980,
+          220,
+          1008
+        ],
+        "align": "MiddleRight",
+        "font_size": 15,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "carried_roubles"
+      }
+    },
+    "TG_03_UAV_Review_Rotate.png": {
+      "configured_price": {
+        "rect_px": [
+          773,
+          213,
+          935,
+          248
+        ],
+        "align": "MiddleRight",
+        "font_size": 20,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "uav"
+      },
+      "total_price": {
+        "rect_px": [
+          772,
+          267,
+          935,
+          313
+        ],
+        "align": "MiddleRight",
+        "font_size": 27,
+        "color": "#E8B967",
+        "format": "\u20bd {amount:N0}",
+        "source": "uav"
+      },
+      "carried_balance": {
+        "rect_px": [
+          126,
+          478,
+          260,
+          502
+        ],
+        "align": "MiddleRight",
+        "font_size": 16,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "carried_roubles"
+      }
+    },
+    "TG_04_UAV_ConfirmSwipe.png": {
+      "configured_price": {
+        "rect_px": [
+          68,
+          806,
+          444,
+          848
+        ],
+        "align": "MiddleCenter",
+        "font_size": 25,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "uav"
+      },
+      "total_price": {
+        "rect_px": [
+          68,
+          900,
+          444,
+          942
+        ],
+        "align": "MiddleCenter",
+        "font_size": 30,
+        "color": "#E8B967",
+        "format": "\u20bd {amount:N0}",
+        "source": "uav"
+      },
+      "carried_balance": {
+        "rect_px": [
+          111,
+          980,
+          220,
+          1008
+        ],
+        "align": "MiddleRight",
+        "font_size": 15,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "carried_roubles"
+      }
+    },
+    "TG_03_FocusedSweep_Review_Rotate.png": {
+      "configured_price": {
+        "rect_px": [
+          773,
+          213,
+          935,
+          248
+        ],
+        "align": "MiddleRight",
+        "font_size": 20,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "focused_sweep"
+      },
+      "total_price": {
+        "rect_px": [
+          772,
+          267,
+          935,
+          313
+        ],
+        "align": "MiddleRight",
+        "font_size": 27,
+        "color": "#E8B967",
+        "format": "\u20bd {amount:N0}",
+        "source": "focused_sweep"
+      },
+      "carried_balance": {
+        "rect_px": [
+          126,
+          478,
+          260,
+          502
+        ],
+        "align": "MiddleRight",
+        "font_size": 16,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "carried_roubles"
+      }
+    },
+    "TG_04_FocusedSweep_ConfirmSwipe.png": {
+      "configured_price": {
+        "rect_px": [
+          68,
+          806,
+          444,
+          848
+        ],
+        "align": "MiddleCenter",
+        "font_size": 25,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "focused_sweep"
+      },
+      "total_price": {
+        "rect_px": [
+          68,
+          900,
+          444,
+          942
+        ],
+        "align": "MiddleCenter",
+        "font_size": 30,
+        "color": "#E8B967",
+        "format": "\u20bd {amount:N0}",
+        "source": "focused_sweep"
+      },
+      "carried_balance": {
+        "rect_px": [
+          111,
+          980,
+          220,
+          1008
+        ],
+        "align": "MiddleRight",
+        "font_size": 15,
+        "color": "#DCD8C8",
+        "format": "\u20bd {amount:N0}",
+        "source": "carried_roubles"
+      }
+    }
+  }
+}

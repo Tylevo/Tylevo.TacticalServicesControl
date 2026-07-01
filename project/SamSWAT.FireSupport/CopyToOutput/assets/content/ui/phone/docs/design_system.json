@@ -1,0 +1,50 @@
+{
+  "name": "TSC TerraGroup UI",
+  "dimensions": {
+    "landscape": [
+      1024,
+      512
+    ],
+    "portrait": [
+      512,
+      1024
+    ],
+    "highres_landscape": [
+      2048,
+      1024
+    ],
+    "highres_portrait": [
+      1024,
+      2048
+    ]
+  },
+  "palette": {
+    "background": "#050708",
+    "panel": "#121515",
+    "panel_selected": "#171713",
+    "line": "#484B47",
+    "text": "#DCD8C8",
+    "muted": "#9D998C",
+    "amber": "#CD9E54",
+    "amber_high": "#E8B967",
+    "green": "#719D46",
+    "red": "#C6483D"
+  },
+  "typography": {
+    "heading": "PT Sans Narrow Bold",
+    "body": "PT Sans Narrow",
+    "numeric": "PT Mono"
+  },
+  "card_grid": {
+    "x": [
+      60,
+      370,
+      680
+    ],
+    "y": 145,
+    "width": 284,
+    "height": 300
+  },
+  "runtime_alpha": "No alpha channel. All screen PNGs are RGB.",
+  "icon_style": "Single silhouette/line family, shared stroke weight and proportions."
+}

@@ -1,0 +1,65 @@
+{
+  "revision": 1,
+  "paymentMode": "PhoneAuthorizations",
+  "paymentSource": "CarriedRoubles",
+  "requestCooldownSeconds": 300,
+  "prices": {
+    "A10": 250000,
+    "DoublePass": 450000,
+    "Extraction": 50000,
+    "PriorityExfil": 150000,
+    "Uav": 100000,
+    "FocusedSweep": 75000
+  },
+  "enabled": {
+    "A10": true,
+    "DoublePass": true,
+    "Extraction": true,
+    "PriorityExfil": true,
+    "Uav": true,
+    "FocusedSweep": true
+  },
+  "adminDashboard": {
+    "enabled": true,
+    "allowRemoteAccess": false,
+    "requireTokenForLocalhost": false
+  },
+  "purchasePersistence": {
+    "enabled": true,
+    "mode": "PersistentAuthorizations",
+    "consumeOn": "AuthorizationAccepted",
+    "refundFailedDispatch": true,
+    "maxStoredAuthorizationsPerService": 3,
+    "pendingUseTimeoutSeconds": 180,
+    "spendCreditsBeforeCash": true,
+    "allowAutoPurchaseOnUse": true
+  },
+  "uav": {
+    "durationSeconds": 45,
+    "rangeMeters": 200,
+    "scanIntervalSeconds": 1
+  },
+  "focusedSweep": {
+    "durationSeconds": 30,
+    "rangeMeters": 100,
+    "scanIntervalSeconds": 0.5
+  },
+  "extraction": {
+    "dispatchDelaySeconds": 0,
+    "waitTimeSeconds": 30,
+    "extractTimeSeconds": 10,
+    "speedMultiplier": 1
+  },
+  "priorityExfil": {
+    "dispatchDelaySeconds": 3,
+    "waitTimeSeconds": 20,
+    "extractTimeSeconds": 10,
+    "speedMultiplier": 1.35
+  },
+  "a10": {
+    "secondPassDelaySeconds": 0
+  },
+  "doublePass": {
+    "secondPassDelaySeconds": 14
+  }
+}

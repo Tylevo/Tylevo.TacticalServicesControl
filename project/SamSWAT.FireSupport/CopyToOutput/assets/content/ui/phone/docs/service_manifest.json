@@ -1,0 +1,25 @@
+{
+  "version": "v9",
+  "implemented_now": [
+    "uh60_extraction",
+    "a10_strafe",
+    "uav_recon"
+  ],
+  "future_low_asset_change_options": {
+    "priority_exfil": {
+      "reuses": "Existing UH-60 model, flight path, landing/extraction animation.",
+      "code_change": "Shorter arrival delay and higher configurable price.",
+      "default_enabled": false
+    },
+    "double_pass": {
+      "reuses": "Existing A-10 model, route, and strafe effect.",
+      "code_change": "Execute a second pass after the first, with higher configurable price.",
+      "default_enabled": false
+    },
+    "focused_sweep": {
+      "reuses": "Existing UAV radar overlay, ping loop, and cosmetic loiter aircraft.",
+      "code_change": "Smaller radius, shorter duration, and faster refresh interval.",
+      "default_enabled": false
+    }
+  }
+}

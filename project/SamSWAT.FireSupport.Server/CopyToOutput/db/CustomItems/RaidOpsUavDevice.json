@@ -1,0 +1,54 @@
+{
+  "66f51f3a0000000000000a01": {
+    "itemTplToClone": "61605e13ffa6e502ac5e7eef",
+    "parentId": "66f51f3a0000000000000a00",
+    "handbookParentId": "5b47574386f77428ca22b345",
+    "overrideProperties": {
+      "ExaminedByDefault": true,
+      "CanSellOnRagfair": false,
+      "CanRequireOnRagfair": false,
+      "Weight": 0.1,
+      "Width": 1,
+      "Height": 1,
+      "StackMaxSize": 1,
+      "BackgroundColor": "blue",
+      "RarityPvE": "Rare",
+      "MaximumNumberOfUsage": 0,
+      "DiscardLimit": 5,
+      "ItemSound": "spec_multitool",
+      "Prefab": {
+        "path": "raidops/uav_uplink_loot.bundle",
+        "rcid": ""
+      },
+      "UsePrefab": {
+        "path": "raidops/uav_uplink_container.bundle",
+        "rcid": ""
+      }
+    },
+    "locales": {
+      "en": {
+        "name": "TerraGroup TSC Uplink",
+        "shortName": "TSC",
+        "description": "A compact Tactical Services Control device used to authorize TerraGroup field support packages."
+      }
+    },
+    "addtoItemBlacklist": false,
+    "addtoSpecialSlots": true,
+    "addtoModSlots": false,
+    "modSlot": [],
+    "fleaPriceRoubles": 50000,
+    "handbookPriceRoubles": 50000,
+    "addtoBots": false,
+    "addtoStaticLootContainers": true,
+    "staticLootContainers": [
+      { "containerName": "LOOTCONTAINER_PC_BLOCK", "probability": 4000 },
+      { "containerName": "LOOTCONTAINER_TOOLBOX", "probability": 3000 },
+      { "containerName": "LOOTCONTAINER_DUFFLE_BAG", "probability": 2000 }
+    ],
+    "addLooseLoot": false,
+    "addLooseLootProbability": 0,
+    "addtoHallOfFame": false,
+    "hallOfFameSlots": [],
+    "addtoStatuetteSlots": false
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "jaeger": {
+    "items": [
+      {
+        "_id": "66f51f3a0000000000000a02",
+        "_tpl": "66f51f3a0000000000000a01",
+        "parentId": "hideout",
+        "slotId": "hideout",
+        "upd": {
+          "UnlimitedCount": true,
+          "StackObjectsCount": 999999,
+          "BuyRestrictionMax": 5
+        }
+      }
+    ],
+    "barter_scheme": {
+      "66f51f3a0000000000000a02": [
+        [
+          {
+            "count": 50000,
+            "_tpl": "5449016a4bdc2d6f028b456f"
+          }
+        ]
+      ]
+    },
+    "loyal_level_items": {
+      "66f51f3a0000000000000a02": 1
+    }
+  }
+}
