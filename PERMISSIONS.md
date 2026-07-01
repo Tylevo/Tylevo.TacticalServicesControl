@@ -39,7 +39,7 @@ Recommended wording:
 
 ## License Interaction
 
-New TSC-specific additions are distributed under the project license unless otherwise noted. Upstream-derived material remains credited to its original authors and is redistributed under the permission described above. Third-party MIT material remains under MIT, and other third-party material keeps its own notices and attribution requirements.
+The project license is Creative Commons Attribution-NonCommercial 3.0 Unported (CC BY-NC 3.0), matching the upstream Forge listing and maintainer permission requirement for this derivative public beta. Upstream-derived material remains credited to its original authors and is redistributed under the permission described above. Third-party MIT material remains under MIT, and other third-party material keeps its own notices and attribution requirements.
 
 See:
 

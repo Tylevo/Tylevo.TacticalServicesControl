@@ -6,7 +6,7 @@ UAV activation phone assets are adapted from Manimal Hacker Mod.
 Source: https://github.com/danauraborealis/ManimalHackerMod
 License: MIT License
 
-Project license posture: Creative Commons BY-NC 4.0 for TSC-specific material unless an upstream permission or third-party license requires a different or more restrictive arrangement. Third-party assets keep their own notices and license terms.
+Project license posture: Creative Commons BY-NC 3.0 for TSC-specific material unless an upstream permission or third-party license requires a different or more restrictive arrangement. Third-party assets keep their own notices and license terms.
 
 MIT License
 

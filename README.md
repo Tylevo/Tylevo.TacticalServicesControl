@@ -95,7 +95,7 @@ Credits and notices are in `THIRD_PARTY_NOTICES.md` and `docs/credits.md`.
 
 ## License And Permissions
 
-The current project package follows the upstream Creative Commons BY-NC 4.0 licensing posture for TSC-specific material unless an upstream permission or third-party license requires a different or more restrictive arrangement. Upstream-derived Fire Support material is redistributed with permission and full attribution. Third-party components keep their own license terms.
+The current project package follows Creative Commons Attribution-NonCommercial 3.0 Unported (CC BY-NC 3.0) for TSC-specific material unless an upstream permission or third-party license requires a different or more restrictive arrangement. Upstream-derived Fire Support material is redistributed with permission and full attribution. Third-party components keep their own license terms.
 
 ## Optional Tip
 
