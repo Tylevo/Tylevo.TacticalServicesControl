@@ -11,7 +11,8 @@
     <Platforms>AnyCPU</Platforms>
     <SolutionName>Tylevo.TacticalServicesControl</SolutionName>
     <DistributionDir>$(MSBuildThisFileDirectory)dist\</DistributionDir>
-    <ReleaseArchive>$(DistributionDir)$(SolutionName)-v$(Version)-SPT$(TargetSptVersion).7z</ReleaseArchive>
+    <ReleaseArchive>$(DistributionDir)$(SolutionName)-v$(Version)-SPT$(TargetSptVersion).zip</ReleaseArchive>
+    <SevenZipPath Condition=" '$(SevenZipPath)' == '' ">C:\Program Files\7-Zip\7z.exe</SevenZipPath>
   </PropertyGroup>
   <PropertyGroup>
     <SptDir Condition=" '$(SptDir)' == '' ">$(MSBuildThisFileDirectory)..\..\SPT\</SptDir>
@@ -79,7 +80,7 @@
   <Target Name="GenerateModMetadata" BeforeTargets="BeforeCompile" Inputs="$(MSBuildAllProjects)" Outputs="$(IntermediateOutputPath)ModMetadata.cs">
     <ItemGroup>
       <ModMetadataFilePath Include="$(IntermediateOutputPath)ModMetadata.cs" />
-      <GeneratedText Include="// -- Auto-generated at build time --" />
+      <GeneratedText Include="// -- Created at build time --" />
       <GeneratedText Include="// --------- DO NOT MODIFY ----------" />
       <GeneratedText Include="%23pragma warning disable CS1591 // Missing XML comment for publicly visible type or member" />
       <GeneratedText Include="namespace $(RootNamespace)%3B" />

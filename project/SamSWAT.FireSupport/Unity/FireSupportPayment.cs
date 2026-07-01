@@ -69,7 +69,7 @@ public static class FireSupportPayment
 		return denial?.Reason switch
 		{
 			"AuthorizationLimitReached" => "AUTHORIZATION LIMIT REACHED",
-			"InsufficientRoubles" => $"INSUFFICIENT {GetEffectiveBalanceLabel().ToUpperInvariant()}",
+			"InsufficientRoubles" => "INSUFFICIENT FUNDS",
 			"RateLimited" => "PURCHASE ALREADY PROCESSING",
 			"ServerConfigUnavailable" or "RequestFailed" or "InvalidServerResponse" => "SERVER PAYMENT UNAVAILABLE",
 			"ProfileNotFound" or "ProfileSessionMismatch" => "PROFILE VERIFY FAILED",

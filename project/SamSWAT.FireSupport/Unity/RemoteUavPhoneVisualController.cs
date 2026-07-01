@@ -178,7 +178,7 @@ public sealed class RemoteUavPhoneVisualController : UpdatableComponentBase
 		_audioSource.clip = CreateBeepClip();
 
 		FireSupportPlugin.LogSource?.LogInfo(
-			$"UAV phone visual phone prop loaded: generated simple proxy. owner={_profileId}, anchor={_anchor?.name ?? "<null>"}.");
+			$"UAV phone visual phone prop loaded: runtime simple proxy. owner={_profileId}, anchor={_anchor?.name ?? "<null>"}.");
 		FireSupportPlugin.LogSource?.LogInfo(
 			$"UAV phone visual attached to {(_handAttached ? "right-hand bone" : "fallback")} anchor={_anchor?.name ?? "<null>"}, owner={_profileId}.");
 

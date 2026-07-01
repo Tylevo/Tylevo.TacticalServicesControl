@@ -58,7 +58,7 @@ See `docs/known-issues.md`.
 
 - Upstream derivative permission from SamSWAT/Arys must be confirmed.
 - Asset/font/model redistribution rights must be confirmed or replaced.
-- VirusTotal scans must be generated for the final ZIP and release DLLs after upload.
+- VirusTotal scans must be created for the final ZIP and release DLLs after upload.
 
 ## VirusTotal Placeholders
 

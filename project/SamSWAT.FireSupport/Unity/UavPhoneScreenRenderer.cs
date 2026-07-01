@@ -597,7 +597,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		if (usingOpaquePlane)
 		{
 			TscDiagnostics.LogLcd(
-				$"TerraGroup phone LCD material bound to generated opaque plane. selectedRenderer='{GetTransformPath(_screenRenderer.transform, _rendererRoot)}', selectedMaterial='{_previousScreenMaterial?.name ?? "<null>"}', shader='{_screenMaterial.shader?.name ?? "<null>"}', renderQueue={_screenMaterial.renderQueue}, texture={_renderTexture.width}x{_renderTexture.height}, alphaForcedOpaque=true, forceDebug={_forceOpaqueDebug}.");
+				$"TerraGroup phone LCD material bound to runtime opaque plane. selectedRenderer='{GetTransformPath(_screenRenderer.transform, _rendererRoot)}', selectedMaterial='{_previousScreenMaterial?.name ?? "<null>"}', shader='{_screenMaterial.shader?.name ?? "<null>"}', renderQueue={_screenMaterial.renderQueue}, texture={_renderTexture.width}x{_renderTexture.height}, alphaForcedOpaque=true, forceDebug={_forceOpaqueDebug}.");
 		}
 		else
 		{
