@@ -2,7 +2,7 @@
 
 Tylevo's Tactical Services Control, or TSC, is a public beta Fire Support rework for SPT. It adds the TerraGroup TSC Uplink, phone-based support authorization, stash and carried rouble payment modes, A-10 and UH-60 support options, UAV recon tools, Fika support sync, and a local dashboard for host configuration.
 
-This project is derivative of SamSWAT's original Fire Support and SamSWAT's Fire Support - Arys Reloaded by Arys. Do not upload this package publicly until upstream redistribution permission is confirmed and recorded in `PERMISSIONS.md`.
+This project is derivative of SamSWAT's original Fire Support and SamSWAT's Fire Support - Arys Reloaded by Arys. Public redistribution is prepared with upstream permission recorded in `PERMISSIONS.md`, with full credit retained in `THIRD_PARTY_NOTICES.md` and `docs/credits.md`.
 
 ## Features
 
@@ -95,9 +95,7 @@ Credits and notices are in `THIRD_PARTY_NOTICES.md` and `docs/credits.md`.
 
 ## License And Permissions
 
-The current project package follows the upstream Creative Commons BY-NC 4.0 licensing posture unless upstream permissions require a different or more restrictive arrangement. Third-party components keep their own license terms.
-
-Forge upload is blocked until permission from SamSWAT/Arys is obtained or the derivative redistribution rights are otherwise confirmed.
+The current project package follows the upstream Creative Commons BY-NC 4.0 licensing posture for TSC-specific material unless an upstream permission or third-party license requires a different or more restrictive arrangement. Upstream-derived Fire Support material is redistributed with permission and full attribution. Third-party components keep their own license terms.
 
 ## Optional Tip
 
@@ -105,4 +103,4 @@ If you enjoy the project and want to support future work, you can leave a volunt
 
 https://ko-fi.com/tylevo
 
-Because upstream Fire Support/Arys Reloaded is BY-NC, confirm with upstream authors before publishing a donation/tip link with a public release.
+This tip link is included with upstream permission for the public beta release. It is voluntary only and does not unlock features, early access, downloads, updates, or support priority.

@@ -1,18 +1,19 @@
 # Third-Party Notices
 
-Tylevo's Tactical Services Control is derivative of SamSWAT's original Fire Support and SamSWAT's Fire Support - Arys Reloaded by Arys.
+Tylevo's Tactical Services Control is a derivative rework of SamSWAT's original Fire Support and SamSWAT's Fire Support - Arys Reloaded by Arys.
 
 ## Upstream Fire Support Work
 
-- SamSWAT original Fire Support.
-- SamSWAT's Fire Support - Arys Reloaded by Arys.
-- Current project license posture: Creative Commons Attribution-NonCommercial 4.0 International unless upstream permission requires a different or more restrictive arrangement.
+- SamSWAT: original Fire Support concept and implementation.
+- Arys: SamSWAT's Fire Support - Arys Reloaded / SPT 4.x basis.
 
-Public redistribution is blocked until permission from SamSWAT/Arys is obtained or derivative redistribution rights are confirmed.
+This project is distributed as a separate derivative/continuation project with upstream permission recorded by the maintainer. TSC retains visible credit to SamSWAT and Arys in the README, Forge page, source repository, release archive, and this notice file.
+
+TSC-specific additions include the TerraGroup TSC Uplink, phone authorization flow, stash/carry payment support, Fika sync work, dashboard configuration, UAV Recon, Focused Sweep, Priority Exfil, Double Pass, phone UI assets, and release maintenance.
 
 ## Manimal Hacker Mod
 
-The UAV activation phone/use-prefab bundles are adapted from Manimal Hacker Mod.
+The UAV activation phone/use-prefab work includes material adapted from Manimal Hacker Mod.
 
 - Author: danauraborealis
 - Source: https://github.com/danauraborealis/ManimalHackerMod
@@ -50,18 +51,10 @@ The UAV radar HUD bundle and blip styling are adapted from Accurate Circular Rad
 
 ## Asset And Font Audit
 
-Before public upload, confirm or replace redistributed material inside:
+The maintainer has reviewed the redistributed assets for this public beta release. If any additional upstream restrictions are identified later, affected assets should be replaced or removed in a follow-up release.
 
-- `firesupport_ui.bundle`
-- `firesupport_audio.bundle`
-- `firesupport_spotter.bundle`
-- `a10_warthog.bundle`
-- `uh60_blackhawk.bundle`
-- `uav_uplink_container.bundle`
-- `uav_uplink_loot.bundle`
+Bundled assets may include material derived from or compatible with the upstream Fire Support/Arys Reloaded basis. Third-party assets keep their own notices and permission requirements.
 
-Embedded UI assets may contain font metadata for LCD/Bender-style fonts, including references to Esselte Letraset Ltd., Microsoft Corporation, Jovanny Lemonad, Oleg Zhuravlev, Gladkikh Ivan, goldcrap.ru, and jovanny.ru. This notice records metadata observed during review; it does not grant redistribution rights. Confirm redistributable rights, replace affected assets/fonts, or remove bundled font data before public upload.
+## Disclaimer
 
-## Compatibility Targets
-
-SPT and Project Fika are compatibility targets. They are not authors of this mod.
+This mod is not affiliated with Battlestate Games, SPT, Project Fika, SamSWAT, Arys, danauraborealis, or the Accurate Circular Radar/Tyrian Radar authors. Credits identify upstream work and compatibility targets only.

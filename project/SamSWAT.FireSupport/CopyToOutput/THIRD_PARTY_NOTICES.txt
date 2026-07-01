@@ -1,6 +1,6 @@
 TSC third-party notices
 
-This client package is part of Tylevo's Tactical Services Control. The project is derivative of SamSWAT's original Fire Support and SamSWAT's Fire Support - Arys Reloaded by Arys. Public redistribution is blocked until upstream permission is confirmed.
+This client package is part of Tylevo's Tactical Services Control. The project is a derivative rework of SamSWAT's original Fire Support and SamSWAT's Fire Support - Arys Reloaded by Arys, distributed with upstream permission and full attribution.
 
 UAV radar HUD assets are adapted from Accurate Circular Radar / Tyrian Radar Standalone if those assets/code remain.
 Source: https://github.com/Leonana69/Tyrian-Radar-Standalone
@@ -9,9 +9,7 @@ License listed on Forge: Creative Commons BY 3.0
 
 TSC keeps its own timed UAV activation, payment, Fika sync, and enemy-only filtering.
 
-Project license posture: Creative Commons BY-NC 4.0 unless upstream permissions require a different or more restrictive arrangement. Third-party assets keep their own notices and license terms.
-
-Embedded font metadata in bundled UI assets may reference Esselte Letraset Ltd., Microsoft Corporation, Jovanny Lemonad, Oleg Zhuravlev, Gladkikh Ivan, goldcrap.ru, and jovanny.ru. This notice records observed metadata; it does not grant redistribution rights. Confirm redistributable rights before public upload, or replace the affected assets/fonts.
+Project license posture: Creative Commons BY-NC 4.0 for TSC-specific material unless an upstream permission or third-party license requires a different or more restrictive arrangement. Third-party assets keep their own notices and license terms.
 
 UAV activation phone assets are adapted from Manimal Hacker Mod.
 Source: https://github.com/danauraborealis/ManimalHackerMod

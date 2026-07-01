@@ -28,23 +28,31 @@ Gameplay or Other, depending on Forge options.
 
 ## License
 
-Use a license option compatible with Creative Commons BY-NC 4.0 and upstream permissions. Include `THIRD_PARTY_NOTICES.md` and `PERMISSIONS.md`.
+Creative Commons BY-NC 4.0 for TSC-specific material unless a third-party notice or upstream permission requires a different or more restrictive arrangement.
+
+Include:
+
+- `LICENSE`
+- `THIRD_PARTY_NOTICES.md`
+- `PERMISSIONS.md`
+- source repository link
+- VirusTotal links for the final ZIP and release DLLs
 
 ## Description
 
 Tylevo's Tactical Services Control adds the TerraGroup TSC Uplink, a phone-based authorization flow for Fire Support services, stash and carried rouble payment support, A-10 Strafe, A-10 Double Pass, UH-60 Extraction, Priority Exfil, UAV Recon, Focused Sweep, Fika host/client sync, and a local TSC Dashboard for host configuration.
 
+This project is a derivative rework of SamSWAT's original Fire Support and SamSWAT's Fire Support - Arys Reloaded by Arys, released with upstream permission and full attribution. Phone/use-device material includes MIT-licensed Manimal Hacker Mod material by danauraborealis. Full notices are included in `THIRD_PARTY_NOTICES.md`.
+
 The dashboard is localhost-only by default. Remote use should be trusted LAN/VPN only and should never be port-forwarded. The mod does not include telemetry or automatic external calls.
 
 Fika users must install the same version on the host, any headless host, and every client. Host config is authoritative while connected.
 
-Optional Ko-fi text:
+## Optional Ko-fi Text
 
-If you enjoy the project and want to support future work, you can leave a voluntary tip on Ko-fi. This is optional and does not unlock features, early access, or support priority.
+If you enjoy the project and want to support future work, you can leave a voluntary tip on Ko-fi. This is optional and does not unlock features, early access, downloads, updates, or support priority.
 
 https://ko-fi.com/tylevo
-
-Do not include the Ko-fi link in a public upload until upstream BY-NC permission is confirmed.
 
 ## Forge Changelog
 
@@ -54,15 +62,13 @@ See `CHANGELOG.md`.
 
 See `docs/known-issues.md`.
 
-## Upload Blockers
+## Release Checklist
 
-- Upstream derivative permission from SamSWAT/Arys must be confirmed.
-- Asset/font/model redistribution rights must be confirmed or replaced.
-- VirusTotal scans must be created for the final ZIP and release DLLs after upload.
-
-## VirusTotal Placeholders
-
-- Final release ZIP: pending.
-- Core DLL: pending.
-- Fika DLL: pending.
-- Server DLL: pending.
+- Upstream derivative permission: recorded in `PERMISSIONS.md`.
+- Manimal/MIT notice: included in `THIRD_PARTY_NOTICES.md`.
+- Source repository: pending final public link.
+- VirusTotal final ZIP: pending.
+- VirusTotal Core DLL: pending.
+- VirusTotal Fika DLL: pending.
+- VirusTotal Server DLL: pending.
+- Final two-person Fika smoke test: pending for each public build.

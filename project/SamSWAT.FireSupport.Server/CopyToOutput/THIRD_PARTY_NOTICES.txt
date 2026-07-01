@@ -1,14 +1,12 @@
 TSC third-party notices
 
-This server package is part of Tylevo's Tactical Services Control. The project is derivative of SamSWAT's original Fire Support and SamSWAT's Fire Support - Arys Reloaded by Arys. Public redistribution is blocked until upstream permission is confirmed.
+This server package is part of Tylevo's Tactical Services Control. The project is a derivative rework of SamSWAT's original Fire Support and SamSWAT's Fire Support - Arys Reloaded by Arys, distributed with upstream permission and full attribution.
 
 UAV activation phone assets are adapted from Manimal Hacker Mod.
 Source: https://github.com/danauraborealis/ManimalHackerMod
 License: MIT License
 
-Project license posture: Creative Commons BY-NC 4.0 unless upstream permissions require a different or more restrictive arrangement. Third-party assets keep their own notices and license terms.
-
-Embedded font metadata in bundled client UI assets may reference Esselte Letraset Ltd., Microsoft Corporation, Jovanny Lemonad, Oleg Zhuravlev, Gladkikh Ivan, goldcrap.ru, and jovanny.ru. This server notice is included so the combined drop-in archive carries the same release warning; it does not grant redistribution rights.
+Project license posture: Creative Commons BY-NC 4.0 for TSC-specific material unless an upstream permission or third-party license requires a different or more restrictive arrangement. Third-party assets keep their own notices and license terms.
 
 MIT License
 
