@@ -24,7 +24,7 @@ public record ServerModMetadata : AbstractModMetadata
 	};
 	public override string? Url { get; init; }
 	public override bool? IsBundleMod { get; init; } = true;
-	public override string License { get; init; } = "Creative Commons BY-NC 3.0";
+	public override string License { get; init; } = "Creative Commons BY-NC 4.0";
 }
 
 [Injectable(TypePriority = OnLoadOrder.PostDBModLoader + 2)]

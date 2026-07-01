@@ -2,6 +2,8 @@
 
 This public beta release is prepared under the assumption that upstream permission has been granted by the relevant authors and recorded by the maintainer.
 
+Tylevo's Tactical Services Control is released under Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0), matching the upstream Arys Reloaded source license. Arys clarified that the Forge/SPT Hub BY-NC 3.0 listing was due to historical site limitations before the Forge migration.
+
 ## What This Covers
 
 - Public Forge release.

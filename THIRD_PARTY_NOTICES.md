@@ -11,6 +11,10 @@ This project is distributed as a separate derivative/continuation project with u
 
 TSC-specific additions include the TerraGroup TSC Uplink, phone authorization flow, stash/carry payment support, Fika sync work, dashboard configuration, UAV Recon, Focused Sweep, Priority Exfil, Double Pass, phone UI assets, and release maintenance.
 
+## Project License
+
+Tylevo's Tactical Services Control is released under Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0), matching the upstream Arys Reloaded source license. Arys clarified that the Forge/SPT Hub BY-NC 3.0 listing was due to historical site limitations before the Forge migration.
+
 ## Manimal Hacker Mod
 
 The UAV activation phone/use-prefab work includes material adapted from Manimal Hacker Mod.

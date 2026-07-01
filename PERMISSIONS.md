@@ -39,7 +39,9 @@ Recommended wording:
 
 ## License Interaction
 
-The project license is Creative Commons Attribution-NonCommercial 3.0 Unported (CC BY-NC 3.0), matching the upstream Forge listing and maintainer permission requirement for this derivative public beta. Upstream-derived material remains credited to its original authors and is redistributed under the permission described above. Third-party MIT material remains under MIT, and other third-party material keeps its own notices and attribution requirements.
+Tylevo's Tactical Services Control is released under Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0), matching the upstream Arys Reloaded source license. Arys clarified that the Forge/SPT Hub BY-NC 3.0 listing was due to historical site limitations before the Forge migration.
+
+Upstream-derived material remains credited to its original authors and is redistributed under the permission described above. Third-party MIT material remains under MIT, and other third-party material keeps its own notices and attribution requirements.
 
 See:
 
