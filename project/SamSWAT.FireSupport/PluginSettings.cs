@@ -88,6 +88,7 @@ internal static class PluginSettings
 	internal static ConfigEntry<bool> VerboseFikaLogs { get; private set; }
 	internal static ConfigEntry<bool> VerboseDashboardLogs { get; private set; }
 	internal static ConfigEntry<bool> VerbosePaymentLogs { get; private set; }
+	private static ConfigEntry<string> DashboardConfigInfo { get; set; }
 
 	internal static void Initialize(ConfigFile config)
 	{
@@ -478,6 +479,12 @@ internal static class PluginSettings
 			false,
 			HiddenDescription("Enables detailed TSC payment/source/balance diagnostics."));
 
+		DashboardConfigInfo = config.Bind(
+			"TSC Dashboard",
+			"Configure TSC at",
+			"https://127.0.0.1:6969/tsc",
+			new ConfigDescription("TSC server, payment, UAV, helicopter, and support pricing settings are managed by the local web dashboard. Localhost-only by default; do not port-forward it."));
+
 		HideFileOnlySettings(config);
 		SubscribeEffectiveSettingChanges();
 	}
@@ -489,7 +496,19 @@ internal static class PluginSettings
 		RemoveFromConfigManager(config, AmountOfExtractionRequests);
 		RemoveFromConfigManager(config, AmountOfUavRequests);
 		RemoveFromConfigManager(config, PaymentMode);
+		RemoveFromConfigManager(config, UseServerConfigUrl);
+		RemoveFromConfigManager(config, ServerConfigUrl);
+		RemoveFromConfigManager(config, ServerConfigAuthToken);
+		RemoveFromConfigManager(config, RequireServerConfigInFika);
+		RemoveFromConfigManager(config, ServerConfigRefreshSeconds);
+		RemoveFromConfigManager(config, PaymentSource);
 		RemoveFromConfigManager(config, RequestCooldown);
+		RemoveFromConfigManager(config, StrafeRequestCostRoubles);
+		RemoveFromConfigManager(config, DoubleStrafeRequestCostRoubles);
+		RemoveFromConfigManager(config, ExtractionRequestCostRoubles);
+		RemoveFromConfigManager(config, PriorityExfilRequestCostRoubles);
+		RemoveFromConfigManager(config, UavRequestCostRoubles);
+		RemoveFromConfigManager(config, FocusedSweepRequestCostRoubles);
 		RemoveFromConfigManager(config, EnablePriorityExfil);
 		RemoveFromConfigManager(config, EnableDoublePass);
 		RemoveFromConfigManager(config, EnableFocusedSweep);
@@ -500,6 +519,7 @@ internal static class PluginSettings
 		RemoveFromConfigManager(config, FocusedSweepDurationSeconds);
 		RemoveFromConfigManager(config, FocusedSweepScanInterval);
 		RemoveFromConfigManager(config, FocusedSweepRangeMeters);
+		RemoveFromConfigManager(config, UavRadarPalette);
 		RemoveFromConfigManager(config, OpenUplinkKey);
 		RemoveFromConfigManager(config, PhoneForceOpaqueLcdDebug);
 		RemoveFromConfigManager(config, PhoneLcdBackgroundCleanupStrength);
@@ -530,6 +550,8 @@ internal static class PluginSettings
 		RemoveFromConfigManager(config, PriorityExfilHelicopterWaitTime);
 		RemoveFromConfigManager(config, PriorityExfilDispatchDelay);
 		RemoveFromConfigManager(config, HelicopterExtractTime);
+		RemoveFromConfigManager(config, HelicopterSpeedMultiplier);
+		RemoveFromConfigManager(config, PriorityExfilHelicopterSpeedMultiplier);
 		RemoveFromConfigManager(config, VoiceoverVolume);
 		RemoveFromConfigManager(config, VerbosePhoneLogs);
 		RemoveFromConfigManager(config, VerboseLcdLogs);

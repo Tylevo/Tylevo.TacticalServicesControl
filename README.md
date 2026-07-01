@@ -50,12 +50,12 @@ Do not place the ZIP contents inside an extra nested folder.
 8. UAV Recon and Focused Sweep deploy directly from the YY menu.
 9. To cancel before confirming a support request, press `Alt + RMB` or equip another weapon/item.
 
-Settings can be changed in the BepInEx configuration manager with `F12`.
+The BepInEx configuration manager opened with `F12` only shows the local dashboard address.
 
-Server/host settings can also be changed from the local TSC Dashboard:
+Server/host settings are changed from the local TSC Dashboard:
 
 ```text
-https://127.0.0.1:6969/tsc/admin
+https://127.0.0.1:6969/tsc
 ```
 
 The dashboard is localhost-only by default. Do not port-forward it.
