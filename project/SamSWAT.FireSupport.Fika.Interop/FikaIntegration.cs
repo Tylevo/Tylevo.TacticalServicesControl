@@ -464,9 +464,14 @@ public static class FikaIntegration
 				return;
 			}
 
+			// Anchor playback to this client's clock at packet arrival, not the
+			// host's FireStartNetworkTime: Time.time counts from each machine's own
+			// game launch, so host timestamps are meaningless on other machines. The
+			// host sends the full shot plan at fire start, so segment delays relative
+			// to receive time are correct within network latency.
 			A10TracerPlayback.Play(
 				packet.Segments,
-				packet.FireStartNetworkTime,
+				Time.time,
 				GetRaidCancellationToken());
 		}
 		catch (Exception ex)
