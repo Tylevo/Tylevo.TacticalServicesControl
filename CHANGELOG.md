@@ -9,6 +9,7 @@
 - Non-host Fika players now see the GAU-8 impact explosions. Only the host simulates the A-10 ballistics, so detonation effects existed only there; clients now emit the same big_smoky_explosion effect at each round's impact point during tracer playback, matching the host's view.
 - Potentially fixed a freeze (movement and camera locked, weapon still usable) affecting loot pickups after the phone had been opened from its special slot and cancelled with the uplink hotkey. Two hand-restore flows raced; quick-use sessions are now restored by the game alone. The race was intermittent by nature, so please report if it still occurs on this version.
 - Carried-rouble payment now counts money stored in the secure container. The previous inventory scan excluded it, so purchases failed with "Carried Roubles: 0" despite cash being on the character.
+- Stash balance now syncs outside raids too. Config requests previously carried no profile id in menus, the hideout, or the first seconds of a raid, so stash-based payment sources displayed carried-only balances until an in-raid sync completed.
 
 ### Changed
 
