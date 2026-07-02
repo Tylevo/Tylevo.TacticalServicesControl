@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.9.4 - Public Beta (released as v1.0.4)
+
+### Fixed
+
+- Carried-rouble authorization purchases are no longer wiped by server config syncs and no longer fail to deploy. The credit store now separates ledger-backed credits from local carried-rouble purchases; local credits are consumed client-side and survive syncs.
+- Non-host Fika players now see A-10 tracers reliably. Tracer playback was scheduled against the host's clock, which is unrelated to the client's; depending on which machine had more uptime, tracers rendered all at once or never. Clients now anchor playback to their own packet arrival time.
+- Fixed a freeze (movement and camera locked, weapon still usable) affecting any loot pickup after the phone had been opened from its special slot and cancelled with the uplink hotkey. Two hand-restore flows raced; quick-use sessions are now restored by the game alone.
+
+### Changed
+
+- Rebalanced default prices for new installs: Extraction 300k (was 50k), Priority Exfil 450k (was 150k), UAV 125k (was 100k), Focused Sweep 90k (was 75k). A-10 Strafe and Double Pass unchanged. Max stored authorizations per service reduced from 3 to 2. Existing configs keep their saved values.
+- TSC now declares a BepInEx incompatibility with SamSWAT's Fire Support: Arys Reloaded (requested by Arys). TSC is its derivative replacement and the two cannot run together; BepInEx now skips TSC with a clear message instead of letting them corrupt each other.
+
 ## 0.9.3 - Public Beta (released as v1.0.3)
 
 ### Fixed
