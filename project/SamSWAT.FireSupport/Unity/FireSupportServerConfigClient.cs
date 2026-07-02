@@ -539,6 +539,25 @@ public static class FireSupportServerConfigClient
 
 	private static string GetLocalProfileId()
 	{
-		return Singleton<GameWorld>.Instance?.MainPlayer?.ProfileId ?? string.Empty;
+		// In raid the main player carries the active profile. Outside raid fall
+		// back to the backend session profile so config polls still identify the
+		// player; without an id the server cannot include the stash balance or
+		// ledger credits in its response, and the phone showed carried-only
+		// balances until the first in-raid sync completed.
+		string raidProfileId = Singleton<GameWorld>.Instance?.MainPlayer?.ProfileId;
+		if (!string.IsNullOrWhiteSpace(raidProfileId))
+		{
+			return raidProfileId;
+		}
+
+		try
+		{
+			EFT.Profile sessionProfile = SPT.Reflection.Utils.PatchConstants.BackEndSession?.Profile;
+			return sessionProfile != null ? sessionProfile.Id : string.Empty;
+		}
+		catch
+		{
+			return string.Empty;
+		}
 	}
 }
