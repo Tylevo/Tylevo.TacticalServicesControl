@@ -1,4 +1,4 @@
-{
+﻿{
   "66f51f3a0000000000000a01": {
     "itemTplToClone": "61605e13ffa6e502ac5e7eef",
     "parentId": "66f51f3a0000000000000a00",
@@ -11,7 +11,7 @@
       "Width": 1,
       "Height": 1,
       "StackMaxSize": 1,
-      "BackgroundColor": "blue",
+      "BackgroundColor": "orange",
       "RarityPvE": "Rare",
       "MaximumNumberOfUsage": 0,
       "DiscardLimit": 5,
