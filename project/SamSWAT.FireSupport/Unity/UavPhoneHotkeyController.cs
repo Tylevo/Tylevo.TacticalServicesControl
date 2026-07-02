@@ -68,6 +68,18 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 		UavDeviceController activeController = _currentController ?? player.HandsController as UavDeviceController;
 		if (activeController != null)
 		{
+			// Sessions launched through EFT's quick-use flow (special slot key)
+			// are restored by EFT itself once the session finishes. Attaching our
+			// manual restore on top ran DestroyController mid hand-swap and left
+			// the interaction state machine wedged, freezing movement and look on
+			// the next pickup.
+			if (activeController.IsQuickUseSession)
+			{
+				TscDiagnostics.LogPhone("TSC Uplink key pressed while quick-use phone is active; cancelling session, EFT restores hands.");
+				activeController.CancelAuthorizationSession();
+				return;
+			}
+
 			TscDiagnostics.LogPhone("TSC Uplink key pressed while phone is active; cancelling session.");
 			_currentController = activeController;
 			_manualPlayer = player;
@@ -184,6 +196,15 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 
 		try
 		{
+			if (controller != null && controller.IsQuickUseSession)
+			{
+				// EFT's quick-use flow restores the previous item itself; a second
+				// restore here races EFT's hand swap and wedges the interaction
+				// state machine.
+				TscDiagnostics.LogPhone("TSC Uplink: skipping manual restore; EFT quick-use owns the hand swap.");
+				yield break;
+			}
+
 			controller?.ShutdownPhoneScreenForExternalRestore();
 
 			if (player?.HandsController is UavDeviceController)

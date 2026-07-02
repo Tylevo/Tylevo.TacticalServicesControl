@@ -64,6 +64,15 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 		remove => _authorizationSessionFinished -= value;
 	}
 
+	/// <summary>
+	/// True when EFT's quick-use flow owns this session: EFT installed a
+	/// completion callback and will restore the previous item itself after
+	/// the session finishes. External code must not run its own restore
+	/// (DestroyController/TrySetLastEquippedWeapon) on top of that, or the
+	/// two hand swaps race and wedge EFT's interaction state machine.
+	/// </summary>
+	public bool IsQuickUseSession => _onUsedCallback != null;
+
 	public void SetOnUsedCallback(Callback<IOnHandsUseCallback> callback)
 	{
 		_onUsedCallback = callback;
