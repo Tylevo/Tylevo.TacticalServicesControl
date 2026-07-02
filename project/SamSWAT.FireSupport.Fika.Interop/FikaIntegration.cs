@@ -1,4 +1,4 @@
-using BepInEx.Configuration;
+﻿using BepInEx.Configuration;
 using BepInEx.Logging;
 using Comfort.Common;
 using Cysharp.Threading.Tasks;
@@ -21,7 +21,7 @@ namespace SamSWAT.FireSupport.ArysReloaded.Fika;
 /// <see cref="FireSupportFikaPlugin"/> after it has confirmed com.fika.core is loaded,
 /// so single-player installs without Fika.Core.dll never resolve these types.
 /// </summary>
-internal static class FikaIntegration
+public static class FikaIntegration
 {
 	private const int SettingsBroadcastDebounceMs = 250;
 	private const float ClientSettingsRetryDelaySeconds = 1.5f;

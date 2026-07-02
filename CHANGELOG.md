@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.2 - Public Beta (released as v1.0.2)
+
+### Fixed
+
+- Fixed infinite loading on installs without Fika, introduced in 0.9.1. The Fika plugin DLL contained packet types referencing Fika.Core; once the plugin started loading on non-Fika installs, other mods' assembly-wide type scans (for example WTT Client Common Lib) crashed with ReflectionTypeLoadException. All Fika-typed code now lives in `Tylevo.TacticalServicesControl.Fika.Interop.dll`, which is only loaded after Fika is confirmed present, so it stays invisible to type scans on single-player installs.
+
 ## 0.9.1 - Public Beta (released as v1.0.1)
 
 ### Fixed

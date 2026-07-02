@@ -1,5 +1,8 @@
 using BepInEx;
 using BepInEx.Bootstrap;
+using System;
+using System.IO;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 
 namespace SamSWAT.FireSupport.ArysReloaded.Fika;
@@ -13,30 +16,42 @@ namespace SamSWAT.FireSupport.ArysReloaded.Fika;
 public class FireSupportFikaPlugin : BaseUnityPlugin
 {
 	public const string FikaCoreGuid = "com.fika.core";
+	private const string InteropFileName = "Tylevo.TacticalServicesControl.Fika.Interop.dll";
 
 	// Fika.Core.dll is absent on single-player installs, so this class must never
-	// reference Fika types: the runtime resolves a method's type references when it
-	// is first compiled, and would throw even if the Fika code path is never taken.
-	// Everything that touches Fika lives in FikaIntegration, reached only through
-	// the [MethodImpl(NoInlining)] trampolines below after com.fika.core is
-	// confirmed loaded.
-	private static bool s_fikaPresent;
+	// reference Fika types. It also must not contain them anywhere in the assembly:
+	// other mods scan every loaded assembly with Assembly.GetTypes(), which throws
+	// for any type whose Fika reference cannot be resolved. All Fika-typed code
+	// therefore lives in the separate Interop assembly, which has no BepInPlugin
+	// and is only loaded below once com.fika.core is confirmed present.
+	private static bool s_integrationActive;
 
 	private void Awake()
 	{
-		s_fikaPresent = Chainloader.PluginInfos.ContainsKey(FikaCoreGuid);
-		if (!s_fikaPresent)
+		if (!Chainloader.PluginInfos.ContainsKey(FikaCoreGuid))
 		{
 			Logger.LogInfo("Fika not detected; multiplayer sync disabled. This is normal for single-player installs.");
 			return;
 		}
 
-		EnableIntegration();
+		try
+		{
+			string pluginDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+			Assembly.LoadFrom(Path.Combine(pluginDir, InteropFileName));
+			EnableIntegration();
+			s_integrationActive = true;
+		}
+		catch (Exception ex)
+		{
+			Logger.LogWarning(
+				$"Fika detected but TSC Fika integration failed to start; multiplayer sync disabled. " +
+				$"Reinstall TSC if {InteropFileName} is missing. {ex}");
+		}
 	}
 
 	private void Update()
 	{
-		if (s_fikaPresent)
+		if (s_integrationActive)
 		{
 			UpdateIntegration();
 		}
@@ -44,8 +59,9 @@ public class FireSupportFikaPlugin : BaseUnityPlugin
 
 	private void OnDestroy()
 	{
-		if (s_fikaPresent)
+		if (s_integrationActive)
 		{
+			s_integrationActive = false;
 			DisableIntegration();
 		}
 	}
