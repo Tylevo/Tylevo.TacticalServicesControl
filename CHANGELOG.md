@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.3 - Public Beta (released as v1.0.3)
+
+### Fixed
+
+- Rebuilt all eight asset bundles with unique internal archive (CAB) identities. The phone bundles previously shared CAB IDs with Manimal's Hacker mod, the radar HUD bundle was a byte-copy of Tyrian Radar Standalone's bundle, and the FireSupport-lineage bundles shared IDs with the original SamSWAT Fire Support. Unity refuses to load a bundle whose archive ID is already loaded, so running TSC alongside any of those mods broke the phone: missing inventory icon, red ERROR model (inventory and inspect screen), and crashes or failed raid loads with the phone equipped.
+- Picking a dropped TSC Uplink off the ground with F no longer freezes the player. The equip patches previously intercepted items that were not yet in the player's inventory, breaking EFT's pickup interaction.
+- Quick-using meds, grenades, or other items while the phone session is active no longer freezes the player; the swap is now declined cleanly instead of leaving EFT waiting forever.
+- The phone no longer reacts to mouse clicks, number keys, or cancel input while the inventory screen is open.
+- The uplink hotkey is ignored while the inventory screen is open.
+
 ## 0.9.2 - Public Beta (released as v1.0.2)
 
 ### Fixed
