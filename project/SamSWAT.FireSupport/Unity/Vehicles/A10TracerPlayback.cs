@@ -76,10 +76,16 @@ public static class A10TracerPlayback
 		}
 	}
 
-	// Non-host clients never simulate the host's ballistics, so they get no
-	// impact effects from the real bullets. Recreate them locally: the segment
-	// carries the host's hit point, and the map geometry matches, so a local
-	// raycast finds the same surface and material.
+	// The GAU-8 ammo is explosive (ammoType grenade, ExplosionType
+	// big_smoky_explosion, ShowHitEffectOnExplode false), so on the host every
+	// round detonates with the named explosion effect and no separate bullet
+	// impact. Non-host clients never simulate the host's ballistics, so they
+	// saw nothing where rounds landed. Recreate the same explosion locally:
+	// the segment carries the host's hit point, and static map geometry
+	// matches, so a local raycast finds the same surface.
+	private const string Gau8ExplosionEffectName = "big_smoky_explosion";
+	private const float Gau8ExplosionVolume = 40f;
+
 	private static void SpawnImpactEffect(A10TracerSegment segment)
 	{
 		try
@@ -107,22 +113,7 @@ public static class A10TracerPlayback
 				return;
 			}
 
-			BallisticCollider ballisticCollider =
-				hit.collider.GetComponent<BallisticCollider>() ??
-				hit.collider.GetComponentInParent<BallisticCollider>();
-			MaterialType material = ballisticCollider != null
-				? ballisticCollider.TypeOfMaterial
-				: MaterialType.Concrete;
-
-			effects.Emit(
-				material,
-				ballisticCollider,
-				hit.point,
-				hit.normal,
-				1f,
-				isKnife: false,
-				isHitPointVisible: true,
-				EPointOfView.FirstPerson);
+			effects.EmitGrenade(Gau8ExplosionEffectName, hit.point, hit.normal, Gau8ExplosionVolume);
 		}
 		catch (Exception ex)
 		{
