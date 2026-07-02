@@ -34,10 +34,30 @@ internal sealed class UavDeviceSetInHandsPatch : ModulePatch
 			return true;
 		}
 
+		// Same guard as the quick-use patch: only claim items that are actually
+		// in the player's inventory, so ground-pickup flows stay vanilla.
+		if (__instance.InventoryController.FindItem<UavDeviceItem>(item.Id) == null)
+		{
+			TscDiagnostics.LogPhone(
+				$"TSC Uplink usable item equip not intercepted: item is not in the player's inventory. item={item.Id}.");
+			return true;
+		}
+
 		TscDiagnostics.LogPhone(
 			$"TerraGroup TSC Uplink usable item equip intercepted. item={item.Id}, tpl={item.StringTemplateId}, type={item.GetType().FullName}.");
 
-		__instance.Proceed<UavDeviceController>(item, callback, true);
+		try
+		{
+			__instance.Proceed<UavDeviceController>(item, callback, true);
+		}
+		catch (System.Exception ex)
+		{
+			// EFT's caller waits on this callback; leaving it uninvoked freezes
+			// the player in the interaction state.
+			FireSupportPlugin.LogSource.LogWarning($"TSC Uplink usable item equip failed. {ex}");
+			callback?.Invoke(new Result<GInterface202>(null, ex.Message, 0));
+		}
+
 		return false;
 	}
 }

@@ -47,6 +47,16 @@ internal sealed class UavDeviceSetInHandsForQuickUsePatch : ModulePatch
 			return true;
 		}
 
+		// Ground pickups can enter this method before the item is inside the
+		// player's inventory. Intercepting then breaks EFT's pickup interaction
+		// and freezes the player, so let vanilla handle any item we do not own.
+		if (__instance.InventoryController.FindItem<UavDeviceItem>(item.Id) == null)
+		{
+			TscDiagnostics.LogPhone(
+				$"TSC Uplink quick-use not intercepted: item is not in the player's inventory. item={item.Id}.");
+			return true;
+		}
+
 		TscDiagnostics.LogPhone(
 			$"TerraGroup TSC Uplink quick-use forwarding to SetInHandsUsableItem. item={item.Id}, tpl={item.TemplateId}, type={item.GetType().FullName}.");
 
@@ -75,7 +85,18 @@ internal sealed class UavDeviceSetInHandsForQuickUsePatch : ModulePatch
 				0));
 		};
 
-		__instance.SetInHandsUsableItem(item, wrappedCallback);
+		try
+		{
+			__instance.SetInHandsUsableItem(item, wrappedCallback);
+		}
+		catch (Exception ex)
+		{
+			// EFT's caller waits on this callback; leaving it uninvoked freezes
+			// the player in the interaction state.
+			FireSupportPlugin.LogSource.LogWarning($"TSC Uplink quick-use equip failed. {ex}");
+			callback?.Invoke(new Result<IOnHandsUseCallback>(null, ex.Message, 0));
+		}
+
 		return false;
 	}
 }

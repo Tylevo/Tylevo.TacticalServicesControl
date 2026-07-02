@@ -222,6 +222,13 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 			return;
 		}
 
+		// While the inventory screen is open, mouse clicks and hotkeys belong to
+		// the inventory UI, not the phone.
+		if (_ownerPlayer != null && _ownerPlayer.IsInventoryOpened)
+		{
+			return;
+		}
+
 		if (_confirmationSequenceRunning)
 		{
 			if (!_paymentAttempted &&

@@ -59,6 +59,12 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 			return;
 		}
 
+		if (player.IsInventoryOpened)
+		{
+			TscDiagnostics.LogPhone("TSC Uplink ignored: inventory screen is open.");
+			return;
+		}
+
 		UavDeviceController activeController = _currentController ?? player.HandsController as UavDeviceController;
 		if (activeController != null)
 		{
