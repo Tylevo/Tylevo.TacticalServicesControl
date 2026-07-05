@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.7 - Public Beta (released as v1.0.7)
+
+### Fixed
+
+- The F12 "Configure TSC at" address now points at the dashboard (`/tsc/admin`) instead of the config endpoint (`/tsc`), which returned raw JSON. Opening the shown address now loads the dashboard directly.
+- Reduced TSC server request logging and idle memory/CPU use. The config was polled every 10 seconds continuously, including in the menu and hideout where it is never used, and since v1.0.6 each poll also logged a request line. Polling now runs only during a raid and defaults to every 60 seconds, cutting the request volume and log spam by roughly 50-100x for a typical session. Dashboard edits still apply within a minute in-raid, and a fresh config is loaded at the start of every raid.
+
 ## 0.9.6 - Public Beta (released as v1.0.6)
 
 ### Fixed

@@ -144,8 +144,8 @@ internal static class PluginSettings
 		ServerConfigRefreshSeconds = config.Bind(
 			"TSC Server Config",
 			"Server config refresh seconds",
-			10,
-			new ConfigDescription("Seconds between TSC server config refresh attempts.",
+			60,
+			new ConfigDescription("Seconds between TSC server config refresh attempts while in a raid. Higher values reduce server request logging.",
 				new AcceptableValueRange<int>(0, 3600)));
 		PaymentSource = config.Bind(
 			"TerraGroup Payment",
@@ -482,7 +482,7 @@ internal static class PluginSettings
 		DashboardConfigInfo = config.Bind(
 			"TSC Dashboard",
 			"Configure TSC at",
-			"https://127.0.0.1:6969/tsc",
+			"https://127.0.0.1:6969/tsc/admin",
 			new ConfigDescription("TSC server, payment, UAV, helicopter, and support pricing settings are managed by the local web dashboard. Localhost-only by default; do not port-forward it."));
 
 		HideFileOnlySettings(config);
