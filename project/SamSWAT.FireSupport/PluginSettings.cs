@@ -482,7 +482,7 @@ internal static class PluginSettings
 		DashboardConfigInfo = config.Bind(
 			"TSC Dashboard",
 			"Configure TSC at",
-			"https://127.0.0.1:6969/tsc",
+			"https://127.0.0.1:6969/tsc/admin",
 			new ConfigDescription("TSC server, payment, UAV, helicopter, and support pricing settings are managed by the local web dashboard. Localhost-only by default; do not port-forward it."));
 
 		HideFileOnlySettings(config);
