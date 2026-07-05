@@ -144,8 +144,8 @@ internal static class PluginSettings
 		ServerConfigRefreshSeconds = config.Bind(
 			"TSC Server Config",
 			"Server config refresh seconds",
-			10,
-			new ConfigDescription("Seconds between TSC server config refresh attempts.",
+			60,
+			new ConfigDescription("Seconds between TSC server config refresh attempts while in a raid. Higher values reduce server request logging.",
 				new AcceptableValueRange<int>(0, 3600)));
 		PaymentSource = config.Bind(
 			"TerraGroup Payment",

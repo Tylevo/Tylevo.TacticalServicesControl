@@ -18,6 +18,7 @@ public static class FireSupportServerConfigClient
 	private static CancellationTokenSource s_refreshCts;
 	private static bool s_initialized;
 	private static bool s_suppressedByFikaClient;
+	private static bool s_raidActive;
 	private static string s_hostPurchaseBaseUrl;
 	private static int s_hostPurchaseRevision;
 
@@ -34,16 +35,21 @@ public static class FireSupportServerConfigClient
 		SubscribeSetting(PluginSettings.ServerConfigAuthToken);
 		SubscribeSetting(PluginSettings.RequireServerConfigInFika);
 		SubscribeSetting(PluginSettings.ServerConfigRefreshSeconds);
-		RestartRefresh("plugin init");
+		// No poll here: config is only consumed in raid, so polling only runs
+		// between OnRaidStarted and OnRaidEnded. This stops the mod from hitting
+		// the server (and logging a request) every few seconds in the menu and
+		// hideout, which was the main source of log spam and server load.
 	}
 
 	public static void OnRaidStarted()
 	{
+		s_raidActive = true;
 		RestartRefresh("raid started");
 	}
 
 	public static void OnRaidEnded()
 	{
+		s_raidActive = false;
 		StopRefresh();
 	}
 
@@ -408,7 +414,7 @@ public static class FireSupportServerConfigClient
 
 	private static bool ShouldFetchLocalServerConfig()
 	{
-		return PluginSettings.UseServerConfigUrl?.Value == true && !s_suppressedByFikaClient;
+		return s_raidActive && PluginSettings.UseServerConfigUrl?.Value == true && !s_suppressedByFikaClient;
 	}
 
 	private static bool ShouldRequireServerConfig()
