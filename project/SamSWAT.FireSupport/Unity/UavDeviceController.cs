@@ -16,8 +16,8 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 	private const float AuthorizationIdleWaitSeconds = 6f;
 	private const float PortraitOutroPoseTimeoutSeconds = 1.45f;
 	private const float ConfirmAnimatorWaitTimeoutSeconds = 1.25f;
-	private const float AuthorizingFadeSeconds = 0.35f;
-	private const float AuthorizedFadeSeconds = 0.45f;
+	private const float AuthorizingFadeSeconds = 0.2f;
+	private const float AuthorizedFadeSeconds = 0.25f;
 	private const string TapAudioClipName = "Blastgang_finger_tap_oneshot_FP";
 
 	private Player _ownerPlayer;
@@ -40,15 +40,30 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 	private bool _restoreStarted;
 	private bool _phoneVisualTerminalPhaseSent;
 	private Coroutine _confirmationSequenceCoroutine;
+	private bool _deployPoseReady;
+	private System.Collections.Generic.List<ESupportType> _deployEntries;
+	private int _deploySelectionIndex;
+	private readonly System.Collections.Generic.List<(Transform upperArm, Transform forearm)> _tuckedRightArms = new();
+	private bool _beforeRenderHooked;
+	private bool _rightArmHideActive;
+	private bool _deployPosePinned;
+	private float _deployInputArmedAt;
 
 	public Animator PhoneAnimator { get; private set; }
 	public UavPhoneLaunchMode LaunchMode { get; set; } = UavPhoneLaunchMode.ManualAuthorization;
 	public bool IsAuthorizationSessionActive => _authorizationSessionActive;
 
+	/// <summary>
+	/// Support type committed from the deploy selector. The hotkey controller
+	/// dispatches it after the phone is stowed and hands are restored, so the
+	/// authorization is only consumed when the actual deployment starts.
+	/// </summary>
+	public ESupportType PendingDeployment { get; private set; } = ESupportType.None;
+
 	public static bool ShouldSuppressQuickUse(Player player)
 	{
 		return player?.HandsController is UavDeviceController controller &&
-		       controller.LaunchMode == UavPhoneLaunchMode.ManualAuthorization;
+		       controller.LaunchMode != UavPhoneLaunchMode.InternalUavActivation;
 	}
 
 	public event Action<UavDeviceController, bool> AuthorizationSessionFinished
@@ -136,6 +151,26 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 				return;
 			}
 
+			if (LaunchMode == UavPhoneLaunchMode.DeployMenu)
+			{
+				if (PhoneAnimator == null)
+				{
+					FireSupportPlugin.LogSource.LogWarning("TerraGroup phone deploy menu deferred: phone animator was null.");
+					NotifyAuthorizationFinished(success: false);
+				}
+				else
+				{
+					// Landscape boot splash during the raise. The vertical pose
+					// must wait for EFT's equip to complete: pinning the
+					// animator from frame zero starves EFT's spawn callback and
+					// wedges the hand-swap state machine.
+					StartPhoneScreen(weaponPrefab, TerraGroupPhoneState.DeployBoot, "DeployMenuBoot");
+					StartCoroutine(StartDeploySessionWhenEquipped(weaponPrefab));
+				}
+
+				return;
+			}
+
 			if (FireSupportPayment.GetActivePaymentMode() != PaymentMode.DirectRadial)
 			{
 				if (PhoneAnimator == null)
@@ -156,7 +191,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 		catch (System.Exception ex)
 		{
 			FireSupportPlugin.LogSource.LogWarning($"UAV activation device controller failed to initialize. {ex}");
-			if (LaunchMode == UavPhoneLaunchMode.ManualAuthorization)
+			if (LaunchMode != UavPhoneLaunchMode.InternalUavActivation)
 			{
 				NotifyAuthorizationFinished(success: false);
 			}
@@ -206,6 +241,12 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 	public void CancelAuthorizationSession()
 	{
 		FireSupportPlugin.LogSource.LogInfo("TSC phone session cancelled.");
+		if (LaunchMode == UavPhoneLaunchMode.DeployMenu)
+		{
+			FinishDeploySession(success: false);
+			return;
+		}
+
 		if (_confirmationSequenceRunning && (_paymentAttempted || _restoreStarted))
 		{
 			TscDiagnostics.LogPhone("TSC phone cancel ignored: confirmation payment/restore is already committed.");
@@ -235,6 +276,25 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 		// the inventory UI, not the phone.
 		if (_ownerPlayer != null && _ownerPlayer.IsInventoryOpened)
 		{
+			return;
+		}
+
+		if (LaunchMode == UavPhoneLaunchMode.DeployMenu)
+		{
+			// EFT rewrites the hands animator speed after equip, so a frozen
+			// speed cannot hold the pose (the outro played through and stowed
+			// the phone ~1s in). Re-pin the hold frame every frame instead;
+			// the animator evaluates after Update, so it renders this pose.
+			if (_deployPosePinned && PhoneAnimator != null)
+			{
+				PhoneAnimator.Play("Outro Success", GetHandsLayer(PhoneAnimator), GetDeployPoseNormalizedTime());
+			}
+
+			if (!_authorizationInputLocked && _deployPoseReady)
+			{
+				HandleDeployInput();
+			}
+
 			return;
 		}
 
@@ -455,6 +515,385 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 		}
 	}
 
+	private IEnumerator StartDeploySessionWhenEquipped(WeaponPrefab weaponPrefab)
+	{
+		if (_phoneScreen == null && !StartPhoneScreen(weaponPrefab, TerraGroupPhoneState.DeployBoot, "DeployMenu"))
+		{
+			NotifyAuthorizationFinished(success: false);
+			yield break;
+		}
+
+		_authorizationSessionActive = true;
+		_authorizationInputLocked = true;
+		_confirmationSequenceRunning = false;
+		_paymentAttempted = false;
+		_authorizationGranted = false;
+		_restoreStarted = false;
+		_phoneVisualTerminalPhaseSent = false;
+		_confirmationSequenceCoroutine = null;
+		_deployEntries = FireSupportDeployMenu.GetOwnedEntries();
+		_deploySelectionIndex = 0;
+		PendingDeployment = ESupportType.None;
+		FireSupportPlugin.LogSource.LogInfo("TSC deploy phone session started.");
+		PublishPhoneVisualPhase(UavPhoneVisualPhase.StartPurchasePhone, duration: 9.0f);
+
+		// Let the spawn animation reach its idle loop so EFT's equip flow
+		// completes normally (SpawnController callback, quick-use wiring).
+		// Pinning the pose before that starved the callback and wedged EFT's
+		// interaction state machine on restore.
+		float stop = Time.unscaledTime + AuthorizationIdleWaitSeconds;
+		while (PhoneAnimator != null && Time.unscaledTime < stop && !_finishNotified)
+		{
+			if (IsIdleLoop(PhoneAnimator))
+			{
+				break;
+			}
+
+			yield return null;
+		}
+
+		if (_finishNotified)
+		{
+			yield break;
+		}
+
+		if (PhoneAnimator == null || !IsIdleLoop(PhoneAnimator))
+		{
+			FireSupportPlugin.LogSource.LogWarning(
+				$"TerraGroup deploy phone not started: animator did not reach Idle_Loop within {AuthorizationIdleWaitSeconds:0.0}s. {DescribeAnimatorState(PhoneAnimator, FindScreenRenderer(weaponPrefab?.transform))}");
+			NotifyAuthorizationFinished(success: false);
+			yield break;
+		}
+
+		HideRightArmForDeployHold();
+
+		// Blend from the raise into the outro and let it rotate naturally up
+		// to the hold frame (the tucked right arm keeps the swipe-prep hand
+		// hidden), then pin that frame every frame from Update — pinning
+		// survives EFT rewriting the animator speed.
+		int layer = GetHandsLayer(PhoneAnimator);
+		float holdTime = GetDeployPoseNormalizedTime();
+		PhoneAnimator.SetBool("Active", false);
+		PhoneAnimator.CrossFade("Outro Success", 0.12f, layer, 0f);
+		_authorizationOutroPreplayed = true;
+
+		float rotateDeadline = Time.unscaledTime + 1.5f;
+		while (Time.unscaledTime < rotateDeadline && !_finishNotified && PhoneAnimator != null)
+		{
+			AnimatorStateInfo info = PhoneAnimator.GetCurrentAnimatorStateInfo(layer);
+			if (IsAuthorizationOutroState(info) && info.normalizedTime >= holdTime)
+			{
+				break;
+			}
+
+			yield return null;
+		}
+
+		if (_finishNotified)
+		{
+			yield break;
+		}
+
+		_deployPosePinned = true;
+
+		ShowDeployScreen();
+		// Arm the commit/cancel inputs slightly later so stray input right
+		// after the deploy key cannot instantly spend an authorization.
+		yield return null;
+		if (_finishNotified)
+		{
+			yield break;
+		}
+
+		_deployInputArmedAt = Time.unscaledTime + 0.4f;
+		_authorizationInputLocked = false;
+		_deployPoseReady = true;
+	}
+
+	private void ShowDeployScreen()
+	{
+		if (_deployEntries != null && _deployEntries.Count > 0)
+		{
+			int index = Mathf.Clamp(_deploySelectionIndex, 0, _deployEntries.Count - 1);
+			_selectedSupportType = _deployEntries[index];
+		}
+
+		_phoneScreen?.SetDeploySelection(_deploySelectionIndex);
+		ShowPhoneState(TerraGroupPhoneState.DeploySelect);
+	}
+
+	private void HandleDeployInput()
+	{
+		// Cancel is gated behind the same arming delay as deploy: stale input
+		// state from the equip frame phantom-fired these on open, stowing the
+		// phone instantly.
+		if (Time.unscaledTime >= _deployInputArmedAt)
+		{
+			bool escape = Input.GetKeyDown(KeyCode.Escape);
+			bool backspace = Input.GetKeyDown(KeyCode.Backspace);
+			bool rightMouse = Input.GetMouseButtonDown(1);
+			if (escape || backspace || rightMouse)
+			{
+				FireSupportPlugin.LogSource.LogInfo(
+					$"TSC deploy phone cancelled by input. escape={escape}, backspace={backspace}, rmb={rightMouse}, sinceArmed={Time.unscaledTime - _deployInputArmedAt:F2}s.");
+				FinishDeploySession(success: false);
+				return;
+			}
+		}
+
+		if (_deployEntries == null || _deployEntries.Count == 0)
+		{
+			return;
+		}
+
+		for (var i = 0; i < _deployEntries.Count && i < 6; i++)
+		{
+			if (Input.GetKeyDown((KeyCode)((int)KeyCode.Alpha1 + i)) ||
+			    Input.GetKeyDown((KeyCode)((int)KeyCode.Keypad1 + i)))
+			{
+				Input.ResetInputAxes();
+				if (_deploySelectionIndex != i)
+				{
+					_deploySelectionIndex = i;
+					PlayDeployTapAudio();
+					ShowDeployScreen();
+				}
+
+				return;
+			}
+		}
+
+		// LMB taps the screen to deploy, matching the ready-to-tap hand pose;
+		// Enter is kept as a keyboard alternative.
+		if (Time.unscaledTime >= _deployInputArmedAt &&
+		    (Input.GetMouseButtonDown(0) ||
+		     Input.GetKeyDown(KeyCode.Return) ||
+		     Input.GetKeyDown(KeyCode.KeypadEnter)))
+		{
+			int index = Mathf.Clamp(_deploySelectionIndex, 0, _deployEntries.Count - 1);
+			ESupportType selected = _deployEntries[index];
+			if (!FireSupportAuthorizations.HasDeployable(selected))
+			{
+				FireSupportPlugin.LogSource.LogInfo($"TSC deploy phone entry no longer deployable: {selected}.");
+				_deployEntries = FireSupportDeployMenu.GetOwnedEntries();
+				_deploySelectionIndex = 0;
+				ShowDeployScreen();
+				return;
+			}
+
+			PendingDeployment = selected;
+			PlayDeployTapAudio();
+			FireSupportPlugin.LogSource.LogInfo($"TSC deploy phone committed deployment: {selected}.");
+			FinishDeploySession(success: true);
+		}
+	}
+
+	private void HideRightArmForDeployHold()
+	{
+		if (!(PluginSettings.PhoneDeployHideRightHand?.Value ?? true) ||
+		    _tuckedRightArms.Count > 0 ||
+		    PhoneAnimator == null)
+		{
+			return;
+		}
+
+		// Rotation-only, and at the ELBOW (RForearm1), not the shoulder:
+		// scale-collapse culled the whole hands mesh via broken skinning
+		// bounds, and in the rendered FPS hands rig ("Top_Operator_..._hands")
+		// RUpperarm is the skeleton root, so rotating it swung the entire
+		// assembly — phone included — out of view. RForearm1's subtree is only
+		// the right forearm/palm chain, so bending it down moves just the free
+		// hand out of frame.
+		var searchRoots = new System.Collections.Generic.List<Transform>();
+		Transform prefabRoot = PhoneAnimator.transform.root;
+		searchRoots.Add(prefabRoot);
+		if (_ownerPlayer != null)
+		{
+			Transform playerRoot = ((Component)_ownerPlayer).transform.root;
+			if (playerRoot != null && playerRoot != prefabRoot)
+			{
+				searchRoots.Add(playerRoot);
+			}
+		}
+
+		var visited = new System.Collections.Generic.HashSet<Transform>();
+		foreach (Transform searchRoot in searchRoots)
+		{
+			foreach (Transform transform in searchRoot.GetComponentsInChildren<Transform>(true))
+			{
+				if (!visited.Add(transform))
+				{
+					continue;
+				}
+
+				string name = transform.name.ToLowerInvariant().Replace("_", " ").Replace("-", " ");
+				bool isRightForearmRoot = name.EndsWith("rforearm1") ||
+				                          name.EndsWith("r forearm1") ||
+				                          (name.Contains("right") && name.EndsWith("forearm1"));
+				if (!isRightForearmRoot)
+				{
+					continue;
+				}
+
+				Transform direction = null;
+				foreach (Transform child in transform.GetComponentsInChildren<Transform>(true))
+				{
+					if (child == transform)
+					{
+						continue;
+					}
+
+					string childName = child.name.ToLowerInvariant();
+					if (childName.Contains("forearm") || childName.Contains("palm"))
+					{
+						direction = child;
+						break;
+					}
+				}
+
+				if (direction != null)
+				{
+					_tuckedRightArms.Add((transform, direction));
+					TscDiagnostics.LogPhone($"TSC deploy right-arm tuck '{GetBonePath(transform)}'.");
+				}
+			}
+		}
+
+		FireSupportPlugin.LogSource.LogInfo($"TSC deploy right-arm hide: tucked={_tuckedRightArms.Count}.");
+		if (_tuckedRightArms.Count > 0)
+		{
+			// Stays active through the stow as well so the swipe motion never
+			// shows the free hand; restored on controller teardown.
+			_rightArmHideActive = true;
+			HookBeforeRender();
+		}
+	}
+
+	// Application.onBeforeRender runs after every LateUpdate — including
+	// EFT's procedural animation and IK passes — so poses written here are
+	// what actually reaches the screen.
+	private void HookBeforeRender()
+	{
+		if (_beforeRenderHooked)
+		{
+			return;
+		}
+
+		Application.onBeforeRender += ApplyDeployHoldArmPose;
+		_beforeRenderHooked = true;
+	}
+
+	private void UnhookBeforeRender()
+	{
+		if (!_beforeRenderHooked)
+		{
+			return;
+		}
+
+		Application.onBeforeRender -= ApplyDeployHoldArmPose;
+		_beforeRenderHooked = false;
+	}
+
+	private void ApplyDeployHoldArmPose()
+	{
+		if (!_rightArmHideActive)
+		{
+			return;
+		}
+
+		foreach ((Transform upperArm, Transform forearm) in _tuckedRightArms)
+		{
+			if (upperArm == null || forearm == null)
+			{
+				continue;
+			}
+
+			Vector3 armDirection = forearm.position - upperArm.position;
+			if (armDirection.sqrMagnitude < 1e-8f)
+			{
+				continue;
+			}
+
+			// Bend the elbow so the forearm points straight down, dropping the
+			// free hand below the camera's view.
+			upperArm.rotation = Quaternion.FromToRotation(armDirection, Vector3.down) * upperArm.rotation;
+		}
+	}
+
+	private void RestoreRightArmAfterDeployHold()
+	{
+		_rightArmHideActive = false;
+		UnhookBeforeRender();
+		// Tucked rotations need no restore: the animator rewrites bone
+		// rotations every frame once the before-render hook stops re-applying
+		// the tuck.
+		_tuckedRightArms.Clear();
+	}
+
+	private static string GetBonePath(Transform bone)
+	{
+		string path = bone.name;
+		Transform current = bone.parent;
+		var depth = 0;
+		while (current != null && depth < 24)
+		{
+			path = current.name + "/" + path;
+			current = current.parent;
+			depth++;
+		}
+
+		return path;
+	}
+
+	private void PlayDeployTapAudio()
+	{
+		// The animator is frozen in the deploy pose, so play the tap sound
+		// without triggering the Tap animation state.
+		if (_tapAudioSource?.clip != null)
+		{
+			_tapAudioSource.PlayOneShot(_tapAudioSource.clip);
+		}
+	}
+
+	private void FinishDeploySession(bool success)
+	{
+		if (_finishNotified)
+		{
+			return;
+		}
+
+		FireSupportPlugin.LogSource.LogInfo(
+			$"TSC deploy phone session finishing. success={success}, pending={PendingDeployment}, outroPreplayed={_authorizationOutroPreplayed}.");
+		_deployPoseReady = false;
+		// Stop pinning the hold frame so the outro can play out the stow from
+		// here. The right arm stays hidden through it (restored on teardown)
+		// so the outro's swipe motion never shows the free hand.
+		_deployPosePinned = false;
+		if (_authorizationOutroPreplayed)
+		{
+			SetPhoneAnimatorSpeed(GetConfirmOutroSpeedMultiplier(), "deploy session finish; resume outro");
+		}
+
+		FinishAuthorizationSession(playOutro: !_authorizationOutroPreplayed, success);
+
+		// Dispatch from the raid-lifetime controller, not the phone restore
+		// chain: the phone controller and its restore callbacks are torn down
+		// by whichever hand-swap path EFT takes, which is not reliable enough
+		// to carry the deployment.
+		if (success && PendingDeployment != ESupportType.None)
+		{
+			FireSupportController fireSupportController = FireSupportController.Instance;
+			if (fireSupportController != null)
+			{
+				fireSupportController.ScheduleDeployAfterHandsRestore(PendingDeployment);
+			}
+			else
+			{
+				FireSupportPlugin.LogSource.LogWarning("TSC deploy commit dropped: FireSupportController instance was null.");
+			}
+		}
+	}
+
 	private bool HandleServiceSelectionShortcuts()
 	{
 		if (!CanSelectSupportType(_phoneState))
@@ -471,6 +910,12 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 			if (onePressed)
 			{
 				Input.ResetInputAxes();
+				ESupportType baseSupportType = FireSupportDeploymentSelection.GetRadialSupportType(_selectedSupportType);
+				if (baseSupportType != ESupportType.None)
+				{
+					SelectSupportType(baseSupportType);
+				}
+
 				PlayTap(0.05f);
 				ShowPhoneState(TerraGroupPhoneState.RotateToConfirm);
 				return true;
@@ -794,6 +1239,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 			if (success)
 			{
 				LogConfirmSequence("authorization granted", sequenceStartedAt);
+				FireSupportDeploymentSelection.Select(selectedSupportType);
 				FireSupportPayment.NotifyAuthorizationPurchased(selectedSupportType);
 				LogConfirmSequence("notification shown", sequenceStartedAt);
 			}
@@ -903,7 +1349,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 		return Mathf.Clamp01((normalizedTime - start) / (commit - start));
 	}
 
-	private IEnumerator MovePhoneToPortraitOutroPose(bool success, float portraitPoseSeconds)
+	private IEnumerator MovePhoneToPortraitOutroPose(bool success, float portraitPoseSeconds, float crossFadeSeconds = 0f)
 	{
 		_authorizationOutroPreplayed = false;
 		if (PhoneAnimator == null)
@@ -917,7 +1363,15 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 		{
 			ResetPhoneAnimatorSpeed("portrait outro start");
 			PhoneAnimator.SetBool("Active", false);
-			PhoneAnimator.Play(stateName, layer, 0f);
+			if (crossFadeSeconds > 0f)
+			{
+				PhoneAnimator.CrossFade(stateName, crossFadeSeconds, layer, 0f);
+			}
+			else
+			{
+				PhoneAnimator.Play(stateName, layer, 0f);
+			}
+
 			_authorizationOutroPreplayed = true;
 			TscDiagnostics.LogPhone($"TSC phone portrait pose animation started: {stateName}.");
 		}
@@ -1008,6 +1462,11 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 		return Mathf.Clamp01(PluginSettings.PhoneConfirmSwipeStartNormalizedTime?.Value ?? 0.36f);
 	}
 
+	private static float GetDeployPoseNormalizedTime()
+	{
+		return Mathf.Clamp01(PluginSettings.PhoneDeployPoseNormalizedTime?.Value ?? 0.24f);
+	}
+
 	private static float GetConfirmSwipeCommitNormalizedTime()
 	{
 		return Mathf.Clamp01(PluginSettings.PhoneConfirmSwipeCommitNormalizedTime?.Value ?? 0.78f);
@@ -1020,17 +1479,17 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 
 	private static float GetConfirmOutroSpeedMultiplier()
 	{
-		return Mathf.Clamp(PluginSettings.PhoneConfirmOutroSpeedMultiplier?.Value ?? 1.25f, 0.25f, 4f);
+		return Mathf.Clamp(PluginSettings.PhoneConfirmOutroSpeedMultiplier?.Value ?? 1.6f, 0.25f, 4f);
 	}
 
 	private static float GetAuthorizingDisplaySeconds()
 	{
-		return Mathf.Clamp(PluginSettings.PhoneAuthorizingDisplaySeconds?.Value ?? 0.55f, 0.1f, 5f);
+		return Mathf.Clamp(PluginSettings.PhoneAuthorizingDisplaySeconds?.Value ?? 0.25f, 0.1f, 5f);
 	}
 
 	private static float GetAuthorizedDisplaySeconds()
 	{
-		return Mathf.Clamp(PluginSettings.PhoneAuthorizedDisplaySeconds?.Value ?? 0.85f, 0.1f, 5f);
+		return Mathf.Clamp(PluginSettings.PhoneAuthorizedDisplaySeconds?.Value ?? 0.4f, 0.1f, 5f);
 	}
 
 	private static float GetDeniedDisplaySeconds()
@@ -1040,11 +1499,12 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 
 	private static float GetRestoreAfterAuthorizedSeconds()
 	{
-		return Mathf.Clamp(PluginSettings.PhoneRestoreAfterAuthorizedSeconds?.Value ?? 0.15f, 0f, 3f);
+		return Mathf.Clamp(PluginSettings.PhoneRestoreAfterAuthorizedSeconds?.Value ?? 0f, 0f, 3f);
 	}
 
 	private void SelectSupportType(ESupportType supportType)
 	{
+		FireSupportDeploymentSelection.Select(supportType);
 		if (_selectedSupportType == supportType)
 		{
 			return;
@@ -1179,6 +1639,13 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 		float stop = Time.unscaledTime + timeoutSeconds;
 		while (Time.unscaledTime < stop)
 		{
+			// The animator can be torn down mid-wait if EFT's own hand-swap
+			// completes the usable-item session; treat that as outro done.
+			if (PhoneAnimator == null)
+			{
+				yield break;
+			}
+
 			AnimatorStateInfo info = PhoneAnimator.GetCurrentAnimatorStateInfo(layer);
 			if (IsAuthorizationOutroState(info) &&
 			    info.normalizedTime >= 0.95f)
@@ -1321,6 +1788,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 
 	private void OnDestroy()
 	{
+		RestoreRightArmAfterDeployHold();
 		ResetPhoneAnimatorSpeed("controller destroy");
 		ShutdownPhoneScreen();
 	}

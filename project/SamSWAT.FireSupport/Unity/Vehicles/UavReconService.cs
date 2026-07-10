@@ -7,9 +7,11 @@ using UnityEngine;
 
 namespace SamSWAT.FireSupport.ArysReloaded.Unity;
 
-public sealed class UavReconService(int maxRequests) : FireSupportService(maxRequests)
+public sealed class UavReconService(
+	int maxRequests,
+	ESupportType supportType = ESupportType.Uav) : FireSupportService(maxRequests)
 {
-	public override ESupportType SupportType => ESupportType.Uav;
+	public override ESupportType SupportType => supportType;
 
 	public override UniTaskVoid PlanRequest(CancellationToken cancellationToken)
 	{

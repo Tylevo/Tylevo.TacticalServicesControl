@@ -23,18 +23,26 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 
 	public override void ManualUpdate()
 	{
-		if (!PluginSettings.Enabled.Value ||
-		    PluginSettings.OpenUplinkKey == null ||
-		    !PluginSettings.OpenUplinkKey.Value.IsDown())
+		if (!PluginSettings.Enabled.Value)
 		{
 			return;
 		}
 
-		TscDiagnostics.LogPhone("TSC Uplink key pressed.");
-		TryOpenUplink();
+		if (PluginSettings.OpenUplinkKey != null && PluginSettings.OpenUplinkKey.Value.IsDown())
+		{
+			TscDiagnostics.LogPhone("TSC Uplink key pressed.");
+			TryOpenUplink(UavPhoneLaunchMode.ManualAuthorization);
+			return;
+		}
+
+		if (PluginSettings.OpenDeployKey != null && PluginSettings.OpenDeployKey.Value.IsDown())
+		{
+			TscDiagnostics.LogPhone("TSC deploy key pressed.");
+			TryOpenUplink(UavPhoneLaunchMode.DeployMenu);
+		}
 	}
 
-	private void TryOpenUplink()
+	private void TryOpenUplink(UavPhoneLaunchMode launchMode)
 	{
 		GameWorld gameWorld = Singleton<GameWorld>.Instance;
 		if (gameWorld == null)
@@ -134,7 +142,7 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 			UavDeviceHandsService.BeginEquip(
 				player,
 				uplinkItem,
-				UavPhoneLaunchMode.ManualAuthorization,
+				launchMode,
 				controller => OnManualPhoneSpawned(player, controller),
 				ex => CleanupFailedManualEquip(player, ex));
 		}
@@ -156,12 +164,15 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 			return;
 		}
 
+		FireSupportPlugin.LogSource.LogInfo($"TSC Uplink phone spawned; finish handler subscribed (mode={controller.LaunchMode}).");
 		controller.AuthorizationSessionFinished -= OnManualAuthorizationFinished;
 		controller.AuthorizationSessionFinished += OnManualAuthorizationFinished;
 	}
 
 	private void OnManualAuthorizationFinished(UavDeviceController controller, bool success)
 	{
+		FireSupportPlugin.LogSource.LogInfo(
+			$"TSC Uplink finish received. success={success}, quickUse={controller?.IsQuickUseSession ?? false}, restoreRunning={_restoreCoroutine != null}.");
 		if (controller == null)
 		{
 			CleanupFailedManualEquip(
@@ -172,6 +183,7 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 
 		if (_restoreCoroutine != null)
 		{
+			FireSupportPlugin.LogSource.LogInfo("TSC Uplink finish ignored: a restore coroutine is already running.");
 			return;
 		}
 
@@ -193,6 +205,9 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 
 		TscDiagnostics.LogPhone("TSC Uplink: outro complete");
 		player ??= Singleton<GameWorld>.Instance?.MainPlayer;
+		ESupportType pendingDeployment = controller != null
+			? controller.PendingDeployment
+			: ESupportType.None;
 
 		try
 		{
@@ -233,6 +248,8 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 			_equipInProgress = false;
 			_restoreCoroutine = null;
 		}
+
+		FireSupportPlugin.LogSource.LogInfo($"TSC Uplink restore finished. pendingDeployment={pendingDeployment}.");
 	}
 
 	private void CleanupFailedManualEquip(Player player, Exception exception)

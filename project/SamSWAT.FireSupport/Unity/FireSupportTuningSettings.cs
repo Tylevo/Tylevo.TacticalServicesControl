@@ -2,6 +2,8 @@ namespace SamSWAT.FireSupport.ArysReloaded.Unity;
 
 public static class FireSupportTuningSettings
 {
+	private const float DefaultA10HeadlessDamageOriginDistance = 425f;
+	private const float DefaultA10HeadlessDamageOriginAltitude = 150f;
 	private static float? _syncedDoubleStrafeSecondPassDelay;
 	private static int? _syncedHelicopterWaitTime;
 	private static int? _syncedPriorityExfilHelicopterWaitTime;
@@ -126,6 +128,41 @@ public static class FireSupportTuningSettings
 	public static float GetConfiguredDoubleStrafeSecondPassDelay()
 	{
 		return PluginSettings.DoubleStrafeSecondPassDelay.Value;
+	}
+
+	public static A10HeadlessFikaMode GetA10HeadlessFikaMode()
+	{
+		return PluginSettings.A10FikaHeadlessMode?.Value ?? A10HeadlessFikaMode.ExperimentalDamageOnly;
+	}
+
+	public static float GetA10HeadlessDamageOriginDistance()
+	{
+		return PluginSettings.A10HeadlessDamageOriginDistance?.Value ?? DefaultA10HeadlessDamageOriginDistance;
+	}
+
+	public static float GetA10HeadlessDamageOriginAltitude()
+	{
+		return PluginSettings.A10HeadlessDamageOriginAltitude?.Value ?? DefaultA10HeadlessDamageOriginAltitude;
+	}
+
+	public static A10ProjectileOwnerMode GetA10HeadlessProjectileOwnerMode()
+	{
+		return PluginSettings.A10HeadlessProjectileOwnerMode?.Value ?? A10ProjectileOwnerMode.RequesterProfile;
+	}
+
+	public static bool IsA10ClientVisualPredictionEnabled()
+	{
+		return PluginSettings.EnableA10ClientVisualPrediction?.Value == true;
+	}
+
+	public static bool IsA10HeadlessDirectDamageFallbackEnabled()
+	{
+		return PluginSettings.EnableA10HeadlessDirectDamageFallback?.Value != false;
+	}
+
+	public static bool IsA10HeadlessRequesterSelfDamageEnabled()
+	{
+		return PluginSettings.A10HeadlessAllowRequesterSelfDamage?.Value != false;
 	}
 
 	public static int GetHelicopterWaitTime(ESupportType supportType)

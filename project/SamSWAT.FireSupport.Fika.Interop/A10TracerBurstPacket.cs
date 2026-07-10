@@ -8,6 +8,7 @@ namespace SamSWAT.FireSupport.ArysReloaded.Fika;
 public class A10TracerBurstPacket : INetSerializable
 {
 	public int BurstId;
+	public string SupportRequestId = string.Empty;
 	public int VisualSeed;
 	public int PassIndex;
 	public float FireStartNetworkTime;
@@ -26,6 +27,7 @@ public class A10TracerBurstPacket : INetSerializable
 		A10TracerSegment[] segments)
 	{
 		BurstId = burst.BurstId;
+		SupportRequestId = burst.SupportRequestId ?? string.Empty;
 		VisualSeed = burst.VisualSeed;
 		PassIndex = burst.PassIndex;
 		FireStartNetworkTime = burst.FireStartNetworkTime;
@@ -37,6 +39,7 @@ public class A10TracerBurstPacket : INetSerializable
 	public void Serialize(NetDataWriter writer)
 	{
 		writer.Put(BurstId);
+		writer.Put(SupportRequestId ?? string.Empty);
 		writer.Put(VisualSeed);
 		writer.Put(PassIndex);
 		writer.Put(FireStartNetworkTime);
@@ -58,6 +61,7 @@ public class A10TracerBurstPacket : INetSerializable
 	public void Deserialize(NetDataReader reader)
 	{
 		BurstId = reader.GetInt();
+		SupportRequestId = reader.GetString() ?? string.Empty;
 		VisualSeed = reader.GetInt();
 		PassIndex = reader.GetInt();
 		FireStartNetworkTime = reader.GetFloat();

@@ -101,6 +101,9 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 	private CanvasGroup _authorizingGroup;
 	private CanvasGroup _authorizedGroup;
 	private CanvasGroup _deniedGroup;
+	private CanvasGroup _deployGroup;
+	private CanvasGroup _deployBootGroup;
+	private int _deploySelectionIndex;
 	private Text _deniedReasonText;
 	private Text _deniedDetailText;
 	private Image _swipeArrowImage;
@@ -135,6 +138,8 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		BuildAuthorizingScreen();
 		BuildAuthorizedScreen();
 		BuildDeniedScreen();
+		BuildDeploySelectScreen();
+		BuildDeployBootScreen();
 		BindRenderTexture(uvRect);
 		if (TscDiagnostics.VerboseLcd)
 		{
@@ -170,6 +175,8 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		BuildAuthorizingScreen();
 		BuildAuthorizedScreen();
 		BuildDeniedScreen();
+		BuildDeploySelectScreen();
+		BuildDeployBootScreen();
 		ShowState(state);
 	}
 
@@ -1109,7 +1116,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 
 		RectTransform card = AddPanel(root, new Rect(114, 232, 540, 100), new Color(0.045f, 0.065f, 0.065f, 0.94f));
 		AddText(card, "PHONE AUTHORIZATIONS", 22, FontStyle.Bold, Color.white, new Rect(0, 18, 540, 34), TextAnchor.MiddleCenter);
-		AddText(card, "PURCHASE HERE. DEPLOY FROM YY.", 18, FontStyle.Normal, Muted(), new Rect(0, 54, 540, 30), TextAnchor.MiddleCenter);
+		AddText(card, "PURCHASE HERE. DEPLOY FROM UPLINK.", 18, FontStyle.Normal, Muted(), new Rect(0, 54, 540, 30), TextAnchor.MiddleCenter);
 
 		RectTransform footer = AddPanel(root, new Rect(150, 366, 468, 42), new Color(0.09f, 0.28f, 0.26f, 0.58f));
 		AddText(footer, "TAP TO OPEN SERVICES", 23, FontStyle.Bold, Teal(), new Rect(0, 4, 468, 32), TextAnchor.MiddleCenter);
@@ -1335,7 +1342,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		BuildCommonChrome(root, "TERRAGROUP", "Verified");
 
 		AddText(root, "REQUEST AUTHORIZED", 46, FontStyle.Bold, new Color(0.91f, 0.96f, 0.93f), new Rect(42, 120, 682, 58), TextAnchor.MiddleCenter);
-		AddText(root, $"{GetServiceTitle(_context.SupportType)} READY IN YY", 24, FontStyle.Bold, Teal(), new Rect(42, 176, 682, 34), TextAnchor.MiddleCenter);
+		AddText(root, $"{GetServiceTitle(_context.SupportType)} READY TO DEPLOY", 24, FontStyle.Bold, Teal(), new Rect(42, 176, 682, 34), TextAnchor.MiddleCenter);
 
 		RectTransform card = AddPanel(root, new Rect(118, 236, 532, 130), new Color(0.045f, 0.075f, 0.07f, 0.95f));
 		AddText(card, "ACTIVE SERVICE", 18, FontStyle.Normal, Muted(), new Rect(24, 18, 200, 28), TextAnchor.MiddleLeft);
@@ -1378,6 +1385,123 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		UpdateDeniedReasonText();
 
 		BuildScanlineOverlay(root);
+	}
+
+	public void SetDeploySelection(int index)
+	{
+		_deploySelectionIndex = Mathf.Max(0, index);
+	}
+
+	private void BuildDeploySelectScreen()
+	{
+		RectTransform root = CreateScreenRoot("TerraGroup Deploy Select Screen", portrait: true);
+		_deployGroup = root.gameObject.AddComponent<CanvasGroup>();
+
+		float w = root.sizeDelta.x;
+		float h = root.sizeDelta.y;
+		float sx = w / 432f;
+		int F(int size) => Mathf.RoundToInt(size * sx);
+
+		// Palette from assets/content/ui/phone/docs/design_system.json so the
+		// code-drawn deploy screen matches the purchase PNG set.
+		Color text = new(0.863f, 0.847f, 0.784f);          // #DCD8C8
+		Color muted = new(0.616f, 0.600f, 0.549f);         // #9D998C
+		Color amber = new(0.804f, 0.620f, 0.329f);         // #CD9E54
+		Color amberHigh = new(0.910f, 0.725f, 0.404f);     // #E8B967
+		Color green = new(0.443f, 0.616f, 0.275f);         // #719D46
+		Color panel = new(0.071f, 0.082f, 0.082f);         // #121515
+		Color panelSelected = new(0.090f, 0.090f, 0.075f); // #171713
+		Color line = new(0.282f, 0.294f, 0.278f, 0.55f);   // #484B47
+
+		AddText(root, "TERRAGROUP", F(22), FontStyle.Bold, text, new Rect(26 * sx, 18 * sx, 240 * sx, 28 * sx), TextAnchor.MiddleLeft);
+		AddText(root, "TACTICAL SERVICES", F(10), FontStyle.Bold, muted, new Rect(27 * sx, 44 * sx, 220 * sx, 18 * sx), TextAnchor.MiddleLeft);
+		AddText(root, "OS v2.4.1.7", F(12), FontStyle.Normal, muted, new Rect(0, 26 * sx, w, 20 * sx), TextAnchor.MiddleCenter);
+		AddText(root, DateTime.Now.ToString("HH:mm"), F(15), FontStyle.Bold, text, new Rect(w - 116 * sx, 24 * sx, 90 * sx, 24 * sx), TextAnchor.MiddleRight);
+		AddLine(root, new Rect(20 * sx, 70 * sx, w - 40 * sx, 1), line);
+
+		AddText(root, "DEPLOY AUTHORIZATION", F(25), FontStyle.Bold, text, new Rect(28 * sx, 92 * sx, w - 56 * sx, 34 * sx), TextAnchor.MiddleLeft);
+
+		FireSupportController stationController = FireSupportController.Instance;
+		if (stationController != null && !stationController.IsSupportAvailable())
+		{
+			int cooldown = stationController.CooldownSecondsRemaining;
+			string busyText = cooldown > 0
+				? $"Station busy. Ready in {cooldown / 60:00}:{cooldown % 60:00}."
+				: "Station busy.";
+			AddText(root, busyText, F(14), FontStyle.Normal, amber, new Rect(28 * sx, 128 * sx, w - 56 * sx, 22 * sx), TextAnchor.MiddleLeft);
+		}
+		else
+		{
+			AddText(root, "Select a purchased service.", F(14), FontStyle.Normal, green, new Rect(28 * sx, 128 * sx, w - 56 * sx, 22 * sx), TextAnchor.MiddleLeft);
+		}
+
+		List<ESupportType> entries = FireSupportDeployMenu.GetOwnedEntries();
+		if (entries.Count == 0)
+		{
+			RectTransform empty = AddPanel(root, new Rect(36 * sx, 240 * sx, w - 72 * sx, 140 * sx), panel);
+			AddText(empty, "NO AUTHORIZATIONS HELD", F(20), FontStyle.Bold, amber, new Rect(0, 30 * sx, w - 72 * sx, 34 * sx), TextAnchor.MiddleCenter);
+			string purchaseKey = PluginSettings.OpenUplinkKey != null
+				? PluginSettings.OpenUplinkKey.Value.MainKey.ToString()
+				: "U";
+			AddText(empty, $"Press [{purchaseKey}] to purchase.", F(15), FontStyle.Normal, muted, new Rect(0, 74 * sx, w - 72 * sx, 30 * sx), TextAnchor.MiddleCenter);
+		}
+		else
+		{
+			int selected = Mathf.Clamp(_deploySelectionIndex, 0, entries.Count - 1);
+			float rowHeight = 64f * sx;
+			float rowSpacing = 12f * sx;
+			float rowWidth = w - 56 * sx;
+			float y = 170f * sx;
+			for (int i = 0; i < entries.Count; i++)
+			{
+				ESupportType type = entries[i];
+				bool isSelected = i == selected;
+				RectTransform row = AddPanel(root, new Rect(28 * sx, y, rowWidth, rowHeight), isSelected ? panelSelected : panel);
+				if (isSelected)
+				{
+					// Green outline like the confirmation card in the purchase PNGs.
+					AddLine(row, new Rect(0, 0, rowWidth, 2), green);
+					AddLine(row, new Rect(0, rowHeight - 2, rowWidth, 2), green);
+					AddLine(row, new Rect(0, 0, 2, rowHeight), green);
+					AddLine(row, new Rect(rowWidth - 2, 0, 2, rowHeight), green);
+				}
+
+				AddText(row, (i + 1).ToString(), F(22), FontStyle.Bold, isSelected ? amberHigh : muted, new Rect(14 * sx, 0, 40 * sx, rowHeight), TextAnchor.MiddleCenter);
+				AddText(row, GetServiceTitle(type), F(18), FontStyle.Bold, isSelected ? amberHigh : text, new Rect(62 * sx, 0, rowWidth - 150 * sx, rowHeight), TextAnchor.MiddleLeft);
+				AddText(row, $"x{FireSupportAuthorizations.GetDeployableCount(type)}", F(17), FontStyle.Bold, green, new Rect(rowWidth - 76 * sx, 0, 60 * sx, rowHeight), TextAnchor.MiddleRight);
+				y += rowHeight + rowSpacing;
+			}
+		}
+
+		RectTransform footer = AddPanel(root, new Rect(28 * sx, h - 96 * sx, w - 56 * sx, 60 * sx), panel);
+		if (entries.Count == 0)
+		{
+			AddText(footer, "BACKSPACE  CLOSE", F(14), FontStyle.Bold, muted, new Rect(0, 0, w - 56 * sx, 60 * sx), TextAnchor.MiddleCenter);
+		}
+		else
+		{
+			AddText(footer, "TAP TO DEPLOY", F(14), FontStyle.Bold, green, new Rect(0, 0, (w - 56 * sx) / 2f, 60 * sx), TextAnchor.MiddleCenter);
+			AddText(footer, "BACKSPACE  CANCEL", F(14), FontStyle.Bold, muted, new Rect((w - 56 * sx) / 2f, 0, (w - 56 * sx) / 2f, 60 * sx), TextAnchor.MiddleCenter);
+		}
+	}
+
+	// Landscape splash shown while the deploy phone is being raised, before it
+	// rotates upright. The portrait selector would render sideways during that
+	// phase, so this covers the raise instead.
+	private void BuildDeployBootScreen()
+	{
+		RectTransform root = CreateScreenRoot("TerraGroup Deploy Boot Screen");
+		_deployBootGroup = root.gameObject.AddComponent<CanvasGroup>();
+
+		float w = root.sizeDelta.x;
+		float h = root.sizeDelta.y;
+		Color text = new(0.863f, 0.847f, 0.784f);
+		Color muted = new(0.616f, 0.600f, 0.549f);
+		Color green = new(0.443f, 0.616f, 0.275f);
+
+		AddText(root, "TERRAGROUP", 46, FontStyle.Bold, text, new Rect(0, h / 2f - 70f, w, 56f), TextAnchor.MiddleCenter);
+		AddText(root, "UPLINK DEPLOY", 22, FontStyle.Bold, green, new Rect(0, h / 2f - 8f, w, 32f), TextAnchor.MiddleCenter);
+		AddText(root, "ESTABLISHING SECURE LINK", 15, FontStyle.Normal, muted, new Rect(0, h / 2f + 30f, w, 26f), TextAnchor.MiddleCenter);
 	}
 
 	private void AddDeniedReasonOverlay(RectTransform root, bool portrait)
@@ -2278,6 +2402,8 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		SetGroup(_authorizingGroup, _authorizingGroup == activeGroup);
 		SetGroup(_authorizedGroup, _authorizedGroup == activeGroup);
 		SetGroup(_deniedGroup, _deniedGroup == activeGroup);
+		SetGroup(_deployGroup, _deployGroup == activeGroup);
+		SetGroup(_deployBootGroup, _deployBootGroup == activeGroup);
 	}
 
 	private IEnumerator FadeToStateCoroutine(TerraGroupPhoneState state, float durationSeconds)
@@ -2301,7 +2427,9 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 			_confirmPaymentGroup,
 			_authorizingGroup,
 			_authorizedGroup,
-			_deniedGroup
+			_deniedGroup,
+			_deployGroup,
+			_deployBootGroup
 		};
 
 		foreach (CanvasGroup group in groups)
@@ -2361,6 +2489,8 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 			TerraGroupPhoneState.Authorizing => _authorizingGroup,
 			TerraGroupPhoneState.Authorized => _authorizedGroup,
 			TerraGroupPhoneState.Denied => _deniedGroup,
+			TerraGroupPhoneState.DeploySelect => _deployGroup,
+			TerraGroupPhoneState.DeployBoot => _deployBootGroup,
 			_ => _homeGroup
 		};
 	}
@@ -2655,12 +2785,12 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 	{
 		return supportType switch
 		{
-			ESupportType.Extract => "Authorize helicopter pickup. Target from rangefinder.",
-			ESupportType.PriorityExfil => "Authorize expedited pickup. Target from rangefinder.",
-			ESupportType.Strafe => "Authorize autocannon pass. Target from rangefinder.",
-			ESupportType.DoubleStrafe => "Authorize two autocannon passes. Target from rangefinder.",
-			ESupportType.Uav => "Authorize local recon scan from YY.",
-			ESupportType.FocusedSweep => "Authorize narrow fast-refresh recon from YY.",
+			ESupportType.Extract => "Authorize helicopter pickup. Aim to mark the LZ.",
+			ESupportType.PriorityExfil => "Authorize expedited pickup. Aim to mark the LZ.",
+			ESupportType.Strafe => "Authorize autocannon pass. Aim to mark the gun run.",
+			ESupportType.DoubleStrafe => "Authorize two autocannon passes. Aim to mark the gun run.",
+			ESupportType.Uav => "Authorize local recon scan from the Uplink.",
+			ESupportType.FocusedSweep => "Authorize narrow fast-refresh recon from the Uplink.",
 			_ => "Authorize tactical support."
 		};
 	}
@@ -2683,13 +2813,13 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 	{
 		return supportType switch
 		{
-			ESupportType.Extract => "RANGEFINDER",
-			ESupportType.PriorityExfil => "RANGEFINDER",
-			ESupportType.Strafe => "RANGEFINDER",
-			ESupportType.DoubleStrafe => "RANGEFINDER",
-			ESupportType.FocusedSweep => "YY MENU",
-			ESupportType.Uav => "YY MENU",
-			_ => "YY MENU"
+			ESupportType.Extract => "SPOTTER",
+			ESupportType.PriorityExfil => "SPOTTER",
+			ESupportType.Strafe => "SPOTTER",
+			ESupportType.DoubleStrafe => "SPOTTER",
+			ESupportType.FocusedSweep => "UPLINK",
+			ESupportType.Uav => "UPLINK",
+			_ => "UPLINK"
 		};
 	}
 

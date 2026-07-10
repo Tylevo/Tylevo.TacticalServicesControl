@@ -50,11 +50,14 @@ public class GesturesMenuPatch : ModulePatch
 				.Value
 				.Add(fireSupportController);
 
-			var gesturesBindPanel = (GesturesBindPanel)AccessTools.Field(typeof(GesturesMenu),
-					"_gesturesBindPanel")
-				.GetValue(gesturesMenu);
-			
-			gesturesBindPanel.transform.localPosition = new Vector3(0, -530, 0);
+			if (FireSupportUI.IsRadialWorkflowEnabled())
+			{
+				var gesturesBindPanel = (GesturesBindPanel)AccessTools.Field(typeof(GesturesMenu),
+						"_gesturesBindPanel")
+					.GetValue(gesturesMenu);
+
+				gesturesBindPanel.transform.localPosition = new Vector3(0, -530, 0);
+			}
 		}
 		catch (OperationCanceledException) {}
 		catch (Exception ex)

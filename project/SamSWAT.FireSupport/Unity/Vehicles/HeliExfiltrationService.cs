@@ -6,10 +6,13 @@ using Random = UnityEngine.Random;
 
 namespace SamSWAT.FireSupport.ArysReloaded.Unity;
 
-public sealed class HeliExfiltrationService(FireSupportSpotter spotter, int maxRequests)
+public sealed class HeliExfiltrationService(
+	FireSupportSpotter spotter,
+	int maxRequests,
+	ESupportType supportType = ESupportType.Extract)
 	: FireSupportService(maxRequests)
 {
-	public override ESupportType SupportType => ESupportType.Extract;
+	public override ESupportType SupportType => supportType;
 
 	public override async UniTaskVoid PlanRequest(CancellationToken cancellationToken)
 	{

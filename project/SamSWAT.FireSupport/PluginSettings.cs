@@ -42,6 +42,14 @@ internal static class PluginSettings
 	internal static ConfigEntry<bool> EnableDoublePass { get; private set; }
 	internal static ConfigEntry<bool> EnableFocusedSweep { get; private set; }
 	internal static ConfigEntry<float> DoubleStrafeSecondPassDelay { get; private set; }
+	internal static ConfigEntry<A10HeadlessFikaMode> A10FikaHeadlessMode { get; private set; }
+	internal static ConfigEntry<float> A10HeadlessDamageOriginDistance { get; private set; }
+	internal static ConfigEntry<float> A10HeadlessDamageOriginAltitude { get; private set; }
+	internal static ConfigEntry<A10ProjectileOwnerMode> A10HeadlessProjectileOwnerMode { get; private set; }
+	internal static ConfigEntry<bool> EnableA10ClientVisualPrediction { get; private set; }
+	internal static ConfigEntry<bool> EnableA10HeadlessDirectDamageFallback { get; private set; }
+	internal static ConfigEntry<bool> A10HeadlessAllowRequesterSelfDamage { get; private set; }
+	private static ConfigEntry<bool> A10HeadlessRequesterSelfDamageDefaultMigrated { get; set; }
 	internal static ConfigEntry<int> UavDurationSeconds { get; private set; }
 	internal static ConfigEntry<float> UavScanInterval { get; private set; }
 	internal static ConfigEntry<float> UavRangeMeters { get; private set; }
@@ -50,6 +58,11 @@ internal static class PluginSettings
 	internal static ConfigEntry<float> FocusedSweepRangeMeters { get; private set; }
 	internal static ConfigEntry<UavRadarPalette> UavRadarPalette { get; private set; }
 	internal static ConfigEntry<KeyboardShortcut> OpenUplinkKey { get; private set; }
+	internal static ConfigEntry<KeyboardShortcut> OpenDeployKey { get; private set; }
+	internal static ConfigEntry<KeyboardShortcut> SpotterConfirmKey { get; private set; }
+	internal static ConfigEntry<float> PhoneDeployPoseNormalizedTime { get; private set; }
+	internal static ConfigEntry<bool> PhoneDeployHideRightHand { get; private set; }
+	internal static ConfigEntry<bool> LegacyRadialEnabled { get; private set; }
 	internal static ConfigEntry<bool> PhoneForceOpaqueLcdDebug { get; private set; }
 	internal static ConfigEntry<float> PhoneLcdBackgroundCleanupStrength { get; private set; }
 	internal static ConfigEntry<float> PhoneConfirmPortraitTextureDelaySeconds { get; private set; }
@@ -215,6 +228,49 @@ internal static class PluginSettings
 			14f,
 			HiddenDescription("Seconds between the first and second A-10 passes",
 				new AcceptableValueRange<float>(6f, 45f)));
+		A10FikaHeadlessMode = config.Bind(
+			"A-10 Headless Authority",
+			"A-10 Fika headless mode",
+			A10HeadlessFikaMode.ExperimentalDamageOnly,
+			HiddenDescription("Experimental Fika headless A-10 authority mode. Disabled rejects/refunds headless A-10 damage requests instead of attempting unsupported damage."));
+		A10HeadlessDamageOriginDistance = config.Bind(
+			"A-10 Headless Authority",
+			"A-10 headless damage origin distance",
+			425f,
+			HiddenDescription("Meters from the marked target used for experimental headless authoritative GAU-8 projectile origin.",
+				new AcceptableValueRange<float>(350f, 500f)));
+		A10HeadlessDamageOriginAltitude = config.Bind(
+			"A-10 Headless Authority",
+			"A-10 headless damage origin altitude",
+			150f,
+			HiddenDescription("Meters above the marked target used for experimental headless authoritative GAU-8 projectile origin.",
+				new AcceptableValueRange<float>(120f, 180f)));
+		A10HeadlessProjectileOwnerMode = config.Bind(
+			"A-10 Headless Authority",
+			"A-10 headless projectile owner mode",
+			A10ProjectileOwnerMode.RequesterProfile,
+			HiddenDescription("Experimental. Separates requester/attribution from the projectile owner used by the headless damage executor."));
+		EnableA10ClientVisualPrediction = config.Bind(
+			"A-10 Headless Authority",
+			"Enable A-10 client visual prediction",
+			false,
+			HiddenDescription("When false, Fika clients wait for the host/headless authority broadcast before playing A-10 visuals. This avoids seeing local flyovers when the host rejects or fails the strike."));
+		EnableA10HeadlessDirectDamageFallback = config.Bind(
+			"A-10 Headless Authority",
+			"Enable A-10 headless direct damage fallback",
+			true,
+			HiddenDescription("Allows the Fika headless authority path to use a safe direct damage fallback if EFT exposes a supported API."));
+		A10HeadlessAllowRequesterSelfDamage = config.Bind(
+			"A-10 Headless Authority",
+			"A-10 headless allow requester self damage",
+			true,
+			HiddenDescription("Allows the Fika-headless hit accounting/fallback path to include the requester as a damage candidate. Defaults to true to match original Arys/non-headless behavior where callers can die to their own strike."));
+		A10HeadlessRequesterSelfDamageDefaultMigrated = config.Bind(
+			"A-10 Headless Authority",
+			"A-10 headless requester self damage default migrated",
+			false,
+			HiddenDescription("Internal migration flag for changing the experimental headless self-damage default to match original Arys behavior."));
+		MigrateA10HeadlessRequesterSelfDamageDefault();
 
 		UavDurationSeconds = config.Bind(
 			"UAV Recon Settings",
@@ -263,6 +319,37 @@ internal static class PluginSettings
 			"Open uplink key",
 			new KeyboardShortcut(KeyCode.U),
 			HiddenDescription("Equips the carried TerraGroup TSC Uplink to purchase TerraGroup support authorizations"));
+		OpenDeployKey = config.Bind(
+			"TerraGroup Phone",
+			"Open deploy key",
+			new KeyboardShortcut(KeyCode.K),
+			HiddenDescription("Equips the carried TerraGroup TSC Uplink in deploy mode to use purchased support authorizations"));
+		SpotterConfirmKey = config.Bind(
+			"TerraGroup Phone",
+			"Spotter confirm key",
+			new KeyboardShortcut(KeyCode.Mouse2),
+			HiddenDescription("Confirms spotter targeting steps (position, direction). LMB also confirms while the rangefinder is in hands, but with a weapon out it would fire, so this key is the safe confirm. Enter always works too."));
+		// Intentionally left visible in the F12 config manager for live pose
+		// tuning: adjust, reopen the deploy phone, and the new freeze frame
+		// applies immediately.
+		PhoneDeployPoseNormalizedTime = config.Bind(
+			"TerraGroup Phone Animation",
+			"Deploy pose normalized time",
+			0.24f,
+			new ConfigDescription(
+				"Outro animation normalizedTime where the deploy phone freezes. Lower values freeze earlier (hand lower on the screen); the payment swipe pose is at 0.36.",
+				new AcceptableValueRange<float>(0.05f, 0.8f)));
+		PhoneDeployHideRightHand = config.Bind(
+			"TerraGroup Phone Animation",
+			"Deploy hide right hand",
+			true,
+			new ConfigDescription(
+				"Hides the free right hand while the deploy selector is held. The swipe animation has no natural resting pose for it, so it otherwise hovers next to the phone."));
+		LegacyRadialEnabled = config.Bind(
+			"Legacy",
+			"Enable legacy YY radial",
+			false,
+			HiddenDescription("Shows the old YY gesture-wheel fire support radial and its rangefinder flow. The TSC Uplink deploy phone is the primary flow."));
 		PhoneForceOpaqueLcdDebug = config.Bind(
 			"TerraGroup Phone",
 			"Force Opaque LCD Debug",
@@ -306,19 +393,19 @@ internal static class PluginSettings
 		PhoneConfirmOutroSpeedMultiplier = config.Bind(
 			"TerraGroup Phone Animation",
 			"Confirm outro speed multiplier",
-			1.25f,
+			1.6f,
 			HiddenDescription("Animator speed used after the result screen when the phone finishes its outro",
 				new AcceptableValueRange<float>(0.25f, 4f)));
 		PhoneAuthorizingDisplaySeconds = config.Bind(
 			"TerraGroup Phone Animation",
 			"Authorizing display seconds",
-			0.55f,
+			0.25f,
 			HiddenDescription("Seconds to keep the authorizing screen visible after the payment commit",
 				new AcceptableValueRange<float>(0.1f, 5f)));
 		PhoneAuthorizedDisplaySeconds = config.Bind(
 			"TerraGroup Phone Animation",
 			"Authorized display seconds",
-			0.85f,
+			0.4f,
 			HiddenDescription("Seconds to keep the authorized result screen visible",
 				new AcceptableValueRange<float>(0.1f, 5f)));
 		PhoneDeniedDisplaySeconds = config.Bind(
@@ -330,7 +417,7 @@ internal static class PluginSettings
 		PhoneRestoreAfterAuthorizedSeconds = config.Bind(
 			"TerraGroup Phone Animation",
 			"Restore after authorized seconds",
-			0.15f,
+			0f,
 			HiddenDescription("Extra pause after the result screen before resuming the phone outro and restoring the previous weapon",
 				new AcceptableValueRange<float>(0f, 3f)));
 
@@ -513,6 +600,14 @@ internal static class PluginSettings
 		RemoveFromConfigManager(config, EnableDoublePass);
 		RemoveFromConfigManager(config, EnableFocusedSweep);
 		RemoveFromConfigManager(config, DoubleStrafeSecondPassDelay);
+		RemoveFromConfigManager(config, A10FikaHeadlessMode);
+		RemoveFromConfigManager(config, A10HeadlessDamageOriginDistance);
+		RemoveFromConfigManager(config, A10HeadlessDamageOriginAltitude);
+		RemoveFromConfigManager(config, A10HeadlessProjectileOwnerMode);
+		RemoveFromConfigManager(config, A10HeadlessAllowRequesterSelfDamage);
+		RemoveFromConfigManager(config, A10HeadlessRequesterSelfDamageDefaultMigrated);
+		RemoveFromConfigManager(config, EnableA10HeadlessDirectDamageFallback);
+		RemoveFromConfigManager(config, EnableA10ClientVisualPrediction);
 		RemoveFromConfigManager(config, UavDurationSeconds);
 		RemoveFromConfigManager(config, UavScanInterval);
 		RemoveFromConfigManager(config, UavRangeMeters);
@@ -521,6 +616,9 @@ internal static class PluginSettings
 		RemoveFromConfigManager(config, FocusedSweepRangeMeters);
 		RemoveFromConfigManager(config, UavRadarPalette);
 		RemoveFromConfigManager(config, OpenUplinkKey);
+		RemoveFromConfigManager(config, OpenDeployKey);
+		RemoveFromConfigManager(config, SpotterConfirmKey);
+		RemoveFromConfigManager(config, LegacyRadialEnabled);
 		RemoveFromConfigManager(config, PhoneForceOpaqueLcdDebug);
 		RemoveFromConfigManager(config, PhoneLcdBackgroundCleanupStrength);
 		RemoveFromConfigManager(config, PhoneConfirmPortraitTextureDelaySeconds);
@@ -560,6 +658,25 @@ internal static class PluginSettings
 		RemoveFromConfigManager(config, VerbosePaymentLogs);
 	}
 
+	private static void MigrateA10HeadlessRequesterSelfDamageDefault()
+	{
+		if (A10HeadlessRequesterSelfDamageDefaultMigrated?.Value == true)
+		{
+			return;
+		}
+
+		if (A10HeadlessAllowRequesterSelfDamage != null && !A10HeadlessAllowRequesterSelfDamage.Value)
+		{
+			A10HeadlessAllowRequesterSelfDamage.Value = true;
+			FireSupportPlugin.LogSource?.LogInfo("TSC migrated A-10 headless requester self-damage default to enabled to match original Arys behavior.");
+		}
+
+		if (A10HeadlessRequesterSelfDamageDefaultMigrated != null)
+		{
+			A10HeadlessRequesterSelfDamageDefaultMigrated.Value = true;
+		}
+	}
+
 	private static void RemoveFromConfigManager(ConfigFile config, ConfigEntryBase entry)
 	{
 		if (config != null && entry != null)
@@ -587,6 +704,13 @@ internal static class PluginSettings
 		TrackEffectiveSetting(EnableDoublePass);
 		TrackEffectiveSetting(EnableFocusedSweep);
 		TrackEffectiveSetting(DoubleStrafeSecondPassDelay);
+		TrackEffectiveSetting(A10FikaHeadlessMode);
+		TrackEffectiveSetting(A10HeadlessDamageOriginDistance);
+		TrackEffectiveSetting(A10HeadlessDamageOriginAltitude);
+		TrackEffectiveSetting(A10HeadlessProjectileOwnerMode);
+		TrackEffectiveSetting(A10HeadlessAllowRequesterSelfDamage);
+		TrackEffectiveSetting(EnableA10HeadlessDirectDamageFallback);
+		TrackEffectiveSetting(EnableA10ClientVisualPrediction);
 		TrackEffectiveSetting(UavDurationSeconds);
 		TrackEffectiveSetting(UavScanInterval);
 		TrackEffectiveSetting(UavRangeMeters);

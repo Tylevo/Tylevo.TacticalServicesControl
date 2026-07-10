@@ -88,6 +88,11 @@ public class FireSupportUI : UpdatableComponentBase, IPointerEnterHandler, IPoin
 
 	private void RenderButton(KeyValuePair<ESupportType, IFireSupportService> serviceMapping)
 	{
+		if (FireSupportDeploymentSelection.GetRadialSupportType(serviceMapping.Key) != serviceMapping.Key)
+		{
+			return;
+		}
+
 		int optionIndex = (int)serviceMapping.Key;
 		if (optionIndex < 0 || optionIndex >= supportOptions.Length)
 		{
@@ -187,9 +192,7 @@ public class FireSupportUI : UpdatableComponentBase, IPointerEnterHandler, IPoin
 
 	private bool HasUavRequestAvailable()
 	{
-		return _services != null &&
-			_services.TryGetValue(ESupportType.Uav, out IFireSupportService uavService) &&
-			HasSelectableRequest(ESupportType.Uav, uavService);
+		return _services != null && HasSelectableRequest(ESupportType.Uav);
 	}
 
 	private bool HasSelectableRequest(ESupportType supportType)
@@ -202,9 +205,11 @@ public class FireSupportUI : UpdatableComponentBase, IPointerEnterHandler, IPoin
 	private bool HasSelectableRequest(ESupportType supportType, IFireSupportService service)
 	{
 		return CanUseSupportOption(supportType) &&
-			service.IsRequestAvailable() &&
 			FireSupportController.Instance.IsSupportAvailable() &&
-			CanPayOrUseAuthorization(supportType);
+			FireSupportDeploymentSelection.HasDeployableRadialRequest(
+				supportType,
+				_services,
+				CanPayOrUseAuthorization);
 	}
 
 	private bool CanUseSupportOption(ESupportType supportType)
@@ -224,10 +229,14 @@ public class FireSupportUI : UpdatableComponentBase, IPointerEnterHandler, IPoin
 		};
 	}
 
-	private static string GetRequestDisplayText(ESupportType supportType, IFireSupportService service)
+	private string GetRequestDisplayText(ESupportType supportType, IFireSupportService service)
 	{
+		ESupportType displaySupportType = FireSupportDeploymentSelection.ResolveRadialRequest(
+			supportType,
+			_services,
+			CanPayOrUseAuthorization);
 		PaymentMode paymentMode = FireSupportPayment.GetActivePaymentMode();
-		int authorizationCount = FireSupportAuthorizations.GetDeployableCount(supportType);
+		int authorizationCount = FireSupportAuthorizations.GetDeployableCount(displaySupportType);
 		if (paymentMode == PaymentMode.PhoneAuthorizations)
 		{
 			return authorizationCount > 0
@@ -240,7 +249,11 @@ public class FireSupportUI : UpdatableComponentBase, IPointerEnterHandler, IPoin
 			return authorizationCount.ToString();
 		}
 
-		return service.AvailableRequests.ToString();
+		return displaySupportType == supportType ||
+		       _services == null ||
+		       !_services.TryGetValue(displaySupportType, out IFireSupportService displayService)
+			? service.AvailableRequests.ToString()
+			: displayService.AvailableRequests.ToString();
 	}
 
 	private void ClearSelection()
@@ -268,6 +281,25 @@ public class FireSupportUI : UpdatableComponentBase, IPointerEnterHandler, IPoin
 		infoPanelTransform.localScale = Vector3.one;
 
 		HasFinishedInitialization = true;
+
+		if (!IsRadialWorkflowEnabled())
+		{
+			// The spotter notice panel was reparented to GameUI above and keeps
+			// working; only the YY radial wheel itself is retired when legacy
+			// mode is off. Deployment goes through the TSC Uplink deploy phone.
+			gameObject.SetActive(false);
+		}
+	}
+
+	/// <summary>
+	/// DirectRadial has no phone authorizations to deploy from the Uplink, so
+	/// the radial stays available in that payment mode even with the legacy
+	/// toggle off; otherwise the deploy phone is the only workflow.
+	/// </summary>
+	public static bool IsRadialWorkflowEnabled()
+	{
+		return PluginSettings.LegacyRadialEnabled.Value ||
+		       FireSupportPayment.GetActivePaymentMode() == PaymentMode.DirectRadial;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]

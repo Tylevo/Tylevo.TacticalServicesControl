@@ -1,8 +1,9 @@
-﻿using BepInEx.Configuration;
+using BepInEx.Configuration;
 using BepInEx.Logging;
 using Comfort.Common;
 using Cysharp.Threading.Tasks;
 using EFT;
+using EFT.Ballistics;
 using Fika.Core.Main.GameMode;
 using Fika.Core.Main.Players;
 using Fika.Core.Main.Utils;
@@ -10,6 +11,8 @@ using Fika.Core.Modding;
 using Fika.Core.Modding.Events;
 using Fika.Core.Networking;
 using Fika.Core.Networking.LiteNetLib;
+using Fika.Core.Networking.Packets.Player.Common;
+using Fika.Core.Networking.Packets.Player.Common.SubPackets;
 using SamSWAT.FireSupport.ArysReloaded.Unity;
 using System;
 using System.Collections.Generic;
@@ -35,6 +38,9 @@ public static class FikaIntegration
 	private static FikaServer s_server;
 	private static FikaClient s_client;
 	private static readonly HashSet<object> s_registeredPacketManagers = new();
+	private static readonly object s_supportRequestGate = new();
+	private static readonly HashSet<string> s_inFlightSupportRequests = new(StringComparer.Ordinal);
+	private static readonly HashSet<string> s_completedSupportRequests = new(StringComparer.Ordinal);
 	private static int s_hostSettingsRevision;
 	private static int s_currentHostSettingsRevision;
 	private static bool s_hasHostSettingsOverride;
@@ -46,6 +52,7 @@ public static class FikaIntegration
 		s_logSource = logSource;
 		FireSupportNetworking.SupportRequested += OnLocalSupportRequested;
 		A10TracerNetworking.TracerBurstCreated += OnA10TracerBurstCreated;
+		A10HeadlessDamageCommandDispatcher.Handler = TrySendA10HeadlessDamageCommand;
 		UavA10LoiterNetworking.StartRequested += OnLocalUavLoiterRequested;
 		if (RemotePhoneVisualSyncEnabled)
 		{
@@ -60,6 +67,7 @@ public static class FikaIntegration
 	{
 		FireSupportNetworking.SupportRequested -= OnLocalSupportRequested;
 		A10TracerNetworking.TracerBurstCreated -= OnA10TracerBurstCreated;
+		A10HeadlessDamageCommandDispatcher.Handler = null;
 		UavA10LoiterNetworking.StartRequested -= OnLocalUavLoiterRequested;
 		if (RemotePhoneVisualSyncEnabled)
 		{
@@ -71,7 +79,9 @@ public static class FikaIntegration
 		s_settingsBroadcastDebounceCts = null;
 		FireSupportExtraction.ExtractOverride = null;
 		s_registeredPacketManagers.Clear();
+		ClearSupportRequestGates("plugin destroyed");
 		A10TracerNetworking.SetNetworkAuthorityActive(false, "plugin destroyed");
+		A10TracerNetworking.SetAuthorityRole(A10AuthorityRole.Singleplayer.ToString());
 		ClearHostAuthority("plugin destroyed");
 		s_enabled = false;
 	}
@@ -120,7 +130,10 @@ public static class FikaIntegration
 			case FikaServer server:
 				s_server = server;
 				s_client = null;
+				A10TracerNetworking.SetAuthorityRole(GetA10AuthorityRole().ToString());
 				A10TracerNetworking.SetNetworkAuthorityActive(true, "hosting Fika session");
+				A10AuthorityDiagnostics.LogOptionalVisualModsOnce();
+				ClearSupportRequestGates("hosting Fika session");
 				ClearHostAuthority("hosting Fika session");
 				if (TryMarkPacketRegistration(server, "server"))
 				{
@@ -139,7 +152,10 @@ public static class FikaIntegration
 			case FikaClient client:
 				s_client = client;
 				s_server = null;
+				A10TracerNetworking.SetAuthorityRole(A10AuthorityRole.FikaClient.ToString());
 				A10TracerNetworking.SetNetworkAuthorityActive(true, "joining Fika host");
+				A10AuthorityDiagnostics.LogOptionalVisualModsOnce();
+				ClearSupportRequestGates("joining Fika host");
 				ClearHostAuthority("joining Fika host");
 				FireSupportServerConfigClient.SetFikaClientHostAuthorityActive(true, "joining Fika host");
 				if (TryMarkPacketRegistration(client, "client"))
@@ -194,22 +210,43 @@ public static class FikaIntegration
 			rotation,
 			visualSeed,
 			durationSeconds,
-			passIndex);
+			passIndex,
+			GetLocalProfileId(),
+			Guid.NewGuid().ToString("N"));
 
 		if (FikaBackendUtils.IsServer)
 		{
 			ApplyHostAuthority(packet);
-			ExecuteSupport(packet, visualOnly: false, cancellationToken, playUavActivationVisual: true).Forget();
-			Singleton<FikaServer>.Instance.SendData(
-				ref packet,
-				DeliveryMethod.ReliableOrdered,
-				broadcast: true);
+			if (!TryBeginAuthorityRequest(packet, "local host request"))
+			{
+				return true;
+			}
+
+			ExecuteAuthoritySupport(packet, cancellationToken, playUavActivationVisual: true).Forget();
+			BroadcastSupportPacket(packet, peer: null, broadcastToAll: true, reason: "local host request");
 			return true;
 		}
 
 		if (FikaBackendUtils.IsClient)
 		{
-			ExecuteSupport(packet, visualOnly: true, cancellationToken, playUavActivationVisual: true).Forget();
+			// Clients never create authoritative damage. They wait for the host/headless
+			// accepted/broadcast packet, then run local visual/UI playback only. Optional
+			// A-10 prediction remains behind a hidden diagnostics switch.
+			if (IsA10Type(packet.SupportType) &&
+			    FireSupportTuningSettings.IsA10ClientVisualPredictionEnabled())
+			{
+				A10TracerNetworking.TrackLocalVisualPrediction(
+					packet.SupportRequestId,
+					packet.SupportType,
+					packet.VisualSeed,
+					packet.PassIndex,
+					packet.Position,
+					cancellationToken);
+				ExecuteClientSupportVisual(packet, cancellationToken, playUavActivationVisual: true).Forget();
+			}
+
+			TscDiagnostics.LogFika(
+				$"TSC Fika support request sent type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)}; waiting for host authority.");
 			Singleton<FikaClient>.Instance.SendData(ref packet, DeliveryMethod.ReliableOrdered);
 			return true;
 		}
@@ -306,25 +343,41 @@ public static class FikaIntegration
 	{
 		CancellationToken cancellationToken = GetRaidCancellationToken();
 
+		packet?.EnsureRequestId();
+		if (packet == null)
+		{
+			return;
+		}
+
 		ApplyHostAuthority(packet);
 		if (!FireSupportServiceAvailability.IsServiceEnabled(packet.SupportType))
 		{
 			s_logSource?.LogWarning(
-				$"TSC Fika settings: ignored disabled support request type={packet.SupportType}");
+				$"TSC Fika settings: ignored disabled support request type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)}");
 			return;
 		}
 
-		ExecuteSupport(packet, visualOnly: false, cancellationToken, playUavActivationVisual: false).Forget();
+		if (!TryBeginAuthorityRequest(packet, "client request"))
+		{
+			return;
+		}
 
-		Singleton<FikaServer>.Instance.SendData(
-			ref packet,
-			DeliveryMethod.ReliableOrdered,
-			peer);
+		ExecuteAuthoritySupport(packet, cancellationToken, playUavActivationVisual: false).Forget();
+		bool broadcastToAll = IsA10Type(packet.SupportType) ||
+		                      IsExtractionType(packet.SupportType) ||
+		                      IsUavType(packet.SupportType);
+		BroadcastSupportPacket(packet, peer, broadcastToAll, "host accepted client request");
 	}
 
 	private static void OnClientSupportBroadcast(FireSupportRequestPacket packet)
 	{
-		ExecuteSupport(packet, visualOnly: true, GetRaidCancellationToken(), playUavActivationVisual: false).Forget();
+		packet?.EnsureRequestId();
+		if (packet == null)
+		{
+			return;
+		}
+
+		ExecuteClientSupportVisual(packet, GetRaidCancellationToken(), playUavActivationVisual: false).Forget();
 	}
 
 	private static void OnServerStartUavLoiter(StartUavLoiterPacket packet, NetPeer peer)
@@ -468,14 +521,14 @@ public static class FikaIntegration
 				return;
 			}
 
-			// Anchor playback to this client's clock at packet arrival, not the
-			// host's FireStartNetworkTime: Time.time counts from each machine's own
-			// game launch, so host timestamps are meaningless on other machines. The
-			// host sends the full shot plan at fire start, so segment delays relative
-			// to receive time are correct within network latency.
-			A10TracerPlayback.Play(
+			// Host/headless timestamps are not comparable with this client's Time.time.
+			// Queue the burst by SupportRequestId and align playback to the local
+			// visual A-10 pass instead of playing it immediately on packet receipt.
+			A10TracerNetworking.QueueOrPlayHostBurst(
+				packet.SupportRequestId,
+				packet.VisualSeed,
+				packet.PassIndex,
 				packet.Segments,
-				Time.time,
 				GetRaidCancellationToken(),
 				spawnImpactEffects: true);
 		}
@@ -750,7 +803,31 @@ public static class FikaIntegration
 		}
 	}
 
-	private static async UniTaskVoid ExecuteSupport(
+	private static async UniTaskVoid ExecuteAuthoritySupport(
+		FireSupportRequestPacket packet,
+		CancellationToken cancellationToken,
+		bool playUavActivationVisual)
+	{
+		bool success = false;
+		try
+		{
+			success = await ExecuteSupportCore(packet, visualOnly: false, cancellationToken, playUavActivationVisual);
+		}
+		finally
+		{
+			MarkAuthorityRequestComplete(packet, success);
+		}
+	}
+
+	private static async UniTaskVoid ExecuteClientSupportVisual(
+		FireSupportRequestPacket packet,
+		CancellationToken cancellationToken,
+		bool playUavActivationVisual)
+	{
+		await ExecuteSupportCore(packet, visualOnly: true, cancellationToken, playUavActivationVisual);
+	}
+
+	private static async UniTask<bool> ExecuteSupportCore(
 		FireSupportRequestPacket packet,
 		bool visualOnly,
 		CancellationToken cancellationToken,
@@ -758,41 +835,307 @@ public static class FikaIntegration
 	{
 		if (!IsSupportedNetworkType(packet.SupportType))
 		{
-			return;
+			return false;
 		}
 
 		if (IsUavType(packet.SupportType))
 		{
-			UavReconOverlay.Activate(
-				packet.DurationSeconds,
-				cancellationToken,
-				playActivationVisual: false,
-				UavReconSettings.GetScanInterval(packet.SupportType),
-				UavReconSettings.GetRangeMeters(packet.SupportType));
-			return;
+			if (visualOnly && !IsLocalRequester(packet))
+			{
+				TscDiagnostics.LogFika(
+					$"TSC UAV HUD ignored on non-requester client type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} requester={A10AuthorityDiagnostics.ShortId(packet.RequesterProfileId)} local={A10AuthorityDiagnostics.ShortId(GetLocalProfileId())}");
+				return true;
+			}
+
+			if (!IsFikaHeadlessHost())
+			{
+				if (visualOnly)
+				{
+					TscDiagnostics.LogFika(
+						$"TSC UAV HUD accepted on requester client type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} requester={A10AuthorityDiagnostics.ShortId(packet.RequesterProfileId)}");
+				}
+
+				UavReconOverlay.Activate(
+					packet.DurationSeconds,
+					cancellationToken,
+					playActivationVisual: false,
+					UavReconSettings.GetScanInterval(packet.SupportType),
+					UavReconSettings.GetRangeMeters(packet.SupportType));
+			}
+			else
+			{
+				TscDiagnostics.LogFika($"TSC UAV HUD skipped on Fika headless host requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)}; clients render their own overlays.");
+			}
+
+			return true;
 		}
 
-		bool success = await FireSupportRuntime.TryProcessRequest(
-			packet.SupportType,
-			packet.Position,
-			packet.Direction,
-			packet.Rotation,
-			visualOnly,
-			packet.VisualSeed,
-			cancellationToken,
-			packet.PassIndex);
+		bool success;
+		if (IsA10Type(packet.SupportType))
+		{
+			A10AuthorityRole role = visualOnly ? A10AuthorityRole.FikaClient : GetA10AuthorityRole();
+			var request = new A10StrikeRequest
+			{
+				SupportRequestId = packet.SupportRequestId,
+				SupportType = packet.SupportType,
+				Position = packet.Position,
+				Direction = packet.Direction,
+				Rotation = packet.Rotation,
+				VisualSeed = packet.VisualSeed,
+				PassIndex = packet.PassIndex,
+				RequesterProfileId = packet.RequesterProfileId,
+				VisualOnly = visualOnly,
+				Role = role
+			};
 
-		if (success && IsExtractionType(packet.SupportType))
+			success = await A10StrikeExecutorSelector.ExecuteAsync(request, cancellationToken);
+		}
+		else
+		{
+			success = await FireSupportRuntime.TryProcessRequest(
+				packet.SupportType,
+				packet.Position,
+				packet.Direction,
+				packet.Rotation,
+				visualOnly,
+				packet.VisualSeed,
+				cancellationToken,
+				packet.PassIndex);
+		}
+
+		if (success && IsExtractionType(packet.SupportType) && !visualOnly)
 		{
 			FireSupportAudio.Instance.PlayVoiceover(EVoiceoverType.SupportHeliArrivingToPickup);
 		}
+
+		return success;
 	}
+
+	private static bool TrySendA10HeadlessDamageCommand(A10HeadlessDamageCommand command, out string reason)
+	{
+		reason = string.Empty;
+		if (command == null)
+		{
+			reason = "CommandNull";
+			return false;
+		}
+
+		if (command.TargetNetId <= 0)
+		{
+			reason = "MissingTargetNetId";
+			return false;
+		}
+
+		try
+		{
+			if (!FikaBackendUtils.IsServer)
+			{
+				reason = "NotFikaServer";
+				return false;
+			}
+		}
+		catch (Exception ex)
+		{
+			reason = $"FikaServerStateUnavailable:{ex.GetType().Name}:{ex.Message}";
+			return false;
+		}
+
+		FikaServer server = GetServer();
+		if (server == null)
+		{
+			reason = "FikaServerUnavailable";
+			return false;
+		}
+
+		DamageInfoStruct damageInfo = command.DamageInfo;
+		DamagePacket damagePacket = DamagePacket.FromValue(
+			command.TargetNetId,
+			damageInfo,
+			command.BodyPart,
+			command.ColliderType,
+			command.ArmorPlateCollider,
+			command.MaterialType,
+			command.Absorbed);
+
+		var packet = new CommonPlayerPacket
+		{
+			NetId = command.TargetNetId,
+			Type = ECommonSubPacketType.Damage,
+			SubPacket = damagePacket
+		};
+
+		server.SendNetReusable(ref packet, DeliveryMethod.ReliableOrdered, true, null);
+		reason = "BroadcastFikaDamagePacket";
+		TscDiagnostics.LogFika(
+			$"TSC A-10 headless damage command broadcast requestId={A10AuthorityDiagnostics.FormatRequestId(command.SupportRequestId)} target={A10AuthorityDiagnostics.ShortId(command.TargetProfileId)} netId={command.TargetNetId} damage={command.DamageInfo.Damage:0.0} bodyPart={command.BodyPart} collider={command.ColliderType}");
+		return true;
+	}
+
+	private static void BroadcastSupportPacket(FireSupportRequestPacket packet, NetPeer peer, bool broadcastToAll, string reason)
+	{
+		FikaServer server = GetServer();
+		if (server == null)
+		{
+			s_logSource?.LogWarning($"TSC Fika support broadcast skipped; server unavailable type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} reason={reason}");
+			return;
+		}
+
+		if (broadcastToAll)
+		{
+			TscDiagnostics.LogFika($"TSC Fika support broadcast to all clients type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} reason={reason}");
+			server.SendData(ref packet, DeliveryMethod.ReliableOrdered, broadcast: true);
+			return;
+		}
+
+		if (peer == null)
+		{
+			s_logSource?.LogWarning($"TSC Fika support requester send skipped; peer unavailable type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} reason={reason}");
+			return;
+		}
+
+		TscDiagnostics.LogFika($"TSC Fika support sent to requester type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} reason={reason}");
+		server.SendData(ref packet, DeliveryMethod.ReliableOrdered, peer);
+	}
+
+	private static bool TryBeginAuthorityRequest(FireSupportRequestPacket packet, string source)
+	{
+		packet.EnsureRequestId();
+		lock (s_supportRequestGate)
+		{
+			if (s_completedSupportRequests.Contains(packet.SupportRequestId) ||
+			    s_inFlightSupportRequests.Contains(packet.SupportRequestId))
+			{
+				TscDiagnostics.LogFika($"TSC Fika duplicate support request ignored type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} source={source}");
+				return false;
+			}
+
+			s_inFlightSupportRequests.Add(packet.SupportRequestId);
+		}
+
+		TscDiagnostics.LogFika($"TSC Fika authority accepted support request type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} requester={packet.RequesterProfileId} source={source}");
+		return true;
+	}
+
+	private static void MarkAuthorityRequestComplete(FireSupportRequestPacket packet, bool success)
+	{
+		if (packet == null || string.IsNullOrWhiteSpace(packet.SupportRequestId))
+		{
+			return;
+		}
+
+		lock (s_supportRequestGate)
+		{
+			s_inFlightSupportRequests.Remove(packet.SupportRequestId);
+			s_completedSupportRequests.Add(packet.SupportRequestId);
+			TrimSupportRequestSet(s_completedSupportRequests, 256);
+		}
+
+		TscDiagnostics.LogFika($"TSC Fika authority completed support request type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} success={success}");
+	}
+
+	private static void ClearSupportRequestGates(string reason)
+	{
+		lock (s_supportRequestGate)
+		{
+			s_inFlightSupportRequests.Clear();
+			s_completedSupportRequests.Clear();
+		}
+
+		TscDiagnostics.LogFika($"TSC Fika support request gates cleared reason={reason}");
+	}
+
+	private static void TrimSupportRequestSet(HashSet<string> set, int maxCount)
+	{
+		if (set.Count <= maxCount)
+		{
+			return;
+		}
+
+		foreach (string value in new List<string>(set))
+		{
+			set.Remove(value);
+			if (set.Count <= maxCount)
+			{
+				break;
+			}
+		}
+	}
+
 
 	private static CancellationToken GetRaidCancellationToken()
 	{
 		GameWorld gameWorld = Singleton<GameWorld>.Instance;
 		return gameWorld != null ? gameWorld.destroyCancellationToken : CancellationToken.None;
 	}
+
+	private static A10AuthorityRole GetA10AuthorityRole()
+	{
+		if (IsFikaHeadlessHost())
+		{
+			return A10AuthorityRole.FikaHeadlessHost;
+		}
+
+		try
+		{
+			if (FikaBackendUtils.IsServer)
+			{
+				return A10AuthorityRole.FikaHost;
+			}
+
+			if (FikaBackendUtils.IsClient)
+			{
+				return A10AuthorityRole.FikaClient;
+			}
+		}
+		catch
+		{
+		}
+
+		return A10AuthorityRole.Singleplayer;
+	}
+
+	private static bool IsFikaHeadlessHost()
+	{
+		try
+		{
+			if (!FikaBackendUtils.IsServer)
+			{
+				return false;
+			}
+		}
+		catch
+		{
+			return false;
+		}
+
+		GameWorld gameWorld = Singleton<GameWorld>.Instance;
+		return gameWorld != null && gameWorld.MainPlayer == null;
+	}
+
+	private static string GetLocalProfileId()
+	{
+		try
+		{
+			return Singleton<GameWorld>.Instance?.MainPlayer?.ProfileId ?? string.Empty;
+		}
+		catch
+		{
+			return string.Empty;
+		}
+	}
+
+	private static bool IsLocalRequester(FireSupportRequestPacket packet)
+	{
+		if (packet == null || string.IsNullOrWhiteSpace(packet.RequesterProfileId))
+		{
+			return false;
+		}
+
+		string localProfileId = GetLocalProfileId();
+		return !string.IsNullOrWhiteSpace(localProfileId) &&
+		       string.Equals(packet.RequesterProfileId, localProfileId, StringComparison.Ordinal);
+	}
+
 
 	private static void ApplyHostAuthority(FireSupportRequestPacket packet)
 	{
@@ -833,10 +1176,17 @@ public static class FikaIntegration
 		}
 	}
 
+	private static bool IsA10Type(ESupportType supportType)
+	{
+		return supportType == ESupportType.Strafe ||
+		       supportType == ESupportType.DoubleStrafe;
+	}
+
 	private static bool IsSupportedNetworkType(ESupportType supportType)
 
 	{
 		return supportType == ESupportType.Strafe ||
+		       supportType == ESupportType.DoubleStrafe ||
 		       supportType == ESupportType.Extract ||
 		       supportType == ESupportType.PriorityExfil ||
 		       supportType == ESupportType.Uav ||

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- The YY gesture wheel is retired from the main workflow. Deployment now goes through the TSC Uplink phone: after purchasing an authorization, a notification shows the deploy key, and pressing it (default `K`, configurable as "Open deploy key") pulls the phone out already vertical with a deploy selector listing only the authorizations you currently hold, styled to match the purchase screens. The phone is held one-handed (the free hand is tucked out of view; "Deploy hide right hand" config). Number keys (1-6) select a service, tapping (LMB, or Enter) deploys it — the spotter or UAV starts within half a second while the phone stows — and Backspace/Escape/RMB puts the phone away. A short arming delay after opening prevents stray clicks from spending an authorization, and the selector shows a "Station busy" countdown while the support cooldown runs. The authorization is only consumed when the deployment actually starts, exactly as before. UAV deploys from the Uplink no longer replay the activation-device phone animation; the radar starts immediately.
+- The rangefinder is no longer required as a target designator. A-10 and UH-60 targeting uses the same spotter view raycast from your camera with any item in hands; Enter confirms each targeting step (LMB still works, but fires a held weapon), and Alt+RMB or Backspace cancels. Purchase and deploy remain separate phone states, so buying a double pass and deploying it can no longer disagree about which A-10 option is used.
+- The old YY radial and its rangefinder flow are still available behind the new "Enable legacy YY radial" config toggle (default off) for this release, and will be removed once the deploy phone is stable.
+
 ## 0.9.7 - Public Beta (released as v1.0.7)
 
 ### Fixed

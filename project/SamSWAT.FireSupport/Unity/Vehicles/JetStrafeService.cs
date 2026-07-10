@@ -5,9 +5,12 @@ using UnityEngine;
 
 namespace SamSWAT.FireSupport.ArysReloaded.Unity;
 
-public sealed class JetStrafeService(FireSupportSpotter spotter, int maxRequests) : FireSupportService(maxRequests)
+public sealed class JetStrafeService(
+	FireSupportSpotter spotter,
+	int maxRequests,
+	ESupportType supportType = ESupportType.Strafe) : FireSupportService(maxRequests)
 {
-	public override ESupportType SupportType => ESupportType.Strafe;
+	public override ESupportType SupportType => supportType;
 
 	public override async UniTaskVoid PlanRequest(CancellationToken cancellationToken)
 	{

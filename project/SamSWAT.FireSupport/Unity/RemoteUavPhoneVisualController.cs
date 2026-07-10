@@ -277,7 +277,7 @@ public sealed class RemoteUavPhoneVisualController : UpdatableComponentBase
 				break;
 			case UavPhoneVisualPhase.Authorized:
 				_statusText.text = success ? "READY" : "LINK";
-				_subText.text = _activationStyle ? "UAV ACTIVE" : "YY READY";
+				_subText.text = _activationStyle ? "UAV ACTIVE" : "AUTH READY";
 				break;
 			case UavPhoneVisualPhase.Cancelled:
 				_statusText.text = "CANCEL";

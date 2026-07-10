@@ -76,6 +76,7 @@ public static class FireSupportRuntime
 	{
 		return supportType switch
 		{
+			ESupportType.DoubleStrafe => ESupportType.Strafe,
 			ESupportType.PriorityExfil => ESupportType.Extract,
 			_ => supportType
 		};

@@ -271,7 +271,7 @@ public sealed class UavA10LoiterController : UpdatableComponentBase
 		Vector3 tangent;
 		GetOrbitFrame(angle, out position, out tangent);
 
-		float bank = -_request.Direction * TurnBankDegrees;
+		float bank = _request.Direction * TurnBankDegrees;
 		transform.SetPositionAndRotation(position, GetPlaneRotation(tangent, bank));
 	}
 

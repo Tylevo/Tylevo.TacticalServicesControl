@@ -1,5 +1,6 @@
 using Fika.Core.Networking.LiteNetLib.Utils;
 using SamSWAT.FireSupport.ArysReloaded.Unity;
+using System;
 using UnityEngine;
 
 namespace SamSWAT.FireSupport.ArysReloaded.Fika;
@@ -13,6 +14,8 @@ public class FireSupportRequestPacket : INetSerializable
 	public int VisualSeed;
 	public float DurationSeconds;
 	public int PassIndex;
+	public string SupportRequestId = string.Empty;
+	public string RequesterProfileId = string.Empty;
 
 	public FireSupportRequestPacket()
 	{
@@ -25,7 +28,9 @@ public class FireSupportRequestPacket : INetSerializable
 		Vector3 rotation,
 		int visualSeed,
 		float durationSeconds,
-		int passIndex = 0)
+		int passIndex = 0,
+		string requesterProfileId = "",
+		string supportRequestId = "")
 	{
 		SupportType = supportType;
 		Position = position;
@@ -34,6 +39,10 @@ public class FireSupportRequestPacket : INetSerializable
 		VisualSeed = visualSeed;
 		DurationSeconds = durationSeconds;
 		PassIndex = passIndex;
+		RequesterProfileId = requesterProfileId ?? string.Empty;
+		SupportRequestId = string.IsNullOrWhiteSpace(supportRequestId)
+			? Guid.NewGuid().ToString("N")
+			: supportRequestId.Trim();
 	}
 
 	public void Serialize(NetDataWriter writer)
@@ -45,6 +54,8 @@ public class FireSupportRequestPacket : INetSerializable
 		writer.Put(VisualSeed);
 		writer.Put(DurationSeconds);
 		writer.Put(PassIndex);
+		writer.Put(SupportRequestId ?? string.Empty);
+		writer.Put(RequesterProfileId ?? string.Empty);
 	}
 
 	public void Deserialize(NetDataReader reader)
@@ -56,5 +67,16 @@ public class FireSupportRequestPacket : INetSerializable
 		VisualSeed = reader.GetInt();
 		DurationSeconds = reader.GetFloat();
 		PassIndex = reader.GetInt();
+		SupportRequestId = reader.GetString() ?? string.Empty;
+		RequesterProfileId = reader.GetString() ?? string.Empty;
+		EnsureRequestId();
+	}
+
+	public void EnsureRequestId()
+	{
+		if (string.IsNullOrWhiteSpace(SupportRequestId))
+		{
+			SupportRequestId = Guid.NewGuid().ToString("N");
+		}
 	}
 }

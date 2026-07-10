@@ -3,6 +3,7 @@ using SamSWAT.FireSupport.ArysReloaded.Unity;
 using SPTarkov.DI.Annotations;
 using SPTarkov.Server.Core.Models.Common;
 using SPTarkov.Server.Core.Servers.Http;
+using System.IO.Compression;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -376,20 +377,121 @@ public sealed class FireSupportHttpListener(FireSupportServerConfigService confi
 
 	private static async Task<T?> ReadJsonAsync<T>(HttpContext httpContext)
 	{
-		using var reader = new StreamReader(
-			httpContext.Request.Body,
-			Encoding.UTF8,
-			detectEncodingFromByteOrderMarks: false,
-			bufferSize: 1024,
-			leaveOpen: true);
-
-		string body = await reader.ReadToEndAsync(httpContext.RequestAborted);
-		if (string.IsNullOrWhiteSpace(body))
+		await using var rawBody = new MemoryStream();
+		await httpContext.Request.Body.CopyToAsync(rawBody, httpContext.RequestAborted);
+		byte[] bodyBytes = rawBody.ToArray();
+		if (bodyBytes.Length == 0)
 		{
 			return default;
 		}
 
-		return JsonSerializer.Deserialize<T>(body, s_jsonOptions);
+		try
+		{
+			string body = await DecodeJsonRequestBodyAsync(httpContext, bodyBytes);
+			if (string.IsNullOrWhiteSpace(body))
+			{
+				return default;
+			}
+
+			return JsonSerializer.Deserialize<T>(body, s_jsonOptions);
+		}
+		catch (JsonException)
+		{
+			return default;
+		}
+		catch (InvalidDataException)
+		{
+			return default;
+		}
+	}
+
+	private static async Task<string> DecodeJsonRequestBodyAsync(HttpContext httpContext, byte[] bodyBytes)
+	{
+		string contentEncoding = httpContext.Request.Headers.TryGetValue("Content-Encoding", out var values)
+			? values.ToString()
+			: string.Empty;
+
+		if (HasContentEncoding(contentEncoding, "gzip") || LooksLikeGzip(bodyBytes))
+		{
+			return await DecompressUtf8Async(
+				bodyBytes,
+				stream => new GZipStream(stream, CompressionMode.Decompress, leaveOpen: false),
+				httpContext.RequestAborted);
+		}
+
+		if (HasContentEncoding(contentEncoding, "zlib") || LooksLikeZlib(bodyBytes))
+		{
+			return await DecompressUtf8Async(
+				bodyBytes,
+				stream => new ZLibStream(stream, CompressionMode.Decompress, leaveOpen: false),
+				httpContext.RequestAborted);
+		}
+
+		if (HasContentEncoding(contentEncoding, "deflate"))
+		{
+			return await DecompressUtf8Async(
+				bodyBytes,
+				stream => new DeflateStream(stream, CompressionMode.Decompress, leaveOpen: false),
+				httpContext.RequestAborted);
+		}
+
+		return Encoding.UTF8.GetString(bodyBytes);
+	}
+
+	private static async Task<string> DecompressUtf8Async(
+		byte[] bodyBytes,
+		Func<Stream, Stream> createDecompressionStream,
+		CancellationToken cancellationToken)
+	{
+		using var input = new MemoryStream(bodyBytes);
+		using Stream decompressed = createDecompressionStream(input);
+		using var reader = new StreamReader(
+			decompressed,
+			Encoding.UTF8,
+			detectEncodingFromByteOrderMarks: false,
+			bufferSize: 1024,
+			leaveOpen: false);
+
+		return await reader.ReadToEndAsync(cancellationToken);
+	}
+
+	private static bool HasContentEncoding(string contentEncoding, string expected)
+	{
+		if (string.IsNullOrWhiteSpace(contentEncoding))
+		{
+			return false;
+		}
+
+		foreach (string value in contentEncoding.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+		{
+			if (string.Equals(value, expected, StringComparison.OrdinalIgnoreCase))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private static bool LooksLikeGzip(byte[] bodyBytes)
+	{
+		return bodyBytes.Length >= 2 &&
+		       bodyBytes[0] == 0x1F &&
+		       bodyBytes[1] == 0x8B;
+	}
+
+	private static bool LooksLikeZlib(byte[] bodyBytes)
+	{
+		if (bodyBytes.Length < 2)
+		{
+			return false;
+		}
+
+		int cmf = bodyBytes[0];
+		int flg = bodyBytes[1];
+		return (cmf & 0x0F) == 8 &&
+		       (cmf >> 4) <= 7 &&
+		       ((cmf << 8) + flg) % 31 == 0;
 	}
 
 	private static async Task WriteJsonAsync(HttpContext httpContext, int statusCode, object value)

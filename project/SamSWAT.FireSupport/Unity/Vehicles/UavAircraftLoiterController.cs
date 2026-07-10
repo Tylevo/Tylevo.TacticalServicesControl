@@ -382,13 +382,13 @@ public sealed class UavAircraftLoiterController : UpdatableComponentBase
 		float bank = _request.AircraftType == UavLoiterAircraftType.Uh60
 			? Uh60TurnBankDegrees
 			: A10TurnBankDegrees;
-		return -_request.Direction * bank;
+		return _request.Direction * bank;
 	}
 
 	private float GetIngressBank()
 	{
 		return _request.AircraftType == UavLoiterAircraftType.Uh60
-			? -_request.Direction * 3f
+			? _request.Direction * 3f
 			: 0f;
 	}
 

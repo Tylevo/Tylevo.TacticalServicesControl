@@ -62,7 +62,7 @@ public class FireSupportSpotter : ScriptableObject
 
 		_spotterPositionObj.SetActive(true);
 
-		while (!Input.GetMouseButtonDown(0) && !cancellationToken.IsCancellationRequested)
+		while (!IsConfirmPressed() && !cancellationToken.IsCancellationRequested)
 		{
 			if (IsRequestCancelled())
 			{
@@ -123,7 +123,7 @@ public class FireSupportSpotter : ScriptableObject
 		_spotterRotationObj.SetActive(true);
 		_inputManager.SetActive(false);
 
-		while (!Input.GetMouseButtonDown(0) && !cancellationToken.IsCancellationRequested)
+		while (!IsConfirmPressed() && !cancellationToken.IsCancellationRequested)
 		{
 			if (IsRequestCancelled())
 			{
@@ -162,13 +162,34 @@ public class FireSupportSpotter : ScriptableObject
 		_spotterConfirmationObj.SetActive(false);
 	}
 
+	// Targeting raycasts from the player camera, so no designator item is
+	// required in hands. With a weapon out, LMB would fire it, so bare LMB
+	// only confirms while the rangefinder is held; otherwise use the
+	// configured spotter confirm key (default middle mouse) or Enter.
+	private bool IsConfirmPressed()
+	{
+		if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+		{
+			return true;
+		}
+
+		if (PluginSettings.SpotterConfirmKey != null && PluginSettings.SpotterConfirmKey.Value.IsDown())
+		{
+			return true;
+		}
+
+		return Input.GetMouseButtonDown(0) && HasRangefinderInHands();
+	}
+
+	private bool HasRangefinderInHands()
+	{
+		return _player != null &&
+		       _player.HandsController?.Item?.TemplateId == ItemConstants.RANGEFINDER_TPL;
+	}
+
 	private bool IsRequestCancelled()
 	{
-		bool isCancelRequestInput = Input.GetMouseButtonDown(1) && Input.GetKey(KeyCode.LeftAlt);
-		bool hasRangefinder =
-			_player != null &&
-			_player.HandsController.Item?.TemplateId == ItemConstants.RANGEFINDER_TPL;
-
-		return isCancelRequestInput || !hasRangefinder;
+		return (Input.GetMouseButtonDown(1) && Input.GetKey(KeyCode.LeftAlt)) ||
+		       Input.GetKeyDown(KeyCode.Backspace);
 	}
 }

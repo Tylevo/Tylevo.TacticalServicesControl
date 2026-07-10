@@ -27,24 +27,12 @@ public static class FireSupportAuthorizations
 
 	public static bool HasDeployable(ESupportType type)
 	{
-		return type switch
-		{
-			ESupportType.Strafe => HasEnabled(ESupportType.DoubleStrafe) || Has(ESupportType.Strafe),
-			ESupportType.Extract => HasEnabled(ESupportType.PriorityExfil) || Has(ESupportType.Extract),
-			ESupportType.Uav => HasEnabled(ESupportType.FocusedSweep) || Has(ESupportType.Uav),
-			_ => FireSupportServiceAvailability.IsServiceEnabled(type) && Has(type)
-		};
+		return FireSupportServiceAvailability.IsServiceEnabled(type) && Has(type);
 	}
 
 	public static int GetDeployableCount(ESupportType type)
 	{
-		return type switch
-		{
-			ESupportType.Strafe => GetEnabled(ESupportType.DoubleStrafe) + Get(ESupportType.Strafe),
-			ESupportType.Extract => GetEnabled(ESupportType.PriorityExfil) + Get(ESupportType.Extract),
-			ESupportType.Uav => GetEnabled(ESupportType.FocusedSweep) + Get(ESupportType.Uav),
-			_ => FireSupportServiceAvailability.IsServiceEnabled(type) ? Get(type) : 0
-		};
+		return FireSupportServiceAvailability.IsServiceEnabled(type) ? Get(type) : 0;
 	}
 
 	public static void Grant(ESupportType type)
@@ -146,57 +134,6 @@ public static class FireSupportAuthorizations
 	{
 		consumedType = type;
 		serverBacked = false;
-		if (type == ESupportType.Strafe)
-		{
-			if (TryConsume(ESupportType.DoubleStrafe, out serverBacked))
-			{
-				consumedType = ESupportType.DoubleStrafe;
-				return true;
-			}
-
-			if (TryConsume(ESupportType.Strafe, out serverBacked))
-			{
-				consumedType = ESupportType.Strafe;
-				return true;
-			}
-
-			return false;
-		}
-
-		if (type == ESupportType.Extract)
-		{
-			if (TryConsume(ESupportType.PriorityExfil, out serverBacked))
-			{
-				consumedType = ESupportType.PriorityExfil;
-				return true;
-			}
-
-			if (TryConsume(ESupportType.Extract, out serverBacked))
-			{
-				consumedType = ESupportType.Extract;
-				return true;
-			}
-
-			return false;
-		}
-
-		if (type == ESupportType.Uav)
-		{
-			if (TryConsume(ESupportType.FocusedSweep, out serverBacked))
-			{
-				consumedType = ESupportType.FocusedSweep;
-				return true;
-			}
-
-			if (TryConsume(ESupportType.Uav, out serverBacked))
-			{
-				consumedType = ESupportType.Uav;
-				return true;
-			}
-
-			return false;
-		}
-
 		return TryConsume(type, out serverBacked);
 	}
 
@@ -276,16 +213,6 @@ public static class FireSupportAuthorizations
 			_ => ESupportType.None
 		};
 		return IsSupported(type);
-	}
-
-	private static bool HasEnabled(ESupportType type)
-	{
-		return FireSupportServiceAvailability.IsServiceEnabled(type) && Has(type);
-	}
-
-	private static int GetEnabled(ESupportType type)
-	{
-		return FireSupportServiceAvailability.IsServiceEnabled(type) ? Get(type) : 0;
 	}
 
 	private static string GetSupportName(ESupportType type)

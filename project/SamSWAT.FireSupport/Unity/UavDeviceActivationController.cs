@@ -29,8 +29,28 @@ public sealed class UavDeviceActivationController : MonoBehaviour
 	private bool _activated;
 	private bool _restored;
 
+	private static float s_suppressUntil;
+
+	/// <summary>
+	/// Skips the next activation-device equip. Used when the deploy was just
+	/// committed on the Uplink deploy phone: pulling the phone back out a
+	/// second time to "authorize" an already-authorized deployment reads
+	/// wrong, so the wrist-visual fallback is used instead.
+	/// </summary>
+	public static void SuppressNextActivation(float windowSeconds = 20f)
+	{
+		s_suppressUntil = Time.unscaledTime + windowSeconds;
+	}
+
 	public static bool TryPlay(Action onActivated, CancellationToken cancellationToken)
 	{
+		if (Time.unscaledTime < s_suppressUntil)
+		{
+			s_suppressUntil = 0f;
+			TscDiagnostics.LogPhone("TSC Uplink activation animation skipped: deploy came from the Uplink phone.");
+			return false;
+		}
+
 		if (!PluginSettings.UavActivationDeviceAnimation.Value)
 		{
 			TscDiagnostics.LogPhone("TSC Uplink activation animation skipped: config disabled.");

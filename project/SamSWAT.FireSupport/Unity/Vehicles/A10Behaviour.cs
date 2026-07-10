@@ -1,4 +1,4 @@
-﻿using Comfort.Common;
+using Comfort.Common;
 using Cysharp.Threading.Tasks;
 using EFT;
 using SamSWAT.FireSupport.ArysReloaded.Utils;
@@ -29,6 +29,8 @@ public sealed class A10Behaviour : FireSupportBehaviour
 	private VehicleWeapon _weapon;
 	private GameWorld _gameWorld;
 	private Player _player;
+	private string _supportRequestId = string.Empty;
+	private string _requesterProfileId = string.Empty;
 	private bool _visualOnly;
 	private int _visualSeed;
 	private int _passIndex;
@@ -40,6 +42,8 @@ public sealed class A10Behaviour : FireSupportBehaviour
 	private const float VISUAL_TRACER_MAX_DISTANCE = 1400f;
 	private const float VISUAL_TRACER_SEGMENT_LENGTH = 42f;
 	private const float VISUAL_TRACER_LIFETIME = 0.08f;
+	private const float NETWORK_REPLAY_TRACER_LIFETIME = 0.18f;
+	private const float FALLBACK_GAU8_TIME_BETWEEN_SHOTS = 0.067f;
 	private float _currentSpeed = STRAFE_SPEED;
 
 	public override ESupportType SupportType => ESupportType.Strafe;
@@ -54,7 +58,21 @@ public sealed class A10Behaviour : FireSupportBehaviour
 		int passIndex = 0)
 	{
 		_visualOnly = visualOnly;
+		_supportRequestId = A10TracerNetworking.CurrentSupportRequestId;
+		_requesterProfileId = A10TracerNetworking.CurrentRequesterProfileId;
 		_visualSeed = visualSeed != 0 ? visualSeed : System.Environment.TickCount;
+		if (!_visualOnly && !string.IsNullOrWhiteSpace(_requesterProfileId))
+		{
+			try
+			{
+				_weapon = new VehicleWeapon(_requesterProfileId, ItemConstants.GAU8_WEAPON_TPL, ItemConstants.GAU8_AMMO_TPL);
+			}
+			catch (System.Exception ex)
+			{
+				FireSupportPlugin.LogSource?.LogWarning($"TSC A-10 visual runtime could not create requester-owned VehicleWeapon profile={A10AuthorityDiagnostics.ShortId(_requesterProfileId)}; using existing owner if available. {ex.Message}");
+			}
+		}
+
 		_passIndex = passIndex;
 		_spreadRandom = new System.Random(_visualSeed);
 		_currentSpeed = STRAFE_SPEED;
@@ -86,11 +104,23 @@ public sealed class A10Behaviour : FireSupportBehaviour
 	{
 		_fireSupportAudio = FireSupportAudio.Instance;
 		_betterAudio = Singleton<BetterAudio>.Instance;
-		engineSource.outputAudioMixerGroup = _betterAudio.EnvTechnicalSoundsGroup;
-		_gameWorld = Singleton<GameWorld>.Instance;
-		_player = _gameWorld.MainPlayer;
-		_weapon = new VehicleWeapon(_player.ProfileId, ItemConstants.GAU8_WEAPON_TPL, ItemConstants.GAU8_AMMO_TPL);
+		if (engineSource != null && _betterAudio != null)
+		{
+			engineSource.outputAudioMixerGroup = _betterAudio.EnvTechnicalSoundsGroup;
+		}
 
+		_gameWorld = Singleton<GameWorld>.Instance;
+		_player = _gameWorld?.MainPlayer;
+		if (_player == null)
+		{
+			FireSupportPlugin.LogSource?.LogWarning(
+				"TSC A-10 visual runtime initialized without GameWorld.MainPlayer. This is expected on Fika headless; authoritative GAU-8 damage must use the headless executor.");
+			_weapon = null;
+			HasFinishedInitialization = true;
+			return;
+		}
+
+		_weapon = new VehicleWeapon(_player.ProfileId, ItemConstants.GAU8_WEAPON_TPL, ItemConstants.GAU8_AMMO_TPL);
 		HasFinishedInitialization = true;
 	}
 
@@ -117,8 +147,10 @@ public sealed class A10Behaviour : FireSupportBehaviour
 		// Fire GAU8
 		Gau8Sequence(strafePos, cancellationToken).Forget();
 
-		if (!_gameWorld.IsMainPlayerAlive())
+		if (_gameWorld?.IsMainPlayerAlive() != true || _player?.CameraPosition == null)
 		{
+			gau8Particles.SetActive(false);
+			ReturnToPool();
 			return;
 		}
 
@@ -138,8 +170,9 @@ public sealed class A10Behaviour : FireSupportBehaviour
 		gau8Particles.SetActive(false);
 		await UniTask.WaitForSeconds(3.5f, cancellationToken: cancellationToken);
 
-		if (!_gameWorld.IsMainPlayerAlive())
+		if (_gameWorld?.IsMainPlayerAlive() != true || _player?.CameraPosition == null)
 		{
+			ReturnToPool();
 			return;
 		}
 
@@ -182,32 +215,38 @@ public sealed class A10Behaviour : FireSupportBehaviour
 			{
 				var burst = new A10TracerBurst(
 					A10TracerNetworking.NextBurstId(),
+					_supportRequestId,
 					_visualSeed,
 					_passIndex,
 					fireStartNetworkTime,
 					segments);
 				A10TracerNetworking.PublishBurst(burst);
-				A10TracerPlayback.Play(segments, fireStartNetworkTime, cancellationToken);
 			}
+		}
+
+		if (!_visualOnly && _weapon == null)
+		{
+			FireSupportPlugin.LogSource?.LogWarning(
+				"TSC A-10 visual runtime cannot fire authoritative GAU-8 damage because no VehicleWeapon is available.");
 		}
 
 		foreach (A10TracerSegment shot in shotPlan)
 		{
-			if (cancellationToken.IsCancellationRequested || !_gameWorld.IsMainPlayerAlive())
+			if (cancellationToken.IsCancellationRequested || _gameWorld?.IsMainPlayerAlive() == false)
 			{
 				break;
 			}
 
-			if (!_visualOnly)
+			if (!_visualOnly && _weapon != null)
 			{
 				_weapon.FireProjectile(shot.ProjectileOrigin, shot.ProjectileDirection);
 			}
-			else if (!networkTracerAuthority)
+			else if (_visualOnly && !networkTracerAuthority)
 			{
 				RenderVisualTracerSegment(shot);
 			}
 
-			await UniTask.WaitForSeconds(_weapon.timeBetweenShots, cancellationToken: cancellationToken);
+			await UniTask.WaitForSeconds(GetGau8TimeBetweenShots(), cancellationToken: cancellationToken);
 		}
 
 		AccelerateSequence(cancellationToken).Forget();
@@ -227,7 +266,7 @@ public sealed class A10Behaviour : FireSupportBehaviour
 			gau8Dir = Vector3.Normalize(gau8Dir + new Vector3(0, 0.00037f, 0));
 			Vector3 projectileDir = Vector3.Normalize(gau8Dir + leftRightSpread);
 			plan.Add(BuildVisualTracerSegment(gau8Pos, projectileDir, shotDelay));
-			shotDelay += _weapon.timeBetweenShots;
+			shotDelay += GetGau8TimeBetweenShots();
 		}
 
 		return plan;
@@ -237,6 +276,11 @@ public sealed class A10Behaviour : FireSupportBehaviour
 	{
 		_spreadRandom ??= new System.Random(System.Environment.TickCount);
 		return min + (float)_spreadRandom.NextDouble() * (max - min);
+	}
+
+	private float GetGau8TimeBetweenShots()
+	{
+		return _weapon != null ? _weapon.timeBetweenShots : FALLBACK_GAU8_TIME_BETWEEN_SHOTS;
 	}
 
 	private async UniTaskVoid AccelerateSequence(CancellationToken cancellationToken)
@@ -271,7 +315,7 @@ public sealed class A10Behaviour : FireSupportBehaviour
 		return new A10TracerSegment(origin, direction, tracerStart, tracerEnd, delaySeconds);
 	}
 
-	public static void RenderVisualTracerSegment(A10TracerSegment segment)
+	public static void RenderVisualTracerSegment(A10TracerSegment segment, bool prominentReplay = false)
 	{
 		if (!segment.IsValid)
 		{
@@ -279,8 +323,13 @@ public sealed class A10Behaviour : FireSupportBehaviour
 		}
 
 		GameObject tracerObject = new GameObject("A10 Visual Tracer");
-		AddTracerLine(tracerObject, segment.TracerStart, segment.TracerEnd, 0.045f, 0.012f);
-		Destroy(tracerObject, VISUAL_TRACER_LIFETIME);
+		AddTracerLine(
+			tracerObject,
+			segment.TracerStart,
+			segment.TracerEnd,
+			prominentReplay ? 0.095f : 0.045f,
+			prominentReplay ? 0.024f : 0.012f);
+		Destroy(tracerObject, prominentReplay ? NETWORK_REPLAY_TRACER_LIFETIME : VISUAL_TRACER_LIFETIME);
 	}
 
 	private static LineRenderer AddTracerLine(

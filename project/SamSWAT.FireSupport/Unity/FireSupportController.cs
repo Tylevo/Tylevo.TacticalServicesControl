@@ -1,5 +1,6 @@
 using Cysharp.Text;
 using Cysharp.Threading.Tasks;
+using EFT.Communications;
 using EFT.InputSystem;
 using EFT.UI;
 using EFT.UI.Gestures;
@@ -27,6 +28,8 @@ public class FireSupportController : UIInputNode
 	[NonSerialized] private int _cooldownTimer;
 
 	public static FireSupportController Instance { get; private set; }
+
+	public int CooldownSecondsRemaining => _cooldownTimer;
 
 	public static async UniTask<FireSupportController> Create(GesturesMenu gesturesMenu)
 	{
@@ -56,16 +59,34 @@ public class FireSupportController : UIInputNode
 
 		var heliExfil = new HeliExfiltrationService(
 			_spotter,
-			PluginSettings.AmountOfExtractionRequests.Value);
+			PluginSettings.AmountOfExtractionRequests.Value,
+			ESupportType.Extract);
 		_services[heliExfil.SupportType] = heliExfil;
+		var priorityExfil = new HeliExfiltrationService(
+			_spotter,
+			PluginSettings.AmountOfExtractionRequests.Value,
+			ESupportType.PriorityExfil);
+		_services[priorityExfil.SupportType] = priorityExfil;
 
 		var jetStrafe = new JetStrafeService(
 			_spotter,
-			PluginSettings.AmountOfStrafeRequests.Value);
+			PluginSettings.AmountOfStrafeRequests.Value,
+			ESupportType.Strafe);
 		_services[jetStrafe.SupportType] = jetStrafe;
+		var doubleStrafe = new JetStrafeService(
+			_spotter,
+			PluginSettings.AmountOfStrafeRequests.Value,
+			ESupportType.DoubleStrafe);
+		_services[doubleStrafe.SupportType] = doubleStrafe;
 
-		var uavRecon = new UavReconService(PluginSettings.AmountOfUavRequests.Value);
+		var uavRecon = new UavReconService(
+			PluginSettings.AmountOfUavRequests.Value,
+			ESupportType.Uav);
 		_services[uavRecon.SupportType] = uavRecon;
+		var focusedSweep = new UavReconService(
+			PluginSettings.AmountOfUavRequests.Value,
+			ESupportType.FocusedSweep);
+		_services[focusedSweep.SupportType] = focusedSweep;
 
 		_ui = await FireSupportUI.Load(_services, gesturesMenu);
 		_ui.SupportRequested += OnSupportRequested;
@@ -84,10 +105,99 @@ public class FireSupportController : UIInputNode
 		DestroyImmediate(gameObject);
 	}
 
+	/// <summary>
+	/// Schedules a deploy committed on the TSC Uplink phone. Runs on this
+	/// controller (alive for the whole raid) instead of the phone's own
+	/// lifecycle, and waits for the phone hand-swap to settle before starting
+	/// the support flow, so it survives whichever restore path EFT takes.
+	/// </summary>
+	public void ScheduleDeployAfterHandsRestore(ESupportType supportType)
+	{
+		FireSupportPlugin.LogSource.LogInfo($"TSC deploy scheduled: {supportType}.");
+		StartCoroutine(DeployAfterHandsRestore(supportType));
+	}
+
+	private System.Collections.IEnumerator DeployAfterHandsRestore(ESupportType supportType)
+	{
+		// The spotter and UAV flows are camera/UI driven and independent of
+		// the hands controller, and uplink deploys suppress the activation
+		// device re-equip, so there is no hand-swap race to wait out. Waiting
+		// for the full stow + weapon re-equip added ~3-4s between the tap and
+		// the designator appearing; a short beat keeps the inputs distinct.
+		yield return new WaitForSecondsRealtime(0.35f);
+
+		FireSupportPlugin.LogSource.LogInfo($"TSC deploy dispatch: {supportType}.");
+		RequestSupport(supportType);
+	}
+
+	/// <summary>
+	/// Deploys an exact support type from the TSC Uplink deploy selector.
+	/// Unlike the radial path there is no base/variant resolution: the phone
+	/// already committed a specific authorization.
+	/// </summary>
+	public void RequestSupport(ESupportType supportType)
+	{
+		try
+		{
+			if (!_services.TryGetValue(supportType, out IFireSupportService service))
+			{
+				FireSupportPlugin.LogSource.LogWarning($"TSC deploy request had no service registered for {supportType}.");
+				return;
+			}
+
+			if (!IsSupportAvailable())
+			{
+				FireSupportPlugin.LogSource.LogInfo(
+					$"TSC deploy request blocked: support unavailable (cooldown={_cooldownTimer}, canCall={_canCallSupport}).");
+				NotificationManagerClass.DisplayWarningNotification(
+					"Support station is busy. Wait for the current request or cooldown to finish.",
+					ENotificationDurationType.Default);
+				return;
+			}
+
+			if (!service.IsRequestAvailable())
+			{
+				FireSupportPlugin.LogSource.LogInfo($"TSC deploy request blocked: no request available for {supportType}.");
+				NotificationManagerClass.DisplayWarningNotification(
+					$"{FireSupportPayment.GetSupportName(supportType)} is not available right now.",
+					ENotificationDurationType.Default);
+				return;
+			}
+
+			if (!FireSupportPayment.CanDeployFromRadial(supportType, notify: true))
+			{
+				FireSupportPlugin.LogSource.LogInfo($"TSC deploy request blocked: payment gate for {supportType}.");
+				return;
+			}
+
+			FireSupportPlugin.LogSource.LogInfo($"TSC deploy request planning: {supportType}.");
+			// The deploy phone already played the authorization; don't pull it
+			// back out for the UAV activation animation.
+			UavDeviceActivationController.SuppressNextActivation();
+			service.PlanRequest(destroyCancellationToken).Forget();
+		}
+		catch (OperationCanceledException) {}
+		catch (Exception ex)
+		{
+			FireSupportPlugin.LogSource.LogError(ex);
+		}
+	}
+
 	private void OnSupportRequested(ESupportType supportType)
 	{
 		try
 		{
+			ESupportType requestedSupportType = supportType;
+			supportType = FireSupportDeploymentSelection.ResolveRadialRequest(
+				supportType,
+				_services,
+				type => FireSupportPayment.CanDeployFromRadial(type, notify: false));
+			if (requestedSupportType != supportType)
+			{
+				FireSupportPlugin.LogSource.LogInfo(
+					$"TSC radial support resolved requested={requestedSupportType} deployed={supportType}.");
+			}
+
 			if (!_services.TryGetValue(supportType, out IFireSupportService service))
 			{
 				throw new ArgumentException($"No service registered for support type {supportType}");

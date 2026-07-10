@@ -10,5 +10,7 @@ public enum TerraGroupPhoneState
 	ConfirmPaymentPortrait,
 	Authorizing,
 	Authorized,
-	Denied
+	Denied,
+	DeploySelect,
+	DeployBoot
 }

@@ -1,27 +1,30 @@
-using Comfort.Common;
 using Cysharp.Threading.Tasks;
-using EFT;
-using EFT.Ballistics;
 using System;
 using System.Threading;
-using Systems.Effects;
 using UnityEngine;
 
 namespace SamSWAT.FireSupport.ArysReloaded.Unity;
 
 public static class A10TracerPlayback
 {
-	// Host raycasts capped tracers at this range; segments that reached it hit
-	// nothing, so no impact effect should spawn for them.
-	private const float NoHitDistanceThreshold = 1395f;
-	private const float ImpactRaycastSlack = 5f;
-	private static bool s_impactEffectFailureLogged;
-
 	public static void Play(
 		A10TracerSegment[] segments,
 		float fireStartNetworkTime,
 		CancellationToken cancellationToken,
 		bool spawnImpactEffects = false)
+	{
+		// Historical callers pass Time.time as fireStartNetworkTime. Treat it as a
+		// local playback start time here. Fika clients should prefer PlayAtLocalTime
+		// via A10TracerNetworking so host timestamps are never used directly across machines.
+		PlayAtLocalTime(segments, fireStartNetworkTime, cancellationToken, spawnImpactEffects);
+	}
+
+	public static void PlayAtLocalTime(
+		A10TracerSegment[] segments,
+		float localPlaybackStartTime,
+		CancellationToken cancellationToken,
+		bool spawnImpactEffects = false,
+		string reason = "direct")
 	{
 		if (segments == null || segments.Length == 0)
 		{
@@ -31,17 +34,21 @@ public static class A10TracerPlayback
 		A10TracerSegment[] orderedSegments = new A10TracerSegment[segments.Length];
 		Array.Copy(segments, orderedSegments, segments.Length);
 		Array.Sort(orderedSegments, (left, right) => left.DelaySeconds.CompareTo(right.DelaySeconds));
-		PlayAsync(orderedSegments, fireStartNetworkTime, cancellationToken, spawnImpactEffects).Forget();
+		FireSupportPlugin.LogSource?.LogInfo(
+			$"TSC A-10 tracer playback scheduled reason={reason} segments={orderedSegments.Length} localFireStart={localPlaybackStartTime:0.000} now={Time.time:0.000} spawnImpactEffects={spawnImpactEffects}");
+		PlayAsync(orderedSegments, localPlaybackStartTime, cancellationToken, spawnImpactEffects).Forget();
 	}
 
 	private static async UniTaskVoid PlayAsync(
 		A10TracerSegment[] segments,
-		float fireStartNetworkTime,
+		float localPlaybackStartTime,
 		CancellationToken cancellationToken,
 		bool spawnImpactEffects)
 	{
 		try
 		{
+			int renderedTracers = 0;
+			int spawnedImpactEffects = 0;
 			foreach (A10TracerSegment segment in segments)
 			{
 				if (!segment.IsValid)
@@ -49,7 +56,7 @@ public static class A10TracerPlayback
 					continue;
 				}
 
-				float waitSeconds = fireStartNetworkTime + segment.DelaySeconds - Time.time;
+				float waitSeconds = localPlaybackStartTime + segment.DelaySeconds - Time.time;
 				if (waitSeconds > 0f)
 				{
 					await UniTask.WaitForSeconds(waitSeconds, cancellationToken: cancellationToken);
@@ -60,11 +67,26 @@ public static class A10TracerPlayback
 					return;
 				}
 
-				A10Behaviour.RenderVisualTracerSegment(segment);
+				A10Behaviour.RenderVisualTracerSegment(segment, prominentReplay: spawnImpactEffects);
+				renderedTracers++;
 				if (spawnImpactEffects)
 				{
-					SpawnImpactEffect(segment);
+					if (A10ImpactEffectPlayback.TrySpawn(segment))
+					{
+						spawnedImpactEffects++;
+					}
 				}
+			}
+
+			if (spawnImpactEffects)
+			{
+				FireSupportPlugin.LogSource?.LogInfo(
+					$"TSC A-10 tracer replay complete rendered={renderedTracers}/{segments.Length} impactEffects={spawnedImpactEffects}/{segments.Length}");
+			}
+			else
+			{
+				FireSupportPlugin.LogSource?.LogInfo(
+					$"TSC A-10 tracer replay complete rendered={renderedTracers}/{segments.Length} impactEffects=disabled");
 			}
 		}
 		catch (OperationCanceledException)
@@ -73,55 +95,6 @@ public static class A10TracerPlayback
 		catch (Exception ex)
 		{
 			FireSupportPlugin.LogSource?.LogWarning($"A-10 tracer playback failed. {ex}");
-		}
-	}
-
-	// The GAU-8 ammo is explosive (ammoType grenade, ExplosionType
-	// big_smoky_explosion, ShowHitEffectOnExplode false), so on the host every
-	// round detonates with the named explosion effect and no separate bullet
-	// impact. Non-host clients never simulate the host's ballistics, so they
-	// saw nothing where rounds landed. Recreate the same explosion locally:
-	// the segment carries the host's hit point, and static map geometry
-	// matches, so a local raycast finds the same surface.
-	private const string Gau8ExplosionEffectName = "big_smoky_explosion";
-	private const float Gau8ExplosionVolume = 40f;
-
-	private static void SpawnImpactEffect(A10TracerSegment segment)
-	{
-		try
-		{
-			float hostHitDistance = Vector3.Distance(segment.ProjectileOrigin, segment.TracerEnd);
-			if (hostHitDistance >= NoHitDistanceThreshold)
-			{
-				return;
-			}
-
-			Effects effects = Singleton<Effects>.Instance;
-			if (effects == null)
-			{
-				return;
-			}
-
-			if (!Physics.Raycast(
-				    segment.ProjectileOrigin,
-				    segment.ProjectileDirection,
-				    out RaycastHit hit,
-				    hostHitDistance + ImpactRaycastSlack,
-				    ~0,
-				    QueryTriggerInteraction.Ignore))
-			{
-				return;
-			}
-
-			effects.EmitGrenade(Gau8ExplosionEffectName, hit.point, hit.normal, Gau8ExplosionVolume);
-		}
-		catch (Exception ex)
-		{
-			if (!s_impactEffectFailureLogged)
-			{
-				s_impactEffectFailureLogged = true;
-				FireSupportPlugin.LogSource?.LogWarning($"A-10 impact effect spawn failed; visuals skipped. {ex}");
-			}
 		}
 	}
 }

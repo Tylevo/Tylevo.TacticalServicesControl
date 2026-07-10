@@ -19,6 +19,12 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 		public Vector3 Position;
 	}
 
+	private sealed class RadarAssets
+	{
+		public GameObject RadarPrefab;
+		public GameObject BlipPrefab;
+	}
+
 	private readonly struct RadarPaletteColors(
 		Color backgroundColor,
 		Color borderColor,
@@ -75,6 +81,8 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 	private bool _isClosing;
 	private static Sprite s_timerBackgroundSprite;
 	private static Sprite s_solidSprite;
+	private static UniTask<RadarAssets>? s_radarAssetsLoadTask;
+	private static RadarAssets s_radarAssets;
 
 	public static UavReconOverlay Instance { get; private set; }
 
@@ -92,6 +100,13 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 
 		void StartRadar()
 		{
+			if (Instance != null)
+			{
+				TscDiagnostics.LogDashboard($"UAV radar activate reuse duration={durationSeconds:0.#}s scan={scanInterval:0.##} range={rangeMeters:0.#}");
+				Instance.StartRecon(durationSeconds, cancellationToken, scanInterval, rangeMeters);
+				return;
+			}
+
 			if (Instance == null)
 			{
 				var overlayObject = new GameObject("FireSupportUavReconOverlay");
@@ -153,16 +168,39 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 	protected override void OnAwake()
 	{
 		Instance = this;
-		_gameWorld = Singleton<GameWorld>.Instance;
-		_player = _gameWorld?.MainPlayer;
-
-		if (_gameWorld == null || _player == null)
+		if (TryResolveWorldAndPlayer())
 		{
-			Close();
+			CreateUi().Forget();
 			return;
 		}
 
-		CreateUi().Forget();
+		WaitForWorldAndPlayerThenCreateUi().Forget();
+	}
+
+	private bool TryResolveWorldAndPlayer()
+	{
+		_gameWorld = Singleton<GameWorld>.Instance;
+		_player = _gameWorld?.MainPlayer;
+		return _gameWorld != null && _player != null;
+	}
+
+	private async UniTaskVoid WaitForWorldAndPlayerThenCreateUi()
+	{
+		float deadline = Time.time + 8f;
+		while (Time.time < deadline)
+		{
+			if (TryResolveWorldAndPlayer())
+			{
+				FireSupportPlugin.LogSource?.LogInfo("UAV radar delayed initialization completed after GameWorld/MainPlayer became available.");
+				CreateUi().Forget();
+				return;
+			}
+
+			await UniTask.DelayFrame(1);
+		}
+
+		FireSupportPlugin.LogSource?.LogWarning("UAV radar skipped: GameWorld/MainPlayer was unavailable after waiting. This is expected on Fika headless but not on a player client.");
+		Close();
 	}
 
 	protected override void OnDisable()
@@ -195,12 +233,9 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 	{
 		try
 		{
-			GameObject radarPrefab = await AssetLoader.LoadAssetAsync(RadarBundlePath, RadarHudAssetName);
-			_blipPrefab = await AssetLoader.LoadAssetAsync(RadarBundlePath, RadarBlipAssetName);
-			if (radarPrefab == null || _blipPrefab == null)
-			{
-				throw new InvalidOperationException("UAV radar HUD bundle did not load expected prefabs.");
-			}
+			RadarAssets assets = await LoadRadarAssetsOnceAsync();
+			GameObject radarPrefab = assets.RadarPrefab;
+			_blipPrefab = assets.BlipPrefab;
 
 			_radarHud = Instantiate(radarPrefab, transform, false);
 			_radarHud.name = "FireSupport UAV Radar HUD";
@@ -244,6 +279,43 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 		{
 			FireSupportPlugin.LogSource.LogError(ex);
 			Close();
+		}
+	}
+
+	private static UniTask<RadarAssets> LoadRadarAssetsOnceAsync()
+	{
+		if (s_radarAssets != null)
+		{
+			return UniTask.FromResult(s_radarAssets);
+		}
+
+		s_radarAssetsLoadTask ??= LoadRadarAssetsAsync().Preserve();
+		return s_radarAssetsLoadTask.Value;
+	}
+
+	private static async UniTask<RadarAssets> LoadRadarAssetsAsync()
+	{
+		try
+		{
+			GameObject radarPrefab = await AssetLoader.LoadAssetAsync<GameObject>(RadarBundlePath, RadarHudAssetName);
+			GameObject blipPrefab = await AssetLoader.LoadAssetAsync<GameObject>(RadarBundlePath, RadarBlipAssetName);
+
+			if (radarPrefab == null || blipPrefab == null)
+			{
+				throw new InvalidOperationException("UAV radar HUD bundle did not load expected prefabs.");
+			}
+
+			s_radarAssets = new RadarAssets
+			{
+				RadarPrefab = radarPrefab,
+				BlipPrefab = blipPrefab
+			};
+			return s_radarAssets;
+		}
+		catch
+		{
+			s_radarAssetsLoadTask = null;
+			throw;
 		}
 	}
 

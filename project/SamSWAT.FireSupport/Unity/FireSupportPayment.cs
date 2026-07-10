@@ -93,8 +93,8 @@ public static class FireSupportPayment
 			case "AuthorizationLimitReached":
 				int held = GetAuthorizationCount(denial, supportType);
 				return held > 0
-					? $"{held} held. Use one from YY before buying more."
-					: "Use an existing authorization from YY before buying more.";
+					? $"{held} held. Deploy one from the Uplink before buying more."
+					: "Deploy an existing authorization from the Uplink before buying more.";
 			case "InsufficientRoubles":
 				return $"{GetEffectiveBalanceLabel()}: {FormatRoubles(Math.Max(denial.NewBalance, GetEffectiveBalance()))}.";
 			case "RateLimited":
@@ -779,6 +779,11 @@ public static class FireSupportPayment
 
 		if (!serverResult.Ok)
 		{
+			if (TryFallbackToCarriedAfterStashDenial(paymentSource, supportType, serverResult, notify, out FireSupportPurchaseResponse carriedResult))
+			{
+				return carriedResult;
+			}
+
 			RememberPurchaseDenial(supportType, serverResult);
 			if (notify)
 			{
@@ -805,13 +810,60 @@ public static class FireSupportPayment
 		return serverResult;
 	}
 
+	private static bool TryFallbackToCarriedAfterStashDenial(
+		PaymentSource paymentSource,
+		ESupportType supportType,
+		FireSupportPurchaseResponse stashResult,
+		bool notify,
+		out FireSupportPurchaseResponse carriedResult)
+	{
+		carriedResult = null;
+		if (paymentSource != PaymentSource.PreferStashThenCarried ||
+		    !string.Equals(stashResult?.Reason, "InsufficientRoubles", StringComparison.OrdinalIgnoreCase))
+		{
+			return false;
+		}
+
+		int cost = stashResult.Cost > 0 ? stashResult.Cost : GetCost(supportType);
+		int carriedBeforeCharge = GetCarriedRoubles();
+		if (carriedBeforeCharge < cost)
+		{
+			return false;
+		}
+
+		if (!TryCharge(supportType, notifySuccess: false, notifyFailure: false))
+		{
+			return false;
+		}
+
+		GrantAuthorization(supportType, notify);
+		_lastPurchaseDenial = null;
+		carriedResult = new FireSupportPurchaseResponse
+		{
+			Ok = true,
+			Reason = "Accepted",
+			SupportType = supportType.ToString(),
+			Cost = cost,
+			PaymentSource = nameof(PaymentSource.CarriedRoubles),
+			NewBalance = GetEffectiveBalance(),
+			AuthorizationGranted = true,
+			ServerRevision = stashResult.ServerRevision
+		};
+		FireSupportPlugin.LogSource.LogInfo(
+			$"TSC purchase fallback source=Carried after stash denial supportType={supportType} cost={cost} carriedBeforeCharge={carriedBeforeCharge} stashReason={stashResult.Reason} revision={stashResult.ServerRevision}.");
+		return true;
+	}
+
 	public static void NotifyAuthorizationPurchased(ESupportType supportType)
 	{
 		int cost = GetCost(supportType);
 		string supportName = GetSupportName(supportType);
+		string deployKey = PluginSettings.OpenDeployKey != null
+			? PluginSettings.OpenDeployKey.Value.MainKey.ToString()
+			: "K";
 		string message = cost > 0
-			? $"Paid {FormatRoubles(cost)}. {supportName} authorization added to YY menu."
-			: $"{supportName} authorization added to YY menu.";
+			? $"Paid {FormatRoubles(cost)}. {supportName} authorization ready. Press [{deployKey}] to deploy from the Uplink."
+			: $"{supportName} authorization ready. Press [{deployKey}] to deploy from the Uplink.";
 
 		NotificationManagerClass.DisplayMessageNotification(
 			message,
@@ -844,7 +896,7 @@ public static class FireSupportPayment
 			int held = GetAuthorizationCount(response ?? _lastPurchaseDenial, supportType);
 			string countText = held > 0 ? $" You already hold {held}." : string.Empty;
 			NotificationManagerClass.DisplayWarningNotification(
-				$"{GetSupportName(supportType)} authorization limit reached.{countText} Use one from YY before buying more.",
+				$"{GetSupportName(supportType)} authorization limit reached.{countText} Deploy one from the Uplink before buying more.",
 				ENotificationDurationType.Long);
 			return;
 		}
