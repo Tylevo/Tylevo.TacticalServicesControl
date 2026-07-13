@@ -5,10 +5,17 @@
 ### Added
 
 - Added a complete phone-based deployment workflow. Purchased authorizations are now selected and deployed from the vertical TSC Uplink interface instead of requiring the YY gesture wheel.
-- Added configurable F12 keybinds for opening the purchase phone, opening the deployment phone, and confirming spotter targets.
+- Added visible F12 keybinds for opening the purchase phone (`U` by default), opening the deployment phone (`K` by default), and confirming spotter targets (`Mouse 2`/middle mouse by default).
 - Added optional automatic phone zoom with FOV, vertical framing, and horizontal framing controls. The previous camera FOV and viewmodel offset are restored when the phone is stowed.
 - Added explicit A-10 authority roles and unique support request IDs for Fika. The raid authority tracks in-flight and completed requests so duplicate packets cannot fire the same strike twice.
 - Added an experimental dedicated-headless A-10 damage executor. It uses the headless raid authority and Fika damage packets while clients remain visual-only.
+
+### Controls
+
+- Press `U` to open the TSC Uplink in purchase mode. Number keys `1`-`3` open Extraction, Fire Support, or UAV Recon; then `1` selects the standard service and `2` selects its upgraded variant when enabled. Press Enter on the confirmation screen to authorize payment. RMB goes back one screen and Escape closes the phone.
+- Press `K` after purchasing to open the Uplink in deployment mode. It lists only authorizations you currently own. Number keys `1`-`6` select an entry; LMB or Enter deploys it. RMB, Backspace, or Escape stows the phone without consuming an authorization.
+- A-10 and UH-60 deployment then enters camera-based target designation, so the rangefinder is no longer required. Press the configurable spotter-confirm key (`Mouse 2`/middle mouse by default) or Enter to confirm targeting steps. Use Alt+RMB or Backspace to cancel. LMB target confirmation remains available only while the rangefinder is actually in your hands so a held weapon is not fired accidentally.
+- UAV Recon and Focused Sweep begin directly after deployment; the requester receives the radar overlay without replaying the purchase-phone animation.
 
 ### Fixed
 
