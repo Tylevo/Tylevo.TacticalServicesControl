@@ -2,6 +2,13 @@
 
 Install-ready beta package for SPT 4.0.13. Extract it into the SPT root while the game and server are closed.
 
+This is the first Forge release after v1.0.6. Version 1.0.7 was used for GitHub/test builds but was never published on Forge, so v1.0.8 includes all 1.0.7 changes as well as the newer fixes below.
+
+## Included From The Unpublished v1.0.7 Build
+
+- The F12 "Configure TSC at" address now opens the dashboard at `/tsc/admin` instead of displaying the raw config endpoint.
+- TSC config polling now runs only during raids and defaults to every 60 seconds, greatly reducing menu/hideout request traffic and server log spam while still refreshing at raid start.
+
 ## Highlights
 
 - Support deployment now happens from the TSC Uplink phone. Buy an authorization, press the configurable deploy key, select the exact service you purchased, and designate the target without carrying the rangefinder.
