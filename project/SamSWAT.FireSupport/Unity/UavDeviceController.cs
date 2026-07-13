@@ -1706,7 +1706,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 			_phoneZoomApplied = true;
 			_phoneFramingApplied = _ownerPlayer?.ProceduralWeaponAnimation?.HandsContainer != null;
 
-			float configuredFov = Mathf.Clamp(PluginSettings.PhoneZoomFov?.Value ?? 42f, 20f, 75f);
+			float configuredFov = Mathf.Clamp(PluginSettings.PhoneZoomFov?.Value ?? 45f, 20f, 75f);
 			float targetFov = Mathf.Min(s_phoneZoomOriginalFov, configuredFov);
 			cameraClass.SetFov(targetFov, PhoneZoomTransitionSeconds, true);
 			MaintainPhoneFraming();

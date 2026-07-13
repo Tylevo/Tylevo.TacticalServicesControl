@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Increased the default automatic phone zoom FOV from 42 to 45 for a slightly wider, more natural view. Existing custom FOV values are preserved; only the previous untouched 42 default is migrated.
+
 ## 0.9.8 - Public Beta (released as v1.0.8)
 
 ### Added
