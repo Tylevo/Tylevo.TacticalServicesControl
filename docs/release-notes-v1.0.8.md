@@ -2,12 +2,7 @@
 
 Install-ready beta package for SPT 4.0.13. Extract it into the SPT root while the game and server are closed.
 
-This is the first Forge release after v1.0.6. Version 1.0.7 was used for GitHub/test builds but was never published on Forge, so v1.0.8 includes all 1.0.7 changes as well as the newer fixes below.
-
-## Included From The Unpublished v1.0.7 Build
-
-- The F12 "Configure TSC at" address now opens the dashboard at `/tsc/admin` instead of displaying the raw config endpoint.
-- TSC config polling now runs only during raids and defaults to every 60 seconds, greatly reducing menu/hideout request traffic and server log spam while still refreshing at raid start.
+This update follows the published v1.0.7 build and contains the changes below.
 
 ## Highlights
 
@@ -15,6 +10,14 @@ This is the first Forge release after v1.0.6. Version 1.0.7 was used for GitHub/
 - The phone can automatically zoom and reframe itself while raised. Its default zoom FOV is now 45 for a slightly wider view; FOV and horizontal/vertical framing remain configurable in F12 and restore cleanly when the phone is stowed. Existing custom FOV values are preserved.
 - Purchase, deploy, and spotter-confirm keybinds are now visible in F12.
 - A-10 single and double passes stay separate from purchase through deployment, so selecting one no longer spends or launches the other.
+
+## Controls And Workflow
+
+- `U` (configurable in F12 as **Open uplink key**) opens the TSC Uplink in purchase mode.
+- On the purchase phone, press `1`, `2`, or `3` to open Extraction, Fire Support, or UAV Recon. Inside a category, `1` selects the standard service and `2` selects the upgraded variant when enabled. Press Enter on the confirmation screen to authorize payment. RMB returns to the previous screen; Escape closes the phone.
+- `K` (configurable in F12 as **Open deploy key**) opens the Uplink in deployment mode after you own an authorization. Only services you currently own are listed. Press `1`-`6` to select one, then LMB or Enter to deploy it. RMB, Backspace, or Escape stows the phone without spending anything.
+- A-10 and UH-60 use camera-based target designation after deployment; the rangefinder is no longer required. Press `Mouse 2`/middle mouse (configurable in F12 as **Spotter confirm key**) or Enter to confirm each targeting step. Alt+RMB or Backspace cancels targeting.
+- UAV Recon and Focused Sweep start directly after deployment and display the radar overlay only for the requesting player.
 
 ## Payment And Authorizations
 
