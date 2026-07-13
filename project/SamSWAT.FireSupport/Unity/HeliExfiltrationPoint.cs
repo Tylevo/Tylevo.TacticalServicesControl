@@ -18,19 +18,19 @@ public class HeliExfiltrationPoint : MonoBehaviour, IPhysicsTrigger
 	private void Start()
 	{
 		_gameWorld = Singleton<GameWorld>.Instance;
-		_battleUIPanelExitTrigger = Singleton<GameUI>.Instance.BattleUiPanelExitTrigger;
+		_battleUIPanelExitTrigger = Singleton<GameUI>.Instance?.BattleUiPanelExitTrigger;
 	}
 
 	public void OnTriggerEnter(Collider collider)
 	{
-		Player player = _gameWorld.GetPlayerByCollider(collider);
+		Player player = _gameWorld?.GetPlayerByCollider(collider);
 		if (player == null || !player.IsYourPlayer)
 		{
 			return;
 		}
 
 		ResetTimer();
-		_battleUIPanelExitTrigger.Show(_timer);
+		_battleUIPanelExitTrigger?.Show(_timer);
 
 		if (_coroutine == null)
 		{
@@ -40,24 +40,31 @@ public class HeliExfiltrationPoint : MonoBehaviour, IPhysicsTrigger
 
 	public void OnTriggerExit(Collider collider)
 	{
-		Player player = _gameWorld.GetPlayerByCollider(collider);
+		Player player = _gameWorld?.GetPlayerByCollider(collider);
 		if (player == null || !player.IsYourPlayer)
 		{
 			return;
 		}
 
 		ResetTimer();
-		_battleUIPanelExitTrigger.Close();
+		_battleUIPanelExitTrigger?.Close();
 
 		if (_coroutine != null)
 		{
 			StopCoroutine(_coroutine);
+			_coroutine = null;
 		}
 	}
 
 	private void OnDestroy()
 	{
-		if (Singleton<GameUI>.Instantiated)
+		if (_coroutine != null)
+		{
+			StopCoroutine(_coroutine);
+			_coroutine = null;
+		}
+
+		if (Singleton<GameUI>.Instantiated && _battleUIPanelExitTrigger != null)
 		{
 			_battleUIPanelExitTrigger.Close();
 		}
@@ -76,7 +83,8 @@ public class HeliExfiltrationPoint : MonoBehaviour, IPhysicsTrigger
 			_timer -= Time.deltaTime;
 		}
 
-		_battleUIPanelExitTrigger.Close();
+		_battleUIPanelExitTrigger?.Close();
+		_coroutine = null;
 
 		// In a Fika session the extraction must go through Fika's extract flow
 		// (host stays to keep the session alive, clients despawn cleanly).
@@ -87,7 +95,9 @@ public class HeliExfiltrationPoint : MonoBehaviour, IPhysicsTrigger
 			yield break;
 		}
 
-		((ISessionStopper)Singleton<AbstractGame>.Instance).StopSession(player.ProfileId, ExitStatus.Survived,
-			"UH-60 Black Hawk");
+		if (Singleton<AbstractGame>.Instance is ISessionStopper sessionStopper)
+		{
+			sessionStopper.StopSession(player.ProfileId, ExitStatus.Survived, "UH-60 Black Hawk");
+		}
 	}
 }

@@ -14,6 +14,7 @@ public sealed class UavA10LoiterController : UpdatableComponentBase
 	private const string A10BundlePath = "assets/content/vehicles/a10_warthog.bundle";
 	private const float FlyoffDurationSeconds = 8f;
 	private const float TurnBankDegrees = 17f;
+	private const float UavDistantAudioScale = 0.18f;
 
 	private static UavA10LoiterController s_activeLoiter;
 
@@ -189,12 +190,14 @@ public sealed class UavA10LoiterController : UpdatableComponentBase
 			engineSource.clip = engineSounds[index];
 		}
 
-		engineSource.loop = true;
-		engineSource.volume = request.EngineVolume;
+		engineSource.loop = false;
+		engineSource.playOnAwake = false;
+		engineSource.volume = Mathf.Clamp01(request.EngineVolume * UavDistantAudioScale);
 		engineSource.spatialBlend = 1f;
+		engineSource.dopplerLevel = 0.15f;
 		engineSource.rolloffMode = AudioRolloffMode.Logarithmic;
-		engineSource.minDistance = 90f;
-		engineSource.maxDistance = 3200f;
+		engineSource.minDistance = 450f;
+		engineSource.maxDistance = 5000f;
 
 		BetterAudio betterAudio = Singleton<BetterAudio>.Instance;
 		if (betterAudio != null)
@@ -202,8 +205,16 @@ public sealed class UavA10LoiterController : UpdatableComponentBase
 			engineSource.outputAudioMixerGroup = betterAudio.EnvTechnicalSoundsGroup;
 		}
 
-		if (engineSource.clip != null && request.EngineVolume > 0f)
+		if (engineSource.clip != null && engineSource.volume > 0f)
 		{
+			engineSource.Stop();
+			if (engineSource.clip.length > 1f)
+			{
+				engineSource.time = Mathf.Min(
+					engineSource.clip.length - 0.05f,
+					engineSource.clip.length * UnityEngine.Random.Range(0.15f, 0.45f));
+			}
+
 			engineSource.Play();
 		}
 

@@ -95,14 +95,24 @@ public class FireSupportController : UIInputNode
 
 	private void OnDestroy()
 	{
-		_ui.SupportRequested -= OnSupportRequested;
-		AssetLoader.UnloadAllBundles();
-		FireSupportPoolManager.Instance.Dispose();
-		FireSupportAudio.Instance.Dispose();
-		DestroyImmediate(_spotter);
-		FireSupportUI.Instance.Dispose();
-		Instance = null;
-		DestroyImmediate(gameObject);
+		if (_ui != null)
+		{
+			_ui.SupportRequested -= OnSupportRequested;
+			_ui.Dispose();
+			_ui = null;
+		}
+
+		if (_spotter != null)
+		{
+			DestroyImmediate(_spotter);
+			_spotter = null;
+		}
+
+		FireSupportRuntime.Dispose();
+		if (Instance == this)
+		{
+			Instance = null;
+		}
 	}
 
 	/// <summary>

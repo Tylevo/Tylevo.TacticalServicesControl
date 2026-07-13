@@ -114,10 +114,6 @@ public sealed class UH60Behaviour : FireSupportBehaviour
 		FireSupportAudio.Instance.PlayVoiceover(EVoiceoverType.SupportHeliLeavingNoPickup);
 	}
 
-	private async UniTask WaitForHelicopterLanding(CancellationToken cancellationToken)
-	{
-	}
-
 	[UsedImplicitly]
 	private void OnHelicopterLeft()
 	{

@@ -41,6 +41,7 @@ public class ServerMod(
 
 		await wttCommon.CustomItemParentService.CreateCustomParents(assembly);
 		await wttCommon.CustomItemServiceExtended.CreateCustomItems(assembly);
+		customItemService.ApplyHackerModBundleCompatibility(pathToMod);
 		await wttCommon.CustomAssortSchemeService.CreateCustomAssortSchemes(assembly);
 
 		fireSupportServerConfigService.Initialize(pathToMod);

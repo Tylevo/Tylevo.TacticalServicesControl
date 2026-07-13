@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http;
 using SamSWAT.FireSupport.ArysReloaded.Unity;
 using SPTarkov.DI.Annotations;
 using SPTarkov.Server.Core.Models.Common;
+using SPTarkov.Server.Core.Models.Utils;
 using SPTarkov.Server.Core.Servers.Http;
 using System.IO.Compression;
 using System.Net;
@@ -11,7 +12,9 @@ using System.Text.Json;
 namespace SamSWAT.FireSupport.ArysReloaded;
 
 [Injectable(TypePriority = 0)]
-public sealed class FireSupportHttpListener(FireSupportServerConfigService configService) : IHttpListener
+public sealed class FireSupportHttpListener(
+	FireSupportServerConfigService configService,
+	ISptLogger<FireSupportHttpListener> logger) : IHttpListener
 {
 	private const string PublicRoot = "/tsc";
 	private const string LegacyRoot = "/raidops/firesupport";
@@ -178,21 +181,38 @@ public sealed class FireSupportHttpListener(FireSupportServerConfigService confi
 		}
 
 		FireSupportPurchaseResponse response;
-		if (string.Equals(request.Action, "ConsumeAuthorization", StringComparison.OrdinalIgnoreCase))
+		try
 		{
-			response = configService.TryConsumeAuthorization(sessionId, request);
+			if (string.Equals(request.Action, "ConsumeAuthorization", StringComparison.OrdinalIgnoreCase))
+			{
+				response = configService.TryConsumeAuthorization(sessionId, request);
+			}
+			else if (string.Equals(request.Action, "CommitAuthorization", StringComparison.OrdinalIgnoreCase))
+			{
+				response = configService.TryCommitAuthorization(sessionId, request);
+			}
+			else if (string.Equals(request.Action, "RefundAuthorization", StringComparison.OrdinalIgnoreCase))
+			{
+				response = configService.TryRefundAuthorization(sessionId, request);
+			}
+			else
+			{
+				response = await configService.TryPurchaseAsync(sessionId, request);
+			}
 		}
-		else if (string.Equals(request.Action, "CommitAuthorization", StringComparison.OrdinalIgnoreCase))
+		catch (OperationCanceledException) when (httpContext.RequestAborted.IsCancellationRequested)
 		{
-			response = configService.TryCommitAuthorization(sessionId, request);
+			throw;
 		}
-		else if (string.Equals(request.Action, "RefundAuthorization", StringComparison.OrdinalIgnoreCase))
+		catch (Exception ex)
 		{
-			response = configService.TryRefundAuthorization(sessionId, request);
-		}
-		else
-		{
-			response = await configService.TryPurchaseAsync(sessionId, request);
+			logger.Error("TSC purchase endpoint failed.", ex);
+			response = new FireSupportPurchaseResponse
+			{
+				Ok = false,
+				Reason = "InternalServerError",
+				SupportType = request.SupportType
+			};
 		}
 
 		await WriteJsonAsync(httpContext, 200, response);

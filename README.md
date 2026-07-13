@@ -64,6 +64,7 @@ The dashboard is localhost-only by default. Do not port-forward it.
 
 - TerraGroup TSC Uplink item.
 - Phone-based support authorization flow.
+- Phone-based support deployment and camera-ray target designation without requiring the rangefinder.
 - PhoneAuthorizations and Hybrid payment modes.
 - Stash rouble payment and carried rouble payment.
 - A-10 Strafe and A-10 Double Pass.
@@ -102,7 +103,7 @@ See `docs/dashboard.md`, `PRIVACY.md`, and `SECURITY.md`.
 
 - Phone inventory inspect model may still need polish.
 - Mortar/artillery support is planned but not included.
-- Phone-as-designator/rangefinder replacement is planned but not included.
+- Dedicated-headless Fika A-10 damage is experimental and remains separately gated from the original single-player/human-host path.
 - Remote third-person phone animation sync is planned but not included.
 - Public beta: back up profiles before testing payment modes.
 

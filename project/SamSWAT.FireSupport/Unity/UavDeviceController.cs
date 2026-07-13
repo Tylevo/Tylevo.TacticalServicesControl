@@ -19,6 +19,12 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 	private const float AuthorizingFadeSeconds = 0.2f;
 	private const float AuthorizedFadeSeconds = 0.25f;
 	private const string TapAudioClipName = "Blastgang_finger_tap_oneshot_FP";
+	private const float PhoneZoomTransitionSeconds = 0.2f;
+	private const float PhoneZoomRestoreSeconds = 0.15f;
+
+	private static UavDeviceController s_phoneZoomOwner;
+	private static float s_phoneZoomOriginalFov;
+	private static Vector3 s_phoneFramingOriginalOffset;
 
 	private Player _ownerPlayer;
 	private AudioSource _tapAudioSource;
@@ -48,6 +54,8 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 	private bool _rightArmHideActive;
 	private bool _deployPosePinned;
 	private float _deployInputArmedAt;
+	private bool _phoneZoomApplied;
+	private bool _phoneFramingApplied;
 
 	public Animator PhoneAnimator { get; private set; }
 	public UavPhoneLaunchMode LaunchMode { get; set; } = UavPhoneLaunchMode.ManualAuthorization;
@@ -112,6 +120,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 		{
 			_ownerPlayer = player;
 			base.vmethod_0(player, weaponPrefab);
+			ApplyPhoneZoom();
 
 			if (weaponPrefab == null)
 			{
@@ -267,6 +276,8 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 
 	private void Update()
 	{
+		MaintainPhoneFraming();
+
 		if (!_authorizationSessionActive)
 		{
 			return;
@@ -1662,8 +1673,121 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 
 	public void ShutdownPhoneScreenForExternalRestore()
 	{
+		RestorePhoneZoom();
 		ResetPhoneAnimatorSpeed("external restore");
 		ShutdownPhoneScreen();
+	}
+
+	private void ApplyPhoneZoom()
+	{
+		if (_phoneZoomApplied ||
+		    PluginSettings.PhoneAutoZoomEnabled?.Value != true ||
+		    _ownerPlayer?.IsYourPlayer != true ||
+		    !CameraClass.Exist ||
+		    CameraClass.Instance == null)
+		{
+			return;
+		}
+
+		try
+		{
+			CameraClass cameraClass = CameraClass.Instance;
+			if (s_phoneZoomOwner == null)
+			{
+				s_phoneZoomOriginalFov = cameraClass.Fov;
+				if (_ownerPlayer?.ProceduralWeaponAnimation?.HandsContainer != null)
+				{
+					s_phoneFramingOriginalOffset =
+						_ownerPlayer.ProceduralWeaponAnimation.HandsContainer.CameraOffset;
+				}
+			}
+
+			s_phoneZoomOwner = this;
+			_phoneZoomApplied = true;
+			_phoneFramingApplied = _ownerPlayer?.ProceduralWeaponAnimation?.HandsContainer != null;
+
+			float configuredFov = Mathf.Clamp(PluginSettings.PhoneZoomFov?.Value ?? 42f, 20f, 75f);
+			float targetFov = Mathf.Min(s_phoneZoomOriginalFov, configuredFov);
+			cameraClass.SetFov(targetFov, PhoneZoomTransitionSeconds, true);
+			MaintainPhoneFraming();
+			TscDiagnostics.LogPhone(
+				$"TSC Uplink phone zoom applied. originalFov={s_phoneZoomOriginalFov:F1}, targetFov={targetFov:F1}, " +
+				$"verticalFraming={GetPhoneVerticalFraming():F3}, " +
+				$"horizontalFraming={GetPhoneHorizontalFraming():F3}.");
+		}
+		catch (Exception ex)
+		{
+			RestorePhoneZoom();
+			FireSupportPlugin.LogSource.LogWarning($"TSC Uplink phone zoom could not be applied. {ex}");
+		}
+	}
+
+	private void MaintainPhoneFraming()
+	{
+		if (!_phoneFramingApplied || s_phoneZoomOwner != this)
+		{
+			return;
+		}
+
+		var handsContainer = _ownerPlayer?.ProceduralWeaponAnimation?.HandsContainer;
+		if (handsContainer == null)
+		{
+			return;
+		}
+
+		Vector3 framedOffset = s_phoneFramingOriginalOffset;
+		framedOffset.x -= GetPhoneHorizontalFraming();
+		framedOffset.y -= GetPhoneVerticalFraming();
+		handsContainer.CameraOffset = framedOffset;
+	}
+
+	private static float GetPhoneVerticalFraming()
+	{
+		return Mathf.Clamp(PluginSettings.PhoneZoomVerticalFraming?.Value ?? 0.09f, -0.25f, 0.25f);
+	}
+
+	private static float GetPhoneHorizontalFraming()
+	{
+		return Mathf.Clamp(PluginSettings.PhoneZoomHorizontalFraming?.Value ?? -0.004f, -0.15f, 0.15f);
+	}
+
+	private void RestorePhoneZoom()
+	{
+		if (!_phoneZoomApplied && !_phoneFramingApplied)
+		{
+			return;
+		}
+
+		_phoneZoomApplied = false;
+		_phoneFramingApplied = false;
+		if (s_phoneZoomOwner != this)
+		{
+			return;
+		}
+
+		try
+		{
+			if (_ownerPlayer?.ProceduralWeaponAnimation?.HandsContainer != null)
+			{
+				_ownerPlayer.ProceduralWeaponAnimation.HandsContainer.CameraOffset =
+					s_phoneFramingOriginalOffset;
+			}
+
+			if (CameraClass.Exist && CameraClass.Instance != null)
+			{
+				CameraClass.Instance.SetFov(s_phoneZoomOriginalFov, PhoneZoomRestoreSeconds, true);
+				TscDiagnostics.LogPhone(
+					$"TSC Uplink phone zoom restored. fov={s_phoneZoomOriginalFov:F1}.");
+			}
+		}
+		catch (Exception ex)
+		{
+			FireSupportPlugin.LogSource.LogWarning($"TSC Uplink phone zoom restore failed. {ex}");
+		}
+		finally
+		{
+			s_phoneZoomOwner = null;
+		}
 	}
 
 	private void ShutdownPhoneScreen()
@@ -1788,6 +1912,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 
 	private void OnDestroy()
 	{
+		RestorePhoneZoom();
 		RestoreRightArmAfterDeployHold();
 		ResetPhoneAnimatorSpeed("controller destroy");
 		ShutdownPhoneScreen();
