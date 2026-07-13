@@ -23,10 +23,20 @@ public class FireSupportPoolManager : IDisposable
 
 		Instance ??= new FireSupportPoolManager();
 
-		var jetStrafeObj = (await AssetLoader.LoadAssetAsync("assets/content/vehicles/a10_warthog.bundle"))
-			.GetComponent<A10Behaviour>();
-		var heliExfilObj = (await AssetLoader.LoadAssetAsync("assets/content/vehicles/uh60_blackhawk.bundle"))
-			.GetComponent<UH60Behaviour>();
+		GameObject jetAsset = await AssetLoader.LoadAssetAsync("assets/content/vehicles/a10_warthog.bundle");
+		A10Behaviour jetStrafeObj = jetAsset != null ? jetAsset.GetComponent<A10Behaviour>() : null;
+		if (jetStrafeObj == null)
+		{
+			throw new InvalidOperationException("A-10 asset bundle did not contain A10Behaviour.");
+		}
+
+		GameObject heliAsset = await AssetLoader.LoadAssetAsync("assets/content/vehicles/uh60_blackhawk.bundle");
+		UH60Behaviour heliExfilObj = heliAsset != null ? heliAsset.GetComponent<UH60Behaviour>() : null;
+		if (heliExfilObj == null)
+		{
+			throw new InvalidOperationException("UH-60 asset bundle did not contain UH60Behaviour.");
+		}
+
 		Transform poolTransform = new GameObject("FireSupportPool").transform;
 		Instance.PoolTransform = poolTransform;
 
@@ -42,6 +52,12 @@ public class FireSupportPoolManager : IDisposable
 	public void Dispose()
 	{
 		_pools.Clear();
+		if (PoolTransform != null)
+		{
+			UnityEngine.Object.DestroyImmediate(PoolTransform.gameObject);
+			PoolTransform = null;
+		}
+
 		Instance = null;
 	}
 

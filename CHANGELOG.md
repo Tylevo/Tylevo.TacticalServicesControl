@@ -1,12 +1,44 @@
 # Changelog
 
-## Unreleased
+## 0.9.8 - Public Beta (released as v1.0.8)
+
+### Added
+
+- Added a complete phone-based deployment workflow. Purchased authorizations are now selected and deployed from the vertical TSC Uplink interface instead of requiring the YY gesture wheel.
+- Added configurable F12 keybinds for opening the purchase phone, opening the deployment phone, and confirming spotter targets.
+- Added optional automatic phone zoom with FOV, vertical framing, and horizontal framing controls. The previous camera FOV and viewmodel offset are restored when the phone is stowed.
+- Added explicit A-10 authority roles and unique support request IDs for Fika. The raid authority tracks in-flight and completed requests so duplicate packets cannot fire the same strike twice.
+- Added an experimental dedicated-headless A-10 damage executor. It uses the headless raid authority and Fika damage packets while clients remain visual-only.
+
+### Fixed
+
+- Fixed authorization counts becoming duplicated, not being consumed, or returning as the wrong A-10 option. Single-pass and double-pass authorizations now remain separate through purchase, deployment, consume, commit, and refund.
+- Hardened stash purchases into a serialized transaction. Invalid quantities are rejected, profile inventory is restored if saving or authorization persistence fails, and failed mutations no longer leave the player charged without an authorization.
+- Fixed `PreferStashThenCarried` purchases failing when stash payment is unavailable even though the player has enough carried roubles.
+- Fixed compressed `/tsc/purchase` request bodies failing JSON parsing. The server now accepts plain JSON plus zlib/deflate request bodies and returns a controlled denial if purchase handling throws.
+- Made the authorization ledger durable with atomic file replacement, backup recovery, corrupt-file preservation, and rollback when a ledger write fails.
+- Fixed Fika A-10 clients starting prediction before the host accepted a strike. Clients now wait for the authority broadcast, render the accepted visual pass, and never execute authoritative damage.
+- Synchronized Fika tracer and impact replay to the visible A-10 firing pass. Replay is keyed by support request, seed, and pass so double passes do not create early fake bursts or mismatched impacts.
+- Fixed UAV HUD ownership in Fika: only the requesting client creates the radar overlay, and a dedicated headless host does not create client HUD objects.
+- Fixed concurrent or repeated AssetBundle loads, including the UAV radar HUD double-load failure. A per-bundle load gate now reuses a load that won the race.
+- Added HackerMod phone-bundle compatibility. When Manimal's complete HackerMod phone bundle set is installed, TSC reuses it instead of loading a conflicting duplicate phone asset.
+- Fixed `SimpleSpinBlur`, fire-support pools, UI controllers, and phone zoom teardown paths that could throw null-reference errors during raid shutdown or repeated initialization.
+- Hardened UH-60 extraction trigger cleanup and Fika extraction routing to reduce stuck black-screen exits and stale extraction coroutines.
+- Restored the full-volume A-10 strike flyover sound while keeping the UAV loiter aircraft quiet and non-looping.
 
 ### Changed
 
 - The YY gesture wheel is retired from the main workflow. Deployment now goes through the TSC Uplink phone: after purchasing an authorization, a notification shows the deploy key, and pressing it (default `K`, configurable as "Open deploy key") pulls the phone out already vertical with a deploy selector listing only the authorizations you currently hold, styled to match the purchase screens. The phone is held one-handed (the free hand is tucked out of view; "Deploy hide right hand" config). Number keys (1-6) select a service, tapping (LMB, or Enter) deploys it — the spotter or UAV starts within half a second while the phone stows — and Backspace/Escape/RMB puts the phone away. A short arming delay after opening prevents stray clicks from spending an authorization, and the selector shows a "Station busy" countdown while the support cooldown runs. The authorization is only consumed when the deployment actually starts, exactly as before. UAV deploys from the Uplink no longer replay the activation-device phone animation; the radar starts immediately.
 - The rangefinder is no longer required as a target designator. A-10 and UH-60 targeting uses the same spotter view raycast from your camera with any item in hands; Enter confirms each targeting step (LMB still works, but fires a held weapon), and Alt+RMB or Backspace cancels. Purchase and deploy remain separate phone states, so buying a double pass and deploying it can no longer disagree about which A-10 option is used.
 - The old YY radial and its rangefinder flow are still available behind the new "Enable legacy YY radial" config toggle (default off) for this release, and will be removed once the deploy phone is stable.
+- Fika A-10 authority is now explicit: single-player and a human Fika host keep the original Arys runtime/ballistic path; a Fika client is visual-only; a dedicated headless host may use only the gated experimental damage path.
+- A-10 requester attribution is tracked separately from projectile ownership, with detailed authority, owner, candidate, tracer, and fallback diagnostics for headless testing.
+
+### Known Issues
+
+- Dedicated-headless Fika A-10 damage remains experimental. It has been tested successfully, but it is intentionally gated and is not claimed to be identical to the original player-host ballistic path on every map or mod combination.
+- Remote third-person phone animation sync is still not included.
+- Phone inventory inspect presentation may still need polish.
 
 ## 0.9.7 - Public Beta (released as v1.0.7)
 

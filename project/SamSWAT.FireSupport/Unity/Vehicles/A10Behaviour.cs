@@ -44,6 +44,9 @@ public sealed class A10Behaviour : FireSupportBehaviour
 	private const float VISUAL_TRACER_LIFETIME = 0.08f;
 	private const float NETWORK_REPLAY_TRACER_LIFETIME = 0.18f;
 	private const float FALLBACK_GAU8_TIME_BETWEEN_SHOTS = 0.067f;
+	private const float STRIKE_ENGINE_VOLUME = 1f;
+	private const float STRIKE_ENGINE_MIN_DISTANCE = 450f;
+	private const float STRIKE_ENGINE_MAX_DISTANCE = 5000f;
 	private float _currentSpeed = STRAFE_SPEED;
 
 	public override ESupportType SupportType => ESupportType.Strafe;
@@ -129,9 +132,7 @@ public sealed class A10Behaviour : FireSupportBehaviour
 	{
 		await UniTask.WaitForSeconds(3f, cancellationToken: cancellationToken);
 
-		// Play engine sound
-		engineSource.clip = engineSounds.GetRandomClip();
-		engineSource.Play();
+		PlayStrikeFlyoverAudio();
 		await UniTask.WaitForSeconds(1f, cancellationToken: cancellationToken);
 
 		// Disable flares
@@ -200,6 +201,43 @@ public sealed class A10Behaviour : FireSupportBehaviour
 		await UniTask.WaitForSeconds(4f, cancellationToken: cancellationToken);
 
 		ReturnToPool();
+	}
+
+	private void PlayStrikeFlyoverAudio()
+	{
+		if (engineSource == null || engineSounds == null || engineSounds.Length == 0)
+		{
+			FireSupportPlugin.LogSource?.LogWarning("TSC A-10 strike flyover audio unavailable: engine source or clips are missing.");
+			return;
+		}
+
+		AudioClip clip = engineSounds.GetRandomClip();
+		if (clip == null)
+		{
+			FireSupportPlugin.LogSource?.LogWarning("TSC A-10 strike flyover audio unavailable: selected engine clip is null.");
+			return;
+		}
+
+		// Strike playback is deliberately independent from the quiet, one-shot UAV loiter audio.
+		engineSource.Stop();
+		engineSource.clip = clip;
+		engineSource.playOnAwake = false;
+		engineSource.loop = false;
+		engineSource.mute = false;
+		engineSource.volume = STRIKE_ENGINE_VOLUME;
+		engineSource.spatialBlend = 1f;
+		engineSource.rolloffMode = AudioRolloffMode.Logarithmic;
+		engineSource.minDistance = STRIKE_ENGINE_MIN_DISTANCE;
+		engineSource.maxDistance = STRIKE_ENGINE_MAX_DISTANCE;
+		if (_betterAudio != null)
+		{
+			engineSource.outputAudioMixerGroup = _betterAudio.EnvTechnicalSoundsGroup;
+		}
+
+		engineSource.time = 0f;
+		engineSource.Play();
+		FireSupportPlugin.LogSource?.LogInfo(
+			$"TSC A-10 strike flyover audio started clip={clip.name} volume={engineSource.volume:0.00} loop={engineSource.loop} minDistance={engineSource.minDistance:0} maxDistance={engineSource.maxDistance:0}.");
 	}
 
 	private async UniTaskVoid Gau8Sequence(Vector3 strafePos, CancellationToken cancellationToken)

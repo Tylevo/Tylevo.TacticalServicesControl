@@ -2,7 +2,7 @@
 
 - Phone inventory inspect model may still need polish.
 - Mortar/artillery support is planned but not included.
-- Phone-as-designator/rangefinder replacement is planned but not included.
+- Dedicated-headless Fika A-10 damage remains experimental and separately gated from the original single-player/human-host path.
 - Remote third-person phone animation sync is planned but not included.
 - Public beta: back up profiles before testing payment modes.
 

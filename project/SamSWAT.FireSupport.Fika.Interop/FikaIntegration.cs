@@ -41,6 +41,7 @@ public static class FikaIntegration
 	private static readonly object s_supportRequestGate = new();
 	private static readonly HashSet<string> s_inFlightSupportRequests = new(StringComparer.Ordinal);
 	private static readonly HashSet<string> s_completedSupportRequests = new(StringComparer.Ordinal);
+	private static readonly Queue<string> s_completedSupportRequestOrder = new();
 	private static int s_hostSettingsRevision;
 	private static int s_currentHostSettingsRevision;
 	private static bool s_hasHostSettingsOverride;
@@ -48,6 +49,12 @@ public static class FikaIntegration
 
 	public static void Enable(ManualLogSource logSource)
 	{
+		if (s_enabled)
+		{
+			s_logSource = logSource;
+			return;
+		}
+
 		s_enabled = true;
 		s_logSource = logSource;
 		FireSupportNetworking.SupportRequested += OnLocalSupportRequested;
@@ -65,6 +72,11 @@ public static class FikaIntegration
 
 	public static void Disable()
 	{
+		if (!s_enabled)
+		{
+			return;
+		}
+
 		FireSupportNetworking.SupportRequested -= OnLocalSupportRequested;
 		A10TracerNetworking.TracerBurstCreated -= OnA10TracerBurstCreated;
 		A10HeadlessDamageCommandDispatcher.Handler = null;
@@ -74,11 +86,14 @@ public static class FikaIntegration
 			UavPhoneVisualNetworkService.PhoneVisualRequested -= OnLocalUavPhoneVisualRequested;
 		}
 		FireSupportPayment.SettingsChanged -= OnEffectiveSettingsChanged;
+		FikaEventDispatcher.UnsubscribeEvent<FikaNetworkManagerCreatedEvent>(OnFikaNetworkManagerCreated);
 		s_settingsBroadcastDebounceCts?.Cancel();
 		s_settingsBroadcastDebounceCts?.Dispose();
 		s_settingsBroadcastDebounceCts = null;
 		FireSupportExtraction.ExtractOverride = null;
 		s_registeredPacketManagers.Clear();
+		s_server = null;
+		s_client = null;
 		ClearSupportRequestGates("plugin destroyed");
 		A10TracerNetworking.SetNetworkAuthorityActive(false, "plugin destroyed");
 		A10TracerNetworking.SetAuthorityRole(A10AuthorityRole.Singleplayer.ToString());
@@ -1026,8 +1041,15 @@ public static class FikaIntegration
 		lock (s_supportRequestGate)
 		{
 			s_inFlightSupportRequests.Remove(packet.SupportRequestId);
-			s_completedSupportRequests.Add(packet.SupportRequestId);
-			TrimSupportRequestSet(s_completedSupportRequests, 256);
+			if (s_completedSupportRequests.Add(packet.SupportRequestId))
+			{
+				s_completedSupportRequestOrder.Enqueue(packet.SupportRequestId);
+			}
+
+			while (s_completedSupportRequestOrder.Count > 256)
+			{
+				s_completedSupportRequests.Remove(s_completedSupportRequestOrder.Dequeue());
+			}
 		}
 
 		TscDiagnostics.LogFika($"TSC Fika authority completed support request type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} success={success}");
@@ -1039,28 +1061,11 @@ public static class FikaIntegration
 		{
 			s_inFlightSupportRequests.Clear();
 			s_completedSupportRequests.Clear();
+			s_completedSupportRequestOrder.Clear();
 		}
 
 		TscDiagnostics.LogFika($"TSC Fika support request gates cleared reason={reason}");
 	}
-
-	private static void TrimSupportRequestSet(HashSet<string> set, int maxCount)
-	{
-		if (set.Count <= maxCount)
-		{
-			return;
-		}
-
-		foreach (string value in new List<string>(set))
-		{
-			set.Remove(value);
-			if (set.Count <= maxCount)
-			{
-				break;
-			}
-		}
-	}
-
 
 	private static CancellationToken GetRaidCancellationToken()
 	{

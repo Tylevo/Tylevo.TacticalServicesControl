@@ -6,10 +6,12 @@ using SPTarkov.Server.Core.Models.Eft.Common;
 using SPTarkov.Server.Core.Models.Eft.Common.Tables;
 using SPTarkov.Server.Core.Models.Utils;
 using SPTarkov.Server.Core.Servers;
+using SPTarkov.Server.Core.Utils.Cloners;
 using System.Diagnostics.CodeAnalysis;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using IOPath = System.IO.Path;
 
 namespace SamSWAT.FireSupport.ArysReloaded;
@@ -19,7 +21,8 @@ public sealed class FireSupportServerConfigService(
 	ISptLogger<FireSupportServerConfigService> logger,
 	ProfileHelper profileHelper,
 	SaveServer saveServer,
-	FireSupportAuthorizationLedger authorizationLedger)
+	FireSupportAuthorizationLedger authorizationLedger,
+	ICloner cloner)
 {
 	private const string ConfigFileName = "tsc-config.json";
 	private const string LegacyConfigFileName = "raidops-firesupport.json";
@@ -38,6 +41,7 @@ public sealed class FireSupportServerConfigService(
 	};
 
 	private readonly object _gate = new();
+	private readonly SemaphoreSlim _purchaseGate = new(1, 1);
 	private RaidOpsFireSupportServerConfig _config = CreateDefaultConfig();
 	private readonly Dictionary<string, DateTimeOffset> _purchaseRateLimits = new(StringComparer.OrdinalIgnoreCase);
 	private string _configPath = string.Empty;
@@ -143,6 +147,21 @@ public sealed class FireSupportServerConfigService(
 		MongoId sessionId,
 		FireSupportPurchaseRequest request)
 	{
+		await _purchaseGate.WaitAsync();
+		try
+		{
+			return await TryPurchaseSerializedAsync(sessionId, request);
+		}
+		finally
+		{
+			_purchaseGate.Release();
+		}
+	}
+
+	private async Task<FireSupportPurchaseResponse> TryPurchaseSerializedAsync(
+		MongoId sessionId,
+		FireSupportPurchaseRequest request)
+	{
 		RaidOpsFireSupportServerConfig config;
 		lock (_gate)
 		{
@@ -166,6 +185,12 @@ public sealed class FireSupportServerConfigService(
 
 		response.SupportType = supportType.ToString();
 		response.Cost = GetPrice(config, supportType);
+		int requestedQuantity = request.Quantity <= 0 ? 1 : request.Quantity;
+		if (requestedQuantity != 1)
+		{
+			response.Reason = "InvalidQuantity";
+			return response;
+		}
 
 		if (!IsServiceEnabled(config, supportType))
 		{
@@ -187,6 +212,8 @@ public sealed class FireSupportServerConfigService(
 		int newBalance;
 		int chargedFromStash = 0;
 		string profileLedgerId = string.Empty;
+		List<Item>? inventorySnapshot = null;
+		DateTimeOffset purchaseTime = DateTimeOffset.UtcNow;
 		lock (_gate)
 		{
 			if (!TryResolveProfileForPurchase(sessionId, request, out pmc, out saveSessionId, out profileDenialReason))
@@ -195,8 +222,7 @@ public sealed class FireSupportServerConfigService(
 				return response;
 			}
 
-			DateTimeOffset now = DateTimeOffset.UtcNow;
-			if (IsPurchaseRateLimited(saveSessionId, supportType, now))
+			if (IsPurchaseRateLimited(saveSessionId, supportType, purchaseTime))
 			{
 				response.Reason = "RateLimited";
 				response.NewBalance = CountStashRoubles(pmc);
@@ -212,7 +238,6 @@ public sealed class FireSupportServerConfigService(
 					config.PurchasePersistence.PendingUseTimeoutSeconds);
 				string supportKey = GetSupportKey(supportType);
 				int currentCredits = credits.TryGetValue(supportKey, out int count) ? Math.Max(0, count) : 0;
-				int requestedQuantity = Math.Max(1, request.Quantity);
 				if (currentCredits + requestedQuantity > config.PurchasePersistence.MaxStoredAuthorizationsPerService)
 				{
 					response.Reason = "AuthorizationLimitReached";
@@ -230,9 +255,40 @@ public sealed class FireSupportServerConfigService(
 				return response;
 			}
 
-			chargedFromStash = DebitStashRoubles(pmc, response.Cost);
-			newBalance = CountStashRoubles(pmc);
-			MarkPurchaseAttempt(saveSessionId, supportType, now);
+			if (pmc.Inventory?.Items == null)
+			{
+				response.Reason = "ProfileInventoryUnavailable";
+				return response;
+			}
+
+			inventorySnapshot = cloner.Clone(pmc.Inventory.Items);
+			if (inventorySnapshot == null)
+			{
+				response.Reason = "PaymentSnapshotFailed";
+				return response;
+			}
+
+			try
+			{
+				chargedFromStash = DebitStashRoubles(pmc, response.Cost);
+				newBalance = CountStashRoubles(pmc);
+			}
+			catch (Exception ex)
+			{
+				pmc.Inventory.Items = inventorySnapshot;
+				logger.Error($"TSC stash payment mutation failed sessionId={FormatLogId(saveSessionId)}", ex);
+				response.Reason = "PaymentMutationFailed";
+				response.NewBalance = CountStashRoubles(pmc);
+				return response;
+			}
+
+			if (chargedFromStash != response.Cost)
+			{
+				pmc.Inventory.Items = inventorySnapshot;
+				response.Reason = "PaymentMutationFailed";
+				response.NewBalance = CountStashRoubles(pmc);
+				return response;
+			}
 		}
 
 		try
@@ -242,33 +298,47 @@ public sealed class FireSupportServerConfigService(
 		catch (Exception ex)
 		{
 			logger.Error($"TSC stash payment save failed sessionId={FormatLogId(saveSessionId)}", ex);
-			response.Reason = "ProfileSaveFailed";
-			response.NewBalance = newBalance;
-			response.ChargedFromStash = chargedFromStash;
+			bool rolledBack = await TryRollbackStashPaymentAsync(pmc, saveSessionId, inventorySnapshot, "profile save failure");
+			response.Reason = rolledBack ? "ProfileSaveFailed" : "PaymentRollbackFailed";
+			response.NewBalance = CountStashRoubles(pmc);
+			response.ChargedFromStash = rolledBack ? 0 : chargedFromStash;
 			return response;
 		}
 
-		response.Ok = true;
-		response.Reason = "Accepted";
-		response.NewBalance = newBalance;
-		response.ChargedFromStash = chargedFromStash;
-		response.AuthorizationGranted = true;
 		if (config.PurchasePersistence?.Enabled == true)
 		{
-			if (!authorizationLedger.TryGrant(
-				    profileLedgerId,
-				    supportType,
-				    Math.Max(1, request.Quantity),
-				    response.Cost,
-				    config.PurchasePersistence.MaxStoredAuthorizationsPerService,
-				    config.PurchasePersistence.PendingUseTimeoutSeconds,
-				    out Dictionary<string, int> authorizations,
-				    out string ledgerReason))
+			bool granted;
+			Dictionary<string, int> authorizations;
+			string ledgerReason;
+			try
+			{
+				granted = authorizationLedger.TryGrant(
+					profileLedgerId,
+					supportType,
+					requestedQuantity,
+					response.Cost,
+					config.PurchasePersistence.MaxStoredAuthorizationsPerService,
+					config.PurchasePersistence.PendingUseTimeoutSeconds,
+					out authorizations,
+					out ledgerReason);
+			}
+			catch (Exception ex)
+			{
+				logger.Error($"TSC authorization ledger grant threw sessionId={FormatLogId(saveSessionId)} supportType={supportType}", ex);
+				granted = false;
+				authorizations = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+				ledgerReason = "AuthorizationLedgerSaveFailed";
+			}
+
+			if (!granted)
 			{
 				logger.Warning(
 					$"TSC authorization ledger grant failed reason={ledgerReason} sessionId={FormatLogId(saveSessionId)} supportType={supportType}");
+				bool rolledBack = await TryRollbackStashPaymentAsync(pmc, saveSessionId, inventorySnapshot, "authorization grant failure");
 				response.Ok = false;
-				response.Reason = ledgerReason;
+				response.Reason = rolledBack ? ledgerReason : "PaymentRollbackFailed";
+				response.NewBalance = CountStashRoubles(pmc);
+				response.ChargedFromStash = rolledBack ? 0 : chargedFromStash;
 				response.AuthorizationGranted = false;
 				response.Authorizations = authorizations;
 				return response;
@@ -277,9 +347,46 @@ public sealed class FireSupportServerConfigService(
 			response.Authorizations = authorizations;
 		}
 
+		lock (_gate)
+		{
+			MarkPurchaseAttempt(saveSessionId, supportType, DateTimeOffset.UtcNow);
+		}
+
+		response.Ok = true;
+		response.Reason = "Accepted";
+		response.NewBalance = newBalance;
+		response.ChargedFromStash = chargedFromStash;
+		response.AuthorizationGranted = true;
+
 		logger.Success(
 			$"TSC authorization purchased: {supportType}. sessionId={FormatLogId(saveSessionId)} cost={response.Cost} chargedFromStash={chargedFromStash} newBalance={newBalance} revision={config.Revision}");
 		return response;
+	}
+
+	private async Task<bool> TryRollbackStashPaymentAsync(
+		PmcData pmc,
+		MongoId saveSessionId,
+		List<Item>? inventorySnapshot,
+		string reason)
+	{
+		if (inventorySnapshot == null || pmc.Inventory == null)
+		{
+			logger.Error($"TSC stash payment rollback unavailable sessionId={FormatLogId(saveSessionId)} reason={reason}");
+			return false;
+		}
+
+		try
+		{
+			pmc.Inventory.Items = inventorySnapshot;
+			await saveServer.SaveProfileAsync(saveSessionId);
+			logger.Warning($"TSC stash payment rolled back sessionId={FormatLogId(saveSessionId)} reason={reason}");
+			return true;
+		}
+		catch (Exception ex)
+		{
+			logger.Error($"TSC stash payment rollback save failed sessionId={FormatLogId(saveSessionId)} reason={reason}", ex);
+			return false;
+		}
 	}
 
 	public FireSupportPurchaseResponse TryConsumeAuthorization(

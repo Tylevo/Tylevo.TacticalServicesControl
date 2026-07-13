@@ -1,11 +1,13 @@
 using SamSWAT.FireSupport.ArysReloaded.Unity;
 using SPTarkov.DI.Annotations;
+using SPTarkov.Server.Core.Models.Utils;
 using System.Text.Json;
 
 namespace SamSWAT.FireSupport.ArysReloaded;
 
 [Injectable]
-public sealed class FireSupportAuthorizationLedger
+public sealed class FireSupportAuthorizationLedger(
+	ISptLogger<FireSupportAuthorizationLedger> logger)
 {
 	private static readonly JsonSerializerOptions s_jsonOptions = new()
 	{
@@ -39,7 +41,13 @@ public sealed class FireSupportAuthorizationLedger
 	{
 		lock (_gate)
 		{
-			PruneExpiredPendingLocked(TimeSpan.FromSeconds(Math.Max(1, pendingTimeoutSeconds)));
+			FireSupportAuthorizationLedgerState snapshot = CloneState(_state);
+			if (PruneExpiredPendingLocked(TimeSpan.FromSeconds(Math.Max(1, pendingTimeoutSeconds))) &&
+			    !TrySaveMutationLocked(snapshot, out _))
+			{
+				logger.Warning("TSC authorization ledger could not persist expired pending-use cleanup.");
+			}
+
 			FireSupportPlayerAuthorizations profile = GetProfileLocked(profileId);
 			return new Dictionary<string, int>(profile.Credits, StringComparer.OrdinalIgnoreCase);
 		}
@@ -66,6 +74,7 @@ public sealed class FireSupportAuthorizationLedger
 
 		lock (_gate)
 		{
+			FireSupportAuthorizationLedgerState snapshot = CloneState(_state);
 			PruneExpiredPendingLocked(TimeSpan.FromSeconds(Math.Max(1, pendingTimeoutSeconds)));
 			FireSupportPlayerAuthorizations profile = GetProfileLocked(profileId);
 			int current = GetCredit(profile, service);
@@ -79,7 +88,12 @@ public sealed class FireSupportAuthorizationLedger
 
 			profile.Credits[service] = current + quantity;
 			AddTransactionLocked(profile, "Purchase", service, quantity, price, requestId: string.Empty, reason: string.Empty);
-			SaveLocked();
+			if (!TrySaveMutationLocked(snapshot, out reason))
+			{
+				credits = GetCreditsFromStateLocked(profileId);
+				return false;
+			}
+
 			credits = new Dictionary<string, int>(profile.Credits, StringComparer.OrdinalIgnoreCase);
 			return true;
 		}
@@ -105,6 +119,7 @@ public sealed class FireSupportAuthorizationLedger
 		requestId = string.IsNullOrWhiteSpace(requestId) ? Guid.NewGuid().ToString("N") : requestId.Trim();
 		lock (_gate)
 		{
+			FireSupportAuthorizationLedgerState snapshot = CloneState(_state);
 			PruneExpiredPendingLocked(TimeSpan.FromSeconds(Math.Max(1, pendingTimeoutSeconds)));
 			FireSupportPlayerAuthorizations profile = GetProfileLocked(profileId);
 			if (HasTransactionLocked(profile, "Consume", requestId))
@@ -123,8 +138,20 @@ public sealed class FireSupportAuthorizationLedger
 			}
 
 			profile.Credits[service] = current - 1;
+			profile.Pending[requestId] = new FireSupportPendingAuthorizationUse
+			{
+				RequestId = requestId,
+				Service = service,
+				Quantity = 1,
+				CreatedUtc = DateTimeOffset.UtcNow
+			};
 			AddTransactionLocked(profile, "Consume", service, 1, 0, requestId, reason: string.Empty);
-			SaveLocked();
+			if (!TrySaveMutationLocked(snapshot, out reason))
+			{
+				credits = GetCreditsFromStateLocked(profileId);
+				return false;
+			}
+
 			credits = new Dictionary<string, int>(profile.Credits, StringComparer.OrdinalIgnoreCase);
 			return true;
 		}
@@ -151,6 +178,7 @@ public sealed class FireSupportAuthorizationLedger
 
 		lock (_gate)
 		{
+			FireSupportAuthorizationLedgerState snapshot = CloneState(_state);
 			PruneExpiredPendingLocked(TimeSpan.FromSeconds(Math.Max(1, pendingTimeoutSeconds)));
 			FireSupportPlayerAuthorizations profile = GetProfileLocked(profileId);
 			string trimmedRequestId = requestId.Trim();
@@ -163,6 +191,13 @@ public sealed class FireSupportAuthorizationLedger
 
 			if (!profile.Pending.Remove(trimmedRequestId, out FireSupportPendingAuthorizationUse? pending))
 			{
+				if (HasTransactionLocked(profile, "Commit", trimmedRequestId))
+				{
+					credits = new Dictionary<string, int>(profile.Credits, StringComparer.OrdinalIgnoreCase);
+					reason = "AlreadyCommitted";
+					return false;
+				}
+
 				if (!HasTransactionLocked(profile, "Consume", trimmedRequestId))
 				{
 					credits = new Dictionary<string, int>(profile.Credits, StringComparer.OrdinalIgnoreCase);
@@ -183,7 +218,12 @@ public sealed class FireSupportAuthorizationLedger
 			int limit = Math.Max(1, maxStored);
 			profile.Credits[refundService] = Math.Min(limit, GetCredit(profile, refundService) + Math.Max(1, pending.Quantity));
 			AddTransactionLocked(profile, "Refund", refundService, Math.Max(1, pending.Quantity), 0, requestId, refundReason);
-			SaveLocked();
+			if (!TrySaveMutationLocked(snapshot, out reason))
+			{
+				credits = GetCreditsFromStateLocked(profileId);
+				return false;
+			}
+
 			credits = new Dictionary<string, int>(profile.Credits, StringComparer.OrdinalIgnoreCase);
 			return true;
 		}
@@ -208,6 +248,7 @@ public sealed class FireSupportAuthorizationLedger
 
 		lock (_gate)
 		{
+			FireSupportAuthorizationLedgerState snapshot = CloneState(_state);
 			PruneExpiredPendingLocked(TimeSpan.FromSeconds(Math.Max(1, pendingTimeoutSeconds)));
 			FireSupportPlayerAuthorizations profile = GetProfileLocked(profileId);
 			string trimmedRequestId = requestId.Trim();
@@ -215,16 +256,33 @@ public sealed class FireSupportAuthorizationLedger
 			{
 				string committedService = string.IsNullOrWhiteSpace(pending.Service) ? service : pending.Service;
 				AddTransactionLocked(profile, "Commit", committedService, Math.Max(1, pending.Quantity), 0, requestId, "DispatchAccepted");
-				SaveLocked();
+				if (!TrySaveMutationLocked(snapshot, out reason))
+				{
+					credits = GetCreditsFromStateLocked(profileId);
+					return false;
+				}
+
 				credits = new Dictionary<string, int>(profile.Credits, StringComparer.OrdinalIgnoreCase);
 				return true;
 			}
 
-			if (HasTransactionLocked(profile, "Commit", trimmedRequestId) ||
-			    HasTransactionLocked(profile, "Consume", trimmedRequestId))
+			if (HasTransactionLocked(profile, "Commit", trimmedRequestId))
 			{
 				credits = new Dictionary<string, int>(profile.Credits, StringComparer.OrdinalIgnoreCase);
 				reason = "AlreadyConsumed";
+				return true;
+			}
+
+			if (HasTransactionLocked(profile, "Consume", trimmedRequestId))
+			{
+				AddTransactionLocked(profile, "Commit", service, 1, 0, requestId, "DispatchAcceptedLegacyConsume");
+				if (!TrySaveMutationLocked(snapshot, out reason))
+				{
+					credits = GetCreditsFromStateLocked(profileId);
+					return false;
+				}
+
+				credits = new Dictionary<string, int>(profile.Credits, StringComparer.OrdinalIgnoreCase);
 				return true;
 			}
 
@@ -238,7 +296,7 @@ public sealed class FireSupportAuthorizationLedger
 	{
 		if (!File.Exists(_ledgerPath))
 		{
-			return new FireSupportAuthorizationLedgerState();
+			return TryLoadBackup() ?? new FireSupportAuthorizationLedgerState();
 		}
 
 		try
@@ -247,8 +305,18 @@ public sealed class FireSupportAuthorizationLedger
 			return JsonSerializer.Deserialize<FireSupportAuthorizationLedgerState>(json, s_jsonOptions) ??
 			       new FireSupportAuthorizationLedgerState();
 		}
-		catch
+		catch (Exception ex)
 		{
+			logger.Error($"TSC authorization ledger could not be read: {_ledgerPath}", ex);
+			PreserveCorruptLedger();
+			FireSupportAuthorizationLedgerState? backup = TryLoadBackup();
+			if (backup != null)
+			{
+				logger.Warning("TSC authorization ledger recovered from its backup file.");
+				return backup;
+			}
+
+			logger.Warning("TSC authorization ledger started empty because neither the primary nor backup file was readable.");
 			return new FireSupportAuthorizationLedgerState();
 		}
 	}
@@ -256,13 +324,88 @@ public sealed class FireSupportAuthorizationLedger
 	private void SaveLocked()
 	{
 		string tempPath = _ledgerPath + ".tmp";
-		File.WriteAllText(tempPath, JsonSerializer.Serialize(_state, s_jsonOptions));
-		if (File.Exists(_ledgerPath))
+		string backupPath = _ledgerPath + ".bak";
+		try
 		{
-			File.Delete(_ledgerPath);
+			File.WriteAllText(tempPath, JsonSerializer.Serialize(_state, s_jsonOptions));
+			if (File.Exists(_ledgerPath))
+			{
+				File.Replace(tempPath, _ledgerPath, backupPath, ignoreMetadataErrors: true);
+			}
+			else
+			{
+				File.Move(tempPath, _ledgerPath);
+			}
+		}
+		finally
+		{
+			if (File.Exists(tempPath))
+			{
+				File.Delete(tempPath);
+			}
+		}
+	}
+
+	private bool TrySaveMutationLocked(FireSupportAuthorizationLedgerState snapshot, out string reason)
+	{
+		try
+		{
+			SaveLocked();
+			reason = string.Empty;
+			return true;
+		}
+		catch (Exception ex)
+		{
+			_state = snapshot;
+			reason = "AuthorizationLedgerSaveFailed";
+			logger.Error("TSC authorization ledger mutation was rolled back after a disk write failure.", ex);
+			return false;
+		}
+	}
+
+	private FireSupportAuthorizationLedgerState? TryLoadBackup()
+	{
+		string backupPath = _ledgerPath + ".bak";
+		if (!File.Exists(backupPath))
+		{
+			return null;
 		}
 
-		File.Move(tempPath, _ledgerPath);
+		try
+		{
+			string json = File.ReadAllText(backupPath);
+			return JsonSerializer.Deserialize<FireSupportAuthorizationLedgerState>(json, s_jsonOptions);
+		}
+		catch (Exception ex)
+		{
+			logger.Error($"TSC authorization ledger backup could not be read: {backupPath}", ex);
+			return null;
+		}
+	}
+
+	private void PreserveCorruptLedger()
+	{
+		try
+		{
+			string timestamp = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss");
+			File.Move(_ledgerPath, _ledgerPath + $".corrupt-{timestamp}", overwrite: true);
+		}
+		catch (Exception ex)
+		{
+			logger.Error("TSC authorization ledger could not preserve the corrupt primary file.", ex);
+		}
+	}
+
+	private static FireSupportAuthorizationLedgerState CloneState(FireSupportAuthorizationLedgerState state)
+	{
+		string json = JsonSerializer.Serialize(state, s_jsonOptions);
+		return JsonSerializer.Deserialize<FireSupportAuthorizationLedgerState>(json, s_jsonOptions) ?? new FireSupportAuthorizationLedgerState();
+	}
+
+	private Dictionary<string, int> GetCreditsFromStateLocked(string profileId)
+	{
+		FireSupportPlayerAuthorizations profile = GetProfileLocked(profileId);
+		return new Dictionary<string, int>(profile.Credits, StringComparer.OrdinalIgnoreCase);
 	}
 
 	private FireSupportPlayerAuthorizations GetProfileLocked(string profileId)
@@ -276,8 +419,9 @@ public sealed class FireSupportAuthorizationLedger
 		return profile;
 	}
 
-	private void PruneExpiredPendingLocked(TimeSpan timeout)
+	private bool PruneExpiredPendingLocked(TimeSpan timeout)
 	{
+		bool changed = false;
 		DateTimeOffset cutoff = DateTimeOffset.UtcNow - timeout;
 		foreach (FireSupportPlayerAuthorizations profile in _state.Profiles.Values)
 		{
@@ -288,12 +432,15 @@ public sealed class FireSupportAuthorizationLedger
 			{
 				FireSupportPendingAuthorizationUse pending = profile.Pending[requestId];
 				profile.Pending.Remove(requestId);
+				changed = true;
 				if (!string.IsNullOrWhiteSpace(pending.Service))
 				{
 					AddTransactionLocked(profile, "CommitExpiredPending", pending.Service, Math.Max(1, pending.Quantity), 0, requestId, "PendingUseTimeout");
 				}
 			}
 		}
+
+		return changed;
 	}
 
 	private static int GetCredit(FireSupportPlayerAuthorizations profile, string service)

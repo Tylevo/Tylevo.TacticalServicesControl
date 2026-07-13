@@ -60,6 +60,12 @@ internal static class PluginSettings
 	internal static ConfigEntry<KeyboardShortcut> OpenUplinkKey { get; private set; }
 	internal static ConfigEntry<KeyboardShortcut> OpenDeployKey { get; private set; }
 	internal static ConfigEntry<KeyboardShortcut> SpotterConfirmKey { get; private set; }
+	internal static ConfigEntry<bool> PhoneAutoZoomEnabled { get; private set; }
+	internal static ConfigEntry<float> PhoneZoomFov { get; private set; }
+	internal static ConfigEntry<float> PhoneZoomVerticalFraming { get; private set; }
+	internal static ConfigEntry<float> PhoneZoomHorizontalFraming { get; private set; }
+	private static ConfigEntry<bool> PhoneFramingDefaultsMigrated { get; set; }
+	private static ConfigEntry<bool> PhoneHorizontalDefaultMigrated { get; set; }
 	internal static ConfigEntry<float> PhoneDeployPoseNormalizedTime { get; private set; }
 	internal static ConfigEntry<bool> PhoneDeployHideRightHand { get; private set; }
 	internal static ConfigEntry<bool> LegacyRadialEnabled { get; private set; }
@@ -329,6 +335,44 @@ internal static class PluginSettings
 			"Spotter confirm key",
 			new KeyboardShortcut(KeyCode.Mouse2),
 			HiddenDescription("Confirms spotter targeting steps (position, direction). LMB also confirms while the rangefinder is in hands, but with a weapon out it would fire, so this key is the safe confirm. Enter always works too."));
+		PhoneAutoZoomEnabled = config.Bind(
+			"TerraGroup Phone",
+			"Automatic phone zoom",
+			true,
+			new ConfigDescription("Temporarily narrows the camera FOV while the local TerraGroup TSC Uplink is in your hands, then restores the previous FOV when it is stowed."));
+		PhoneZoomFov = config.Bind(
+			"TerraGroup Phone",
+			"Phone zoom FOV",
+			42f,
+			new ConfigDescription(
+				"Camera FOV used while the TerraGroup TSC Uplink is raised. Lower values make the phone appear larger. Applies the next time the phone is raised.",
+				new AcceptableValueRange<float>(20f, 75f)));
+		PhoneZoomVerticalFraming = config.Bind(
+			"TerraGroup Phone",
+			"Phone vertical framing",
+			0.09f,
+			new ConfigDescription(
+				"Raises or lowers the first-person phone while automatic phone zoom is active. Positive values raise the phone toward screen center; negative values lower it.",
+				new AcceptableValueRange<float>(-0.25f, 0.25f)));
+		PhoneZoomHorizontalFraming = config.Bind(
+			"TerraGroup Phone",
+			"Phone horizontal framing",
+			-0.004f,
+			new ConfigDescription(
+				"Moves the first-person phone horizontally while automatic phone zoom is active. Positive values move the phone right; negative values move it left.",
+				new AcceptableValueRange<float>(-0.15f, 0.15f)));
+		PhoneFramingDefaultsMigrated = config.Bind(
+			"Internal",
+			"Phone framing defaults migrated",
+			false,
+			HiddenDescription("Internal migration flag for the less aggressive phone framing defaults."));
+		MigratePhoneFramingDefaults();
+		PhoneHorizontalDefaultMigrated = config.Bind(
+			"Internal",
+			"Phone horizontal default migrated",
+			false,
+			HiddenDescription("Internal migration flag for the centered phone horizontal framing default."));
+		MigratePhoneHorizontalDefault();
 		// Intentionally left visible in the F12 config manager for live pose
 		// tuning: adjust, reopen the deploy phone, and the new freeze frame
 		// applies immediately.
@@ -615,9 +659,8 @@ internal static class PluginSettings
 		RemoveFromConfigManager(config, FocusedSweepScanInterval);
 		RemoveFromConfigManager(config, FocusedSweepRangeMeters);
 		RemoveFromConfigManager(config, UavRadarPalette);
-		RemoveFromConfigManager(config, OpenUplinkKey);
-		RemoveFromConfigManager(config, OpenDeployKey);
-		RemoveFromConfigManager(config, SpotterConfirmKey);
+		RemoveFromConfigManager(config, PhoneFramingDefaultsMigrated);
+		RemoveFromConfigManager(config, PhoneHorizontalDefaultMigrated);
 		RemoveFromConfigManager(config, LegacyRadialEnabled);
 		RemoveFromConfigManager(config, PhoneForceOpaqueLcdDebug);
 		RemoveFromConfigManager(config, PhoneLcdBackgroundCleanupStrength);
@@ -674,6 +717,49 @@ internal static class PluginSettings
 		if (A10HeadlessRequesterSelfDamageDefaultMigrated != null)
 		{
 			A10HeadlessRequesterSelfDamageDefaultMigrated.Value = true;
+		}
+	}
+
+	private static void MigratePhoneFramingDefaults()
+	{
+		if (PhoneFramingDefaultsMigrated?.Value == true)
+		{
+			return;
+		}
+
+		if (PhoneZoomFov != null && Mathf.Approximately(PhoneZoomFov.Value, 38f))
+		{
+			PhoneZoomFov.Value = 42f;
+		}
+
+		if (PhoneZoomVerticalFraming != null &&
+		    Mathf.Approximately(PhoneZoomVerticalFraming.Value, 0.12f))
+		{
+			PhoneZoomVerticalFraming.Value = 0.09f;
+		}
+
+		if (PhoneFramingDefaultsMigrated != null)
+		{
+			PhoneFramingDefaultsMigrated.Value = true;
+		}
+	}
+
+	private static void MigratePhoneHorizontalDefault()
+	{
+		if (PhoneHorizontalDefaultMigrated?.Value == true)
+		{
+			return;
+		}
+
+		if (PhoneZoomHorizontalFraming != null &&
+		    Mathf.Approximately(PhoneZoomHorizontalFraming.Value, 0.035f))
+		{
+			PhoneZoomHorizontalFraming.Value = -0.004f;
+		}
+
+		if (PhoneHorizontalDefaultMigrated != null)
+		{
+			PhoneHorizontalDefaultMigrated.Value = true;
 		}
 	}
 
