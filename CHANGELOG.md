@@ -1,11 +1,5 @@
 # Changelog
 
-## Unreleased
-
-### Changed
-
-- Increased the default automatic phone zoom FOV from 42 to 45 for a slightly wider, more natural view. Existing custom FOV values are preserved; only the previous untouched 42 default is migrated.
-
 ## 0.9.8 - Public Beta (released as v1.0.8)
 
 ### Added
@@ -39,6 +33,7 @@
 - The old YY radial and its rangefinder flow are still available behind the new "Enable legacy YY radial" config toggle (default off) for this release, and will be removed once the deploy phone is stable.
 - Fika A-10 authority is now explicit: single-player and a human Fika host keep the original Arys runtime/ballistic path; a Fika client is visual-only; a dedicated headless host may use only the gated experimental damage path.
 - A-10 requester attribution is tracked separately from projectile ownership, with detailed authority, owner, candidate, tracer, and fallback diagnostics for headless testing.
+- Increased the default automatic phone zoom FOV from 42 to 45 for a slightly wider, more natural view. Existing custom FOV values are preserved; only the previous untouched 42 default is migrated.
 
 ### Known Issues
 
