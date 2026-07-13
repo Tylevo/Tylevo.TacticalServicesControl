@@ -12,7 +12,7 @@ This is the first Forge release after v1.0.6. Version 1.0.7 was used for GitHub/
 ## Highlights
 
 - Support deployment now happens from the TSC Uplink phone. Buy an authorization, press the configurable deploy key, select the exact service you purchased, and designate the target without carrying the rangefinder.
-- The phone can automatically zoom and reframe itself while raised. FOV and horizontal/vertical framing are configurable in F12 and restore cleanly when the phone is stowed.
+- The phone can automatically zoom and reframe itself while raised. Its default zoom FOV is now 45 for a slightly wider view; FOV and horizontal/vertical framing remain configurable in F12 and restore cleanly when the phone is stowed. Existing custom FOV values are preserved.
 - Purchase, deploy, and spotter-confirm keybinds are now visible in F12.
 - A-10 single and double passes stay separate from purchase through deployment, so selecting one no longer spends or launches the other.
 

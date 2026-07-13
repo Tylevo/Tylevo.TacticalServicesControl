@@ -66,6 +66,7 @@ internal static class PluginSettings
 	internal static ConfigEntry<float> PhoneZoomHorizontalFraming { get; private set; }
 	private static ConfigEntry<bool> PhoneFramingDefaultsMigrated { get; set; }
 	private static ConfigEntry<bool> PhoneHorizontalDefaultMigrated { get; set; }
+	private static ConfigEntry<bool> PhoneZoomFovDefaultMigrated { get; set; }
 	internal static ConfigEntry<float> PhoneDeployPoseNormalizedTime { get; private set; }
 	internal static ConfigEntry<bool> PhoneDeployHideRightHand { get; private set; }
 	internal static ConfigEntry<bool> LegacyRadialEnabled { get; private set; }
@@ -343,7 +344,7 @@ internal static class PluginSettings
 		PhoneZoomFov = config.Bind(
 			"TerraGroup Phone",
 			"Phone zoom FOV",
-			42f,
+			45f,
 			new ConfigDescription(
 				"Camera FOV used while the TerraGroup TSC Uplink is raised. Lower values make the phone appear larger. Applies the next time the phone is raised.",
 				new AcceptableValueRange<float>(20f, 75f)));
@@ -373,6 +374,12 @@ internal static class PluginSettings
 			false,
 			HiddenDescription("Internal migration flag for the centered phone horizontal framing default."));
 		MigratePhoneHorizontalDefault();
+		PhoneZoomFovDefaultMigrated = config.Bind(
+			"Internal",
+			"Phone zoom FOV default migrated",
+			false,
+			HiddenDescription("Internal migration flag for the wider phone zoom FOV default."));
+		MigratePhoneZoomFovDefault();
 		// Intentionally left visible in the F12 config manager for live pose
 		// tuning: adjust, reopen the deploy phone, and the new freeze frame
 		// applies immediately.
@@ -661,6 +668,7 @@ internal static class PluginSettings
 		RemoveFromConfigManager(config, UavRadarPalette);
 		RemoveFromConfigManager(config, PhoneFramingDefaultsMigrated);
 		RemoveFromConfigManager(config, PhoneHorizontalDefaultMigrated);
+		RemoveFromConfigManager(config, PhoneZoomFovDefaultMigrated);
 		RemoveFromConfigManager(config, LegacyRadialEnabled);
 		RemoveFromConfigManager(config, PhoneForceOpaqueLcdDebug);
 		RemoveFromConfigManager(config, PhoneLcdBackgroundCleanupStrength);
@@ -760,6 +768,24 @@ internal static class PluginSettings
 		if (PhoneHorizontalDefaultMigrated != null)
 		{
 			PhoneHorizontalDefaultMigrated.Value = true;
+		}
+	}
+
+	private static void MigratePhoneZoomFovDefault()
+	{
+		if (PhoneZoomFovDefaultMigrated?.Value == true)
+		{
+			return;
+		}
+
+		if (PhoneZoomFov != null && Mathf.Approximately(PhoneZoomFov.Value, 42f))
+		{
+			PhoneZoomFov.Value = 45f;
+		}
+
+		if (PhoneZoomFovDefaultMigrated != null)
+		{
+			PhoneZoomFovDefaultMigrated.Value = true;
 		}
 	}
 
