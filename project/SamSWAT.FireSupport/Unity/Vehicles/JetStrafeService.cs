@@ -56,23 +56,40 @@ public sealed class JetStrafeService(
 			.StartCooldown(FireSupportTuningSettings.GetRequestCooldown(), cancellationToken, OnCooldownOver)
 			.Forget();
 		FireSupportAudio.Instance.PlayVoiceover(EVoiceoverType.StationStrafeRequest);
-		await UniTask.WaitForSeconds(8f, cancellationToken: cancellationToken);
-
-		Vector3 pos = (strafeStartPos + strafeEndPos) / 2;
-		Vector3 dir = (strafeEndPos - strafeStartPos).normalized;
 		bool doublePass = authorizationUse.ConsumedAuthorizationType == ESupportType.DoubleStrafe;
-		bool success = await ExecuteStrafePass(pos, dir, passIndex: 0, cancellationToken: cancellationToken);
-		if (success)
+		bool success = false;
+		try
 		{
-			FireSupportPayment.CommitConsumedAuthorization(authorizationUse);
+			await UniTask.WaitForSeconds(8f, cancellationToken: cancellationToken);
+
+			Vector3 pos = (strafeStartPos + strafeEndPos) / 2;
+			Vector3 dir = (strafeEndPos - strafeStartPos).normalized;
+			success = await ExecuteStrafePass(pos, dir, passIndex: 0, cancellationToken: cancellationToken);
+			if (success && doublePass)
+			{
+				if (cancellationToken.IsCancellationRequested)
+				{
+					success = false;
+				}
+				else
+				{
+					float delay = Mathf.Max(0f, FireSupportTuningSettings.GetDoubleStrafeSecondPassDelay());
+					FireSupportPlugin.LogSource.LogInfo($"A-10 double pass authorized; second pass in {delay:0.0}s.");
+					await UniTask.WaitForSeconds(delay, cancellationToken: cancellationToken);
+					success = await ExecuteStrafePass(pos, -dir, passIndex: 1, cancellationToken: cancellationToken);
+				}
+			}
+		}
+		catch (OperationCanceledException)
+		{
+			success = false;
 		}
 
-		if (success && doublePass && !cancellationToken.IsCancellationRequested)
+		if (success)
 		{
-			float delay = Mathf.Max(0f, FireSupportTuningSettings.GetDoubleStrafeSecondPassDelay());
-			FireSupportPlugin.LogSource.LogInfo($"A-10 double pass authorized; second pass in {delay:0.0}s.");
-			await UniTask.WaitForSeconds(delay, cancellationToken: cancellationToken);
-			success = await ExecuteStrafePass(pos, -dir, passIndex: 1, cancellationToken: cancellationToken);
+			// A double-pass authorization remains pending until both requested
+			// passes complete successfully.
+			FireSupportPayment.CommitConsumedAuthorization(authorizationUse);
 		}
 
 		if (!success && authorizationUse.ConsumedAuthorization)

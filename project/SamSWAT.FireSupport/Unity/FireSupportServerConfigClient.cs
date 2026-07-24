@@ -15,12 +15,15 @@ namespace SamSWAT.FireSupport.ArysReloaded.Unity;
 
 public static class FireSupportServerConfigClient
 {
+	private static readonly object s_profileMutationGate = new();
 	private static CancellationTokenSource s_refreshCts;
 	private static bool s_initialized;
-	private static bool s_suppressedByFikaClient;
+	private static bool s_globalSettingsSuppressedByFikaClient;
 	private static bool s_raidActive;
 	private static string s_hostPurchaseBaseUrl;
 	private static int s_hostPurchaseRevision;
+	private static long s_profileMutationEpoch;
+	private static int s_profileMutationsInFlight;
 
 	public static void Initialize()
 	{
@@ -55,19 +58,17 @@ public static class FireSupportServerConfigClient
 
 	public static void SetFikaClientHostAuthorityActive(bool active, string reason)
 	{
-		if (s_suppressedByFikaClient == active)
+		if (s_globalSettingsSuppressedByFikaClient == active)
 		{
 			return;
 		}
 
-		s_suppressedByFikaClient = active;
+		s_globalSettingsSuppressedByFikaClient = active;
 		TscDiagnostics.LogPayment(
-			$"TSC server URL config {(active ? "suppressed by Fika host authority" : "resumed after Fika host authority cleared")}: {reason}");
+			$"TSC server global settings {(active ? "suppressed by Fika host authority" : "resumed after Fika host authority cleared")}; per-profile sync remains active: {reason}");
 		if (active)
 		{
-			StopRefresh();
-			ClearServerOverrides(notify: true);
-			return;
+			ClearServerGlobalOverrides(notify: true);
 		}
 
 		RestartRefresh(reason);
@@ -109,6 +110,7 @@ public static class FireSupportServerConfigClient
 			ServerRevision = Math.Max(clientKnownRevision, s_hostPurchaseRevision)
 		};
 
+		BeginProfileMutation();
 		try
 		{
 			var body = new FireSupportPurchaseRequest
@@ -136,6 +138,10 @@ public static class FireSupportServerConfigClient
 			FireSupportPlugin.LogSource.LogWarning($"FireSupport purchase request failed. {ex}");
 			fallback.Reason = "RequestFailed";
 			return fallback;
+		}
+		finally
+		{
+			EndProfileMutation();
 		}
 	}
 
@@ -178,6 +184,7 @@ public static class FireSupportServerConfigClient
 			ServerRevision = Math.Max(clientKnownRevision, s_hostPurchaseRevision)
 		};
 
+		BeginProfileMutation();
 		try
 		{
 			var body = new FireSupportPurchaseRequest
@@ -207,6 +214,10 @@ public static class FireSupportServerConfigClient
 			fallback.Reason = "RequestFailed";
 			return fallback;
 		}
+		finally
+		{
+			EndProfileMutation();
+		}
 	}
 
 	private static void SubscribeSetting<T>(ConfigEntry<T> entry)
@@ -228,14 +239,14 @@ public static class FireSupportServerConfigClient
 	private static void RestartRefresh(string reason)
 	{
 		StopRefresh();
-		if (!ShouldFetchLocalServerConfig())
+		if (!ShouldFetchPlayerState())
 		{
-			if (!s_suppressedByFikaClient)
-			{
-				ClearServerOverrides(notify: true);
-			}
-
 			return;
+		}
+
+		if (!ShouldApplyLocalGlobalSettings())
+		{
+			ClearServerGlobalOverrides(notify: false);
 		}
 
 		s_refreshCts = new CancellationTokenSource();
@@ -251,8 +262,8 @@ public static class FireSupportServerConfigClient
 
 	private static async UniTaskVoid RefreshLoop(string reason, CancellationToken cancellationToken)
 	{
-		TscDiagnostics.LogPayment($"TSC server config refresh started: {reason}");
-		while (!cancellationToken.IsCancellationRequested && ShouldFetchLocalServerConfig())
+		TscDiagnostics.LogPayment($"TSC authenticated player-state refresh started: {reason}");
+		while (!cancellationToken.IsCancellationRequested && ShouldFetchPlayerState())
 		{
 			await FetchConfigOnce(cancellationToken);
 
@@ -272,6 +283,7 @@ public static class FireSupportServerConfigClient
 		{
 			string route = BuildConfigRoute();
 			TscDiagnostics.LogPayment($"TSC server config requested: {route}");
+			long mutationEpochAtRequest = CaptureProfileMutationEpoch();
 			string body = await SendServerRequestAsync(HttpMethod.Get, route, null, cancellationToken);
 			RaidOpsFireSupportServerConfig snapshot = JsonConvert.DeserializeObject<RaidOpsFireSupportServerConfig>(body);
 			if (snapshot == null)
@@ -280,7 +292,10 @@ public static class FireSupportServerConfigClient
 				return;
 			}
 
-			ApplySnapshot(snapshot);
+			// Close the final gap between an uncancellable RequestHandler task
+			// completing and installing its snapshot into the active raid.
+			cancellationToken.ThrowIfCancellationRequested();
+			ApplySnapshot(snapshot, mutationEpochAtRequest);
 		}
 		catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
 		{
@@ -291,32 +306,97 @@ public static class FireSupportServerConfigClient
 		}
 	}
 
-	private static void ApplySnapshot(RaidOpsFireSupportServerConfig snapshot)
+	private static void ApplySnapshot(
+		RaidOpsFireSupportServerConfig snapshot,
+		long mutationEpochAtRequest)
 	{
 		int revision = Math.Max(0, snapshot.Revision);
-		FireSupportPayment.SetServerConfigCosts(
+		bool playerStateIncluded = snapshot.PlayerStateIncluded || snapshot.StashRoubleBalance.HasValue;
+		bool playerStateApplied = false;
+		if (playerStateIncluded)
+		{
+			playerStateApplied = TryApplyPlayerState(
+				snapshot,
+				revision,
+				mutationEpochAtRequest);
+			if (!playerStateApplied)
+			{
+				TscDiagnostics.LogPayment(
+					$"TSC player-state snapshot skipped as potentially stale; mutation overlapped config GET epoch={mutationEpochAtRequest}.");
+			}
+			else if (!snapshot.PlayerStateIncluded)
+			{
+				// v1.0.8 predates PlayerStateIncluded. Its server only populated
+				// the nullable stash balance after resolving the authenticated
+				// profile, preserving legacy authoritative-empty ledgers.
+				TscDiagnostics.LogPayment(
+					"TSC inferred authenticated player state from a legacy snapshot stash balance.");
+			}
+
+		}
+		else
+		{
+			FireSupportPlugin.LogSource.LogWarning(
+				"TSC config snapshot did not include authenticated player state; preserving the last known stash, persistence, and authorization state.");
+		}
+
+		if (ShouldApplyLocalGlobalSettings())
+		{
+			ApplyGlobalSettings(snapshot, revision);
+		}
+
+		FireSupportPayment.NotifySettingsChanged(snapshot);
+		TscDiagnostics.LogPayment(
+			$"TSC server snapshot loaded revision={revision} playerStateIncluded={playerStateIncluded} playerStateApplied={playerStateApplied} authorizations={(playerStateIncluded ? snapshot.Authorizations?.Count ?? 0 : -1)} stashBalance={(playerStateIncluded && snapshot.StashRoubleBalance.HasValue ? snapshot.StashRoubleBalance.Value.ToString() : "unknown")} globalsApplied={ShouldApplyLocalGlobalSettings()}");
+	}
+
+	private static bool TryApplyPlayerState(
+		RaidOpsFireSupportServerConfig snapshot,
+		int revision,
+		long mutationEpochAtRequest)
+	{
+		lock (s_profileMutationGate)
+		{
+			if (s_profileMutationEpoch != mutationEpochAtRequest ||
+			    s_profileMutationsInFlight != 0)
+			{
+				return false;
+			}
+
+			// Keep application atomic with mutation start/end so a POST cannot
+			// begin after the freshness check but before the ledger is installed.
+			ApplyPlayerState(snapshot, revision);
+			return true;
+		}
+	}
+
+	private static void ApplyPlayerState(RaidOpsFireSupportServerConfig snapshot, int revision)
+	{
+		FireSupportPayment.SetServerProfileState(
+			revision,
+			snapshot.StashRoubleBalance,
+			snapshot.PurchasePersistence?.Enabled == true,
+			snapshot.PurchasePersistence?.RefundFailedDispatch != false,
+			snapshot.PurchasePersistence?.SpendCreditsBeforeCash != false,
+			snapshot.PurchasePersistence?.AllowAutoPurchaseOnUse == true);
+		if (snapshot.Authorizations != null)
+		{
+			// A present empty ledger is authoritative and must clear stale credits.
+			FireSupportAuthorizations.SetFromServer(snapshot.Authorizations);
+		}
+	}
+
+	private static void ApplyGlobalSettings(RaidOpsFireSupportServerConfig snapshot, int revision)
+	{
+		FireSupportPayment.SetServerConfigGlobals(
 			GetPrice(snapshot, "A10", ESupportType.Strafe),
 			GetPrice(snapshot, "DoublePass", ESupportType.DoubleStrafe),
 			GetPrice(snapshot, "Extraction", ESupportType.Extract),
 			GetPrice(snapshot, "PriorityExfil", ESupportType.PriorityExfil),
 			GetPrice(snapshot, "Uav", ESupportType.Uav),
 			GetPrice(snapshot, "FocusedSweep", ESupportType.FocusedSweep),
-			revision);
-		FireSupportPayment.SetServerConfigPayment(
 			ParseEnum(snapshot.PaymentMode, FireSupportPayment.GetConfiguredPaymentMode()),
-			ParseEnum(snapshot.PaymentSource, FireSupportPayment.GetConfiguredPaymentSource()),
-			revision,
-			snapshot.StashRoubleBalance);
-		FireSupportPayment.SetServerPurchasePersistence(
-			snapshot.PurchasePersistence?.Enabled == true,
-			snapshot.PurchasePersistence?.RefundFailedDispatch != false,
-			snapshot.PurchasePersistence?.SpendCreditsBeforeCash != false,
-			snapshot.PurchasePersistence?.AllowAutoPurchaseOnUse == true,
-			revision);
-		if (snapshot.Authorizations != null)
-		{
-			FireSupportAuthorizations.SetFromServer(snapshot.Authorizations);
-		}
+			ParseEnum(snapshot.PaymentSource, FireSupportPayment.GetConfiguredPaymentSource()));
 		FireSupportServiceAvailability.SetServerConfigAvailability(
 			GetEnabled(snapshot, "PriorityExfil", FireSupportServiceAvailability.GetConfiguredPriorityExfilEnabled()),
 			GetEnabled(snapshot, "DoublePass", FireSupportServiceAvailability.GetConfiguredDoublePassEnabled()),
@@ -333,9 +413,6 @@ public static class FireSupportServerConfigClient
 			snapshot.RequestCooldownSeconds,
 			revision);
 		FireSupportServerConfigClient.ApplyUavSettings(snapshot, revision);
-		FireSupportPayment.NotifySettingsChanged(snapshot);
-		TscDiagnostics.LogPayment(
-			$"TSC server config loaded revision={revision} paymentSource={snapshot.PaymentSource} stashBalance={(snapshot.StashRoubleBalance.HasValue ? snapshot.StashRoubleBalance.Value.ToString() : "unknown")}");
 	}
 
 	private static void ApplyUavSettings(RaidOpsFireSupportServerConfig snapshot, int revision)
@@ -355,11 +432,19 @@ public static class FireSupportServerConfigClient
 	}
 	private static void HandleConfigFailure(string reason)
 	{
-		FireSupportPlugin.LogSource.LogWarning($"TSC server config failed: {reason}");
+		FireSupportPlugin.LogSource.LogWarning($"TSC authenticated player-state refresh failed: {reason}");
+		if (!ShouldApplyLocalGlobalSettings())
+		{
+			// Fika host globals are a separate authority domain. A player-state
+			// failure must not clear or mark those synchronized settings invalid.
+			FireSupportPayment.NotifySettingsChanged(reason);
+			return;
+		}
+
 		FireSupportPayment.MarkServerConfigUnavailable(reason);
 		if (!ShouldRequireServerConfig())
 		{
-			ClearServerOverrides(notify: true);
+			ClearServerGlobalOverrides(notify: true);
 		}
 		else
 		{
@@ -367,15 +452,15 @@ public static class FireSupportServerConfigClient
 		}
 	}
 
-	private static void ClearServerOverrides(bool notify)
+	private static void ClearServerGlobalOverrides(bool notify)
 	{
-		FireSupportPayment.ClearServerConfig();
+		FireSupportPayment.ClearServerGlobalConfig();
 		FireSupportServiceAvailability.ClearServerConfigAvailability();
 		FireSupportTuningSettings.ClearServerConfigTuning();
 		UavReconSettings.ClearServerConfigDuration();
 		if (notify)
 		{
-			FireSupportPayment.NotifySettingsChanged("TSC server URL config cleared");
+			FireSupportPayment.NotifySettingsChanged("TSC local server global settings cleared");
 		}
 	}
 
@@ -412,15 +497,51 @@ public static class FireSupportServerConfigClient
 			: fallback;
 	}
 
-	private static bool ShouldFetchLocalServerConfig()
+	private static bool ShouldFetchPlayerState()
 	{
-		return s_raidActive && PluginSettings.UseServerConfigUrl?.Value == true && !s_suppressedByFikaClient;
+		// The /tsc/config route uses the game's authenticated SPT backend
+		// connection. Per-profile ledger, persistence, and stash state therefore
+		// remain safe and necessary even when the legacy URL toggle is false or a
+		// Fika host owns all raid-global settings.
+		return s_raidActive;
+	}
+
+	private static bool ShouldApplyLocalGlobalSettings()
+	{
+		return PluginSettings.UseServerConfigUrl?.Value == true &&
+		       !s_globalSettingsSuppressedByFikaClient;
 	}
 
 	private static bool ShouldRequireServerConfig()
 	{
 		return PluginSettings.UseServerConfigUrl?.Value == true &&
 		       PluginSettings.RequireServerConfigInFika?.Value == true;
+	}
+
+	private static void BeginProfileMutation()
+	{
+		lock (s_profileMutationGate)
+		{
+			s_profileMutationEpoch++;
+			s_profileMutationsInFlight++;
+		}
+	}
+
+	private static void EndProfileMutation()
+	{
+		lock (s_profileMutationGate)
+		{
+			s_profileMutationsInFlight--;
+			s_profileMutationEpoch++;
+		}
+	}
+
+	private static long CaptureProfileMutationEpoch()
+	{
+		lock (s_profileMutationGate)
+		{
+			return s_profileMutationEpoch;
+		}
 	}
 
 	// All in-game TSC server calls go through SPT's RequestHandler, which uses the
@@ -436,9 +557,14 @@ public static class FireSupportServerConfigClient
 		CancellationToken cancellationToken)
 	{
 		string path = "/tsc/" + route;
-		return method == HttpMethod.Post
+		cancellationToken.ThrowIfCancellationRequested();
+		string response = method == HttpMethod.Post
 			? await RequestHandler.PostJsonAsync(path, jsonBody ?? string.Empty).AsUniTask()
 			: await RequestHandler.GetJsonAsync(path).AsUniTask();
+		// RequestHandler does not accept a CancellationToken. Recheck after its
+		// task completes so a stopped refresh cannot apply an old raid's profile.
+		cancellationToken.ThrowIfCancellationRequested();
+		return response;
 	}
 
 	private static string BuildConfigRoute()

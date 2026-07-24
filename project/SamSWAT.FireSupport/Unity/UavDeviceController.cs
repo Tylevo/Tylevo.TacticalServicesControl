@@ -732,6 +732,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 
 	private void ShowDeployScreen()
 	{
+		RefreshDeployEntries();
 		if (_deployEntries != null && _deployEntries.Count > 0)
 		{
 			int index = Mathf.Clamp(_deploySelectionIndex, 0, _deployEntries.Count - 1);
@@ -744,6 +745,14 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 
 	private void HandleDeployInput()
 	{
+		if (RefreshDeployEntries())
+		{
+			// SettingsChanged rebuilds the renderer when hydration completes,
+			// while this refresh keeps the controller's selectable list atomic
+			// with that display without rebuilding the phone every frame.
+			ShowDeployScreen();
+		}
+
 		// Cancel is gated behind the same arming delay as deploy: stale input
 		// state from the equip frame phantom-fired these on open, stowing the
 		// phone instantly.
@@ -806,6 +815,68 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 			FireSupportPlugin.LogSource.LogInfo($"TSC deploy phone committed deployment: {selected}.");
 			FinishDeploySession(success: true);
 		}
+	}
+
+	private bool RefreshDeployEntries()
+	{
+		System.Collections.Generic.List<ESupportType> currentEntries = FireSupportDeployMenu.GetOwnedEntries();
+		if (HaveSameDeployEntries(_deployEntries, currentEntries))
+		{
+			return false;
+		}
+
+		ESupportType previousSelection = ESupportType.None;
+		if (_deployEntries != null && _deployEntries.Count > 0)
+		{
+			int previousIndex = Mathf.Clamp(_deploySelectionIndex, 0, _deployEntries.Count - 1);
+			previousSelection = _deployEntries[previousIndex];
+		}
+
+		_deployEntries = currentEntries;
+		if (_deployEntries.Count == 0)
+		{
+			_deploySelectionIndex = 0;
+			_selectedSupportType = ESupportType.None;
+		}
+		else
+		{
+			int preservedIndex = previousSelection == ESupportType.None
+				? -1
+				: _deployEntries.IndexOf(previousSelection);
+			_deploySelectionIndex = preservedIndex >= 0
+				? preservedIndex
+				: Mathf.Clamp(_deploySelectionIndex, 0, _deployEntries.Count - 1);
+			_selectedSupportType = _deployEntries[_deploySelectionIndex];
+		}
+
+		TscDiagnostics.LogPhone(
+			$"TSC deploy phone entries refreshed count={_deployEntries.Count} selection={_selectedSupportType}.");
+		return true;
+	}
+
+	private static bool HaveSameDeployEntries(
+		System.Collections.Generic.List<ESupportType> left,
+		System.Collections.Generic.List<ESupportType> right)
+	{
+		if (ReferenceEquals(left, right))
+		{
+			return true;
+		}
+
+		if (left == null || right == null || left.Count != right.Count)
+		{
+			return false;
+		}
+
+		for (var i = 0; i < left.Count; i++)
+		{
+			if (left[i] != right[i])
+			{
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	private void HideRightArmForDeployHold()

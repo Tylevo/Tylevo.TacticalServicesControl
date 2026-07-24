@@ -176,6 +176,28 @@ public static class FireSupportPayment
 			$"Using server URL TSC prices revision={revision}: A-10={FormatRoubles(strafeCost)}, A-10 double pass={FormatRoubles(doubleStrafeCost)}, UH-60={FormatRoubles(extractionCost)}, Priority exfil={FormatRoubles(priorityExfilCost)}, UAV={FormatRoubles(uavCost)}, Focused sweep={FormatRoubles(focusedSweepCost)}");
 	}
 
+	public static void SetServerConfigGlobals(
+		int strafeCost,
+		int doubleStrafeCost,
+		int extractionCost,
+		int priorityExfilCost,
+		int uavCost,
+		int focusedSweepCost,
+		PaymentMode paymentMode,
+		PaymentSource paymentSource)
+	{
+		_serverStrafeCost = strafeCost;
+		_serverDoubleStrafeCost = doubleStrafeCost;
+		_serverExtractionCost = extractionCost;
+		_serverPriorityExfilCost = priorityExfilCost;
+		_serverUavCost = uavCost;
+		_serverFocusedSweepCost = focusedSweepCost;
+		_serverPaymentMode = paymentMode;
+		_serverPaymentSource = paymentSource;
+		TscDiagnostics.LogPayment(
+			$"Using server URL TSC globals: mode={paymentMode}, source={paymentSource}, A-10={FormatRoubles(strafeCost)}, A-10 double pass={FormatRoubles(doubleStrafeCost)}, UH-60={FormatRoubles(extractionCost)}, Priority exfil={FormatRoubles(priorityExfilCost)}, UAV={FormatRoubles(uavCost)}, Focused sweep={FormatRoubles(focusedSweepCost)}");
+	}
+
 	public static void ClearServerConfig()
 	{
 		bool hadServerSettings = HasServerConfigCosts ||
@@ -205,6 +227,26 @@ public static class FireSupportPayment
 		}
 	}
 
+	public static void ClearServerGlobalConfig()
+	{
+		bool hadServerGlobalSettings = HasServerConfigCosts ||
+		                               _serverPaymentMode.HasValue ||
+		                               _serverPaymentSource.HasValue;
+		_serverStrafeCost = null;
+		_serverDoubleStrafeCost = null;
+		_serverExtractionCost = null;
+		_serverPriorityExfilCost = null;
+		_serverUavCost = null;
+		_serverFocusedSweepCost = null;
+		_serverPaymentMode = null;
+		_serverPaymentSource = null;
+		if (hadServerGlobalSettings)
+		{
+			TscDiagnostics.LogPayment(
+				"Cleared server URL TSC global prices and payment settings; preserved profile payment state.");
+		}
+	}
+
 	public static void SetSyncedPaymentMode(PaymentMode paymentMode)
 	{
 		_syncedPaymentMode = paymentMode;
@@ -231,6 +273,26 @@ public static class FireSupportPayment
 		_serverConfigUnavailableReason = null;
 		TscDiagnostics.LogPayment(
 			$"Using server URL TSC payment revision={revision}: mode={paymentMode}, source={paymentSource}, stashBalance={(stashRoubleBalance.HasValue ? FormatRoubles(stashRoubleBalance.Value) : "unknown")}");
+	}
+
+	public static void SetServerProfileState(
+		int revision,
+		int? stashRoubleBalance,
+		bool persistenceEnabled,
+		bool refundFailedDispatch,
+		bool spendCreditsBeforeCash,
+		bool allowAutoPurchaseOnUse)
+	{
+		_serverConfigRevision = revision;
+		_serverStashRoubleBalance = stashRoubleBalance;
+		_serverConfigUnavailable = false;
+		_serverConfigUnavailableReason = null;
+		_serverPurchasePersistenceEnabled = persistenceEnabled;
+		_serverRefundFailedDispatch = refundFailedDispatch;
+		_serverSpendCreditsBeforeCash = spendCreditsBeforeCash;
+		_serverAllowAutoPurchaseOnUse = allowAutoPurchaseOnUse;
+		TscDiagnostics.LogPayment(
+			$"Using server URL TSC profile state revision={revision}: stashBalance={(stashRoubleBalance.HasValue ? FormatRoubles(stashRoubleBalance.Value) : "unknown")}, persistence={persistenceEnabled}");
 	}
 
 	public static void SetServerPurchasePersistence(
@@ -544,10 +606,7 @@ public static class FireSupportPayment
 				consumedType,
 				requestId,
 				_serverConfigRevision);
-			if (response.Authorizations != null && response.Authorizations.Count > 0)
-			{
-				FireSupportAuthorizations.SetFromServer(response.Authorizations);
-			}
+			bool authorizationsApplied = ApplyIncludedAuthorizations(response);
 
 			if (response.Ok)
 			{
@@ -566,7 +625,10 @@ public static class FireSupportPayment
 				};
 			}
 
-			FireSupportAuthorizations.Refund(consumedType, serverBacked: true);
+			if (!authorizationsApplied)
+			{
+				FireSupportAuthorizations.Refund(consumedType, serverBacked: true);
+			}
 			NotifyAuthorizationRequired(supportType);
 			return FireSupportAuthorizationUse.Failed(consumedType);
 		}
@@ -580,11 +642,6 @@ public static class FireSupportPayment
 		if (_serverAllowAutoPurchaseOnUse && RequiresServerPurchase(GetActivePaymentSource()))
 		{
 			FireSupportPurchaseResponse purchase = await PurchaseAuthorizationAsync(supportType, notify: true);
-			if (purchase.Authorizations != null && purchase.Authorizations.Count > 0)
-			{
-				FireSupportAuthorizations.SetFromServer(purchase.Authorizations);
-			}
-
 			if (purchase.Ok)
 			{
 				return await TryPayForDeploymentAsync(supportType);
@@ -604,34 +661,69 @@ public static class FireSupportPayment
 
 	public static void RefundConsumedAuthorization(FireSupportAuthorizationUse authorizationUse)
 	{
-		if (!authorizationUse.ConsumedAuthorization)
+		if (authorizationUse == null || !authorizationUse.ConsumedAuthorization)
 		{
 			return;
 		}
 
-		FireSupportAuthorizations.Refund(
-			authorizationUse.ConsumedAuthorizationType,
-			authorizationUse.ServerBacked);
-		if (authorizationUse.ServerBacked && _serverRefundFailedDispatch)
+		if (!authorizationUse.ServerBacked)
 		{
-			FireSupportServerConfigClient.RefundAuthorizationAsync(
+			FireSupportAuthorizations.Refund(
 				authorizationUse.ConsumedAuthorizationType,
-				authorizationUse.RequestId,
-				_serverConfigRevision).Forget();
+				serverBacked: false);
+			return;
 		}
+
+		if (!_serverRefundFailedDispatch)
+		{
+			return;
+		}
+
+		RefundServerAuthorizationAsync(authorizationUse).Forget();
 	}
 
 	public static void CommitConsumedAuthorization(FireSupportAuthorizationUse authorizationUse)
 	{
-		if (!authorizationUse.ConsumedAuthorization || !authorizationUse.ServerBacked)
+		if (authorizationUse == null ||
+		    !authorizationUse.ConsumedAuthorization ||
+		    !authorizationUse.ServerBacked)
 		{
 			return;
 		}
 
-		FireSupportServerConfigClient.CommitAuthorizationAsync(
+		CommitServerAuthorizationAsync(authorizationUse).Forget();
+	}
+
+	private static async UniTaskVoid RefundServerAuthorizationAsync(
+		FireSupportAuthorizationUse authorizationUse)
+	{
+		FireSupportPurchaseResponse response =
+			await FireSupportServerConfigClient.RefundAuthorizationAsync(
+				authorizationUse.ConsumedAuthorizationType,
+				authorizationUse.RequestId,
+				_serverConfigRevision);
+		bool authorizationsApplied = ApplyIncludedAuthorizations(response);
+
+		// Older servers can acknowledge the refund without returning a ledger
+		// snapshot. Mirror that successful mutation locally until the next
+		// profile refresh. A denial or transport failure is never a refund.
+		if (response?.Ok == true && !authorizationsApplied)
+		{
+			FireSupportAuthorizations.Refund(
+				authorizationUse.ConsumedAuthorizationType,
+				serverBacked: true);
+		}
+	}
+
+	private static async UniTaskVoid CommitServerAuthorizationAsync(
+		FireSupportAuthorizationUse authorizationUse)
+	{
+		FireSupportPurchaseResponse response =
+			await FireSupportServerConfigClient.CommitAuthorizationAsync(
 			authorizationUse.ConsumedAuthorizationType,
 			authorizationUse.RequestId,
-			_serverConfigRevision).Forget();
+			_serverConfigRevision);
+		ApplyIncludedAuthorizations(response);
 	}
 
 	public static bool TryPurchaseAuthorization(ESupportType supportType)
@@ -777,6 +869,7 @@ public static class FireSupportPayment
 			_serverStashRoubleBalance = serverResult.NewBalance;
 		}
 
+		bool authorizationsApplied = ApplyIncludedAuthorizations(serverResult);
 		if (!serverResult.Ok)
 		{
 			if (TryFallbackToCarriedAfterStashDenial(paymentSource, supportType, serverResult, notify, out FireSupportPurchaseResponse carriedResult))
@@ -795,11 +888,7 @@ public static class FireSupportPayment
 			return serverResult;
 		}
 
-		if (serverResult.Authorizations != null && serverResult.Authorizations.Count > 0)
-		{
-			FireSupportAuthorizations.SetFromServer(serverResult.Authorizations);
-		}
-		else
+		if (!authorizationsApplied)
 		{
 			GrantServerAuthorization(supportType, notify);
 		}
@@ -808,6 +897,39 @@ public static class FireSupportPayment
 		_lastPurchaseDenial = null;
 		FireSupportPlugin.LogSource.LogInfo($"TSC authorization purchased: {GetSupportName(supportType)}.");
 		return serverResult;
+	}
+
+	private static bool ApplyIncludedAuthorizations(FireSupportPurchaseResponse response)
+	{
+		if (response?.Authorizations == null ||
+		    !response.AuthorizationsIncluded && response.Authorizations.Count == 0)
+		{
+			return false;
+		}
+
+		// A ledger-bearing response proves persistence is active even if the
+		// initial profile config refresh has not completed yet.
+		_serverPurchasePersistenceEnabled = true;
+
+		int strafeBefore = FireSupportAuthorizations.Get(ESupportType.Strafe);
+		int doubleStrafeBefore = FireSupportAuthorizations.Get(ESupportType.DoubleStrafe);
+		int extractionBefore = FireSupportAuthorizations.Get(ESupportType.Extract);
+		int priorityExfilBefore = FireSupportAuthorizations.Get(ESupportType.PriorityExfil);
+		int uavBefore = FireSupportAuthorizations.Get(ESupportType.Uav);
+		int focusedSweepBefore = FireSupportAuthorizations.Get(ESupportType.FocusedSweep);
+
+		FireSupportAuthorizations.SetFromServer(response.Authorizations);
+		if (strafeBefore != FireSupportAuthorizations.Get(ESupportType.Strafe) ||
+		    doubleStrafeBefore != FireSupportAuthorizations.Get(ESupportType.DoubleStrafe) ||
+		    extractionBefore != FireSupportAuthorizations.Get(ESupportType.Extract) ||
+		    priorityExfilBefore != FireSupportAuthorizations.Get(ESupportType.PriorityExfil) ||
+		    uavBefore != FireSupportAuthorizations.Get(ESupportType.Uav) ||
+		    focusedSweepBefore != FireSupportAuthorizations.Get(ESupportType.FocusedSweep))
+		{
+			NotifySettingsChanged();
+		}
+
+		return true;
 	}
 
 	private static bool TryFallbackToCarriedAfterStashDenial(

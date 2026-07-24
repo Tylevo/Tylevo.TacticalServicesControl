@@ -128,8 +128,12 @@ public sealed class FireSupportServerConfigService(
 			snapshot = CloneConfig(_config);
 		}
 
+		snapshot.PlayerStateIncluded = false;
+		snapshot.StashRoubleBalance = null;
+		snapshot.Authorizations = new Dictionary<string, int>();
 		if (TryResolveProfile(sessionId, request, out PmcData? pmc, out MongoId saveSessionId))
 		{
+			snapshot.PlayerStateIncluded = true;
 			snapshot.StashRoubleBalance = CountStashRoubles(pmc);
 			if (snapshot.PurchasePersistence?.Enabled == true)
 			{
@@ -242,6 +246,7 @@ public sealed class FireSupportServerConfigService(
 				{
 					response.Reason = "AuthorizationLimitReached";
 					response.NewBalance = CountStashRoubles(pmc);
+					response.AuthorizationsIncluded = true;
 					response.Authorizations = credits;
 					return response;
 				}
@@ -310,6 +315,7 @@ public sealed class FireSupportServerConfigService(
 			bool granted;
 			Dictionary<string, int> authorizations;
 			string ledgerReason;
+			bool authorizationsIncluded;
 			try
 			{
 				granted = authorizationLedger.TryGrant(
@@ -321,6 +327,10 @@ public sealed class FireSupportServerConfigService(
 					config.PurchasePersistence.PendingUseTimeoutSeconds,
 					out authorizations,
 					out ledgerReason);
+				authorizationsIncluded = !string.Equals(
+					ledgerReason,
+					"InvalidAuthorizationRequest",
+					StringComparison.OrdinalIgnoreCase);
 			}
 			catch (Exception ex)
 			{
@@ -328,6 +338,7 @@ public sealed class FireSupportServerConfigService(
 				granted = false;
 				authorizations = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 				ledgerReason = "AuthorizationLedgerSaveFailed";
+				authorizationsIncluded = false;
 			}
 
 			if (!granted)
@@ -340,10 +351,15 @@ public sealed class FireSupportServerConfigService(
 				response.NewBalance = CountStashRoubles(pmc);
 				response.ChargedFromStash = rolledBack ? 0 : chargedFromStash;
 				response.AuthorizationGranted = false;
-				response.Authorizations = authorizations;
+				if (authorizationsIncluded)
+				{
+					response.AuthorizationsIncluded = true;
+					response.Authorizations = authorizations;
+				}
 				return response;
 			}
 
+			response.AuthorizationsIncluded = true;
 			response.Authorizations = authorizations;
 		}
 
@@ -490,6 +506,10 @@ public sealed class FireSupportServerConfigService(
 		response.Reason = ok ? mutation.ToString() : reason;
 		response.AuthorizationConsumed = mutation != AuthorizationMutation.Refund && ok;
 		response.AuthorizationGranted = mutation == AuthorizationMutation.Refund && ok;
+		response.AuthorizationsIncluded = !string.Equals(
+			reason,
+			"InvalidAuthorizationRequest",
+			StringComparison.OrdinalIgnoreCase);
 		response.Authorizations = authorizations;
 		logger.Success(
 			$"TSC authorization {mutation.ToString().ToLowerInvariant()} result={response.Reason} sessionId={FormatLogId(saveSessionId)} supportType={supportType}");
@@ -1292,7 +1312,11 @@ public sealed class FireSupportServerConfigService(
 		config.PriorityExfil = NormalizeExtractionSettings(config.PriorityExfil, defaults.PriorityExfil);
 		config.A10 = config.A10 ?? defaults.A10;
 		config.DoublePass = NormalizeA10Settings(config.DoublePass, defaults.DoublePass);
+		// These fields are populated only on authenticated response snapshots.
+		// Never accept or persist them as shared administrator configuration.
+		config.PlayerStateIncluded = false;
 		config.StashRoubleBalance = null;
+		config.Authorizations = new Dictionary<string, int>();
 	}
 
 	private static Dictionary<TKey, TValue> MergeDictionary<TKey, TValue>(

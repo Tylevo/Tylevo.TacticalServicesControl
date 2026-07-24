@@ -8,6 +8,12 @@ public sealed class RaidOpsFireSupportServerConfig
 	public string PaymentMode { get; set; } = nameof(global::SamSWAT.FireSupport.ArysReloaded.Unity.PaymentMode.PhoneAuthorizations);
 	public string PaymentSource { get; set; } = nameof(global::SamSWAT.FireSupport.ArysReloaded.Unity.PaymentSource.CarriedRoubles);
 	public int RequestCooldownSeconds { get; set; } = 300;
+	/// <summary>
+	/// True when the snapshot contains state for the resolved player profile.
+	/// False means profile-scoped fields such as the stash balance and
+	/// authorizations were omitted and must not clear previously synced state.
+	/// </summary>
+	public bool PlayerStateIncluded { get; set; }
 	public int? StashRoubleBalance { get; set; }
 	public Dictionary<string, int> Prices { get; set; } = new();
 	public Dictionary<string, bool> Enabled { get; set; } = new();
@@ -84,5 +90,11 @@ public sealed class FireSupportPurchaseResponse
 	public int ServerRevision { get; set; }
 	public int ChargedFromStash { get; set; }
 	public string RequestId { get; set; } = string.Empty;
+	/// <summary>
+	/// True when <see cref="Authorizations"/> is a complete, authoritative
+	/// snapshot of the profile ledger. False means the authorization state was
+	/// omitted; an empty authoritative snapshot must not be treated as omitted.
+	/// </summary>
+	public bool AuthorizationsIncluded { get; set; }
 	public Dictionary<string, int> Authorizations { get; set; } = new();
 }
