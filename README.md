@@ -1,8 +1,8 @@
-﻿# Tylevo's Tactical Services Control
+# Tylevo's Tactical Services Control
 
 A BepInEx mod that reworks SamSWAT's Fire Support / Arys Reloaded into a TerraGroup-style tactical support system for SPT and Fika.
 
-This mod adds a **TerraGroup TSC Uplink** phone that lets you buy support authorizations in raid, then deploy them later from the YY gesture menu.
+This mod adds a **TerraGroup TSC Uplink** phone that lets you buy support authorizations in raid, then deploy them later from the same device. The phone handles service selection and camera-based target designation, so the rangefinder and YY gesture wheel are no longer required for the primary workflow.
 
 Currently available support options:
 
@@ -41,16 +41,15 @@ Do not place the ZIP contents inside an extra nested folder.
 ## How To Use
 
 1. Bring the **TerraGroup TSC Uplink** into raid.
-2. Press `U` to open the phone. Press `1`-`3` to open a menu option, click `LMB` to tap forward, click `RMB` to go back a screen, and press `Enter` on the confirm screen to complete the purchase. `Escape` closes the phone.
-3. Buy a support authorization using carried or stash roubles.
-4. Open the gestures menu, default input: double tap `Y`.
-5. Select a support option in the radial menu.
-6. For A-10 / Double Pass / UH-60 / Priority Exfil, equip the in-game rangefinder and mark a location.
-7. For A-10 support, confirm the strike direction by moving the mouse left or right, then click `LMB`.
-8. UAV Recon and Focused Sweep deploy directly from the YY menu.
-9. To cancel before confirming a support request, press `Alt + RMB` or equip another weapon/item.
+2. Press `U` to open the Uplink in purchase mode.
+3. Press `1`, `2`, or `3` to open Extraction, Fire Support, or UAV Recon. Inside a category, press `1` for the standard service or `2` for its upgraded variant when available.
+4. Press `Enter` on the confirmation screen to pay with the configured carried/stash rouble source. `RMB` returns to the previous screen and `Escape` closes the phone.
+5. When you are ready to use an authorization, press `K` to open the Uplink in deployment mode. Only services you currently own are listed.
+6. Press `1`-`6` to select a service, then press `LMB` or `Enter` to deploy it. `RMB`, `Backspace`, or `Escape` stows the phone without spending the authorization.
+7. A-10 and UH-60 services use camera-based target designation. Confirm each targeting step with `Mouse 2` (middle mouse) or `Enter`; cancel with `Alt + RMB` or `Backspace`.
+8. UAV Recon and Focused Sweep begin directly after deployment. Hold `J` to raise the Uplink and view the live radar; release it to lower the phone and return to your weapon. Walking and sprint keys do not lower it while the radar key remains held, and the recon timer keeps running while the phone is stowed.
 
-The BepInEx configuration manager opened with `F12` only shows the local dashboard address.
+The `U`, `K`, `J`, and spotter-confirm controls are configurable in the BepInEx configuration manager opened with `F12`. Phone framing and optional authorization-screen zoom are available there as well; the `K` deploy view and held `J` radar preserve the current raid FOV and reveal directly in the upright presentation after EFT finishes the concealed equip transaction.
 
 Server/host settings are changed from the local TSC Dashboard:
 
@@ -70,7 +69,7 @@ The dashboard is localhost-only by default. Do not port-forward it.
 - A-10 Strafe and A-10 Double Pass.
 - UH-60 Extraction and Priority Exfil.
 - UAV Recon and Focused Sweep.
-- UAV radar overlay and UAV A-10 loiter visual.
+- Requester-only UAV radar rendered on the physical Uplink phone, plus the UAV A-10 loiter visual.
 - Fika support request sync.
 - Fika host-authoritative settings sync.
 - Local TSC Dashboard configuration.

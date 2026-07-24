@@ -17,7 +17,8 @@ Install the same TSC version on:
 - Damage remains host-authoritative.
 - Clients wait for the raid authority to accept A-10 requests and only render the accepted visual/tracer replay.
 - A dedicated headless host may run the separately gated experimental A-10 damage executor. Single-player and human-host raids retain the original runtime/ballistic path.
-- UAV radar overlays are requester-local and are never created on a dedicated headless host.
+- UAV recon links and physical-phone radar data are requester-local. A human host cannot view a client's feed, and a dedicated headless host never creates one.
+- The authority-provided UAV duration drives both the requester phone link and the loiter aircraft lifetime; stale local defaults cannot shorten only the phone feed.
 
 ## Regression Checklist
 
@@ -31,6 +32,8 @@ Install the same TSC version on:
 - Priority Exfil.
 - UAV Recon.
 - Focused Sweep.
+- Hold/release radar-phone restore, including movement while held, release during equip, and link expiry.
+- Requester phone/aircraft lifetime parity with non-default host dashboard values.
 - Host dashboard config sync.
 - Stash payment charges the correct player.
 - Disconnect cleanup.
