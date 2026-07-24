@@ -2,7 +2,7 @@
 
 Last updated: 2026-07-24
 Target: the next public beta after the currently published 1.0.8 release
-Status: Phase 0 complete; Phase 1 next
+Status: Phase 1 implementation complete; Phase 1 live validation pending
 
 This plan converts the current TSC audit and community bug reports into an ordered implementation and validation sequence. Priority describes risk; phase order also accounts for dependencies. Do not advance to the next phase until the current phase's exit gate is satisfied.
 
@@ -107,19 +107,34 @@ Eliminate the empty-tablet and all-services-maxed soft-lock while ensuring that 
 
 ### Implementation Tasks
 
-- [ ] Split host-global configuration authority from per-profile state synchronization.
-- [ ] Keep authenticated per-profile refresh active for Fika clients, either through `/tsc/config` or a dedicated player-state endpoint.
-- [ ] Synchronize at least:
+- [x] Split host-global configuration authority from per-profile state synchronization.
+- [x] Keep authenticated per-profile refresh active for Fika clients, either through `/tsc/config` or a dedicated player-state endpoint.
+- [x] Synchronize at least:
   - authorization counts;
   - purchase-persistence state;
   - stash balance when required by the selected payment mode.
-- [ ] Keep Fika host values authoritative for shared prices, service availability, timing, and other raid-global settings.
-- [ ] Decouple player-state hydration from the hidden legacy `Use server config URL` toggle, or retire the obsolete toggle.
-- [ ] Define whether response authorization data is present and authoritative. Prefer a nullable value or explicit `AuthorizationsIncluded` flag so "omitted" and "authoritative empty" are distinguishable.
-- [ ] Apply included ledger state before returning from `AuthorizationLimitReached` and other responses that intentionally carry it.
-- [ ] Do not place per-player authorization counts in the broadcast Fika host-settings packet.
-- [ ] Refresh the deploy menu if hydration completes while the tablet is already open.
-- [ ] Ensure persistent deployment uses the server-backed begin/commit/refund path rather than decrementing only the client mirror.
+- [x] Keep Fika host values authoritative for shared prices, service availability, timing, and other raid-global settings.
+- [x] Decouple player-state hydration from the hidden legacy `Use server config URL` toggle, or retire the obsolete toggle.
+- [x] Define whether response authorization data is present and authoritative. Prefer a nullable value or explicit `AuthorizationsIncluded` flag so "omitted" and "authoritative empty" are distinguishable.
+- [x] Apply included ledger state before returning from `AuthorizationLimitReached` and other responses that intentionally carry it.
+- [x] Do not place per-player authorization counts in the broadcast Fika host-settings packet.
+- [x] Refresh the deploy menu if hydration completes while the tablet is already open.
+- [x] Ensure persistent deployment uses the server-backed begin/commit/refund path rather than decrementing only the client mirror.
+
+### Implementation Evidence - 2026-07-24
+
+- `/tsc/config` now refreshes authenticated per-profile state during every raid, including when the legacy URL toggle is false and when a Fika host owns the raid-global settings.
+- `PlayerStateIncluded` distinguishes a resolved profile snapshot from omitted profile state. The client also recognizes the v1.0.8 nullable-stash contract so a matched upgrade is not required merely to hydrate an authoritative empty legacy ledger.
+- `AuthorizationsIncluded` distinguishes an omitted purchase/mutation ledger from an authoritative empty ledger. Limit denials and valid ledger mutations return and apply the authoritative state before success or failure handling.
+- Fika host-synchronized prices, payment settings, availability, tuning, and UAV settings remain authoritative; per-player counts are never added to the broadcast host-settings packet.
+- Server-backed purchase, consume, commit, and refund responses reconcile the client mirror. Refund-disabled failures no longer create a local phantom credit, and Double Strafe commits only after both requested passes succeed.
+- A mutation epoch prevents a delayed pre-mutation config GET from overwriting a newer purchase, consume, commit, or refund response; canceled refreshes are also discarded after the backend call so an old raid cannot overwrite the next raid.
+- The deploy-phone controller refreshes its owned-entry sequence while open, preserves the selected service when possible, and rebuilds only when membership or order changes.
+- Runtime-only player fields are scrubbed from shared server configuration before it is saved or returned without a resolved profile.
+- `git diff --check` passes.
+- Deploy-suppressed clean rebuilds pass: Core with 28 baseline warnings, Server with 9 baseline warnings, Fika Interop with 0 warnings, and Fika bootstrap with 0 warnings; all have 0 errors.
+- The live `D:\SPT` component timestamps remain dated 2026-07-13. No installation or release artifact was modified.
+- The Phase 1 exit gate remains open until the solo and Fika runtime validation matrix below is recorded. Per the operating rules, that requires explicit approval before installing into `D:\SPT`.
 
 ### Validation Matrix
 
