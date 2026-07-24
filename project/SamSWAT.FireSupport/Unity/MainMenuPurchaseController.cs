@@ -294,22 +294,22 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 
 		CreateText(panel.transform, "Title", "TERRAGROUP // TSC UPLINK", 34, FontStyle.Bold,
 			s_amberHigh, TextAnchor.MiddleLeft,
-			new Vector2(0.5f, 1f), new Vector2(800f, 52f), new Vector2(-130f, -42f));
+			new Vector2(0.5f, 1f), new Vector2(800f, 52f), new Vector2(-145f, -42f));
 		CreateText(panel.transform, "Subtitle", "PRE-RAID PERSISTENT AUTHORIZATION STORE", 17, FontStyle.Normal,
 			s_muted, TextAnchor.MiddleLeft,
-			new Vector2(0.5f, 1f), new Vector2(800f, 30f), new Vector2(-130f, -82f));
+			new Vector2(0.5f, 1f), new Vector2(800f, 30f), new Vector2(-145f, -82f));
 
 		_balanceText = CreateText(panel.transform, "Balance", "STASH: --", 22, FontStyle.Bold,
 			s_text, TextAnchor.MiddleRight,
-			new Vector2(1f, 1f), new Vector2(330f, 42f), new Vector2(-190f, -52f));
+			new Vector2(1f, 1f), new Vector2(330f, 42f), new Vector2(-210f, -52f));
 		_statusText = CreateText(panel.transform, "Status", "Open the page to synchronize.", 17, FontStyle.Normal,
 			s_muted, TextAnchor.MiddleLeft,
 			new Vector2(0.5f, 1f), new Vector2(1090f, 46f), new Vector2(0f, -124f));
 
 		_refreshButton = CreateButton(panel.transform, "Refresh", "REFRESH", new Vector2(0.5f, 1f),
-			new Vector2(150f, 42f), new Vector2(350f, -84f), StartRefresh, ButtonVisual.Neutral);
+			new Vector2(150f, 42f), new Vector2(330f, -84f), StartRefresh, ButtonVisual.Neutral);
 		CreateButton(panel.transform, "Close", "CLOSE", new Vector2(0.5f, 1f),
-			new Vector2(130f, 42f), new Vector2(500f, -84f), ClosePage, ButtonVisual.Neutral);
+			new Vector2(130f, 42f), new Vector2(480f, -84f), ClosePage, ButtonVisual.Neutral);
 
 		_rows.Clear();
 		for (int index = 0; index < s_services.Length; index++)
