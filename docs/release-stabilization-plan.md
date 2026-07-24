@@ -210,8 +210,11 @@ remain unchanged.
 - Independent transaction, API-compatibility, and final whole-diff reviews found no remaining P0-P2 issue. `git diff --check` passes.
 - Deploy-suppressed builds pass with 0 errors: Core has 28 baseline warnings, Server has 9 baseline warnings, and both Fika assemblies have 0 warnings.
 - The implementation is recorded in commit `dcf1894` (`feat: add authenticated pre-raid authorization store`).
+- The client storefront style pass now mirrors the dashboard source tokens and hierarchy: near-black grid, TerraGroup sidebar, terminal topbar and status pills, three overview cards, a bordered 3-by-2 service deck, compact framed controls, and a bottom-right transaction toast. Responsive zones were independently checked at 1280-by-720 and above with no P0/P1 clipping or interaction finding.
+- The style pass is recorded in commit `0f3663c` (`style: align pre-raid store with dashboard`). A deploy-suppressed Core rebuild passes with 0 errors and the same 28 baseline warnings.
 - After explicit approval, all four reviewed DLLs were installed into the live `D:\SPT` component paths and verified byte-for-byte by SHA-256 against the build outputs.
 - The replaced DLLs plus exact pre-first-start ledger/config copies are backed up at `C:\Users\tylev\Desktop\RaidOps\backups\TSC-live-pre-phase1a-dcf1894-20260724-114230`; `INSTALL-MANIFEST.md` records hashes and rollback instructions.
+- The dashboard-style update replaced only the live Core/client DLL. Its installed SHA-256 is `776801160C6CF22CA18C8E1795349A2531A05EB291A98FEEF5A11ACA84E732B2`; Fika, Fika Interop, and Server remain byte-identical to the Phase 1A install. The immediately prior Core DLL and rollback instructions are backed up at `C:\Users\tylev\Desktop\RaidOps\backups\TSC-live-pre-dashboard-style-0f3663c-20260724-120948`.
 - No player profile, TSC configuration, authorization ledger, release artifact, or published GitHub release was modified during installation. The SPT server and game were not started.
 - The Phase 1A exit gate remains open until the runtime matrix below is recorded; Phase 2 has not started.
 
