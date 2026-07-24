@@ -62,8 +62,13 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 	private static string s_boundSessionKey;
 
 	private readonly Dictionary<ESupportType, RowView> _rows = new();
+	private readonly Dictionary<RectTransform, Vector2> _menuStackBasePositions = new();
 	private MenuScreen _menuScreen;
 	private DefaultUIButton _menuButton;
+	private Transform _menuStackParent;
+	private Vector2 _menuStackAnchorPosition;
+	private bool _hasMenuStackAnchorPosition;
+	private bool _menuStackSlotReserved;
 	private GameObject _pageRoot;
 	private Text _statusText;
 	private Text _balanceText;
@@ -130,7 +135,12 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 	{
 		if (_menuButton != null)
 		{
-			_menuButton.gameObject.SetActive(PluginSettings.Enabled?.Value == true);
+			bool shouldShow = PluginSettings.Enabled?.Value == true;
+			if (_menuButton.gameObject.activeSelf != shouldShow)
+			{
+				_menuButton.gameObject.SetActive(shouldShow);
+				PositionMenuButton(FindCharacterButton(_menuScreen));
+			}
 		}
 
 		if (_layoutScansRemaining <= 0 || Time.unscaledTime < _nextLayoutScanAt)
@@ -210,7 +220,22 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 		{
 			return;
 		}
+		if (_menuStackParent != parent)
+		{
+			RestoreMenuStackPositions();
+			_menuStackBasePositions.Clear();
+			_menuStackParent = parent;
+			_hasMenuStackAnchorPosition = false;
+		}
 
+		RectTransform records = FindSiblingRect(parent, "RecordsButton", target);
+		if (records != null && records.gameObject.activeSelf)
+		{
+			PositionMenuButtonBelowRecords(target, records, parent);
+			return;
+		}
+
+		RestoreMenuStackPositions();
 		RectTransform bottom = null;
 		float minimumY = float.MaxValue;
 		foreach (string name in s_stackButtonNames)
@@ -233,6 +258,124 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 		target.anchoredPosition =
 			new Vector2(bottom.anchoredPosition.x, bottom.anchoredPosition.y - ButtonSlotHeight);
 		target.SetSiblingIndex(Mathf.Min(bottom.GetSiblingIndex() + 1, parent.childCount - 1));
+	}
+
+	private void PositionMenuButtonBelowRecords(
+		RectTransform target,
+		RectTransform records,
+		Transform parent)
+	{
+		RebaseMenuStackForAnchor(records.anchoredPosition);
+		CopyRect(target, records);
+		float nextY = records.anchoredPosition.y - ButtonSlotHeight;
+		target.anchoredPosition = new Vector2(records.anchoredPosition.x, nextY);
+		target.SetSiblingIndex(Mathf.Min(records.GetSiblingIndex() + 1, parent.childCount - 1));
+
+		bool reserveTscSlot = target.gameObject.activeSelf;
+		bool afterRecords = false;
+		foreach (string name in s_stackButtonNames)
+		{
+			if (!afterRecords)
+			{
+				afterRecords = name == "RecordsButton";
+				continue;
+			}
+
+			RectTransform candidate = FindSiblingRect(parent, name, target);
+			if (candidate == null)
+			{
+				continue;
+			}
+
+			if (!_menuStackBasePositions.TryGetValue(candidate, out Vector2 basePosition))
+			{
+				basePosition = candidate.anchoredPosition;
+				_menuStackBasePositions[candidate] = basePosition;
+			}
+			else
+			{
+				basePosition = RefreshMenuStackBasePosition(candidate, basePosition);
+			}
+			candidate.anchoredPosition = reserveTscSlot
+				? new Vector2(basePosition.x, basePosition.y - ButtonSlotHeight)
+				: basePosition;
+		}
+		_menuStackSlotReserved = reserveTscSlot;
+	}
+
+	private void RebaseMenuStackForAnchor(Vector2 anchorPosition)
+	{
+		if (!_hasMenuStackAnchorPosition)
+		{
+			_menuStackAnchorPosition = anchorPosition;
+			_hasMenuStackAnchorPosition = true;
+			return;
+		}
+
+		Vector2 anchorDelta = anchorPosition - _menuStackAnchorPosition;
+		if (anchorDelta.sqrMagnitude <= 0.01f)
+		{
+			return;
+		}
+
+		List<RectTransform> candidates = new(_menuStackBasePositions.Keys);
+		foreach (RectTransform candidate in candidates)
+		{
+			if (candidate != null)
+			{
+				_menuStackBasePositions[candidate] += anchorDelta;
+			}
+		}
+		_menuStackAnchorPosition = anchorPosition;
+	}
+
+	private Vector2 RefreshMenuStackBasePosition(
+		RectTransform candidate,
+		Vector2 basePosition)
+	{
+		Vector2 currentPosition = candidate.anchoredPosition;
+		if (!_menuStackSlotReserved)
+		{
+			if ((currentPosition - basePosition).sqrMagnitude > 0.01f)
+			{
+				_menuStackBasePositions[candidate] = currentPosition;
+				return currentPosition;
+			}
+			return basePosition;
+		}
+
+		Vector2 expectedShiftedPosition =
+			new(basePosition.x, basePosition.y - ButtonSlotHeight);
+		float distanceToBase = (currentPosition - basePosition).sqrMagnitude;
+		float distanceToShifted = (currentPosition - expectedShiftedPosition).sqrMagnitude;
+		Vector2 refreshedBasePosition = distanceToBase <= distanceToShifted
+			? currentPosition
+			: new Vector2(currentPosition.x, currentPosition.y + ButtonSlotHeight);
+		_menuStackBasePositions[candidate] = refreshedBasePosition;
+		return refreshedBasePosition;
+	}
+
+	private void RestoreMenuStackPositions()
+	{
+		RectTransform target = _menuButton?.GetComponent<RectTransform>();
+		RectTransform records = FindSiblingRect(_menuStackParent, "RecordsButton", target);
+		if (records != null)
+		{
+			RebaseMenuStackForAnchor(records.anchoredPosition);
+		}
+
+		List<RectTransform> candidates = new(_menuStackBasePositions.Keys);
+		foreach (RectTransform candidate in candidates)
+		{
+			if (candidate != null)
+			{
+				Vector2 basePosition = RefreshMenuStackBasePosition(
+					candidate,
+					_menuStackBasePositions[candidate]);
+				candidate.anchoredPosition = basePosition;
+			}
+		}
+		_menuStackSlotReserved = false;
 	}
 
 	private void OpenPage()
@@ -867,6 +1010,7 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 
 	private void OnDestroy()
 	{
+		RestoreMenuStackPositions();
 		_destroyed = true;
 		_generation++;
 		_refreshCts?.Cancel();
