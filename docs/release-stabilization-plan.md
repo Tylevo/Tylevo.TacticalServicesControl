@@ -142,7 +142,7 @@ Eliminate the empty-tablet and all-services-maxed soft-lock while ensuring that 
 
 ### Validation Matrix
 
-- [ ] Solo player starts a new raid with stored credits and sees them without purchasing.
+- [x] Solo player starts a new raid with stored credits and sees them without purchasing.
 - [ ] Human Fika host starts with stored credits and sees them without purchasing.
 - [ ] Fika client joins with stored credits and sees them without purchasing.
 - [ ] Two Fika clients receive only their own ledger counts.
@@ -154,6 +154,11 @@ Eliminate the empty-tablet and all-services-maxed soft-lock while ensuring that 
 - [ ] Reconnect and next-raid hydration preserve the decremented count.
 - [ ] A legacy saved `Use server config URL = false` value cannot suppress player-state hydration.
 - [ ] Opening the deploy tablet during initial synchronization either waits safely or updates without requiring it to be reopened.
+
+Solo smoke evidence recorded 2026-07-24: the authenticated snapshot loaded,
+the deployment tablet opened with the existing ledger, and Extraction could be
+selected without making a new purchase. The run ended before target confirmation,
+so consume/commit behavior remains unverified.
 
 ### Exit Gate
 
@@ -167,27 +172,48 @@ Eliminate the empty-tablet and all-services-maxed soft-lock while ensuring that 
 
 Let a signed-in player buy persistent authorizations from the main menu before entering a raid, using the same server-owned prices, stash debit, profile save, and authorization ledger as the in-raid Uplink.
 
-This phase starts only after the Phase 1 runtime matrix passes. The current in-raid physical-phone purchase and deployment paths remain unchanged.
+Implementation began early on the explicitly authorized stabilization test branch
+while the Phase 1 runtime matrix remains open. This does not close either phase's
+runtime gate. The current in-raid physical-phone purchase and deployment paths
+remain unchanged.
 
 ### Server Hardening
 
-- [ ] Require a resolvable authenticated HTTP session for player-state snapshots and purchase mutations. Treat request/query profile identifiers only as consistency hints and never as fallback authentication.
-- [ ] Derive the authorization-ledger key canonically from the resolved player profile so request hints cannot split one player's credits across multiple keys.
-- [ ] Mark pre-raid purchase intent explicitly and reject it with `PurchasePersistenceDisabled` before any debit when persistent authorizations are disabled.
-- [ ] Require a unique purchase `RequestId` and make repeated delivery of the same authenticated purchase return the original result without a second debit or grant.
-- [ ] Preserve the existing serialized debit, profile-save, ledger-grant, and rollback transaction.
-- [ ] Return an authoritative purchase catalog containing server prices, service availability, stash balance, stored counts, persistence state, and maximum stored count.
+- [x] Require a resolvable authenticated HTTP session for player-state snapshots and purchase mutations. Treat request/query profile identifiers only as consistency hints and never as fallback authentication.
+- [x] Derive the authorization-ledger key canonically from the resolved player profile so request hints cannot split one player's credits across multiple keys.
+- [x] Mark pre-raid purchase intent explicitly and reject it with `PurchasePersistenceDisabled` before any debit when persistent authorizations are disabled.
+- [x] Require a unique purchase `RequestId` and make repeated delivery of the same authenticated purchase return the original result without a second debit or grant.
+- [x] Preserve the existing serialized debit, profile-save, ledger-grant, and rollback transaction.
+- [x] Return an authoritative purchase catalog containing server prices, service availability, stash balance, stored counts, persistence state, and maximum stored count.
 
 ### Client UI and State
 
-- [ ] Postfix the stable SPT 4.0 `MenuScreen.Show(Profile, MatchmakerPlayerControllerClass, ESessionMode)` boundary and inject one idempotent **TSC UPLINK** main-menu button.
-- [ ] Open a standalone 2D menu page; do not reuse `UavDeviceController`, player hands, the carried Uplink item, or raid camera/FOV state.
-- [ ] Perform one authenticated, bounded state fetch when the page opens and after a mutation. Do not enable background menu polling.
-- [ ] Enable **Buy** only after an authoritative profile snapshot arrives and confirms persistent authorizations plus a server-backed stash payment source.
-- [ ] Display server-authoritative service prices, enabled/disabled state, stash balance, owned counts, and maximum stored count.
-- [ ] Disable duplicate clicks while a purchase is pending, submit a stable `RequestId`, and apply the authoritative response before redrawing.
-- [ ] Clear menu state when the backend profile/session changes or signs out.
-- [ ] Preserve raid-start reset followed by authenticated rehydration so a pre-raid purchase appears in the deployment tablet without another purchase.
+- [x] Postfix the stable SPT 4.0 `MenuScreen.Show(Profile, MatchmakerPlayerControllerClass, ESessionMode)` boundary and inject one idempotent **TSC UPLINK** main-menu button.
+- [x] Open a standalone 2D menu page; do not reuse `UavDeviceController`, player hands, the carried Uplink item, or raid camera/FOV state.
+- [x] Perform one authenticated, bounded state fetch when the page opens and after a mutation. Do not enable background menu polling.
+- [x] Enable **Buy** only after an authoritative profile snapshot arrives and confirms persistent authorizations plus a server-backed stash payment source.
+- [x] Display server-authoritative service prices, enabled/disabled state, stash balance, owned counts, and maximum stored count.
+- [x] Disable duplicate clicks while a purchase is pending, submit a stable `RequestId`, and apply the authoritative response before redrawing.
+- [x] Clear menu state when the backend profile/session changes or signs out.
+- [x] Preserve raid-start reset followed by authenticated rehydration so a pre-raid purchase appears in the deployment tablet without another purchase.
+
+### Implementation Evidence - 2026-07-24
+
+- `MenuScreen.Show(Profile, MatchmakerPlayerControllerClass, ESessionMode)` now attaches one sibling-scoped **TSC UPLINK** button and a standalone main-menu overlay. It creates no `GameWorld`, hands controller, physical item, or raid camera state.
+- The page renders all six exact service mappings with authoritative enabled state, price, stash balance, owned count, and configured maximum. It performs one authenticated GET on open and one verification GET after a correlated successful mutation, with no idle network polling.
+- Pre-raid POSTs bind the profile and backend session captured at click time, use `BuyPersistentAuthorization`, submit one stable `RequestId`, and require an exact echoed ID before applying a response.
+- The server resolves the HTTP session first, treats body/query IDs only as consistency checks, and derives the ledger key from the authenticated PMC profile. Profile fields and prepared-purchase recovery IDs are scrubbed from global/admin configuration.
+- The schema-3 ledger writes a durable `Prepared` purchase before debit and permanently retains accepted request IDs outside the capped audit list. Retries return the original price/result without a second grant.
+- Prepared records store deterministic pre-debit and expected-post-debit rouble-stack fingerprints. Recovery debits only on an exact pre-state, finalizes without debit only on the exact expected post-state, and otherwise remains `PersistentPurchasePending` for same-ID retry instead of guessing.
+- Authenticated snapshots expose the oldest prepared request ID per service. After a client or server restart, the menu adopts that original ID and exposes **RETRY**; storage limits and refunds account for prepared reservations.
+- Omitted response cost and balance use `-1`, preserving valid zero-cost services without displaying an early denial as an authoritative zero price.
+- Independent transaction, API-compatibility, and final whole-diff reviews found no remaining P0-P2 issue. `git diff --check` passes.
+- Deploy-suppressed builds pass with 0 errors: Core has 28 baseline warnings, Server has 9 baseline warnings, and both Fika assemblies have 0 warnings.
+- The implementation is recorded in commit `dcf1894` (`feat: add authenticated pre-raid authorization store`).
+- After explicit approval, all four reviewed DLLs were installed into the live `D:\SPT` component paths and verified byte-for-byte by SHA-256 against the build outputs.
+- The replaced DLLs plus exact pre-first-start ledger/config copies are backed up at `C:\Users\tylev\Desktop\RaidOps\backups\TSC-live-pre-phase1a-dcf1894-20260724-114230`; `INSTALL-MANIFEST.md` records hashes and rollback instructions.
+- No player profile, TSC configuration, authorization ledger, release artifact, or published GitHub release was modified during installation. The SPT server and game were not started.
+- The Phase 1A exit gate remains open until the runtime matrix below is recorded; Phase 2 has not started.
 
 ### Validation Matrix
 
