@@ -43,6 +43,7 @@ Re-query GitHub at the start of Phase 0 and Phase 7. If local documentation or t
 | --- | --- | --- |
 | 0 | Release safety | Preserve the current UAV work and establish a reproducible baseline |
 | 1 | P1 | Fix authorization hydration and server-ledger consumption |
+| 1A | P1 | Add a session-authenticated pre-raid authorization store |
 | 2 | P1 | Make Fika request acceptance, consumption, commit, and refund transactional |
 | 3 | P1 | Complete the physical-phone UAV live acceptance matrix |
 | 4 | P2 | Correct Extraction and Priority Exfil timing configuration |
@@ -159,6 +160,57 @@ Eliminate the empty-tablet and all-services-maxed soft-lock while ensuring that 
 - No topology requires a purchase to reveal previously owned authorizations.
 - A maxed ledger cannot soft-lock deployment.
 - Client display, server ledger, and persistence mode agree after purchase, deployment, cancellation, reconnect, and raid transition.
+
+## Phase 1A - Authenticated Pre-Raid Authorization Store
+
+### Goal
+
+Let a signed-in player buy persistent authorizations from the main menu before entering a raid, using the same server-owned prices, stash debit, profile save, and authorization ledger as the in-raid Uplink.
+
+This phase starts only after the Phase 1 runtime matrix passes. The current in-raid physical-phone purchase and deployment paths remain unchanged.
+
+### Server Hardening
+
+- [ ] Require a resolvable authenticated HTTP session for player-state snapshots and purchase mutations. Treat request/query profile identifiers only as consistency hints and never as fallback authentication.
+- [ ] Derive the authorization-ledger key canonically from the resolved player profile so request hints cannot split one player's credits across multiple keys.
+- [ ] Mark pre-raid purchase intent explicitly and reject it with `PurchasePersistenceDisabled` before any debit when persistent authorizations are disabled.
+- [ ] Require a unique purchase `RequestId` and make repeated delivery of the same authenticated purchase return the original result without a second debit or grant.
+- [ ] Preserve the existing serialized debit, profile-save, ledger-grant, and rollback transaction.
+- [ ] Return an authoritative purchase catalog containing server prices, service availability, stash balance, stored counts, persistence state, and maximum stored count.
+
+### Client UI and State
+
+- [ ] Postfix the stable SPT 4.0 `MenuScreen.Show(Profile, MatchmakerPlayerControllerClass, ESessionMode)` boundary and inject one idempotent **TSC UPLINK** main-menu button.
+- [ ] Open a standalone 2D menu page; do not reuse `UavDeviceController`, player hands, the carried Uplink item, or raid camera/FOV state.
+- [ ] Perform one authenticated, bounded state fetch when the page opens and after a mutation. Do not enable background menu polling.
+- [ ] Enable **Buy** only after an authoritative profile snapshot arrives and confirms persistent authorizations plus a server-backed stash payment source.
+- [ ] Display server-authoritative service prices, enabled/disabled state, stash balance, owned counts, and maximum stored count.
+- [ ] Disable duplicate clicks while a purchase is pending, submit a stable `RequestId`, and apply the authoritative response before redrawing.
+- [ ] Clear menu state when the backend profile/session changes or signs out.
+- [ ] Preserve raid-start reset followed by authenticated rehydration so a pre-raid purchase appears in the deployment tablet without another purchase.
+
+### Validation Matrix
+
+- [ ] An authenticated solo player buys one authorization in the main menu; the stash is debited once, the profile is saved, and the ledger increments once.
+- [ ] Closing and reopening the page preserves the authoritative balance and counts.
+- [ ] Entering a raid rehydrates the pre-purchased authorization before deployment and does not require another purchase.
+- [ ] A player at the per-service limit is denied without a debit and sees the authoritative owned count.
+- [ ] Insufficient funds, a disabled service, persistence disabled, or an unavailable profile cannot debit the stash.
+- [ ] Mismatched profile hints and unauthenticated requests are rejected without disclosing another player's balance or ledger.
+- [ ] Repeating the same `RequestId` after a timeout returns the original outcome without a second debit or grant.
+- [ ] Concurrent purchases at the balance or storage boundary cannot overspend or exceed the configured limit.
+- [ ] Profile-save or ledger-save failure restores the stash and returns a deterministic denial.
+- [ ] Two Fika users can pre-purchase only for their own authenticated profiles and later receive only their own raid ledger.
+- [ ] A dedicated headless server requires no client UI and accepts the same authenticated per-player requests.
+- [ ] Repeated `MenuScreen.Show` calls create one button, and opening/closing the page does not leave an overlay or consume menu text input.
+- [ ] No periodic `/tsc/config` traffic or log spam occurs while the store is closed.
+
+### Exit Gate
+
+- Pre-raid purchase never requires a `GameWorld`, live player, carried Uplink, or raid hands controller.
+- No unauthenticated or cross-profile request can read or mutate player state.
+- Every accepted purchase has one stash debit and one persistent ledger grant, including timeout/retry cases.
+- A purchased authorization survives menu-to-raid transition and is immediately deployable after hydration.
 
 ## Phase 2 - Transactional Fika Request Acceptance and Refunds
 
