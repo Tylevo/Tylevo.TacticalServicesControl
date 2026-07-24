@@ -855,32 +855,35 @@ public static class FikaIntegration
 
 		if (IsUavType(packet.SupportType))
 		{
-			if (visualOnly && !IsLocalRequester(packet))
+			if (IsFikaHeadlessHost())
 			{
-				TscDiagnostics.LogFika(
-					$"TSC UAV HUD ignored on non-requester client type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} requester={A10AuthorityDiagnostics.ShortId(packet.RequesterProfileId)} local={A10AuthorityDiagnostics.ShortId(GetLocalProfileId())}");
+				TscDiagnostics.LogFika($"TSC UAV recon link skipped on Fika headless host requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)}; the requester renders it locally.");
 				return true;
 			}
 
-			if (!IsFikaHeadlessHost())
+			// The authority still executes and broadcasts every accepted UAV request,
+			// but the live recon session belongs only to the requesting local player.
+			// Without this guard a human Fika host also received the phone feed for a
+			// client's UAV because the host runs the non-visual authority path.
+			if (!IsLocalRequester(packet))
 			{
-				if (visualOnly)
-				{
-					TscDiagnostics.LogFika(
-						$"TSC UAV HUD accepted on requester client type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} requester={A10AuthorityDiagnostics.ShortId(packet.RequesterProfileId)}");
-				}
+				TscDiagnostics.LogFika(
+					$"TSC UAV recon link skipped on non-requester peer type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} requester={A10AuthorityDiagnostics.ShortId(packet.RequesterProfileId)} local={A10AuthorityDiagnostics.ShortId(GetLocalProfileId())} visualOnly={visualOnly}");
+				return true;
+			}
 
-				UavReconOverlay.Activate(
-					packet.DurationSeconds,
-					cancellationToken,
-					playActivationVisual: false,
-					UavReconSettings.GetScanInterval(packet.SupportType),
-					UavReconSettings.GetRangeMeters(packet.SupportType));
-			}
-			else
+			if (visualOnly)
 			{
-				TscDiagnostics.LogFika($"TSC UAV HUD skipped on Fika headless host requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)}; clients render their own overlays.");
+				TscDiagnostics.LogFika(
+					$"TSC UAV recon link accepted on requester client type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} requester={A10AuthorityDiagnostics.ShortId(packet.RequesterProfileId)}");
 			}
+
+			UavReconOverlay.Activate(
+				packet.DurationSeconds,
+				cancellationToken,
+				playActivationVisual: false,
+				UavReconSettings.GetScanInterval(packet.SupportType),
+				UavReconSettings.GetRangeMeters(packet.SupportType));
 
 			return true;
 		}
@@ -1147,6 +1150,8 @@ public static class FikaIntegration
 		if (IsUavType(packet.SupportType))
 		{
 			packet.DurationSeconds = UavReconSettings.GetConfiguredDurationSeconds(packet.SupportType);
+			TscDiagnostics.LogFika(
+				$"TSC Fika host-authoritative UAV duration type={packet.SupportType} duration={packet.DurationSeconds:0.#}s requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)}");
 		}
 	}
 

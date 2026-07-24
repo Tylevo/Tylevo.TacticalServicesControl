@@ -15,6 +15,9 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 	private Item _previousHandsItem;
 	private UavDeviceController _currentController;
 	private Coroutine _restoreCoroutine;
+	private UavPhoneLaunchMode _equipLaunchMode = UavPhoneLaunchMode.ManualAuthorization;
+	private bool _radarHoldWasPressed;
+	private bool _radarReleaseQueued;
 
 	protected override void OnStart()
 	{
@@ -23,7 +26,13 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 
 	public override void ManualUpdate()
 	{
-		if (!PluginSettings.Enabled.Value)
+		bool pluginEnabled = PluginSettings.Enabled.Value;
+		if (HandleRadarHold(pluginEnabled))
+		{
+			return;
+		}
+
+		if (!pluginEnabled)
 		{
 			return;
 		}
@@ -40,6 +49,145 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 			TscDiagnostics.LogPhone("TSC deploy key pressed.");
 			TryOpenUplink(UavPhoneLaunchMode.DeployMenu);
 		}
+	}
+
+	private bool HandleRadarHold(bool allowOpen)
+	{
+		// KeyboardShortcut.IsPressed evaluates the main key and every configured
+		// modifier. Tracking the transition ourselves also treats releasing a
+		// modifier as a release, which keeps custom bindings from leaving the
+		// monitor stuck in the player's hands.
+		bool isPressed = allowOpen && IsRadarShortcutPressed();
+		bool pressedThisFrame = isPressed && !_radarHoldWasPressed;
+		bool releasedThisFrame = !isPressed && _radarHoldWasPressed;
+		_radarHoldWasPressed = isPressed;
+
+		if (releasedThisFrame)
+		{
+			TscDiagnostics.LogPhone("TSC UAV radar hold released.");
+			RequestRadarRestore();
+			return true;
+		}
+
+		if (_radarReleaseQueued)
+		{
+			TryFinishQueuedRadarMonitor();
+		}
+
+		if (pressedThisFrame)
+		{
+			TscDiagnostics.LogPhone("TSC UAV radar hold pressed.");
+			if (!UavReconOverlay.IsReconActive)
+			{
+				NotificationManagerClass.DisplayWarningNotification(
+					"No active UAV recon link.",
+					ENotificationDurationType.Default);
+				return true;
+			}
+
+			TryOpenUplink(UavPhoneLaunchMode.UavRadarMonitor);
+			return true;
+		}
+
+		// Do not let the purchase/deploy hotkeys race any part of the radar hand
+		// swap. U and K resume as soon as the prior weapon has been restored.
+		return IsRadarPhoneTransitionActive();
+	}
+
+	private static bool IsRadarShortcutPressed()
+	{
+		if (PluginSettings.OpenUavRadarKey == null)
+		{
+			return false;
+		}
+
+		BepInEx.Configuration.KeyboardShortcut shortcut = PluginSettings.OpenUavRadarKey.Value;
+		if (shortcut.MainKey == KeyCode.None || !Input.GetKey(shortcut.MainKey))
+		{
+			return false;
+		}
+
+		// KeyboardShortcut.IsPressed() rejects the chord when any unrelated key
+		// is held. That makes W/Shift look like a J release. Check only the main
+		// key and configured modifiers so movement is allowed while viewing radar.
+		foreach (KeyCode modifier in shortcut.Modifiers)
+		{
+			if (!Input.GetKey(modifier))
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	private bool IsRadarPhoneTransitionActive()
+	{
+		if (_equipInProgress && _equipLaunchMode == UavPhoneLaunchMode.UavRadarMonitor)
+		{
+			return true;
+		}
+
+		Player player = _manualPlayer ?? Singleton<GameWorld>.Instance?.MainPlayer;
+		if (player?.HandsController is UavDeviceController handsController &&
+		    handsController.LaunchMode == UavPhoneLaunchMode.UavRadarMonitor)
+		{
+			return true;
+		}
+
+		return _restoreCoroutine != null &&
+		       _currentController?.LaunchMode == UavPhoneLaunchMode.UavRadarMonitor;
+	}
+
+	private void RequestRadarRestore()
+	{
+		_radarReleaseQueued = true;
+		if (_equipInProgress && _equipLaunchMode == UavPhoneLaunchMode.UavRadarMonitor)
+		{
+			TscDiagnostics.LogPhone("TSC UAV radar release queued while phone equip is in progress.");
+			return;
+		}
+
+		TryFinishQueuedRadarMonitor();
+	}
+
+	private void TryFinishQueuedRadarMonitor()
+	{
+		if (!_radarReleaseQueued)
+		{
+			return;
+		}
+
+		// HandsController can be assigned before EFT fires SpawnController's
+		// completion callback. Starting the outro in that gap can prevent the
+		// callback from ever arriving, so the release stays latched until
+		// OnManualPhoneSpawned confirms that the equip transaction completed.
+		if (_equipInProgress && _equipLaunchMode == UavPhoneLaunchMode.UavRadarMonitor)
+		{
+			return;
+		}
+
+		Player player = _manualPlayer ?? Singleton<GameWorld>.Instance?.MainPlayer;
+		if (player?.HandsController is not UavDeviceController controller ||
+		    controller.LaunchMode != UavPhoneLaunchMode.UavRadarMonitor)
+		{
+			// Keep the request queued only while a radar equip can still produce
+			// the controller. A restore already in progress needs no second close.
+			if (!_equipInProgress || _equipLaunchMode != UavPhoneLaunchMode.UavRadarMonitor)
+			{
+				_radarReleaseQueued = false;
+			}
+
+			return;
+		}
+
+		_radarReleaseQueued = false;
+		_currentController = controller;
+		_manualPlayer = player;
+		controller.AuthorizationSessionFinished -= OnManualAuthorizationFinished;
+		controller.AuthorizationSessionFinished += OnManualAuthorizationFinished;
+		TscDiagnostics.LogPhone("TSC UAV radar monitor closing; current hands controller confirmed.");
+		controller.CancelAuthorizationSession();
 	}
 
 	private void TryOpenUplink(UavPhoneLaunchMode launchMode)
@@ -73,7 +221,41 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 			return;
 		}
 
-		UavDeviceController activeController = _currentController ?? player.HandsController as UavDeviceController;
+		// HandsController may already point at the phone before EFT completes the
+		// SpawnController callback. Cancelling in that gap can strand the hand
+		// swap, so every manual phone action waits for the transaction to finish.
+		if (_equipInProgress)
+		{
+			TscDiagnostics.LogPhone("TSC Uplink ignored: manual equip already in progress.");
+			return;
+		}
+
+		UavDeviceController handsController = player.HandsController as UavDeviceController;
+		if (launchMode == UavPhoneLaunchMode.UavRadarMonitor)
+		{
+			if (!UavReconOverlay.IsReconActive)
+			{
+				TscDiagnostics.LogPhone("TSC UAV radar phone ignored: recon link ended before equip.");
+				return;
+			}
+
+			if (handsController != null)
+			{
+				string reason = handsController.LaunchMode == UavPhoneLaunchMode.UavRadarMonitor
+					? "radar monitor is already in the player's hands"
+					: $"another phone session is active ({handsController.LaunchMode})";
+				TscDiagnostics.LogPhone($"TSC UAV radar phone ignored: {reason}.");
+				return;
+			}
+
+			if (_restoreCoroutine != null || _currentController != null)
+			{
+				TscDiagnostics.LogPhone("TSC UAV radar phone ignored: a prior phone restore is still in progress.");
+				return;
+			}
+		}
+
+		UavDeviceController activeController = _currentController ?? handsController;
 		if (activeController != null)
 		{
 			// Sessions launched through EFT's quick-use flow (special slot key)
@@ -97,12 +279,6 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 			return;
 		}
 
-		if (_equipInProgress)
-		{
-			TscDiagnostics.LogPhone("TSC Uplink ignored: manual equip already in progress.");
-			return;
-		}
-
 		if (UavDeviceActivationController.IsActive)
 		{
 			TscDiagnostics.LogPhone("TSC Uplink ignored: internal UAV activation animation is active.");
@@ -111,7 +287,8 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 
 		PaymentMode paymentMode = FireSupportPayment.GetActivePaymentMode();
 		TscDiagnostics.LogPhone($"TSC Uplink active payment mode: {paymentMode}.");
-		if (paymentMode == PaymentMode.DirectRadial)
+		if (launchMode != UavPhoneLaunchMode.UavRadarMonitor &&
+		    paymentMode == PaymentMode.DirectRadial)
 		{
 			NotificationManagerClass.DisplayWarningNotification(
 				"Set payment mode to PhoneAuthorizations or Hybrid.",
@@ -135,9 +312,14 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 		try
 		{
 			_equipInProgress = true;
+			_equipLaunchMode = launchMode;
 			_manualPlayer = player;
 			_previousHandsItem = player.HandsController?.Item;
 			_currentController = null;
+			if (launchMode == UavPhoneLaunchMode.UavRadarMonitor)
+			{
+				_radarReleaseQueued = false;
+			}
 
 			UavDeviceHandsService.BeginEquip(
 				player,
@@ -167,6 +349,19 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 		FireSupportPlugin.LogSource.LogInfo($"TSC Uplink phone spawned; finish handler subscribed (mode={controller.LaunchMode}).");
 		controller.AuthorizationSessionFinished -= OnManualAuthorizationFinished;
 		controller.AuthorizationSessionFinished += OnManualAuthorizationFinished;
+		_equipLaunchMode = UavPhoneLaunchMode.ManualAuthorization;
+		controller.NotifyExternalEquipCompleted();
+
+		if (controller.LaunchMode == UavPhoneLaunchMode.UavRadarMonitor &&
+		    (_radarReleaseQueued ||
+		     !PluginSettings.Enabled.Value ||
+		     !IsRadarShortcutPressed() ||
+		     !UavReconOverlay.IsReconActive))
+		{
+			TscDiagnostics.LogPhone("TSC UAV radar phone spawned after its hold ended; closing immediately.");
+			_radarReleaseQueued = false;
+			controller.CancelAuthorizationSession();
+		}
 	}
 
 	private void OnManualAuthorizationFinished(UavDeviceController controller, bool success)
@@ -246,6 +441,8 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 			_previousHandsItem = null;
 			_manualPlayer = null;
 			_equipInProgress = false;
+			_equipLaunchMode = UavPhoneLaunchMode.ManualAuthorization;
+			_radarReleaseQueued = false;
 			_restoreCoroutine = null;
 		}
 
@@ -284,6 +481,8 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 			_previousHandsItem = null;
 			_manualPlayer = null;
 			_equipInProgress = false;
+			_equipLaunchMode = UavPhoneLaunchMode.ManualAuthorization;
+			_radarReleaseQueued = false;
 			_restoreCoroutine = null;
 		}
 	}

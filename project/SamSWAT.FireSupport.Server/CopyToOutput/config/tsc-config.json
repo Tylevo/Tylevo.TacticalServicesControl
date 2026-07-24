@@ -35,14 +35,14 @@
     "allowAutoPurchaseOnUse": true
   },
   "uav": {
-    "durationSeconds": 45,
+    "durationSeconds": 480,
     "rangeMeters": 200,
-    "scanIntervalSeconds": 1
+    "scanIntervalSeconds": 5
   },
   "focusedSweep": {
-    "durationSeconds": 30,
+    "durationSeconds": 90,
     "rangeMeters": 100,
-    "scanIntervalSeconds": 0.5
+    "scanIntervalSeconds": 0.75
   },
   "extraction": {
     "dispatchDelaySeconds": 0,

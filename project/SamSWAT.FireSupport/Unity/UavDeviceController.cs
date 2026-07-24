@@ -21,6 +21,8 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 	private const string TapAudioClipName = "Blastgang_finger_tap_oneshot_FP";
 	private const float PhoneZoomTransitionSeconds = 0.2f;
 	private const float PhoneZoomRestoreSeconds = 0.15f;
+	private const float UprightRevealSeconds = 0.16f;
+	private const float UprightRevealLowerOffset = 0.10f;
 
 	private static UavDeviceController s_phoneZoomOwner;
 	private static float s_phoneZoomOriginalFov;
@@ -50,10 +52,13 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 	private System.Collections.Generic.List<ESupportType> _deployEntries;
 	private int _deploySelectionIndex;
 	private readonly System.Collections.Generic.List<(Transform upperArm, Transform forearm)> _tuckedRightArms = new();
+	private readonly System.Collections.Generic.List<(Renderer renderer, bool forceRenderingOff)> _uprightPresentationRenderers = new();
 	private bool _beforeRenderHooked;
 	private bool _rightArmHideActive;
 	private bool _deployPosePinned;
 	private float _deployInputArmedAt;
+	private bool _uprightEquipCompleted;
+	private float _uprightRevealStartedAt = -1f;
 	private bool _phoneZoomApplied;
 	private bool _phoneFramingApplied;
 
@@ -95,6 +100,28 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 	/// two hand swaps race and wedge EFT's interaction state machine.
 	/// </summary>
 	public bool IsQuickUseSession => _onUsedCallback != null;
+
+	/// <summary>
+	/// Marks the end of EFT's SpawnController transaction for an upright phone session.
+	/// Radar expiry is allowed to request the outro only after this point;
+	/// doing it while SpawnController is still waiting can strand the hand swap.
+	/// </summary>
+	public void NotifyExternalEquipCompleted()
+	{
+		if (LaunchMode != UavPhoneLaunchMode.DeployMenu &&
+		    LaunchMode != UavPhoneLaunchMode.UavRadarMonitor)
+		{
+			return;
+		}
+
+		_uprightEquipCompleted = true;
+		if (LaunchMode == UavPhoneLaunchMode.UavRadarMonitor &&
+		    !_finishNotified &&
+		    !UavReconOverlay.IsReconActive)
+		{
+			FinishRadarMonitorSession("recon link ended during phone equip");
+		}
+	}
 
 	public void SetOnUsedCallback(Callback<IOnHandsUseCallback> callback)
 	{
@@ -160,11 +187,13 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 				return;
 			}
 
-			if (LaunchMode == UavPhoneLaunchMode.DeployMenu)
+			if (LaunchMode == UavPhoneLaunchMode.DeployMenu ||
+			    LaunchMode == UavPhoneLaunchMode.UavRadarMonitor)
 			{
 				if (PhoneAnimator == null)
 				{
-					FireSupportPlugin.LogSource.LogWarning("TerraGroup phone deploy menu deferred: phone animator was null.");
+					FireSupportPlugin.LogSource.LogWarning(
+						$"TerraGroup phone {LaunchMode} session deferred: phone animator was null.");
 					NotifyAuthorizationFinished(success: false);
 				}
 				else
@@ -173,8 +202,13 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 					// must wait for EFT's equip to complete: pinning the
 					// animator from frame zero starves EFT's spawn callback and
 					// wedges the hand-swap state machine.
-					StartPhoneScreen(weaponPrefab, TerraGroupPhoneState.DeployBoot, "DeployMenuBoot");
-					StartCoroutine(StartDeploySessionWhenEquipped(weaponPrefab));
+					bool radarMonitor = LaunchMode == UavPhoneLaunchMode.UavRadarMonitor;
+					StartPhoneScreen(
+						weaponPrefab,
+						TerraGroupPhoneState.DeployBoot,
+						radarMonitor ? "UavRadarMonitorBoot" : "DeployMenuBoot");
+					SuppressUprightPresentationUntilVertical(weaponPrefab);
+					StartCoroutine(StartUprightPhoneSessionWhenEquipped(weaponPrefab, radarMonitor));
 				}
 
 				return;
@@ -256,6 +290,12 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 			return;
 		}
 
+		if (LaunchMode == UavPhoneLaunchMode.UavRadarMonitor)
+		{
+			FinishRadarMonitorSession("hold released or session cancelled");
+			return;
+		}
+
 		if (_confirmationSequenceRunning && (_paymentAttempted || _restoreStarted))
 		{
 			TscDiagnostics.LogPhone("TSC phone cancel ignored: confirmation payment/restore is already committed.");
@@ -283,6 +323,22 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 			return;
 		}
 
+		if (LaunchMode == UavPhoneLaunchMode.UavRadarMonitor &&
+		    _uprightEquipCompleted &&
+		    !UavReconOverlay.IsReconActive)
+		{
+			FinishRadarMonitorSession("recon link expired");
+			return;
+		}
+
+		if (LaunchMode == UavPhoneLaunchMode.UavRadarMonitor &&
+		    _uprightEquipCompleted &&
+		    _ownerPlayer?.IsInventoryOpened == true)
+		{
+			FinishRadarMonitorSession("inventory opened");
+			return;
+		}
+
 		// While the inventory screen is open, mouse clicks and hotkeys belong to
 		// the inventory UI, not the phone.
 		if (_ownerPlayer != null && _ownerPlayer.IsInventoryOpened)
@@ -290,7 +346,8 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 			return;
 		}
 
-		if (LaunchMode == UavPhoneLaunchMode.DeployMenu)
+		if (LaunchMode == UavPhoneLaunchMode.DeployMenu ||
+		    LaunchMode == UavPhoneLaunchMode.UavRadarMonitor)
 		{
 			// EFT rewrites the hands animator speed after equip, so a frozen
 			// speed cannot hold the pose (the outro played through and stowed
@@ -303,7 +360,14 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 
 			if (!_authorizationInputLocked && _deployPoseReady)
 			{
-				HandleDeployInput();
+				if (LaunchMode == UavPhoneLaunchMode.UavRadarMonitor)
+				{
+					HandleRadarMonitorInput();
+				}
+				else
+				{
+					HandleDeployInput();
+				}
 			}
 
 			return;
@@ -526,11 +590,20 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 		}
 	}
 
-	private IEnumerator StartDeploySessionWhenEquipped(WeaponPrefab weaponPrefab)
+	private IEnumerator StartUprightPhoneSessionWhenEquipped(WeaponPrefab weaponPrefab, bool radarMonitor)
 	{
-		if (_phoneScreen == null && !StartPhoneScreen(weaponPrefab, TerraGroupPhoneState.DeployBoot, "DeployMenu"))
+		string context = radarMonitor ? "UavRadarMonitor" : "DeployMenu";
+		if (_phoneScreen == null && !StartPhoneScreen(weaponPrefab, TerraGroupPhoneState.DeployBoot, context))
 		{
 			NotifyAuthorizationFinished(success: false);
+			yield break;
+		}
+
+		// A very short hold can finish from the spawn callback before this
+		// coroutine receives its first frame. Do not reactivate the session after
+		// the finish callback has already started restoring the previous weapon.
+		if (_finishNotified)
+		{
 			yield break;
 		}
 
@@ -542,24 +615,27 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 		_restoreStarted = false;
 		_phoneVisualTerminalPhaseSent = false;
 		_confirmationSequenceCoroutine = null;
-		_deployEntries = FireSupportDeployMenu.GetOwnedEntries();
+		_deployEntries = radarMonitor ? null : FireSupportDeployMenu.GetOwnedEntries();
 		_deploySelectionIndex = 0;
+		_deployPoseReady = false;
+		_deployPosePinned = false;
 		PendingDeployment = ESupportType.None;
-		FireSupportPlugin.LogSource.LogInfo("TSC deploy phone session started.");
-		PublishPhoneVisualPhase(UavPhoneVisualPhase.StartPurchasePhone, duration: 9.0f);
-
-		// Let the spawn animation reach its idle loop so EFT's equip flow
-		// completes normally (SpawnController callback, quick-use wiring).
-		// Pinning the pose before that starved the callback and wedged EFT's
-		// interaction state machine on restore.
-		float stop = Time.unscaledTime + AuthorizationIdleWaitSeconds;
-		while (PhoneAnimator != null && Time.unscaledTime < stop && !_finishNotified)
+		FireSupportPlugin.LogSource.LogInfo(
+			radarMonitor ? "TSC UAV radar monitor phone session started." : "TSC deploy phone session started.");
+		if (!radarMonitor)
 		{
-			if (IsIdleLoop(PhoneAnimator))
-			{
-				break;
-			}
+			PublishPhoneVisualPhase(UavPhoneVisualPhase.StartPurchasePhone, duration: 9.0f);
+		}
 
+		// Keep EFT's Spawn/Equip animation running untouched, but invisible. The
+		// vertical pose is only sampled after SpawnController's callback confirms
+		// the hand transaction is complete; seeking earlier wedges EFT's restore.
+		float stop = Time.unscaledTime + AuthorizationIdleWaitSeconds;
+		while (!_uprightEquipCompleted &&
+		       PhoneAnimator != null &&
+		       Time.unscaledTime < stop &&
+		       !_finishNotified)
+		{
 			yield return null;
 		}
 
@@ -568,46 +644,59 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 			yield break;
 		}
 
-		if (PhoneAnimator == null || !IsIdleLoop(PhoneAnimator))
+		if (PhoneAnimator == null || !_uprightEquipCompleted)
 		{
 			FireSupportPlugin.LogSource.LogWarning(
-				$"TerraGroup deploy phone not started: animator did not reach Idle_Loop within {AuthorizationIdleWaitSeconds:0.0}s. {DescribeAnimatorState(PhoneAnimator, FindScreenRenderer(weaponPrefab?.transform))}");
-			NotifyAuthorizationFinished(success: false);
+				$"TerraGroup {context} phone not started: SpawnController did not complete within {AuthorizationIdleWaitSeconds:0.0}s. {DescribeAnimatorState(PhoneAnimator, FindScreenRenderer(weaponPrefab?.transform))}");
+			if (radarMonitor)
+			{
+				FinishRadarMonitorSession("phone equip timed out");
+			}
+			else
+			{
+				NotifyAuthorizationFinished(success: false);
+			}
+			yield break;
+		}
+
+		// Let the callback stack unwind before changing animator state.
+		yield return null;
+		if (_finishNotified)
+		{
+			yield break;
+		}
+
+		if (radarMonitor && !UavReconOverlay.IsReconActive)
+		{
+			FinishRadarMonitorSession("recon link ended while phone was raising");
 			yield break;
 		}
 
 		HideRightArmForDeployHold();
 
-		// Blend from the raise into the outro and let it rotate naturally up
-		// to the hold frame (the tucked right arm keeps the swipe-prep hand
-		// hidden), then pin that frame every frame from Update — pinning
-		// survives EFT rewriting the animator speed.
+		// Sample the existing outro directly at its portrait hold frame. The
+		// underlying horizontal equip was rendered off, so the first visible
+		// frame is the upright phone with the free right arm already tucked.
 		int layer = GetHandsLayer(PhoneAnimator);
 		float holdTime = GetDeployPoseNormalizedTime();
 		PhoneAnimator.SetBool("Active", false);
-		PhoneAnimator.CrossFade("Outro Success", 0.12f, layer, 0f);
+		PhoneAnimator.Play("Outro Success", layer, holdTime);
+		PhoneAnimator.Update(0f);
 		_authorizationOutroPreplayed = true;
-
-		float rotateDeadline = Time.unscaledTime + 1.5f;
-		while (Time.unscaledTime < rotateDeadline && !_finishNotified && PhoneAnimator != null)
-		{
-			AnimatorStateInfo info = PhoneAnimator.GetCurrentAnimatorStateInfo(layer);
-			if (IsAuthorizationOutroState(info) && info.normalizedTime >= holdTime)
-			{
-				break;
-			}
-
-			yield return null;
-		}
-
-		if (_finishNotified)
-		{
-			yield break;
-		}
-
 		_deployPosePinned = true;
 
-		ShowDeployScreen();
+		if (radarMonitor)
+		{
+			ShowPhoneState(TerraGroupPhoneState.UavRadarLive);
+		}
+		else
+		{
+			ShowDeployScreen();
+		}
+
+		_uprightRevealStartedAt = Time.unscaledTime;
+		MaintainPhoneFraming();
+		RestoreUprightPresentationRenderers("vertical pose ready");
 		// Arm the commit/cancel inputs slightly later so stray input right
 		// after the deploy key cannot instantly spend an authorization.
 		yield return null;
@@ -619,6 +708,26 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 		_deployInputArmedAt = Time.unscaledTime + 0.4f;
 		_authorizationInputLocked = false;
 		_deployPoseReady = true;
+	}
+
+	private void HandleRadarMonitorInput()
+	{
+		if (!_uprightEquipCompleted || Time.unscaledTime < _deployInputArmedAt)
+		{
+			return;
+		}
+
+		bool escape = Input.GetKeyDown(KeyCode.Escape);
+		bool backspace = Input.GetKeyDown(KeyCode.Backspace);
+		bool rightMouse = Input.GetMouseButtonDown(1);
+		if (!escape && !backspace && !rightMouse)
+		{
+			return;
+		}
+
+		FireSupportPlugin.LogSource.LogInfo(
+			$"TSC UAV radar monitor cancelled by input. escape={escape}, backspace={backspace}, rmb={rightMouse}.");
+		FinishRadarMonitorSession("cancel input");
 	}
 
 	private void ShowDeployScreen()
@@ -841,6 +950,52 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 		_tuckedRightArms.Clear();
 	}
 
+	private void SuppressUprightPresentationUntilVertical(WeaponPrefab weaponPrefab)
+	{
+		if (weaponPrefab == null || _uprightPresentationRenderers.Count > 0)
+		{
+			return;
+		}
+
+		foreach (Renderer renderer in weaponPrefab.GetComponentsInChildren<Renderer>(true))
+		{
+			if (renderer == null)
+			{
+				continue;
+			}
+
+			_uprightPresentationRenderers.Add((renderer, renderer.forceRenderingOff));
+			renderer.forceRenderingOff = true;
+		}
+
+		TscDiagnostics.LogPhone(
+			$"TSC upright phone presentation concealed during EFT equip. renderers={_uprightPresentationRenderers.Count}.");
+	}
+
+	private void RestoreUprightPresentationRenderers(string reason)
+	{
+		if (_uprightPresentationRenderers.Count == 0)
+		{
+			return;
+		}
+
+		int restored = 0;
+		foreach ((Renderer renderer, bool forceRenderingOff) in _uprightPresentationRenderers)
+		{
+			if (renderer == null)
+			{
+				continue;
+			}
+
+			renderer.forceRenderingOff = forceRenderingOff;
+			restored++;
+		}
+
+		_uprightPresentationRenderers.Clear();
+		TscDiagnostics.LogPhone(
+			$"TSC upright phone presentation revealed. renderers={restored}, reason={reason}.");
+	}
+
 	private static string GetBonePath(Transform bone)
 	{
 		string path = bone.name;
@@ -876,6 +1031,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 		FireSupportPlugin.LogSource.LogInfo(
 			$"TSC deploy phone session finishing. success={success}, pending={PendingDeployment}, outroPreplayed={_authorizationOutroPreplayed}.");
 		_deployPoseReady = false;
+		_uprightRevealStartedAt = -1f;
 		// Stop pinning the hold frame so the outro can play out the stow from
 		// here. The right arm stays hidden through it (restored on teardown)
 		// so the outro's swipe motion never shows the free hand.
@@ -903,6 +1059,50 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 				FireSupportPlugin.LogSource.LogWarning("TSC deploy commit dropped: FireSupportController instance was null.");
 			}
 		}
+	}
+
+	private void FinishRadarMonitorSession(string reason)
+	{
+		if (_finishNotified)
+		{
+			return;
+		}
+
+		FireSupportPlugin.LogSource.LogInfo(
+			$"TSC UAV radar monitor finishing. reason={reason}, outroPreplayed={_authorizationOutroPreplayed}.");
+		_deployPoseReady = false;
+		_uprightRevealStartedAt = -1f;
+		_deployPosePinned = false;
+		_authorizationSessionActive = false;
+		_authorizationInputLocked = true;
+		_restoreStarted = true;
+		_confirmationSequenceRunning = false;
+		_confirmationSequenceCoroutine = null;
+		_phoneScreen?.StopConfirmSwipeAnimation();
+
+		// This is a local presentation session, not an authorization event. Do
+		// not publish purchase/cancel visual packets when the player simply
+		// lowers the radar. Resume the already-started upright outro, or begin
+		// the normal success outro when release happened during the raise.
+		if (_authorizationOutroPreplayed)
+		{
+			SetPhoneAnimatorSpeed(GetConfirmOutroSpeedMultiplier(), "UAV radar monitor finish; resume outro");
+		}
+		else
+		{
+			PlayOutroSuccess();
+		}
+
+		try
+		{
+			_onUsedCallback?.Invoke(new Result<IOnHandsUseCallback>(this));
+		}
+		catch (Exception ex)
+		{
+			FireSupportPlugin.LogSource.LogWarning($"TerraGroup radar monitor quick-use callback failed. {ex}");
+		}
+
+		NotifyAuthorizationFinished(success: true);
 	}
 
 	private bool HandleServiceSelectionShortcuts()
@@ -1681,6 +1881,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 	private void ApplyPhoneZoom()
 	{
 		if (_phoneZoomApplied ||
+		    _phoneFramingApplied ||
 		    PluginSettings.PhoneAutoZoomEnabled?.Value != true ||
 		    _ownerPlayer?.IsYourPlayer != true ||
 		    !CameraClass.Exist ||
@@ -1702,16 +1903,35 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 				}
 			}
 
-			s_phoneZoomOwner = this;
-			_phoneZoomApplied = true;
 			_phoneFramingApplied = _ownerPlayer?.ProceduralWeaponAnimation?.HandsContainer != null;
 
-			float configuredFov = Mathf.Clamp(PluginSettings.PhoneZoomFov?.Value ?? 45f, 20f, 75f);
-			float targetFov = Mathf.Min(s_phoneZoomOriginalFov, configuredFov);
-			cameraClass.SetFov(targetFov, PhoneZoomTransitionSeconds, true);
+			bool preserveRaidFov =
+				LaunchMode == UavPhoneLaunchMode.DeployMenu ||
+				LaunchMode == UavPhoneLaunchMode.UavRadarMonitor;
+			float targetFov = s_phoneZoomOriginalFov;
+			if (!preserveRaidFov)
+			{
+				float configuredFov = Mathf.Clamp(PluginSettings.PhoneZoomFov?.Value ?? 45f, 20f, 75f);
+				targetFov = Mathf.Min(s_phoneZoomOriginalFov, configuredFov);
+				_phoneZoomApplied = true;
+			}
+
+			if (!_phoneZoomApplied && !_phoneFramingApplied)
+			{
+				return;
+			}
+
+			s_phoneZoomOwner = this;
+			if (_phoneZoomApplied)
+			{
+				cameraClass.SetFov(targetFov, PhoneZoomTransitionSeconds, true);
+			}
+
 			MaintainPhoneFraming();
+			string targetFovLabel = preserveRaidFov ? "unchanged" : targetFov.ToString("F1");
 			TscDiagnostics.LogPhone(
-				$"TSC Uplink phone zoom applied. originalFov={s_phoneZoomOriginalFov:F1}, targetFov={targetFov:F1}, " +
+				$"TSC Uplink phone presentation applied. mode={LaunchMode}, originalFov={s_phoneZoomOriginalFov:F1}, " +
+				$"targetFov={targetFovLabel}, " +
 				$"verticalFraming={GetPhoneVerticalFraming():F3}, " +
 				$"horizontalFraming={GetPhoneHorizontalFraming():F3}.");
 		}
@@ -1738,7 +1958,26 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 		Vector3 framedOffset = s_phoneFramingOriginalOffset;
 		framedOffset.x -= GetPhoneHorizontalFraming();
 		framedOffset.y -= GetPhoneVerticalFraming();
+		framedOffset.y += GetUprightRevealLowerOffset();
 		handsContainer.CameraOffset = framedOffset;
+	}
+
+	private float GetUprightRevealLowerOffset()
+	{
+		if (_uprightRevealStartedAt < 0f)
+		{
+			return 0f;
+		}
+
+		float progress = (Time.unscaledTime - _uprightRevealStartedAt) / UprightRevealSeconds;
+		if (progress >= 1f)
+		{
+			_uprightRevealStartedAt = -1f;
+			return 0f;
+		}
+
+		float eased = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(progress));
+		return Mathf.Lerp(UprightRevealLowerOffset, 0f, eased);
 	}
 
 	private static float GetPhoneVerticalFraming()
@@ -1753,11 +1992,14 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 
 	private void RestorePhoneZoom()
 	{
+		_uprightRevealStartedAt = -1f;
 		if (!_phoneZoomApplied && !_phoneFramingApplied)
 		{
 			return;
 		}
 
+		bool restoreFov = _phoneZoomApplied;
+		bool restoreFraming = _phoneFramingApplied;
 		_phoneZoomApplied = false;
 		_phoneFramingApplied = false;
 		if (s_phoneZoomOwner != this)
@@ -1767,13 +2009,14 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 
 		try
 		{
-			if (_ownerPlayer?.ProceduralWeaponAnimation?.HandsContainer != null)
+			if (restoreFraming &&
+			    _ownerPlayer?.ProceduralWeaponAnimation?.HandsContainer != null)
 			{
 				_ownerPlayer.ProceduralWeaponAnimation.HandsContainer.CameraOffset =
 					s_phoneFramingOriginalOffset;
 			}
 
-			if (CameraClass.Exist && CameraClass.Instance != null)
+			if (restoreFov && CameraClass.Exist && CameraClass.Instance != null)
 			{
 				CameraClass.Instance.SetFov(s_phoneZoomOriginalFov, PhoneZoomRestoreSeconds, true);
 				TscDiagnostics.LogPhone(
@@ -1912,6 +2155,8 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 
 	private void OnDestroy()
 	{
+		RestoreUprightPresentationRenderers("controller destroy");
+		_uprightRevealStartedAt = -1f;
 		RestorePhoneZoom();
 		RestoreRightArmAfterDeployHold();
 		ResetPhoneAnimatorSpeed("controller destroy");

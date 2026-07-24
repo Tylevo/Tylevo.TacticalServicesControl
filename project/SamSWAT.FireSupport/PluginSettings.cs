@@ -57,8 +57,10 @@ internal static class PluginSettings
 	internal static ConfigEntry<float> FocusedSweepScanInterval { get; private set; }
 	internal static ConfigEntry<float> FocusedSweepRangeMeters { get; private set; }
 	internal static ConfigEntry<UavRadarPalette> UavRadarPalette { get; private set; }
+	private static ConfigEntry<bool> UavPhoneReconDefaultsMigrated { get; set; }
 	internal static ConfigEntry<KeyboardShortcut> OpenUplinkKey { get; private set; }
 	internal static ConfigEntry<KeyboardShortcut> OpenDeployKey { get; private set; }
+	internal static ConfigEntry<KeyboardShortcut> OpenUavRadarKey { get; private set; }
 	internal static ConfigEntry<KeyboardShortcut> SpotterConfirmKey { get; private set; }
 	internal static ConfigEntry<bool> PhoneAutoZoomEnabled { get; private set; }
 	internal static ConfigEntry<float> PhoneZoomFov { get; private set; }
@@ -282,13 +284,13 @@ internal static class PluginSettings
 		UavDurationSeconds = config.Bind(
 			"UAV Recon Settings",
 			"UAV duration",
-			45,
-			HiddenDescription("How long the UAV radar overlay stays active (seconds)",
-				new AcceptableValueRange<int>(5, 300)));
+			480,
+			HiddenDescription("How long the UAV recon link stays active (seconds)",
+				new AcceptableValueRange<int>(5, 1800)));
 		UavScanInterval = config.Bind(
 			"UAV Recon Settings",
 			"UAV scan interval",
-			1f,
+			5f,
 			HiddenDescription("How often the UAV refreshes target positions (seconds)",
 				new AcceptableValueRange<float>(0.1f, 10f)));
 		UavRangeMeters = config.Bind(
@@ -300,13 +302,13 @@ internal static class PluginSettings
 		FocusedSweepDurationSeconds = config.Bind(
 			"UAV Recon Settings",
 			"Focused sweep duration",
-			30,
-			HiddenDescription("How long the focused UAV sweep radar overlay stays active (seconds)",
-				new AcceptableValueRange<int>(5, 300)));
+			90,
+			HiddenDescription("How long the focused UAV recon link stays active (seconds)",
+				new AcceptableValueRange<int>(5, 1800)));
 		FocusedSweepScanInterval = config.Bind(
 			"UAV Recon Settings",
 			"Focused sweep scan interval",
-			0.5f,
+			0.75f,
 			HiddenDescription("How often the focused sweep refreshes target positions (seconds)",
 				new AcceptableValueRange<float>(0.1f, 10f)));
 		FocusedSweepRangeMeters = config.Bind(
@@ -315,6 +317,12 @@ internal static class PluginSettings
 			100f,
 			HiddenDescription("Maximum focused sweep display range in meters",
 				new AcceptableValueRange<float>(25f, 1000f)));
+		UavPhoneReconDefaultsMigrated = config.Bind(
+			"Internal",
+			"UAV phone recon defaults migrated",
+			false,
+			HiddenDescription("Internal migration flag for aligning old local UAV timing defaults with the physical-phone recon contracts."));
+		MigrateUavPhoneReconDefaults();
 		UavRadarPalette = config.Bind(
 			"UAV Recon Settings",
 			"UAV radar palette",
@@ -331,6 +339,11 @@ internal static class PluginSettings
 			"Open deploy key",
 			new KeyboardShortcut(KeyCode.K),
 			HiddenDescription("Equips the carried TerraGroup TSC Uplink in deploy mode to use purchased support authorizations"));
+		OpenUavRadarKey = config.Bind(
+			"TerraGroup Phone",
+			"Hold UAV radar key",
+			new KeyboardShortcut(KeyCode.J),
+			HiddenDescription("Hold to raise the TerraGroup TSC Uplink and view an active UAV recon link; release to restore your weapon"));
 		SpotterConfirmKey = config.Bind(
 			"TerraGroup Phone",
 			"Spotter confirm key",
@@ -340,13 +353,13 @@ internal static class PluginSettings
 			"TerraGroup Phone",
 			"Automatic phone zoom",
 			true,
-			new ConfigDescription("Temporarily narrows the camera FOV while the local TerraGroup TSC Uplink is in your hands, then restores the previous FOV when it is stowed."));
+			new ConfigDescription("Optionally narrows the camera FOV on authorization purchase screens and enables phone framing. Deploy and held UAV radar screens always preserve the current raid FOV."));
 		PhoneZoomFov = config.Bind(
 			"TerraGroup Phone",
 			"Phone zoom FOV",
 			45f,
 			new ConfigDescription(
-				"Camera FOV used while the TerraGroup TSC Uplink is raised. Lower values make the phone appear larger. Applies the next time the phone is raised.",
+				"Camera FOV used on authorization purchase screens. Deploy and held UAV radar screens do not zoom. Lower values make the authorization phone appear larger.",
 				new AcceptableValueRange<float>(20f, 75f)));
 		PhoneZoomVerticalFraming = config.Bind(
 			"TerraGroup Phone",
@@ -665,6 +678,7 @@ internal static class PluginSettings
 		RemoveFromConfigManager(config, FocusedSweepDurationSeconds);
 		RemoveFromConfigManager(config, FocusedSweepScanInterval);
 		RemoveFromConfigManager(config, FocusedSweepRangeMeters);
+		RemoveFromConfigManager(config, UavPhoneReconDefaultsMigrated);
 		RemoveFromConfigManager(config, UavRadarPalette);
 		RemoveFromConfigManager(config, PhoneFramingDefaultsMigrated);
 		RemoveFromConfigManager(config, PhoneHorizontalDefaultMigrated);
@@ -725,6 +739,51 @@ internal static class PluginSettings
 		if (A10HeadlessRequesterSelfDamageDefaultMigrated != null)
 		{
 			A10HeadlessRequesterSelfDamageDefaultMigrated.Value = true;
+		}
+	}
+
+	private static void MigrateUavPhoneReconDefaults()
+	{
+		if (UavPhoneReconDefaultsMigrated?.Value == true)
+		{
+			return;
+		}
+
+		bool changed = false;
+		if (UavDurationSeconds?.Value == 45)
+		{
+			UavDurationSeconds.Value = 480;
+			changed = true;
+		}
+
+		if (UavScanInterval != null && Mathf.Approximately(UavScanInterval.Value, 1f))
+		{
+			UavScanInterval.Value = 5f;
+			changed = true;
+		}
+
+		if (FocusedSweepDurationSeconds?.Value == 30)
+		{
+			FocusedSweepDurationSeconds.Value = 90;
+			changed = true;
+		}
+
+		if (FocusedSweepScanInterval != null &&
+		    Mathf.Approximately(FocusedSweepScanInterval.Value, 0.5f))
+		{
+			FocusedSweepScanInterval.Value = 0.75f;
+			changed = true;
+		}
+
+		if (changed)
+		{
+			FireSupportPlugin.LogSource?.LogInfo(
+				"TSC migrated legacy local UAV timing defaults to match the physical-phone recon contracts.");
+		}
+
+		if (UavPhoneReconDefaultsMigrated != null)
+		{
+			UavPhoneReconDefaultsMigrated.Value = true;
 		}
 	}
 

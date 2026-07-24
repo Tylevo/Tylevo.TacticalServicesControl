@@ -21,6 +21,15 @@ public sealed class UavReconService(
 
 	private async UniTaskVoid ConfirmRequest(CancellationToken cancellationToken)
 	{
+		if (UavReconOverlay.TryGetSessionSnapshot(out UavReconOverlay.ReconSessionSnapshot activeRecon))
+		{
+			int secondsRemaining = Mathf.CeilToInt(activeRecon.RemainingSeconds);
+			NotificationManagerClass.DisplayWarningNotification(
+				$"RECON LINK ACTIVE - {secondsRemaining / 60:00}:{secondsRemaining % 60:00} remaining.",
+				ENotificationDurationType.Default);
+			return;
+		}
+
 		requestAvailable = false;
 		FireSupportController.Instance.CanCallSupport(false);
 
@@ -140,7 +149,7 @@ public sealed class UavReconService(
 
 		if (!FireSupportNetworking.TryHandleSupportRequest(
 			    effectiveSupportType,
-			    Vector3.zero,
+			    uavCenter,
 			    Vector3.zero,
 			    Vector3.zero,
 			    cancellationToken,

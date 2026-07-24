@@ -3,6 +3,8 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using Comfort.Common;
+using EFT;
 using Newtonsoft.Json.Linq;
 using TMPro;
 using UnityEngine;
@@ -47,6 +49,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 	private const string SwipeArrowRelativePath = "animations/swipe_up/swipe_arrow_sprite.png";
 	private const string SwipeFrameRelativePathFormat = "animations/swipe_up/frames_512x1024/swipe_{0:00}.png";
 	private const int SwipeFrameCount = 12;
+	private const float UavRadarTextRefreshSeconds = 0.1f;
 	private static readonly Rect SwipeAnimationMaskRect = new Rect(46f, 482f, 422f, 270f);
 
 	private static Sprite s_whiteSprite;
@@ -103,12 +106,30 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 	private CanvasGroup _deniedGroup;
 	private CanvasGroup _deployGroup;
 	private CanvasGroup _deployBootGroup;
+	private CanvasGroup _uavRadarGroup;
 	private int _deploySelectionIndex;
 	private Text _deniedReasonText;
 	private Text _deniedDetailText;
 	private Image _swipeArrowImage;
 	private Sprite[] _swipeFrameSprites;
 	private Coroutine _swipeAnimationCoroutine;
+	private RectTransform _uavRadarPlot;
+	private RectTransform _uavRadarSweepTransform;
+	private Image _uavRadarScanProgressImage;
+	private Text _uavRadarStatusText;
+	private Text _uavRadarRemainingText;
+	private Text _uavRadarRangeText;
+	private Text _uavRadarContactsText;
+	private Text _uavRadarNextScanText;
+	private readonly List<UavReconOverlay.ReconContactSnapshot> _uavRadarContactSnapshots = new(32);
+	private readonly List<Image> _uavRadarBlips = new(32);
+	private float _uavRadarPlotRadius;
+	private float _uavRadarUiScale = 1f;
+	private float _uavRadarNextTextRefreshAt;
+	private int _uavRadarLastRemainingSeconds = int.MinValue;
+	private int _uavRadarLastRangeMeters = int.MinValue;
+	private int _uavRadarLastContactCount = int.MinValue;
+	private int _uavRadarLastNextScanTenths = int.MinValue;
 
 	public void Initialize(
 		Renderer screenRenderer,
@@ -140,6 +161,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		BuildDeniedScreen();
 		BuildDeploySelectScreen();
 		BuildDeployBootScreen();
+		BuildUavRadarLiveScreen();
 		BindRenderTexture(uvRect);
 		if (TscDiagnostics.VerboseLcd)
 		{
@@ -161,6 +183,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		StopSwipeAnimation();
 		_swipeArrowImage = null;
 		_swipeFrameSprites = null;
+		ResetUavRadarUiReferences();
 		for (int i = _canvas.transform.childCount - 1; i >= 0; i--)
 		{
 			Destroy(_canvas.transform.GetChild(i).gameObject);
@@ -177,6 +200,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		BuildDeniedScreen();
 		BuildDeploySelectScreen();
 		BuildDeployBootScreen();
+		BuildUavRadarLiveScreen();
 		ShowState(state);
 	}
 
@@ -222,6 +246,16 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 	public void ShowDenied()
 	{
 		ShowState(TerraGroupPhoneState.Denied);
+	}
+
+	private void Update()
+	{
+		if (_currentState != TerraGroupPhoneState.UavRadarLive || _uavRadarGroup == null)
+		{
+			return;
+		}
+
+		UpdateUavRadarLiveScreen();
 	}
 
 	public void Shutdown()
@@ -288,6 +322,8 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		{
 			_renderTexture.Release();
 		}
+
+		ResetUavRadarUiReferences();
 	}
 
 	private void OnDestroy()
@@ -1504,6 +1540,372 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		AddText(root, "ESTABLISHING SECURE LINK", 15, FontStyle.Normal, muted, new Rect(0, h / 2f + 30f, w, 26f), TextAnchor.MiddleCenter);
 	}
 
+	private void BuildUavRadarLiveScreen()
+	{
+		RectTransform root = CreateScreenRoot("TerraGroup UAV Radar Live Screen", portrait: true);
+		_uavRadarGroup = root.gameObject.AddComponent<CanvasGroup>();
+
+		float w = root.sizeDelta.x;
+		float h = root.sizeDelta.y;
+		float scale = Mathf.Max(0.1f, Mathf.Min(w / 432f, h / 768f));
+		float left = (w - 432f * scale) * 0.5f;
+		_uavRadarUiScale = scale;
+		int F(int size) => Mathf.Max(8, Mathf.RoundToInt(size * scale));
+		Rect R(float x, float y, float width, float height) =>
+			new(left + x * scale, y * scale, width * scale, height * scale);
+		Rect L(float x, float y, float width, float height) =>
+			new(x * scale, y * scale, width * scale, height * scale);
+
+		Color text = new(0.863f, 0.847f, 0.784f);
+		Color muted = new(0.616f, 0.600f, 0.549f);
+		Color greenHigh = new(0.58f, 0.82f, 0.36f);
+		Color amber = new(0.804f, 0.620f, 0.329f);
+		Color panel = new(0.041f, 0.055f, 0.052f, 0.98f);
+		Color radarBackground = new(0.025f, 0.055f, 0.05f, 0.98f);
+		Color grid = new(0.30f, 0.56f, 0.39f, 0.24f);
+		Color line = new(0.282f, 0.294f, 0.278f, 0.55f);
+
+		AddText(root, "TERRAGROUP", F(22), FontStyle.Bold, text, R(26, 18, 240, 28), TextAnchor.MiddleLeft);
+		AddText(root, "TACTICAL SERVICES", F(10), FontStyle.Bold, muted, R(27, 44, 220, 18), TextAnchor.MiddleLeft);
+		AddText(root, "OS v2.4.1.7", F(12), FontStyle.Normal, muted, R(126, 26, 180, 20), TextAnchor.MiddleCenter);
+		AddText(root, DateTime.Now.ToString("HH:mm"), F(15), FontStyle.Bold, text, R(316, 24, 90, 24), TextAnchor.MiddleRight);
+		AddLine(root, R(20, 70, 392, 1), line);
+
+		AddText(root, "UAV RECON LINK", F(24), FontStyle.Bold, text, R(28, 88, 250, 34), TextAnchor.MiddleLeft);
+		RectTransform statusPanel = AddPanel(root, R(28, 126, 376, 32), panel);
+		_uavRadarStatusText = AddText(statusPanel, "ACTIVE", F(14), FontStyle.Bold, greenHigh, L(12, 0, 112, 32), TextAnchor.MiddleLeft);
+		AddText(statusPanel, "ENCRYPTED // LIVE FEED", F(11), FontStyle.Bold, muted, L(128, 0, 236, 32), TextAnchor.MiddleRight);
+
+		float radarSize = 376f * scale;
+		_uavRadarPlot = AddPanel(root, R(28, 170, 376, 376), radarBackground);
+		_uavRadarPlotRadius = radarSize * 0.5f - 14f * scale;
+
+		AddLine(_uavRadarPlot, new Rect(radarSize * 0.5f, 10f * scale, 1f, radarSize - 20f * scale), grid);
+		AddLine(_uavRadarPlot, new Rect(10f * scale, radarSize * 0.5f, radarSize - 20f * scale, 1f), grid);
+		AddRadarGridSquare(_uavRadarPlot, 52f * scale, radarSize - 104f * scale, grid);
+		AddRadarGridSquare(_uavRadarPlot, 104f * scale, radarSize - 208f * scale, grid);
+		AddText(_uavRadarPlot, "FWD", F(9), FontStyle.Bold, greenHigh, new Rect(radarSize * 0.5f - 28f * scale, 8f * scale, 56f * scale, 18f * scale), TextAnchor.MiddleCenter);
+		AddText(_uavRadarPlot, "R", F(10), FontStyle.Bold, muted, new Rect(radarSize - 28f * scale, radarSize * 0.5f - 9f * scale, 18f * scale, 18f * scale), TextAnchor.MiddleCenter);
+		AddText(_uavRadarPlot, "AFT", F(9), FontStyle.Bold, muted, new Rect(radarSize * 0.5f - 28f * scale, radarSize - 27f * scale, 56f * scale, 18f * scale), TextAnchor.MiddleCenter);
+		AddText(_uavRadarPlot, "L", F(10), FontStyle.Bold, muted, new Rect(10f * scale, radarSize * 0.5f - 9f * scale, 18f * scale, 18f * scale), TextAnchor.MiddleCenter);
+
+		GameObject sweepObject = new("UAV Radar Sweep");
+		sweepObject.layer = RenderLayer;
+		sweepObject.transform.SetParent(_uavRadarPlot, false);
+		_uavRadarSweepTransform = sweepObject.AddComponent<RectTransform>();
+		_uavRadarSweepTransform.anchorMin = new Vector2(0.5f, 0.5f);
+		_uavRadarSweepTransform.anchorMax = new Vector2(0.5f, 0.5f);
+		_uavRadarSweepTransform.pivot = new Vector2(0.5f, 0f);
+		_uavRadarSweepTransform.anchoredPosition = Vector2.zero;
+		_uavRadarSweepTransform.sizeDelta = new Vector2(Mathf.Max(1f, 2f * scale), _uavRadarPlotRadius);
+		Image sweepImage = sweepObject.AddComponent<Image>();
+		sweepImage.sprite = WhiteSprite;
+		sweepImage.color = new Color(greenHigh.r, greenHigh.g, greenHigh.b, 0.58f);
+		sweepImage.raycastTarget = false;
+
+		GameObject playerMarkerObject = new("Local Player Marker");
+		playerMarkerObject.layer = RenderLayer;
+		playerMarkerObject.transform.SetParent(_uavRadarPlot, false);
+		RectTransform playerMarker = playerMarkerObject.AddComponent<RectTransform>();
+		playerMarker.anchorMin = new Vector2(0.5f, 0.5f);
+		playerMarker.anchorMax = new Vector2(0.5f, 0.5f);
+		playerMarker.pivot = new Vector2(0.5f, 0.5f);
+		playerMarker.anchoredPosition = Vector2.zero;
+		playerMarker.sizeDelta = Vector2.one * (12f * scale);
+		playerMarker.localRotation = Quaternion.Euler(0f, 0f, 45f);
+		Image playerMarkerImage = playerMarkerObject.AddComponent<Image>();
+		playerMarkerImage.sprite = WhiteSprite;
+		playerMarkerImage.color = greenHigh;
+		playerMarkerImage.raycastTarget = false;
+
+		RectTransform metrics = AddPanel(root, R(28, 558, 376, 46), panel);
+		AddText(metrics, "TIME", F(9), FontStyle.Bold, muted, L(12, 4, 102, 14), TextAnchor.MiddleLeft);
+		AddText(metrics, "RANGE", F(9), FontStyle.Bold, muted, L(137, 4, 102, 14), TextAnchor.MiddleCenter);
+		AddText(metrics, "CONTACTS", F(9), FontStyle.Bold, muted, L(262, 4, 102, 14), TextAnchor.MiddleRight);
+		_uavRadarRemainingText = AddText(metrics, "--:--", F(18), FontStyle.Bold, greenHigh, L(12, 18, 102, 24), TextAnchor.MiddleLeft);
+		_uavRadarRangeText = AddText(metrics, "--- M", F(17), FontStyle.Bold, text, L(137, 18, 102, 24), TextAnchor.MiddleCenter);
+		_uavRadarContactsText = AddText(metrics, "0", F(18), FontStyle.Bold, amber, L(262, 18, 102, 24), TextAnchor.MiddleRight);
+
+		RectTransform scanPanel = AddPanel(root, R(28, 614, 376, 46), panel);
+		_uavRadarNextScanText = AddText(scanPanel, "NEXT SWEEP --.-s", F(11), FontStyle.Bold, muted, L(12, 3, 352, 20), TextAnchor.MiddleCenter);
+		GameObject progressObject = new("UAV Sweep Progress");
+		progressObject.layer = RenderLayer;
+		progressObject.transform.SetParent(scanPanel, false);
+		RectTransform progressTransform = progressObject.AddComponent<RectTransform>();
+		progressTransform.anchorMin = new Vector2(0f, 1f);
+		progressTransform.anchorMax = new Vector2(0f, 1f);
+		progressTransform.pivot = new Vector2(0f, 1f);
+		progressTransform.anchoredPosition = new Vector2(12f * scale, -29f * scale);
+		progressTransform.sizeDelta = new Vector2(352f * scale, 4f * scale);
+		_uavRadarScanProgressImage = progressObject.AddComponent<Image>();
+		_uavRadarScanProgressImage.sprite = WhiteSprite;
+		_uavRadarScanProgressImage.color = greenHigh;
+		_uavRadarScanProgressImage.type = Image.Type.Filled;
+		_uavRadarScanProgressImage.fillMethod = Image.FillMethod.Horizontal;
+		_uavRadarScanProgressImage.fillOrigin = 0;
+		_uavRadarScanProgressImage.fillAmount = 0f;
+		_uavRadarScanProgressImage.raycastTarget = false;
+
+		string radarKey = PluginSettings.OpenUavRadarKey != null
+			? PluginSettings.OpenUavRadarKey.Value.ToString().ToUpperInvariant()
+			: "J";
+		RectTransform footer = AddPanel(root, new Rect(left + 28f * scale, h - 74f * scale, 376f * scale, 50f * scale), panel);
+		AddText(footer, $"RELEASE [{radarKey}] TO RESTORE WEAPON", F(12), FontStyle.Bold, greenHigh, new Rect(0, 0, 376f * scale, 50f * scale), TextAnchor.MiddleCenter);
+
+		_uavRadarNextTextRefreshAt = 0f;
+	}
+
+	private static void AddRadarGridSquare(RectTransform parent, float inset, float size, Color color)
+	{
+		if (parent == null || size <= 0f)
+		{
+			return;
+		}
+
+		AddStaticLine(parent, new Rect(inset, inset, size, 1f), color);
+		AddStaticLine(parent, new Rect(inset, inset + size - 1f, size, 1f), color);
+		AddStaticLine(parent, new Rect(inset, inset, 1f, size), color);
+		AddStaticLine(parent, new Rect(inset + size - 1f, inset, 1f, size), color);
+	}
+
+	private static void AddStaticLine(RectTransform parent, Rect rect, Color color)
+	{
+		GameObject gameObject = new("Radar Grid Line");
+		gameObject.layer = RenderLayer;
+		gameObject.transform.SetParent(parent, false);
+
+		RectTransform rt = gameObject.AddComponent<RectTransform>();
+		rt.anchorMin = new Vector2(0f, 1f);
+		rt.anchorMax = new Vector2(0f, 1f);
+		rt.pivot = new Vector2(0f, 1f);
+		rt.anchoredPosition = new Vector2(rect.x, -rect.y);
+		rt.sizeDelta = new Vector2(rect.width, rect.height);
+
+		Image image = gameObject.AddComponent<Image>();
+		image.sprite = WhiteSprite;
+		image.color = color;
+		image.raycastTarget = false;
+	}
+
+	private void UpdateUavRadarLiveScreen()
+	{
+		if (!UavReconOverlay.TryGetSessionSnapshot(out UavReconOverlay.ReconSessionSnapshot snapshot))
+		{
+			SetUavRadarLinkLost();
+			return;
+		}
+
+		if (_uavRadarStatusText != null)
+		{
+			SetTextIfChanged(_uavRadarStatusText, "ACTIVE");
+			_uavRadarStatusText.color = new Color(0.58f, 0.82f, 0.36f);
+		}
+
+		float scanInterval = Mathf.Max(0.1f, snapshot.ScanIntervalSeconds);
+		float sweepProgress = 1f - Mathf.Clamp01(snapshot.NextScanInSeconds / scanInterval);
+		if (_uavRadarScanProgressImage != null)
+		{
+			_uavRadarScanProgressImage.fillAmount = sweepProgress;
+		}
+
+		if (_uavRadarSweepTransform != null)
+		{
+			_uavRadarSweepTransform.gameObject.SetActive(true);
+			_uavRadarSweepTransform.localEulerAngles = new Vector3(0f, 0f, -360f * sweepProgress);
+		}
+
+		Player player = Singleton<GameWorld>.Instance?.MainPlayer;
+		if (player?.Transform == null || _uavRadarPlot == null)
+		{
+			_uavRadarContactSnapshots.Clear();
+			HideUavRadarBlips(0);
+		}
+		else
+		{
+			UavReconOverlay.CopyContactSnapshots(_uavRadarContactSnapshots);
+			UpdateUavRadarContacts(player, Mathf.Max(1f, snapshot.RangeMeters));
+		}
+
+		if (Time.unscaledTime < _uavRadarNextTextRefreshAt)
+		{
+			return;
+		}
+
+		_uavRadarNextTextRefreshAt = Time.unscaledTime + UavRadarTextRefreshSeconds;
+		RefreshUavRadarText(snapshot, _uavRadarContactSnapshots.Count);
+	}
+
+	private void RefreshUavRadarText(UavReconOverlay.ReconSessionSnapshot snapshot, int visibleContactCount)
+	{
+		int remainingSeconds = Mathf.Max(0, Mathf.CeilToInt(snapshot.RemainingSeconds));
+		if (remainingSeconds != _uavRadarLastRemainingSeconds)
+		{
+			_uavRadarLastRemainingSeconds = remainingSeconds;
+			SetTextIfChanged(_uavRadarRemainingText, $"{remainingSeconds / 60:00}:{remainingSeconds % 60:00}");
+		}
+
+		int rangeMeters = Mathf.Max(0, Mathf.RoundToInt(snapshot.RangeMeters));
+		if (rangeMeters != _uavRadarLastRangeMeters)
+		{
+			_uavRadarLastRangeMeters = rangeMeters;
+			SetTextIfChanged(_uavRadarRangeText, $"{rangeMeters} M");
+		}
+
+		if (visibleContactCount != _uavRadarLastContactCount)
+		{
+			_uavRadarLastContactCount = visibleContactCount;
+			SetTextIfChanged(_uavRadarContactsText, visibleContactCount.ToString(CultureInfo.InvariantCulture));
+		}
+
+		int nextScanTenths = Mathf.Max(0, Mathf.CeilToInt(snapshot.NextScanInSeconds * 10f));
+		if (nextScanTenths != _uavRadarLastNextScanTenths)
+		{
+			_uavRadarLastNextScanTenths = nextScanTenths;
+			SetTextIfChanged(_uavRadarNextScanText, $"NEXT SWEEP {nextScanTenths / 10f:0.0}s");
+		}
+	}
+
+	private void UpdateUavRadarContacts(Player player, float rangeMeters)
+	{
+		int count = _uavRadarContactSnapshots.Count;
+		EnsureUavRadarBlipCapacity(count);
+
+		Vector3 origin = player.Transform.position;
+		Vector3 right = player.Transform.right;
+		Vector3 forward = player.Transform.forward;
+		right.y = 0f;
+		forward.y = 0f;
+		if (right.sqrMagnitude < 0.001f || forward.sqrMagnitude < 0.001f)
+		{
+			right = Vector3.right;
+			forward = Vector3.forward;
+		}
+		else
+		{
+			right.Normalize();
+			forward.Normalize();
+		}
+
+		for (int i = 0; i < count; i++)
+		{
+			UavReconOverlay.ReconContactSnapshot contact = _uavRadarContactSnapshots[i];
+			Vector3 relative = contact.WorldPosition - origin;
+			relative.y = 0f;
+			Vector2 normalized = new(
+				Vector3.Dot(relative, right) / rangeMeters,
+				Vector3.Dot(relative, forward) / rangeMeters);
+			if (normalized.sqrMagnitude > 1f)
+			{
+				normalized.Normalize();
+			}
+
+			Image blip = _uavRadarBlips[i];
+			blip.enabled = true;
+			blip.rectTransform.anchoredPosition = normalized * _uavRadarPlotRadius;
+			Color color = contact.Color;
+			color.a = Mathf.Max(0.9f, color.a);
+			blip.color = color;
+		}
+
+		HideUavRadarBlips(count);
+	}
+
+	private void EnsureUavRadarBlipCapacity(int requiredCount)
+	{
+		while (_uavRadarBlips.Count < requiredCount && _uavRadarPlot != null)
+		{
+			GameObject blipObject = new($"UAV Radar Contact {_uavRadarBlips.Count + 1}");
+			blipObject.layer = RenderLayer;
+			blipObject.transform.SetParent(_uavRadarPlot, false);
+
+			RectTransform rt = blipObject.AddComponent<RectTransform>();
+			rt.anchorMin = new Vector2(0.5f, 0.5f);
+			rt.anchorMax = new Vector2(0.5f, 0.5f);
+			rt.pivot = new Vector2(0.5f, 0.5f);
+			rt.sizeDelta = Vector2.one * (10f * _uavRadarUiScale);
+			rt.localRotation = Quaternion.Euler(0f, 0f, 45f);
+
+			Image image = blipObject.AddComponent<Image>();
+			image.sprite = WhiteSprite;
+			image.color = Color.white;
+			image.raycastTarget = false;
+			image.enabled = false;
+			_uavRadarBlips.Add(image);
+		}
+	}
+
+	private void HideUavRadarBlips(int firstHiddenIndex)
+	{
+		for (int i = Mathf.Max(0, firstHiddenIndex); i < _uavRadarBlips.Count; i++)
+		{
+			Image blip = _uavRadarBlips[i];
+			if (blip != null)
+			{
+				blip.enabled = false;
+			}
+		}
+	}
+
+	private void SetUavRadarLinkLost()
+	{
+		if (_uavRadarStatusText != null)
+		{
+			SetTextIfChanged(_uavRadarStatusText, "LINK LOST");
+			_uavRadarStatusText.color = new Color(0.804f, 0.620f, 0.329f);
+		}
+
+		SetTextIfChanged(_uavRadarRemainingText, "--:--");
+		SetTextIfChanged(_uavRadarRangeText, "--- M");
+		SetTextIfChanged(_uavRadarContactsText, "0");
+		SetTextIfChanged(_uavRadarNextScanText, "NEXT SWEEP --.-s");
+		if (_uavRadarScanProgressImage != null)
+		{
+			_uavRadarScanProgressImage.fillAmount = 0f;
+		}
+
+		if (_uavRadarSweepTransform != null)
+		{
+			_uavRadarSweepTransform.gameObject.SetActive(false);
+		}
+
+		_uavRadarContactSnapshots.Clear();
+		HideUavRadarBlips(0);
+		_uavRadarLastRemainingSeconds = int.MinValue;
+		_uavRadarLastRangeMeters = int.MinValue;
+		_uavRadarLastContactCount = int.MinValue;
+		_uavRadarLastNextScanTenths = int.MinValue;
+	}
+
+	private static void SetTextIfChanged(Text label, string value)
+	{
+		if (label != null && !string.Equals(label.text, value, StringComparison.Ordinal))
+		{
+			label.text = value;
+		}
+	}
+
+	private void ResetUavRadarUiReferences()
+	{
+		_uavRadarGroup = null;
+		_uavRadarPlot = null;
+		_uavRadarSweepTransform = null;
+		_uavRadarScanProgressImage = null;
+		_uavRadarStatusText = null;
+		_uavRadarRemainingText = null;
+		_uavRadarRangeText = null;
+		_uavRadarContactsText = null;
+		_uavRadarNextScanText = null;
+		_uavRadarContactSnapshots.Clear();
+		_uavRadarBlips.Clear();
+		_uavRadarPlotRadius = 0f;
+		_uavRadarUiScale = 1f;
+		_uavRadarNextTextRefreshAt = 0f;
+		_uavRadarLastRemainingSeconds = int.MinValue;
+		_uavRadarLastRangeMeters = int.MinValue;
+		_uavRadarLastContactCount = int.MinValue;
+		_uavRadarLastNextScanTenths = int.MinValue;
+	}
+
 	private void AddDeniedReasonOverlay(RectTransform root, bool portrait)
 	{
 		if (root == null)
@@ -1924,6 +2326,11 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		{
 			PluginSettings.FocusedSweepRangeMeters.SettingChanged += OnDynamicSettingChanged;
 		}
+
+		if (PluginSettings.OpenUavRadarKey != null)
+		{
+			PluginSettings.OpenUavRadarKey.SettingChanged += OnDynamicSettingChanged;
+		}
 	}
 
 	private void UnsubscribeSettingChanges()
@@ -1987,6 +2394,11 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		if (PluginSettings.FocusedSweepRangeMeters != null)
 		{
 			PluginSettings.FocusedSweepRangeMeters.SettingChanged -= OnDynamicSettingChanged;
+		}
+
+		if (PluginSettings.OpenUavRadarKey != null)
+		{
+			PluginSettings.OpenUavRadarKey.SettingChanged -= OnDynamicSettingChanged;
 		}
 	}
 
@@ -2404,6 +2816,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		SetGroup(_deniedGroup, _deniedGroup == activeGroup);
 		SetGroup(_deployGroup, _deployGroup == activeGroup);
 		SetGroup(_deployBootGroup, _deployBootGroup == activeGroup);
+		SetGroup(_uavRadarGroup, _uavRadarGroup == activeGroup);
 	}
 
 	private IEnumerator FadeToStateCoroutine(TerraGroupPhoneState state, float durationSeconds)
@@ -2429,7 +2842,8 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 			_authorizedGroup,
 			_deniedGroup,
 			_deployGroup,
-			_deployBootGroup
+			_deployBootGroup,
+			_uavRadarGroup
 		};
 
 		foreach (CanvasGroup group in groups)
@@ -2474,6 +2888,12 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		{
 			UpdateDeniedReasonText();
 		}
+
+		if (state == TerraGroupPhoneState.UavRadarLive)
+		{
+			_uavRadarNextTextRefreshAt = 0f;
+			UpdateUavRadarLiveScreen();
+		}
 	}
 
 	private CanvasGroup GetGroupForState(TerraGroupPhoneState state)
@@ -2491,6 +2911,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 			TerraGroupPhoneState.Denied => _deniedGroup,
 			TerraGroupPhoneState.DeploySelect => _deployGroup,
 			TerraGroupPhoneState.DeployBoot => _deployBootGroup,
+			TerraGroupPhoneState.UavRadarLive => _uavRadarGroup,
 			_ => _homeGroup
 		};
 	}

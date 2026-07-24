@@ -631,12 +631,12 @@ public sealed class FireSupportServerConfigService(
 					Field("enabled.Extraction", "Extraction Enabled", "toggle"),
 					Field("enabled.PriorityExfil", "Priority Exfil Enabled", "toggle")),
 				Section("recon", "Recon Services",
-					Field("uav.durationSeconds", "UAV Duration", "number", min: 5, max: 300, step: 5, slider: true),
+					Field("uav.durationSeconds", "UAV Duration", "number", min: 5, max: 1800, step: 5, slider: true),
 					Field("uav.rangeMeters", "UAV Range", "number", min: 25, max: 1000, step: 25, slider: true),
 					Field("uav.scanIntervalSeconds", "UAV Scan Interval", "number", min: 0.1, max: 10, step: 0.1),
-					Field("focusedSweep.durationSeconds", "Focused Sweep Duration", "number", min: 5, max: 300, step: 5, slider: true),
+					Field("focusedSweep.durationSeconds", "Focused Sweep Duration", "number", min: 5, max: 1800, step: 5, slider: true),
 					Field("focusedSweep.rangeMeters", "Focused Sweep Range", "number", min: 25, max: 1000, step: 25, slider: true),
-					Field("focusedSweep.scanIntervalSeconds", "Focused Sweep Scan Interval", "number", min: 0.1, max: 10, step: 0.1)),
+					Field("focusedSweep.scanIntervalSeconds", "Focused Sweep Scan Interval", "number", min: 0.1, max: 10, step: 0.05)),
 				Section("extraction", "Extraction Services",
 					Field("extraction.dispatchDelaySeconds", "Extraction Dispatch Delay", "number", min: 0, max: 120, step: 1),
 					Field("extraction.waitTimeSeconds", "Extraction Wait Time", "number", min: 5, max: 300, step: 5, slider: true),
@@ -1523,15 +1523,15 @@ public sealed class FireSupportServerConfigService(
 			},
 			Uav = new RaidOpsFireSupportServerConfig.UavSettings
 			{
-				DurationSeconds = 45,
+				DurationSeconds = 480,
 				RangeMeters = 200f,
-				ScanIntervalSeconds = 1f
+				ScanIntervalSeconds = 5f
 			},
 			FocusedSweep = new RaidOpsFireSupportServerConfig.UavSettings
 			{
-				DurationSeconds = 30,
+				DurationSeconds = 90,
 				RangeMeters = 100f,
-				ScanIntervalSeconds = 0.5f
+				ScanIntervalSeconds = 0.75f
 			},
 			Extraction = new RaidOpsFireSupportServerConfig.ExtractionSettings
 			{
