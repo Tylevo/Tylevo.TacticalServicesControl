@@ -2,7 +2,7 @@
 
 Last updated: 2026-07-24
 Target: the next public beta after the currently published 1.0.8 release
-Status: not started
+Status: Phase 0 complete; Phase 1 next
 
 This plan converts the current TSC audit and community bug reports into an ordered implementation and validation sequence. Priority describes risk; phase order also accounts for dependencies. Do not advance to the next phase until the current phase's exit gate is satisfied.
 
@@ -58,17 +58,17 @@ Protect the current physical-phone UAV changes and prove that the starting point
 
 ### Tasks
 
-- [ ] Query GitHub Releases and record the latest release name, tag, publication state, timestamp, target commit, and asset list.
-- [ ] Fetch the release tag and default branch, then compare them with the local committed base.
-- [ ] Download or inspect the published artifact and record its SHA-256, size, roots, entry count, and included component versions.
-- [ ] Capture the complete working-tree status and diff.
-- [ ] Separate the existing UAV work from later bug fixes with a branch, checkpoint commit, or other recoverable snapshot.
-- [ ] Confirm the committed base, product display version, assembly version, and target SPT version.
-- [ ] Confirm the intended local reference paths without copying proprietary EFT, SPT, Fika, or WTT assemblies into the repository.
-- [ ] Run `git diff --check`.
-- [ ] Run all four deploy-suppressed builds: Core, Server, Fika Interop, and Fika bootstrap.
-- [ ] Record build results and any pre-existing warnings.
-- [ ] Identify the authoritative package entry points and resolve whether release archives intentionally contain only `BepInEx` and `SPT` roots or also root documentation.
+- [x] Query GitHub Releases and record the latest release name, tag, publication state, timestamp, target commit, and asset list.
+- [x] Fetch the release tag and default branch, then compare them with the local committed base.
+- [x] Download or inspect the published artifact and record its SHA-256, size, roots, entry count, and included component versions.
+- [x] Capture the complete working-tree status and diff.
+- [x] Separate the existing UAV work from later bug fixes with a branch, checkpoint commit, or other recoverable snapshot.
+- [x] Confirm the committed base, product display version, assembly version, and target SPT version.
+- [x] Confirm the intended local reference paths without copying proprietary EFT, SPT, Fika, or WTT assemblies into the repository.
+- [x] Run `git diff --check`.
+- [x] Run all four deploy-suppressed builds: Core, Server, Fika Interop, and Fika bootstrap.
+- [x] Record build results and any pre-existing warnings.
+- [x] Identify the authoritative package entry points and resolve whether release archives intentionally contain only `BepInEx` and `SPT` roots or also root documentation.
 
 ### Exit Gate
 
@@ -77,6 +77,27 @@ Protect the current physical-phone UAV changes and prove that the starting point
 - The working changes are attributable to a known checkpoint.
 - All four projects build, or every baseline failure is documented before new code is written.
 - No live installation or release artifact was modified.
+
+### Completion Evidence - 2026-07-24
+
+- GitHub release `v0.9.8`, local tag `v0.9.8`, `origin/main`, and the original local `main` all resolve to commit `b7835ea7995fef08ab7c95cfe8c9bf8af2be6c0c`.
+- The published v1.0.8 asset is 41,236,560 bytes with SHA-256 `C3C0390CC6641E5F82C99C3E57D8AEDA358FD0278E667E6616E53963EB2FCB8D`.
+- The published ZIP contains 207 entries: 172 files and 35 directory entries. Its only top-level roots are `BepInEx/` and `SPT/`.
+- The package contains Core, Server, Fika Interop, and Fika bootstrap DLLs at assembly version `0.9.8.0`, plus eight Unity asset bundles.
+- The local development work is preserved on branch `codex/tsc-stabilization-20260724` in five separate checkpoint commits:
+  - `89f1fdc` - physical-phone UAV implementation and authority timing;
+  - `5fcc718` - deploy-suppressed build guards;
+  - `24a5846` - physical-phone UAV workflow documentation;
+  - `5dc254e` - development handoff and stabilization plan;
+  - `03aa54b` - isolated, unvalidated Forge-description draft.
+- `git diff --check v0.9.8..HEAD` passes, and the checkpoint branch is clean.
+- Core build: succeeded with 28 warnings and 0 errors.
+- Server build: succeeded with 9 warnings and 0 errors.
+- Fika Interop build: succeeded with 0 warnings and 0 errors.
+- Fika bootstrap build: succeeded with 0 warnings and 0 errors.
+- The live `D:\SPT` DLL timestamps remain dated 2026-07-13, confirming that the verification builds did not deploy.
+- The published artifact and current ZIP target establish `BepInEx/` plus `SPT/` as the package-root contract. The root-document requirement in `BUILDING.md` is stale and must be corrected in Phase 6.
+- Packaging still reads from live `SptDir` folders and updates an existing archive in place. Phase 7 must replace that with a clean, allowlisted stage to prevent live-state or stale-entry leakage.
 
 ## Phase 1 - Authorization Hydration and Ledger Consumption
 
@@ -325,10 +346,10 @@ Produce a reproducible release candidate from a clean source state and prove tha
 Use the repository's configured reference paths. Keep deployment disabled:
 
 ```powershell
-dotnet build .\project\SamSWAT.FireSupport\SamSWAT.FireSupport.Core.csproj -c "SPT-4.0 Release" -p:SptDir=D:\SPT\ -p:SkipTscDeploy=true
-dotnet build .\project\SamSWAT.FireSupport.Server\SamSWAT.FireSupport.Server.csproj -c "SPT-4.0 Release" -p:SptDir=D:\SPT\ -p:SkipTscDeploy=true
-dotnet build .\project\SamSWAT.FireSupport.Fika.Interop\SamSWAT.FireSupport.Fika.Interop.csproj -c "SPT-4.0 Release" -p:SptDir=D:\SPT\ -p:SkipTscDeploy=true -p:BuildProjectReferences=false
-dotnet build .\project\SamSWAT.FireSupport.Fika\SamSWAT.FireSupport.Fika.csproj -c "SPT-4.0 Release" -p:SptDir=D:\SPT\ -p:SkipTscDeploy=true -p:BuildProjectReferences=false
+dotnet build .\project\SamSWAT.FireSupport\SamSWAT.FireSupport.Core.csproj -c "SPT-4.0 Release" "-p:SptDir=D:/SPT/" "-p:SptSharedAssembliesDir=C:/Users/tylev/Desktop/RaidOps/SPT Assemblies/" -p:SkipTscDeploy=true
+dotnet build .\project\SamSWAT.FireSupport.Server\SamSWAT.FireSupport.Server.csproj -c "SPT-4.0 Release" "-p:SptDir=D:/SPT/" "-p:SptSharedAssembliesDir=C:/Users/tylev/Desktop/RaidOps/SPT Assemblies/" -p:SkipTscDeploy=true
+dotnet build .\project\SamSWAT.FireSupport.Fika.Interop\SamSWAT.FireSupport.Fika.Interop.csproj -c "SPT-4.0 Release" "-p:SptDir=D:/SPT/" "-p:SptSharedAssembliesDir=C:/Users/tylev/Desktop/RaidOps/SPT Assemblies/" -p:SkipTscDeploy=true -p:BuildProjectReferences=false
+dotnet build .\project\SamSWAT.FireSupport.Fika\SamSWAT.FireSupport.Fika.csproj -c "SPT-4.0 Release" "-p:SptDir=D:/SPT/" "-p:SptSharedAssembliesDir=C:/Users/tylev/Desktop/RaidOps/SPT Assemblies/" -p:SkipTscDeploy=true -p:BuildProjectReferences=false
 git diff --check
 ```
 
