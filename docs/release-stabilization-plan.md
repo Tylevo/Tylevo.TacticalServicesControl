@@ -189,6 +189,7 @@ remain unchanged.
 ### Client UI and State
 
 - [x] Postfix the stable SPT 4.0 `MenuScreen.Show(Profile, MatchmakerPlayerControllerClass, ESessionMode)` boundary and inject one idempotent **TSC UPLINK** main-menu button.
+- [x] Place **TSC UPLINK** directly below **Records**, shift the later menu entries by one slot, and restore their exact positions when TSC is disabled or removed.
 - [x] Open a standalone 2D menu page; do not reuse `UavDeviceController`, player hands, the carried Uplink item, or raid camera/FOV state.
 - [x] Perform one authenticated, bounded state fetch when the page opens and after a mutation. Do not enable background menu polling.
 - [x] Enable **Buy** only after an authoritative profile snapshot arrives and confirms persistent authorizations plus a server-backed stash payment source.
@@ -214,10 +215,11 @@ remain unchanged.
 - Commit `3f83aaa` (`fix: simplify pre-raid store styling`) restores the original centered six-row storefront, retains only the dashboard palette, thin borders, darker compact controls, and corrected top-button spacing, and restores Unity's built-in Arial path for crisp text. An independent final review found no P0/P1 issue; the deploy-suppressed Core build passes with 0 errors and the same 28 baseline warnings.
 - Commit `8948b10` (`fix: align pre-raid store header groups`) aligns the title/subtitle block with the status and service-row left edge and aligns the stash/control block with the service-row right edge. It changes five horizontal offsets only.
 - Commit `285cde3` (`fix: separate stash from header controls`) moves the stash label upward by 12 layout units, eliminating its text-rectangle overlap with the Refresh/Close row.
+- Commit `1434898` (`feat: place TSC Uplink below Records`) inserts the menu entry immediately after **Records** and moves **Trading**, **Hideout**, **Exit**, and other known later entries down one slot. The reflow is idempotent, restores the original stack during fallback/disable/teardown, and reconciles external menu relayouts. Two independent reviews found no remaining P0-P2 issue; the deploy-suppressed Core build passes with 0 errors and the same 28 baseline warnings.
 - After explicit approval, all four reviewed DLLs were installed into the live `D:\SPT` component paths and verified byte-for-byte by SHA-256 against the build outputs.
 - The replaced DLLs plus exact pre-first-start ledger/config copies are backed up at `C:\Users\tylev\Desktop\RaidOps\backups\TSC-live-pre-phase1a-dcf1894-20260724-114230`; `INSTALL-MANIFEST.md` records hashes and rollback instructions.
 - The superseded dashboard-shell Core and its rollback instructions remain backed up at `C:\Users\tylev\Desktop\RaidOps\backups\TSC-live-pre-dashboard-style-0f3663c-20260724-120948`.
-- The final simplified storefront replaced only the live Core/client DLL. Its installed SHA-256 is `CE44402190754C9E88F79A72B3E181C7C15E2DE0886DB6F5D5CAD3A0B231E597`; Fika, Fika Interop, and Server remain byte-identical to the Phase 1A install. The pre-spacing Core and rollback instructions are backed up at `C:\Users\tylev\Desktop\RaidOps\backups\TSC-live-pre-stash-spacing-285cde3-20260724-130145`.
+- The current live Core/client DLL includes the Records-order change and has SHA-256 `E55E1DA510C2D96B0BE26038FA37880647FD05371BCECF51DA4914094B89DF0A`; Fika, Fika Interop, and Server remain byte-identical to the Phase 1A install. The preceding Core (`CE44402190754C9E88F79A72B3E181C7C15E2DE0886DB6F5D5CAD3A0B231E597`) and rollback instructions are backed up at `C:\Users\tylev\Desktop\RaidOps\backups\TSC-live-pre-records-order-1434898-20260724-131842`.
 - No player profile, TSC configuration, authorization ledger, release artifact, or published GitHub release was modified during installation. The SPT server and game were not started.
 - The Phase 1A exit gate remains open until the runtime matrix below is recorded; Phase 2 has not started.
 
