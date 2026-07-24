@@ -128,6 +128,7 @@ Eliminate the empty-tablet and all-services-maxed soft-lock while ensuring that 
 - `AuthorizationsIncluded` distinguishes an omitted purchase/mutation ledger from an authoritative empty ledger. Limit denials and valid ledger mutations return and apply the authoritative state before success or failure handling.
 - Fika host-synchronized prices, payment settings, availability, tuning, and UAV settings remain authoritative; per-player counts are never added to the broadcast host-settings packet.
 - Server-backed purchase, consume, commit, and refund responses reconcile the client mirror. Refund-disabled failures no longer create a local phantom credit, and Double Strafe commits only after both requested passes succeed.
+- Server ledger mutations remain serialized through response reconciliation, so an older refund or commit snapshot cannot overwrite a newer purchase or consume result.
 - A mutation epoch prevents a delayed pre-mutation config GET from overwriting a newer purchase, consume, commit, or refund response; canceled refreshes are also discarded after the backend call so an old raid cannot overwrite the next raid.
 - The deploy-phone controller refreshes its owned-entry sequence while open, preserves the selected service when possible, and rebuilds only when membership or order changes.
 - Runtime-only player fields are scrubbed from shared server configuration before it is saved or returned without a resolved profile.

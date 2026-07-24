@@ -5,6 +5,7 @@ using EFT.Communications;
 using EFT.InventoryLogic;
 using System;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace SamSWAT.FireSupport.ArysReloaded.Unity;
 
@@ -41,6 +42,7 @@ public static class FireSupportPayment
 	private static bool _serverSpendCreditsBeforeCash = true;
 	private static bool _serverAllowAutoPurchaseOnUse = true;
 	private static FireSupportPurchaseResponse _lastPurchaseDenial;
+	private static readonly SemaphoreSlim s_serverLedgerMutationGate = new(1, 1);
 	private static readonly Dictionary<ESupportType, CostLogState> s_lastLoggedCost = new(new SupportTypeComparer());
 
 	public static event EventHandler SettingsChanged;
@@ -602,35 +604,43 @@ public static class FireSupportPayment
 			}
 
 			string requestId = Guid.NewGuid().ToString("N");
-			FireSupportPurchaseResponse response = await FireSupportServerConfigClient.ConsumeAuthorizationAsync(
-				consumedType,
-				requestId,
-				_serverConfigRevision);
-			bool authorizationsApplied = ApplyIncludedAuthorizations(response);
-
-			if (response.Ok)
+			await s_serverLedgerMutationGate.WaitAsync();
+			try
 			{
-				NotificationManagerClass.DisplayMessageNotification(
-					$"Used TerraGroup {GetSupportName(consumedType)} authorization.",
-					ENotificationDurationType.Default,
-					ENotificationIconType.Default,
-					null);
-				return new FireSupportAuthorizationUse
+				FireSupportPurchaseResponse response = await FireSupportServerConfigClient.ConsumeAuthorizationAsync(
+					consumedType,
+					requestId,
+					_serverConfigRevision);
+				bool authorizationsApplied = ApplyIncludedAuthorizations(response);
+
+				if (response.Ok)
 				{
-					Ok = true,
-					ConsumedAuthorization = true,
-					ConsumedAuthorizationType = consumedType,
-					RequestId = requestId,
-					ServerBacked = true
-				};
-			}
+					NotificationManagerClass.DisplayMessageNotification(
+						$"Used TerraGroup {GetSupportName(consumedType)} authorization.",
+						ENotificationDurationType.Default,
+						ENotificationIconType.Default,
+						null);
+					return new FireSupportAuthorizationUse
+					{
+						Ok = true,
+						ConsumedAuthorization = true,
+						ConsumedAuthorizationType = consumedType,
+						RequestId = requestId,
+						ServerBacked = true
+					};
+				}
 
-			if (!authorizationsApplied)
-			{
-				FireSupportAuthorizations.Refund(consumedType, serverBacked: true);
+				if (!authorizationsApplied)
+				{
+					FireSupportAuthorizations.Refund(consumedType, serverBacked: true);
+				}
+				NotifyAuthorizationRequired(supportType);
+				return FireSupportAuthorizationUse.Failed(consumedType);
 			}
-			NotifyAuthorizationRequired(supportType);
-			return FireSupportAuthorizationUse.Failed(consumedType);
+			finally
+			{
+				s_serverLedgerMutationGate.Release();
+			}
 		}
 
 		if (paymentMode == PaymentMode.PhoneAuthorizations)
@@ -697,33 +707,49 @@ public static class FireSupportPayment
 	private static async UniTaskVoid RefundServerAuthorizationAsync(
 		FireSupportAuthorizationUse authorizationUse)
 	{
-		FireSupportPurchaseResponse response =
-			await FireSupportServerConfigClient.RefundAuthorizationAsync(
-				authorizationUse.ConsumedAuthorizationType,
-				authorizationUse.RequestId,
-				_serverConfigRevision);
-		bool authorizationsApplied = ApplyIncludedAuthorizations(response);
-
-		// Older servers can acknowledge the refund without returning a ledger
-		// snapshot. Mirror that successful mutation locally until the next
-		// profile refresh. A denial or transport failure is never a refund.
-		if (response?.Ok == true && !authorizationsApplied)
+		await s_serverLedgerMutationGate.WaitAsync();
+		try
 		{
-			FireSupportAuthorizations.Refund(
-				authorizationUse.ConsumedAuthorizationType,
-				serverBacked: true);
+			FireSupportPurchaseResponse response =
+				await FireSupportServerConfigClient.RefundAuthorizationAsync(
+					authorizationUse.ConsumedAuthorizationType,
+					authorizationUse.RequestId,
+					_serverConfigRevision);
+			bool authorizationsApplied = ApplyIncludedAuthorizations(response);
+
+			// Older servers can acknowledge the refund without returning a ledger
+			// snapshot. Mirror that successful mutation locally until the next
+			// profile refresh. A denial or transport failure is never a refund.
+			if (response?.Ok == true && !authorizationsApplied)
+			{
+				FireSupportAuthorizations.Refund(
+					authorizationUse.ConsumedAuthorizationType,
+					serverBacked: true);
+			}
+		}
+		finally
+		{
+			s_serverLedgerMutationGate.Release();
 		}
 	}
 
 	private static async UniTaskVoid CommitServerAuthorizationAsync(
 		FireSupportAuthorizationUse authorizationUse)
 	{
-		FireSupportPurchaseResponse response =
-			await FireSupportServerConfigClient.CommitAuthorizationAsync(
-			authorizationUse.ConsumedAuthorizationType,
-			authorizationUse.RequestId,
-			_serverConfigRevision);
-		ApplyIncludedAuthorizations(response);
+		await s_serverLedgerMutationGate.WaitAsync();
+		try
+		{
+			FireSupportPurchaseResponse response =
+				await FireSupportServerConfigClient.CommitAuthorizationAsync(
+					authorizationUse.ConsumedAuthorizationType,
+					authorizationUse.RequestId,
+					_serverConfigRevision);
+			ApplyIncludedAuthorizations(response);
+		}
+		finally
+		{
+			s_serverLedgerMutationGate.Release();
+		}
 	}
 
 	public static bool TryPurchaseAuthorization(ESupportType supportType)
@@ -850,53 +876,61 @@ public static class FireSupportPayment
 			return result;
 		}
 
-		TscDiagnostics.LogPayment(
-			$"TSC purchase request sent source=Stash supportType={supportType} cost={result.Cost} revision={_serverConfigRevision}.");
-		FireSupportPurchaseResponse serverResult = await FireSupportServerConfigClient.PurchaseAuthorizationAsync(
-			supportType,
-			_serverConfigRevision);
-		serverResult.SupportType = string.IsNullOrWhiteSpace(serverResult.SupportType)
-			? supportType.ToString()
-			: serverResult.SupportType;
-		serverResult.PaymentSource = string.IsNullOrWhiteSpace(serverResult.PaymentSource)
-			? nameof(PaymentSource.StashRoubles)
-			: serverResult.PaymentSource;
-		serverResult.Cost = serverResult.Cost > 0 ? serverResult.Cost : result.Cost;
-		serverResult.ServerRevision = serverResult.ServerRevision > 0 ? serverResult.ServerRevision : _serverConfigRevision;
-
-		if (serverResult.NewBalance >= 0)
+		await s_serverLedgerMutationGate.WaitAsync();
+		try
 		{
-			_serverStashRoubleBalance = serverResult.NewBalance;
-		}
+			TscDiagnostics.LogPayment(
+				$"TSC purchase request sent source=Stash supportType={supportType} cost={result.Cost} revision={_serverConfigRevision}.");
+			FireSupportPurchaseResponse serverResult = await FireSupportServerConfigClient.PurchaseAuthorizationAsync(
+				supportType,
+				_serverConfigRevision);
+			serverResult.SupportType = string.IsNullOrWhiteSpace(serverResult.SupportType)
+				? supportType.ToString()
+				: serverResult.SupportType;
+			serverResult.PaymentSource = string.IsNullOrWhiteSpace(serverResult.PaymentSource)
+				? nameof(PaymentSource.StashRoubles)
+				: serverResult.PaymentSource;
+			serverResult.Cost = serverResult.Cost > 0 ? serverResult.Cost : result.Cost;
+			serverResult.ServerRevision = serverResult.ServerRevision > 0 ? serverResult.ServerRevision : _serverConfigRevision;
 
-		bool authorizationsApplied = ApplyIncludedAuthorizations(serverResult);
-		if (!serverResult.Ok)
-		{
-			if (TryFallbackToCarriedAfterStashDenial(paymentSource, supportType, serverResult, notify, out FireSupportPurchaseResponse carriedResult))
+			if (serverResult.NewBalance >= 0)
 			{
-				return carriedResult;
+				_serverStashRoubleBalance = serverResult.NewBalance;
 			}
 
-			RememberPurchaseDenial(supportType, serverResult);
-			if (notify)
+			bool authorizationsApplied = ApplyIncludedAuthorizations(serverResult);
+			if (!serverResult.Ok)
 			{
-				NotifyAuthorizationPurchaseDenied(supportType, serverResult);
+				if (TryFallbackToCarriedAfterStashDenial(paymentSource, supportType, serverResult, notify, out FireSupportPurchaseResponse carriedResult))
+				{
+					return carriedResult;
+				}
+
+				RememberPurchaseDenial(supportType, serverResult);
+				if (notify)
+				{
+					NotifyAuthorizationPurchaseDenied(supportType, serverResult);
+				}
+
+				FireSupportPlugin.LogSource.LogWarning(
+					$"TSC purchase denied source=Stash supportType={supportType} cost={serverResult.Cost} reason={serverResult.Reason} newBalance={serverResult.NewBalance} revision={serverResult.ServerRevision}.");
+				return serverResult;
 			}
 
-			FireSupportPlugin.LogSource.LogWarning(
-				$"TSC purchase denied source=Stash supportType={supportType} cost={serverResult.Cost} reason={serverResult.Reason} newBalance={serverResult.NewBalance} revision={serverResult.ServerRevision}.");
+			if (!authorizationsApplied)
+			{
+				GrantServerAuthorization(supportType, notify);
+			}
+
+			serverResult.AuthorizationGranted = true;
+			_lastPurchaseDenial = null;
+			FireSupportPlugin.LogSource.LogInfo($"TSC authorization purchased: {GetSupportName(supportType)}.");
 			return serverResult;
 		}
-
-		if (!authorizationsApplied)
+		finally
 		{
-			GrantServerAuthorization(supportType, notify);
+			s_serverLedgerMutationGate.Release();
 		}
-
-		serverResult.AuthorizationGranted = true;
-		_lastPurchaseDenial = null;
-		FireSupportPlugin.LogSource.LogInfo($"TSC authorization purchased: {GetSupportName(supportType)}.");
-		return serverResult;
 	}
 
 	private static bool ApplyIncludedAuthorizations(FireSupportPurchaseResponse response)
