@@ -301,7 +301,7 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 
 		_balanceText = CreateText(panel.transform, "Balance", "STASH: --", 22, FontStyle.Bold,
 			s_text, TextAnchor.MiddleRight,
-			new Vector2(1f, 1f), new Vector2(330f, 42f), new Vector2(-210f, -52f));
+			new Vector2(1f, 1f), new Vector2(330f, 42f), new Vector2(-210f, -40f));
 		_statusText = CreateText(panel.transform, "Status", "Open the page to synchronize.", 17, FontStyle.Normal,
 			s_muted, TextAnchor.MiddleLeft,
 			new Vector2(0.5f, 1f), new Vector2(1090f, 46f), new Vector2(0f, -124f));
