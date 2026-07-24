@@ -134,8 +134,10 @@ Eliminate the empty-tablet and all-services-maxed soft-lock while ensuring that 
 - Runtime-only player fields are scrubbed from shared server configuration before it is saved or returned without a resolved profile.
 - `git diff --check` passes.
 - Deploy-suppressed clean rebuilds pass: Core with 28 baseline warnings, Server with 9 baseline warnings, Fika Interop with 0 warnings, and Fika bootstrap with 0 warnings; all have 0 errors.
-- The live `D:\SPT` component timestamps remain dated 2026-07-13. No installation or release artifact was modified.
-- The Phase 1 exit gate remains open until the solo and Fika runtime validation matrix below is recorded. Per the operating rules, that requires explicit approval before installing into `D:\SPT`.
+- After explicit approval, the four Phase 1 DLLs built from commit `c98bb33` were installed into the live `D:\SPT` component paths. Every installed file was verified against its build-output SHA-256.
+- The replaced v1.0.8 DLLs were backed up to `C:\Users\tylev\Desktop\RaidOps\backups\TSC-live-pre-phase1-c98bb33-20260724-102545`; the backup manifest records original and installed hashes plus rollback instructions.
+- No player profile, configuration, authorization ledger, asset, release artifact, or published GitHub release was modified. The SPT server and game were not started as part of installation.
+- The Phase 1 exit gate remains open until the solo and Fika runtime validation matrix below is recorded. Phase 2 has not started.
 
 ### Validation Matrix
 
