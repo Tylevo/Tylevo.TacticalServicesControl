@@ -18,6 +18,7 @@ public class GameWorldStartPatch : ModulePatch
 	[PatchPostfix]
 	private static void PostfixPatch()
 	{
+		MainMenuPurchaseController.CloseForRaidStart();
 		FireSupportAuthorizations.Reset();
 		FireSupportServerConfigClient.OnRaidStarted();
 

@@ -249,6 +249,19 @@ public static class FireSupportPayment
 		}
 	}
 
+	public static void ClearServerProfileState()
+	{
+		bool hadServerProfileState =
+			_serverStashRoubleBalance.HasValue || _lastPurchaseDenial != null;
+		_serverStashRoubleBalance = null;
+		_lastPurchaseDenial = null;
+		if (hadServerProfileState)
+		{
+			TscDiagnostics.LogPayment(
+				"Cleared server URL TSC profile balance and purchase denial; preserved global phone configuration.");
+		}
+	}
+
 	public static void SetSyncedPaymentMode(PaymentMode paymentMode)
 	{
 		_syncedPaymentMode = paymentMode;
@@ -799,6 +812,136 @@ public static class FireSupportPayment
 		Action<bool, FireSupportPurchaseResponse> callback)
 	{
 		TryPurchaseAuthorizationAsyncInternal(supportType, notify, callback).Forget();
+	}
+
+	/// <summary>
+	/// Menu-only server purchase path. It never falls back to carried cash or a
+	/// local authorization: a successful pre-raid purchase must return a complete
+	/// persistent ledger from the authenticated server.
+	/// </summary>
+	public static async UniTask<FireSupportPurchaseResponse> PurchasePersistentAuthorizationAsync(
+		ESupportType supportType,
+		string requestId,
+		string expectedSessionKey,
+		string expectedProfileId)
+	{
+		var fallback = new FireSupportPurchaseResponse
+		{
+			Ok = false,
+			Reason = "ServerConfigUnavailable",
+			SupportType = supportType.ToString(),
+			Cost = GetCost(supportType),
+			PaymentSource = nameof(PaymentSource.StashRoubles),
+			NewBalance = _serverStashRoubleBalance ?? -1,
+			AuthorizationGranted = false,
+			ServerRevision = _serverConfigRevision,
+			RequestId = requestId ?? string.Empty
+		};
+
+		if (string.IsNullOrWhiteSpace(requestId))
+		{
+			fallback.Reason = "InvalidRequestId";
+			return fallback;
+		}
+
+		if (string.IsNullOrWhiteSpace(expectedSessionKey) ||
+		    string.IsNullOrWhiteSpace(expectedProfileId) ||
+		    !string.Equals(
+			    expectedSessionKey,
+			    FireSupportServerConfigClient.GetAuthenticatedSessionKey(),
+			    StringComparison.Ordinal) ||
+		    !FireSupportServerConfigClient.IsAuthenticatedProfile(expectedProfileId))
+		{
+			fallback.Reason = "ProfileSessionChanged";
+			return fallback;
+		}
+
+		await s_serverLedgerMutationGate.WaitAsync();
+		try
+		{
+			if (!string.Equals(
+				    expectedSessionKey,
+				    FireSupportServerConfigClient.GetAuthenticatedSessionKey(),
+				    StringComparison.Ordinal) ||
+			    !FireSupportServerConfigClient.IsAuthenticatedProfile(expectedProfileId))
+			{
+				fallback.Reason = "ProfileSessionChanged";
+				return fallback;
+			}
+
+			FireSupportPurchaseResponse serverResult =
+				await FireSupportServerConfigClient.PurchasePersistentAuthorizationAsync(
+					supportType,
+					requestId,
+					expectedSessionKey,
+					expectedProfileId,
+					_serverConfigRevision);
+			serverResult ??= fallback;
+			serverResult.SupportType = string.IsNullOrWhiteSpace(serverResult.SupportType)
+				? supportType.ToString()
+				: serverResult.SupportType;
+			serverResult.PaymentSource = string.IsNullOrWhiteSpace(serverResult.PaymentSource)
+				? nameof(PaymentSource.StashRoubles)
+				: serverResult.PaymentSource;
+			serverResult.Cost = serverResult.Cost >= 0
+				? serverResult.Cost
+				: fallback.Cost;
+			serverResult.ServerRevision = serverResult.ServerRevision > 0
+				? serverResult.ServerRevision
+				: _serverConfigRevision;
+			if (!string.Equals(serverResult.RequestId, requestId, StringComparison.Ordinal))
+			{
+				// A persistent purchase response is not authoritative for this
+				// click unless it echoes the exact idempotency key.
+				serverResult.Ok = false;
+				serverResult.AuthorizationGranted = false;
+				serverResult.Reason = "ResponseRequestIdMismatch";
+				return serverResult;
+			}
+
+			if (!string.Equals(
+				    expectedSessionKey,
+				    FireSupportServerConfigClient.GetAuthenticatedSessionKey(),
+				    StringComparison.Ordinal) ||
+			    !FireSupportServerConfigClient.IsAuthenticatedProfile(expectedProfileId))
+			{
+				// The backend may have completed the old profile's request, but
+				// its response must never replace the newly selected ledger.
+				serverResult.Ok = false;
+				serverResult.AuthorizationGranted = false;
+				serverResult.Reason = "ProfileSessionChanged";
+				return serverResult;
+			}
+
+			if (serverResult.NewBalance >= 0)
+			{
+				_serverStashRoubleBalance = serverResult.NewBalance;
+			}
+
+			bool authorizationsApplied =
+				serverResult.AuthorizationsIncluded &&
+				serverResult.Authorizations != null &&
+				ApplyIncludedAuthorizations(serverResult);
+			if (serverResult.Ok && !authorizationsApplied)
+			{
+				// Do not fabricate a local credit for a pre-raid purchase. The
+				// page remains fail-closed until a complete ledger is returned.
+				serverResult.Ok = false;
+				serverResult.AuthorizationGranted = false;
+				serverResult.Reason = "AuthoritativeLedgerMissing";
+			}
+
+			if (serverResult.ServerRevision > 0)
+			{
+				_serverConfigRevision = serverResult.ServerRevision;
+			}
+
+			return serverResult;
+		}
+		finally
+		{
+			s_serverLedgerMutationGate.Release();
+		}
 	}
 
 	private static async UniTaskVoid TryPurchaseAuthorizationAsyncInternal(

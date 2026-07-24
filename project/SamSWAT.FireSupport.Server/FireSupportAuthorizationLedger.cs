@@ -9,6 +9,13 @@ namespace SamSWAT.FireSupport.ArysReloaded;
 public sealed class FireSupportAuthorizationLedger(
 	ISptLogger<FireSupportAuthorizationLedger> logger)
 {
+	public const int MaxPersistentPurchaseRequestIdLength = 128;
+	private const int CurrentSchemaVersion = 3;
+	private const int MaxTransactionsPerProfile = 512;
+	private const string PersistentPurchaseIdentity = "BuyPersistentAuthorization";
+	private const string PersistentPurchasePreparedState = "Prepared";
+	private const string PersistentPurchaseAcceptedState = "Accepted";
+
 	private static readonly JsonSerializerOptions s_jsonOptions = new()
 	{
 		PropertyNameCaseInsensitive = true,
@@ -33,6 +40,7 @@ public sealed class FireSupportAuthorizationLedger(
 		lock (_gate)
 		{
 			_state = Load();
+			NormalizeStateLocked();
 			SaveLocked();
 		}
 	}
@@ -53,6 +61,37 @@ public sealed class FireSupportAuthorizationLedger(
 		}
 	}
 
+	public Dictionary<string, string> GetPreparedPersistentPurchaseRequestIds(string profileId)
+	{
+		var preparedByService = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+		if (string.IsNullOrWhiteSpace(profileId))
+		{
+			return preparedByService;
+		}
+
+		lock (_gate)
+		{
+			FireSupportPlayerAuthorizations profile = GetProfileLocked(profileId);
+			foreach (FireSupportPersistentPurchaseRecord purchase in profile.PersistentPurchases.Values
+				         .Where(purchase =>
+					         purchase != null &&
+					         IsPersistentPurchasePrepared(purchase) &&
+					         string.Equals(
+						         purchase.RequestIdentity,
+						         PersistentPurchaseIdentity,
+						         StringComparison.OrdinalIgnoreCase) &&
+					         !string.IsNullOrWhiteSpace(purchase.Service) &&
+					         purchase.Quantity > 0 &&
+					         !string.IsNullOrWhiteSpace(purchase.RequestId))
+				         .OrderBy(purchase => purchase.CreatedUtc))
+			{
+				preparedByService.TryAdd(purchase.Service, purchase.RequestId);
+			}
+		}
+
+		return preparedByService;
+	}
+
 	public bool TryGrant(
 		string profileId,
 		ESupportType supportType,
@@ -66,7 +105,9 @@ public sealed class FireSupportAuthorizationLedger(
 		credits = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 		reason = string.Empty;
 		string service = ToLedgerKey(supportType);
-		if (string.IsNullOrWhiteSpace(profileId) || string.IsNullOrWhiteSpace(service) || quantity <= 0)
+		if (string.IsNullOrWhiteSpace(profileId) ||
+		    string.IsNullOrWhiteSpace(service) ||
+		    quantity <= 0)
 		{
 			reason = "InvalidAuthorizationRequest";
 			return false;
@@ -79,7 +120,9 @@ public sealed class FireSupportAuthorizationLedger(
 			FireSupportPlayerAuthorizations profile = GetProfileLocked(profileId);
 			int current = GetCredit(profile, service);
 			int limit = Math.Max(1, maxStored);
-			if (current + quantity > limit)
+			int preparedReservations = GetPreparedReservationCountLocked(profile, service);
+			int pendingUses = GetPendingAuthorizationUseCountLocked(profile, service);
+			if ((long)current + pendingUses + preparedReservations + quantity > limit)
 			{
 				credits = new Dictionary<string, int>(profile.Credits, StringComparer.OrdinalIgnoreCase);
 				reason = "AuthorizationLimitReached";
@@ -96,6 +139,318 @@ public sealed class FireSupportAuthorizationLedger(
 
 			credits = new Dictionary<string, int>(profile.Credits, StringComparer.OrdinalIgnoreCase);
 			return true;
+		}
+	}
+
+	public PersistentPurchaseReplayStatus GetPersistentPurchaseReplay(
+		string profileId,
+		ESupportType supportType,
+		int quantity,
+		string requestId,
+		out Dictionary<string, int> credits,
+		out FireSupportPersistentPurchaseRecord? purchase)
+	{
+		credits = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+		purchase = null;
+		string service = ToLedgerKey(supportType);
+		requestId = requestId?.Trim() ?? string.Empty;
+		if (string.IsNullOrWhiteSpace(profileId) ||
+		    string.IsNullOrWhiteSpace(service) ||
+		    quantity <= 0 ||
+		    string.IsNullOrWhiteSpace(requestId) ||
+		    requestId.Length > MaxPersistentPurchaseRequestIdLength)
+		{
+			return PersistentPurchaseReplayStatus.Conflict;
+		}
+
+		lock (_gate)
+		{
+			FireSupportPlayerAuthorizations profile = GetProfileLocked(profileId);
+			credits = new Dictionary<string, int>(profile.Credits, StringComparer.OrdinalIgnoreCase);
+			FireSupportPersistentPurchaseRecord? journalEntry =
+				FindPersistentPurchaseLocked(profile, requestId, out _);
+			if (journalEntry != null)
+			{
+				purchase = ClonePersistentPurchase(journalEntry);
+				if (!IsMatchingPersistentPurchase(journalEntry, service, quantity))
+				{
+					return PersistentPurchaseReplayStatus.Conflict;
+				}
+
+				if (IsPersistentPurchaseAccepted(journalEntry))
+				{
+					return PersistentPurchaseReplayStatus.Accepted;
+				}
+
+				return IsPersistentPurchasePrepared(journalEntry)
+					? PersistentPurchaseReplayStatus.Prepared
+					: PersistentPurchaseReplayStatus.Conflict;
+			}
+
+			FireSupportAuthorizationTransaction? existing =
+				FindTransactionByRequestIdLocked(profile, requestId);
+			if (existing == null)
+			{
+				return PersistentPurchaseReplayStatus.NotFound;
+			}
+
+			if (!IsMatchingPurchaseIdentity(existing, service, quantity))
+			{
+				return PersistentPurchaseReplayStatus.Conflict;
+			}
+
+			purchase = CreateAcceptedPurchaseFromTransaction(existing, requestId);
+			return PersistentPurchaseReplayStatus.Accepted;
+		}
+	}
+
+	public bool TryPreparePersistentPurchase(
+		string profileId,
+		ESupportType supportType,
+		int quantity,
+		int price,
+		int preDebitBalance,
+		string preDebitFingerprint,
+		string expectedPostDebitFingerprint,
+		int maxStored,
+		string requestId,
+		out Dictionary<string, int> credits,
+		out FireSupportPersistentPurchaseRecord? purchase,
+		out string reason)
+	{
+		credits = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+		purchase = null;
+		reason = string.Empty;
+		string service = ToLedgerKey(supportType);
+		requestId = requestId?.Trim() ?? string.Empty;
+		preDebitFingerprint = preDebitFingerprint?.Trim() ?? string.Empty;
+		expectedPostDebitFingerprint = expectedPostDebitFingerprint?.Trim() ?? string.Empty;
+		if (string.IsNullOrWhiteSpace(profileId) ||
+		    string.IsNullOrWhiteSpace(service) ||
+		    quantity <= 0 ||
+		    price < 0 ||
+		    preDebitBalance < price ||
+		    !IsValidRoubleInventoryFingerprint(preDebitFingerprint) ||
+		    !IsValidRoubleInventoryFingerprint(expectedPostDebitFingerprint) ||
+		    string.IsNullOrWhiteSpace(requestId) ||
+		    requestId.Length > MaxPersistentPurchaseRequestIdLength)
+		{
+			reason = "InvalidAuthorizationRequest";
+			return false;
+		}
+
+		lock (_gate)
+		{
+			FireSupportAuthorizationLedgerState snapshot = CloneState(_state);
+			FireSupportPlayerAuthorizations profile = GetProfileLocked(profileId);
+			credits = new Dictionary<string, int>(profile.Credits, StringComparer.OrdinalIgnoreCase);
+			FireSupportPersistentPurchaseRecord? existingJournal =
+				FindPersistentPurchaseLocked(profile, requestId, out _);
+			if (existingJournal != null)
+			{
+				purchase = ClonePersistentPurchase(existingJournal);
+				reason = !IsMatchingPersistentPurchase(existingJournal, service, quantity)
+					? "PurchaseRequestConflict"
+					: IsPersistentPurchaseAccepted(existingJournal)
+						? "AlreadyAccepted"
+						: IsPersistentPurchasePrepared(existingJournal)
+							? "AlreadyPrepared"
+							: "PurchaseRequestConflict";
+				return false;
+			}
+
+			FireSupportAuthorizationTransaction? existingTransaction =
+				FindTransactionByRequestIdLocked(profile, requestId);
+			if (existingTransaction != null)
+			{
+				reason = IsMatchingPurchaseIdentity(existingTransaction, service, quantity)
+					? "AlreadyAccepted"
+					: "PurchaseRequestConflict";
+				purchase = IsMatchingPurchaseIdentity(existingTransaction, service, quantity)
+					? CreateAcceptedPurchaseFromTransaction(existingTransaction, requestId)
+					: null;
+				return false;
+			}
+
+			int current = GetCredit(profile, service);
+			int preparedReservations = GetPreparedReservationCountLocked(profile, service);
+			int pendingUses = GetPendingAuthorizationUseCountLocked(profile, service);
+			int limit = Math.Max(1, maxStored);
+			if ((long)current + pendingUses + preparedReservations + quantity > limit)
+			{
+				reason = "AuthorizationLimitReached";
+				return false;
+			}
+
+			var prepared = new FireSupportPersistentPurchaseRecord
+			{
+				RequestId = requestId,
+				RequestIdentity = PersistentPurchaseIdentity,
+				Service = service,
+				Quantity = quantity,
+				Price = price,
+				PreDebitBalance = preDebitBalance,
+				ExpectedPostDebitBalance = preDebitBalance - price,
+				PreDebitFingerprint = preDebitFingerprint,
+				ExpectedPostDebitFingerprint = expectedPostDebitFingerprint,
+				State = PersistentPurchasePreparedState,
+				CreatedUtc = DateTimeOffset.UtcNow
+			};
+			profile.PersistentPurchases[requestId] = prepared;
+			if (!TrySaveMutationLocked(snapshot, out reason))
+			{
+				credits = GetCreditsFromStateLocked(profileId);
+				return false;
+			}
+
+			purchase = ClonePersistentPurchase(prepared);
+			return true;
+		}
+	}
+
+	public bool TryFinalizePersistentPurchase(
+		string profileId,
+		ESupportType supportType,
+		int quantity,
+		string requestId,
+		out Dictionary<string, int> credits,
+		out FireSupportPersistentPurchaseRecord? purchase,
+		out string reason)
+	{
+		credits = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+		purchase = null;
+		reason = string.Empty;
+		string service = ToLedgerKey(supportType);
+		requestId = requestId?.Trim() ?? string.Empty;
+		if (string.IsNullOrWhiteSpace(profileId) ||
+		    string.IsNullOrWhiteSpace(service) ||
+		    quantity <= 0 ||
+		    string.IsNullOrWhiteSpace(requestId) ||
+		    requestId.Length > MaxPersistentPurchaseRequestIdLength)
+		{
+			reason = "InvalidAuthorizationRequest";
+			return false;
+		}
+
+		lock (_gate)
+		{
+			FireSupportAuthorizationLedgerState snapshot = CloneState(_state);
+			FireSupportPlayerAuthorizations profile = GetProfileLocked(profileId);
+			FireSupportPersistentPurchaseRecord? journalEntry =
+				FindPersistentPurchaseLocked(profile, requestId, out _);
+			if (journalEntry == null)
+			{
+				FireSupportAuthorizationTransaction? existing =
+					FindTransactionByRequestIdLocked(profile, requestId);
+				if (existing != null && IsMatchingPurchaseIdentity(existing, service, quantity))
+				{
+					credits = new Dictionary<string, int>(profile.Credits, StringComparer.OrdinalIgnoreCase);
+					purchase = CreateAcceptedPurchaseFromTransaction(existing, requestId);
+					reason = "AlreadyAccepted";
+					return true;
+				}
+
+				reason = existing == null ? "PersistentPurchaseNotPrepared" : "PurchaseRequestConflict";
+				return false;
+			}
+
+			credits = new Dictionary<string, int>(profile.Credits, StringComparer.OrdinalIgnoreCase);
+			purchase = ClonePersistentPurchase(journalEntry);
+			if (!IsMatchingPersistentPurchase(journalEntry, service, quantity))
+			{
+				reason = "PurchaseRequestConflict";
+				return false;
+			}
+
+			if (IsPersistentPurchaseAccepted(journalEntry))
+			{
+				reason = "AlreadyAccepted";
+				return true;
+			}
+
+			if (!IsPersistentPurchasePrepared(journalEntry))
+			{
+				reason = "PersistentPurchaseStateInvalid";
+				return false;
+			}
+
+			FireSupportPersistentPurchaseRecord preparedSnapshot = ClonePersistentPurchase(journalEntry);
+			profile.Credits[service] = GetCredit(profile, service) + quantity;
+			journalEntry.State = PersistentPurchaseAcceptedState;
+			journalEntry.AcceptedUtc = DateTimeOffset.UtcNow;
+			AddTransactionLocked(
+				profile,
+				"Purchase",
+				service,
+				quantity,
+				journalEntry.Price,
+				requestId,
+				reason: string.Empty);
+			if (!TrySaveMutationLocked(snapshot, out reason))
+			{
+				credits = GetCreditsFromStateLocked(profileId);
+				purchase = preparedSnapshot;
+				return false;
+			}
+
+			credits = new Dictionary<string, int>(profile.Credits, StringComparer.OrdinalIgnoreCase);
+			purchase = ClonePersistentPurchase(journalEntry);
+			return true;
+		}
+	}
+
+	public bool TryCancelPreparedPersistentPurchase(
+		string profileId,
+		ESupportType supportType,
+		int quantity,
+		string requestId,
+		out string reason)
+	{
+		reason = string.Empty;
+		string service = ToLedgerKey(supportType);
+		requestId = requestId?.Trim() ?? string.Empty;
+		if (string.IsNullOrWhiteSpace(profileId) ||
+		    string.IsNullOrWhiteSpace(service) ||
+		    quantity <= 0 ||
+		    string.IsNullOrWhiteSpace(requestId) ||
+		    requestId.Length > MaxPersistentPurchaseRequestIdLength)
+		{
+			reason = "InvalidAuthorizationRequest";
+			return false;
+		}
+
+		lock (_gate)
+		{
+			FireSupportAuthorizationLedgerState snapshot = CloneState(_state);
+			FireSupportPlayerAuthorizations profile = GetProfileLocked(profileId);
+			FireSupportPersistentPurchaseRecord? journalEntry =
+				FindPersistentPurchaseLocked(profile, requestId, out string journalKey);
+			if (journalEntry == null)
+			{
+				reason = "AlreadyCancelled";
+				return true;
+			}
+
+			if (!IsMatchingPersistentPurchase(journalEntry, service, quantity))
+			{
+				reason = "PurchaseRequestConflict";
+				return false;
+			}
+
+			if (IsPersistentPurchaseAccepted(journalEntry))
+			{
+				reason = "AlreadyAccepted";
+				return false;
+			}
+
+			if (!IsPersistentPurchasePrepared(journalEntry))
+			{
+				reason = "PersistentPurchaseStateInvalid";
+				return false;
+			}
+
+			profile.PersistentPurchases.Remove(journalKey);
+			return TrySaveMutationLocked(snapshot, out reason);
 		}
 	}
 
@@ -216,7 +571,11 @@ public sealed class FireSupportAuthorizationLedger(
 
 			string refundService = string.IsNullOrWhiteSpace(pending.Service) ? service : pending.Service;
 			int limit = Math.Max(1, maxStored);
-			profile.Credits[refundService] = Math.Min(limit, GetCredit(profile, refundService) + Math.Max(1, pending.Quantity));
+			int current = GetCredit(profile, refundService);
+			int preparedReservations = GetPreparedReservationCountLocked(profile, refundService);
+			int effectiveLimit = Math.Max(current, limit - preparedReservations);
+			profile.Credits[refundService] =
+				Math.Min(effectiveLimit, current + Math.Max(1, pending.Quantity));
 			AddTransactionLocked(profile, "Refund", refundService, Math.Max(1, pending.Quantity), 0, requestId, refundReason);
 			if (!TrySaveMutationLocked(snapshot, out reason))
 			{
@@ -402,6 +761,82 @@ public sealed class FireSupportAuthorizationLedger(
 		return JsonSerializer.Deserialize<FireSupportAuthorizationLedgerState>(json, s_jsonOptions) ?? new FireSupportAuthorizationLedgerState();
 	}
 
+	private void NormalizeStateLocked()
+	{
+		var normalizedProfiles =
+			new Dictionary<string, FireSupportPlayerAuthorizations>(StringComparer.OrdinalIgnoreCase);
+		foreach (KeyValuePair<string, FireSupportPlayerAuthorizations> pair in
+		         _state.Profiles ?? new Dictionary<string, FireSupportPlayerAuthorizations>())
+		{
+			if (string.IsNullOrWhiteSpace(pair.Key) || pair.Value == null)
+			{
+				continue;
+			}
+
+			FireSupportPlayerAuthorizations profile = pair.Value;
+			profile.Credits = profile.Credits == null
+				? new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+				: new Dictionary<string, int>(profile.Credits, StringComparer.OrdinalIgnoreCase);
+			profile.Pending = profile.Pending == null
+				? new Dictionary<string, FireSupportPendingAuthorizationUse>(StringComparer.OrdinalIgnoreCase)
+				: new Dictionary<string, FireSupportPendingAuthorizationUse>(
+					profile.Pending,
+					StringComparer.OrdinalIgnoreCase);
+
+			var normalizedPurchases =
+				new Dictionary<string, FireSupportPersistentPurchaseRecord>(StringComparer.OrdinalIgnoreCase);
+			foreach (KeyValuePair<string, FireSupportPersistentPurchaseRecord> purchasePair in
+			         profile.PersistentPurchases ??
+			         new Dictionary<string, FireSupportPersistentPurchaseRecord>())
+			{
+				FireSupportPersistentPurchaseRecord? purchase = purchasePair.Value;
+				string requestId = string.IsNullOrWhiteSpace(purchase?.RequestId)
+					? purchasePair.Key?.Trim() ?? string.Empty
+					: purchase.RequestId.Trim();
+				if (purchase == null || string.IsNullOrWhiteSpace(requestId))
+				{
+					continue;
+				}
+
+				purchase.RequestId = requestId;
+				purchase.PreDebitFingerprint = purchase.PreDebitFingerprint?.Trim() ?? string.Empty;
+				purchase.ExpectedPostDebitFingerprint =
+					purchase.ExpectedPostDebitFingerprint?.Trim() ?? string.Empty;
+				normalizedPurchases[requestId] = purchase;
+			}
+
+			profile.Transactions = profile.Transactions?
+				.Where(transaction => transaction != null)
+				.ToList() ?? new List<FireSupportAuthorizationTransaction>();
+			foreach (FireSupportAuthorizationTransaction transaction in profile.Transactions)
+			{
+				string requestId = transaction.RequestId?.Trim() ?? string.Empty;
+				if (!string.Equals(transaction.Type, "Purchase", StringComparison.OrdinalIgnoreCase) ||
+				    string.IsNullOrWhiteSpace(requestId) ||
+				    normalizedPurchases.ContainsKey(requestId))
+				{
+					continue;
+				}
+
+				normalizedPurchases[requestId] =
+					CreateAcceptedPurchaseFromTransaction(transaction, requestId);
+			}
+
+			profile.PersistentPurchases = normalizedPurchases;
+			if (profile.Transactions.Count > MaxTransactionsPerProfile)
+			{
+				profile.Transactions.RemoveRange(
+					0,
+					profile.Transactions.Count - MaxTransactionsPerProfile);
+			}
+
+			normalizedProfiles[pair.Key.Trim()] = profile;
+		}
+
+		_state.Profiles = normalizedProfiles;
+		_state.SchemaVersion = CurrentSchemaVersion;
+	}
+
 	private Dictionary<string, int> GetCreditsFromStateLocked(string profileId)
 	{
 		FireSupportPlayerAuthorizations profile = GetProfileLocked(profileId);
@@ -416,6 +851,11 @@ public sealed class FireSupportAuthorizationLedger(
 			_state.Profiles[profileId] = profile;
 		}
 
+		profile.Credits ??= new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+		profile.Pending ??= new Dictionary<string, FireSupportPendingAuthorizationUse>(StringComparer.OrdinalIgnoreCase);
+		profile.PersistentPurchases ??=
+			new Dictionary<string, FireSupportPersistentPurchaseRecord>(StringComparer.OrdinalIgnoreCase);
+		profile.Transactions ??= new List<FireSupportAuthorizationTransaction>();
 		return profile;
 	}
 
@@ -459,6 +899,148 @@ public sealed class FireSupportAuthorizationLedger(
 			       string.Equals(transaction.RequestId, requestId, StringComparison.OrdinalIgnoreCase));
 	}
 
+	private static FireSupportAuthorizationTransaction? FindTransactionByRequestIdLocked(
+		FireSupportPlayerAuthorizations profile,
+		string requestId)
+	{
+		if (string.IsNullOrWhiteSpace(requestId))
+		{
+			return null;
+		}
+
+		return profile.Transactions.LastOrDefault(transaction =>
+			string.Equals(transaction.RequestId, requestId, StringComparison.OrdinalIgnoreCase));
+	}
+
+	private static FireSupportPersistentPurchaseRecord? FindPersistentPurchaseLocked(
+		FireSupportPlayerAuthorizations profile,
+		string requestId,
+		out string journalKey)
+	{
+		journalKey = string.Empty;
+		if (string.IsNullOrWhiteSpace(requestId))
+		{
+			return null;
+		}
+
+		foreach (KeyValuePair<string, FireSupportPersistentPurchaseRecord> pair in profile.PersistentPurchases)
+		{
+			if (string.Equals(pair.Key, requestId, StringComparison.OrdinalIgnoreCase))
+			{
+				journalKey = pair.Key;
+				return pair.Value;
+			}
+		}
+
+		return null;
+	}
+
+	private static bool IsMatchingPurchaseIdentity(
+		FireSupportAuthorizationTransaction transaction,
+		string service,
+		int quantity)
+	{
+		return string.Equals(transaction.Type, "Purchase", StringComparison.OrdinalIgnoreCase) &&
+		       string.Equals(transaction.Service, service, StringComparison.OrdinalIgnoreCase) &&
+		       transaction.Quantity == quantity;
+	}
+
+	private static bool IsMatchingPersistentPurchase(
+		FireSupportPersistentPurchaseRecord purchase,
+		string service,
+		int quantity)
+	{
+		return string.Equals(
+			       purchase.RequestIdentity,
+			       PersistentPurchaseIdentity,
+			       StringComparison.OrdinalIgnoreCase) &&
+		       string.Equals(purchase.Service, service, StringComparison.OrdinalIgnoreCase) &&
+		       purchase.Quantity == quantity;
+	}
+
+	private static bool IsPersistentPurchaseAccepted(FireSupportPersistentPurchaseRecord purchase)
+	{
+		return string.Equals(
+			purchase.State,
+			PersistentPurchaseAcceptedState,
+			StringComparison.OrdinalIgnoreCase);
+	}
+
+	private static bool IsPersistentPurchasePrepared(FireSupportPersistentPurchaseRecord purchase)
+	{
+		return string.Equals(
+			purchase.State,
+			PersistentPurchasePreparedState,
+			StringComparison.OrdinalIgnoreCase);
+	}
+
+	private static int GetPreparedReservationCountLocked(
+		FireSupportPlayerAuthorizations profile,
+		string service)
+	{
+		long reserved = profile.PersistentPurchases.Values
+			.Where(purchase =>
+				purchase != null &&
+				!IsPersistentPurchaseAccepted(purchase) &&
+				string.Equals(purchase.Service, service, StringComparison.OrdinalIgnoreCase))
+			.Sum(purchase => (long)Math.Max(0, purchase.Quantity));
+		return reserved >= int.MaxValue ? int.MaxValue : (int)reserved;
+	}
+
+	private static int GetPendingAuthorizationUseCountLocked(
+		FireSupportPlayerAuthorizations profile,
+		string service)
+	{
+		long pending = profile.Pending.Values
+			.Where(use =>
+				use != null &&
+				string.Equals(use.Service, service, StringComparison.OrdinalIgnoreCase))
+			.Sum(use => (long)Math.Max(0, use.Quantity));
+		return pending >= int.MaxValue ? int.MaxValue : (int)pending;
+	}
+
+	private static FireSupportPersistentPurchaseRecord CreateAcceptedPurchaseFromTransaction(
+		FireSupportAuthorizationTransaction transaction,
+		string requestId)
+	{
+		return new FireSupportPersistentPurchaseRecord
+		{
+			RequestId = requestId,
+			RequestIdentity = PersistentPurchaseIdentity,
+			Service = transaction.Service,
+			Quantity = transaction.Quantity,
+			Price = transaction.Price,
+			State = PersistentPurchaseAcceptedState,
+			CreatedUtc = transaction.CreatedUtc,
+			AcceptedUtc = transaction.CreatedUtc
+		};
+	}
+
+	private static FireSupportPersistentPurchaseRecord ClonePersistentPurchase(
+		FireSupportPersistentPurchaseRecord purchase)
+	{
+		return new FireSupportPersistentPurchaseRecord
+		{
+			RequestId = purchase.RequestId,
+			RequestIdentity = purchase.RequestIdentity,
+			Service = purchase.Service,
+			Quantity = purchase.Quantity,
+			Price = purchase.Price,
+			PreDebitBalance = purchase.PreDebitBalance,
+			ExpectedPostDebitBalance = purchase.ExpectedPostDebitBalance,
+			PreDebitFingerprint = purchase.PreDebitFingerprint,
+			ExpectedPostDebitFingerprint = purchase.ExpectedPostDebitFingerprint,
+			State = purchase.State,
+			CreatedUtc = purchase.CreatedUtc,
+			AcceptedUtc = purchase.AcceptedUtc
+		};
+	}
+
+	private static bool IsValidRoubleInventoryFingerprint(string fingerprint)
+	{
+		return fingerprint.Length == 64 && fingerprint.All(Uri.IsHexDigit);
+	}
+
 	private static void AddTransactionLocked(
 		FireSupportPlayerAuthorizations profile,
 		string type,
@@ -479,9 +1061,9 @@ public sealed class FireSupportAuthorizationLedger(
 			Reason = reason,
 			CreatedUtc = DateTimeOffset.UtcNow
 		});
-		if (profile.Transactions.Count > 100)
+		if (profile.Transactions.Count > MaxTransactionsPerProfile)
 		{
-			profile.Transactions.RemoveRange(0, profile.Transactions.Count - 100);
+			profile.Transactions.RemoveRange(0, profile.Transactions.Count - MaxTransactionsPerProfile);
 		}
 	}
 
@@ -500,9 +1082,17 @@ public sealed class FireSupportAuthorizationLedger(
 	}
 }
 
+public enum PersistentPurchaseReplayStatus
+{
+	NotFound,
+	Prepared,
+	Accepted,
+	Conflict
+}
+
 public sealed class FireSupportAuthorizationLedgerState
 {
-	public int SchemaVersion { get; set; } = 1;
+	public int SchemaVersion { get; set; } = 3;
 	public Dictionary<string, FireSupportPlayerAuthorizations> Profiles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
@@ -510,7 +1100,25 @@ public sealed class FireSupportPlayerAuthorizations
 {
 	public Dictionary<string, int> Credits { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 	public Dictionary<string, FireSupportPendingAuthorizationUse> Pending { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+	public Dictionary<string, FireSupportPersistentPurchaseRecord> PersistentPurchases { get; set; } =
+		new(StringComparer.OrdinalIgnoreCase);
 	public List<FireSupportAuthorizationTransaction> Transactions { get; set; } = new();
+}
+
+public sealed class FireSupportPersistentPurchaseRecord
+{
+	public string RequestId { get; set; } = string.Empty;
+	public string RequestIdentity { get; set; } = string.Empty;
+	public string Service { get; set; } = string.Empty;
+	public int Quantity { get; set; }
+	public int Price { get; set; }
+	public int PreDebitBalance { get; set; }
+	public int ExpectedPostDebitBalance { get; set; }
+	public string PreDebitFingerprint { get; set; } = string.Empty;
+	public string ExpectedPostDebitFingerprint { get; set; } = string.Empty;
+	public string State { get; set; } = string.Empty;
+	public DateTimeOffset CreatedUtc { get; set; }
+	public DateTimeOffset? AcceptedUtc { get; set; }
 }
 
 public sealed class FireSupportPendingAuthorizationUse

@@ -26,6 +26,14 @@ public sealed class RaidOpsFireSupportServerConfig
 	public A10Settings DoublePass { get; set; } = new();
 	public PurchasePersistenceSettings PurchasePersistence { get; set; } = new();
 	public Dictionary<string, int> Authorizations { get; set; } = new();
+	#nullable enable
+	/// <summary>
+	/// Authenticated, profile-scoped write-ahead purchase records that still
+	/// require recovery. Null means the server omitted the recovery contract;
+	/// an empty dictionary means no purchase is pending.
+	/// </summary>
+	public Dictionary<string, string>? PreparedPurchases { get; set; }
+	#nullable restore
 
 	public sealed class UavSettings
 	{
@@ -82,9 +90,13 @@ public sealed class FireSupportPurchaseResponse
 	public bool Ok { get; set; }
 	public string Reason { get; set; } = string.Empty;
 	public string SupportType { get; set; } = string.Empty;
-	public int Cost { get; set; }
+	public int Cost { get; set; } = -1;
 	public string PaymentSource { get; set; } = string.Empty;
-	public int NewBalance { get; set; }
+	/// <summary>
+	/// Authoritative post-mutation stash balance, or -1 when the server omitted
+	/// balance state (for example, an early validation denial).
+	/// </summary>
+	public int NewBalance { get; set; } = -1;
 	public bool AuthorizationGranted { get; set; }
 	public bool AuthorizationConsumed { get; set; }
 	public int ServerRevision { get; set; }

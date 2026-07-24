@@ -94,8 +94,153 @@ public static class FireSupportServerConfigClient
 			: string.Empty;
 	}
 
-	public static async UniTask<FireSupportPurchaseResponse> PurchaseAuthorizationAsync(
+	/// <summary>
+	/// Identifies the authenticated backend session and PMC profile currently
+	/// owned by RequestHandler. Menu work captures this value so a response from
+	/// a prior login can never be installed into the next profile.
+	/// </summary>
+	public static string GetAuthenticatedSessionKey()
+	{
+		string sessionId = RequestHandler.SessionId?.Trim() ?? string.Empty;
+		string profileId = GetLocalProfileId()?.Trim() ?? string.Empty;
+		return string.IsNullOrWhiteSpace(sessionId) || string.IsNullOrWhiteSpace(profileId)
+			? string.Empty
+			: $"{sessionId}|{profileId}";
+	}
+
+	public static bool IsAuthenticatedProfile(string profileId)
+	{
+		return !string.IsNullOrWhiteSpace(profileId) &&
+		       string.Equals(
+			       GetLocalProfileId()?.Trim(),
+			       profileId.Trim(),
+			       StringComparison.Ordinal);
+	}
+
+	/// <summary>
+	/// Clears all cached server/profile state when the main menu changes backend
+	/// session. This is deliberately separate from raid start/end so the physical
+	/// phone lifecycle remains unchanged.
+	/// </summary>
+	public static void ClearPreRaidSessionState()
+	{
+		if (s_raidActive)
+		{
+			FireSupportPlugin.LogSource.LogWarning(
+				"TSC ignored a pre-raid session reset while a raid was active.");
+			return;
+		}
+
+		lock (s_profileMutationGate)
+		{
+			// Invalidate any menu GET that began under the previous session.
+			s_profileMutationEpoch++;
+		}
+
+		FireSupportAuthorizations.Reset();
+		FireSupportPayment.ClearServerProfileState();
+		FireSupportPayment.NotifySettingsChanged("TSC pre-raid backend session changed");
+	}
+
+	/// <summary>
+	/// Performs one authenticated menu refresh without starting the raid polling
+	/// loop. Only the profile-scoped fields are installed; the menu renders prices
+	/// and availability directly from the returned server snapshot.
+	/// </summary>
+	public static async UniTask<RaidOpsFireSupportServerConfig> FetchPreRaidSnapshotOnceAsync(
+		string expectedSessionKey,
+		CancellationToken cancellationToken)
+	{
+		if (s_raidActive)
+		{
+			throw new InvalidOperationException("Pre-raid TSC synchronization is unavailable during a raid.");
+		}
+
+		if (string.IsNullOrWhiteSpace(expectedSessionKey) ||
+		    !string.Equals(expectedSessionKey, GetAuthenticatedSessionKey(), StringComparison.Ordinal))
+		{
+			throw new InvalidOperationException("The authenticated backend profile is unavailable or changed.");
+		}
+
+		string profileId = GetLocalProfileId();
+		if (string.IsNullOrWhiteSpace(profileId))
+		{
+			throw new InvalidOperationException("The authenticated PMC profile is unavailable.");
+		}
+
+		string route = BuildConfigRoute(profileId);
+		long mutationEpochAtRequest = CaptureProfileMutationEpoch();
+		TscDiagnostics.LogPayment($"TSC pre-raid player-state snapshot requested: {route}");
+		string body = await SendServerRequestAsync(HttpMethod.Get, route, null, cancellationToken);
+		RaidOpsFireSupportServerConfig snapshot =
+			JsonConvert.DeserializeObject<RaidOpsFireSupportServerConfig>(body);
+		if (snapshot == null)
+		{
+			throw new InvalidOperationException("The TSC server returned an empty or invalid configuration snapshot.");
+		}
+
+		cancellationToken.ThrowIfCancellationRequested();
+		if (!string.Equals(expectedSessionKey, GetAuthenticatedSessionKey(), StringComparison.Ordinal))
+		{
+			throw new InvalidOperationException("The authenticated backend profile changed during synchronization.");
+		}
+
+		// Menu purchasing intentionally requires the explicit new-server
+		// presence contract; legacy inferred state is not safe enough to charge a
+		// profile before a raid.
+		if (!snapshot.PlayerStateIncluded)
+		{
+			throw new InvalidOperationException(
+				"The TSC server did not include authoritative player state.");
+		}
+
+		if (!TryApplyPlayerState(snapshot, Math.Max(0, snapshot.Revision), mutationEpochAtRequest))
+		{
+			throw new InvalidOperationException(
+				"The TSC player ledger changed while the menu snapshot was loading. Refresh and try again.");
+		}
+
+		FireSupportPayment.NotifySettingsChanged(snapshot);
+		TscDiagnostics.LogPayment(
+			$"TSC pre-raid snapshot loaded revision={Math.Max(0, snapshot.Revision)} authorizations={snapshot.Authorizations?.Count ?? 0} stashBalance={(snapshot.StashRoubleBalance.HasValue ? snapshot.StashRoubleBalance.Value.ToString() : "unknown")}.");
+		return snapshot;
+	}
+
+	public static UniTask<FireSupportPurchaseResponse> PurchaseAuthorizationAsync(
 		ESupportType supportType,
+		int clientKnownRevision)
+	{
+		return SendPurchaseRequestAsync(
+			"BuyAuthorization",
+			supportType,
+			requestId: string.Empty,
+			expectedSessionKey: string.Empty,
+			expectedProfileId: string.Empty,
+			clientKnownRevision: clientKnownRevision);
+	}
+
+	public static UniTask<FireSupportPurchaseResponse> PurchasePersistentAuthorizationAsync(
+		ESupportType supportType,
+		string requestId,
+		string expectedSessionKey,
+		string expectedProfileId,
+		int clientKnownRevision)
+	{
+		return SendPurchaseRequestAsync(
+			"BuyPersistentAuthorization",
+			supportType,
+			requestId,
+			expectedSessionKey,
+			expectedProfileId,
+			clientKnownRevision);
+	}
+
+	private static async UniTask<FireSupportPurchaseResponse> SendPurchaseRequestAsync(
+		string action,
+		ESupportType supportType,
+		string requestId,
+		string expectedSessionKey,
+		string expectedProfileId,
 		int clientKnownRevision)
 	{
 		var fallback = new FireSupportPurchaseResponse
@@ -107,21 +252,68 @@ public static class FireSupportServerConfigClient
 			PaymentSource = nameof(PaymentSource.StashRoubles),
 			NewBalance = FireSupportPayment.GetEffectiveBalance(),
 			AuthorizationGranted = false,
-			ServerRevision = Math.Max(clientKnownRevision, s_hostPurchaseRevision)
+			ServerRevision = Math.Max(clientKnownRevision, s_hostPurchaseRevision),
+			RequestId = requestId ?? string.Empty
 		};
 
 		BeginProfileMutation();
 		try
 		{
+			bool persistentPurchase =
+				string.Equals(action, "BuyPersistentAuthorization", StringComparison.OrdinalIgnoreCase);
+			if (persistentPurchase && string.IsNullOrWhiteSpace(requestId))
+			{
+				fallback.Reason = "InvalidRequestId";
+				return fallback;
+			}
+
+			if (persistentPurchase &&
+			    (string.IsNullOrWhiteSpace(expectedSessionKey) ||
+			     string.IsNullOrWhiteSpace(expectedProfileId) ||
+			     !string.Equals(
+				     expectedSessionKey,
+				     GetAuthenticatedSessionKey(),
+				     StringComparison.Ordinal) ||
+			     !IsAuthenticatedProfile(expectedProfileId)))
+			{
+				fallback.Reason = "ProfileSessionChanged";
+				return fallback;
+			}
+
+			// Persistent menu requests must retain the profile captured when the
+			// user clicked. If RequestHandler switches sessions after this check,
+			// the old profile in the body will fail server-side auth/profile
+			// validation instead of charging the newly selected profile.
+			string profileId = persistentPurchase
+				? expectedProfileId.Trim()
+				: GetLocalProfileId();
+			if (string.IsNullOrWhiteSpace(profileId))
+			{
+				fallback.Reason = "ProfileNotFound";
+				return fallback;
+			}
+
 			var body = new FireSupportPurchaseRequest
 			{
-				Action = "BuyAuthorization",
-				SessionId = GetLocalProfileId(),
-				ProfileId = GetLocalProfileId(),
+				Action = action,
+				SessionId = profileId,
+				ProfileId = profileId,
 				SupportType = supportType.ToString(),
+				RequestId = requestId ?? string.Empty,
 				ClientKnownRevision = clientKnownRevision,
 				Quantity = 1
 			};
+			if (persistentPurchase &&
+			    (!string.Equals(
+				     expectedSessionKey,
+				     GetAuthenticatedSessionKey(),
+				     StringComparison.Ordinal) ||
+			     !IsAuthenticatedProfile(profileId)))
+			{
+				fallback.Reason = "ProfileSessionChanged";
+				return fallback;
+			}
+
 			string responseBody = await SendServerRequestAsync(
 				HttpMethod.Post, "purchase", JsonConvert.SerializeObject(body), CancellationToken.None);
 			FireSupportPurchaseResponse result = JsonConvert.DeserializeObject<FireSupportPurchaseResponse>(responseBody);
@@ -135,7 +327,7 @@ public static class FireSupportServerConfigClient
 		}
 		catch (Exception ex)
 		{
-			FireSupportPlugin.LogSource.LogWarning($"FireSupport purchase request failed. {ex}");
+			FireSupportPlugin.LogSource.LogWarning($"FireSupport purchase request {action} failed. {ex}");
 			fallback.Reason = "RequestFailed";
 			return fallback;
 		}
@@ -569,7 +761,11 @@ public static class FireSupportServerConfigClient
 
 	private static string BuildConfigRoute()
 	{
-		string profileId = GetLocalProfileId();
+		return BuildConfigRoute(GetLocalProfileId());
+	}
+
+	private static string BuildConfigRoute(string profileId)
+	{
 		if (string.IsNullOrWhiteSpace(profileId))
 		{
 			return "config";
