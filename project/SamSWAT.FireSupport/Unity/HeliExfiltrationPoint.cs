@@ -11,12 +11,11 @@ namespace SamSWAT.FireSupport.ArysReloaded.Unity;
 
 public class HeliExfiltrationPoint : MonoBehaviour, IPhysicsTrigger
 {
-	private float _timer;
+	private readonly ExtractionCountdownClock _countdown = new();
 	private Coroutine _coroutine;
 	private BattleUIPanelExitTrigger _battleUIPanelExitTrigger;
 	private GameWorld _gameWorld;
 	private ESupportType _supportType = ESupportType.Extract;
-	private float _extractTimeSeconds;
 	private bool _initialized;
 	private bool _completed;
 	private CancellationToken _cancellationToken;
@@ -32,7 +31,7 @@ public class HeliExfiltrationPoint : MonoBehaviour, IPhysicsTrigger
 		_supportType = supportType == ESupportType.PriorityExfil
 			? ESupportType.PriorityExfil
 			: ESupportType.Extract;
-		_extractTimeSeconds = Mathf.Max(0.1f, extractTimeSeconds);
+		_countdown.Initialize(extractTimeSeconds);
 		_cancellationToken = cancellationToken;
 		_initialized = true;
 	}
@@ -71,7 +70,7 @@ public class HeliExfiltrationPoint : MonoBehaviour, IPhysicsTrigger
 		}
 
 		ResetTimer();
-		_battleUIPanelExitTrigger?.Show(_timer);
+		_battleUIPanelExitTrigger?.Show(_countdown.RemainingSeconds);
 
 		if (_coroutine == null)
 		{
@@ -115,12 +114,12 @@ public class HeliExfiltrationPoint : MonoBehaviour, IPhysicsTrigger
 
 	private void ResetTimer()
 	{
-		_timer = _extractTimeSeconds;
+		_countdown.Reset();
 	}
 
 	private IEnumerator Timer(Player player)
 	{
-		while (_timer > 0)
+		while (!_countdown.IsComplete)
 		{
 			PruneDestroyedColliders();
 			if (!CanCompleteExtraction(player))
@@ -130,7 +129,7 @@ public class HeliExfiltrationPoint : MonoBehaviour, IPhysicsTrigger
 			}
 
 			yield return null;
-			_timer -= Time.deltaTime;
+			_countdown.Advance(Time.deltaTime);
 		}
 
 		if (!CanCompleteExtraction(player))

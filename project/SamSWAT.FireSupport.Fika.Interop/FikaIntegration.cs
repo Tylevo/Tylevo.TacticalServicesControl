@@ -55,9 +55,11 @@ public static class FikaIntegration
 	private static FikaClient s_client;
 	private static readonly HashSet<object> s_registeredPacketManagers = new();
 	private static readonly object s_networkRequestGate = new();
-	private static readonly Dictionary<string, ClientPendingRequest> s_pendingClientRequests = new(StringComparer.Ordinal);
+	private static readonly PendingRequestTable<SupportRequestFingerprint, ClientPendingRequest>
+		s_pendingClientRequests = new();
 	private static readonly Dictionary<string, AuthorityRequestEntry> s_authorityRequests = new(StringComparer.Ordinal);
-	private static readonly Dictionary<string, SupportRequestFingerprint> s_acceptedClientEvents = new(StringComparer.Ordinal);
+	private static readonly AcceptedEventRegistry<SupportRequestFingerprint>
+		s_acceptedClientEvents = new();
 	private static readonly HashSet<string> s_startedClientUavLoiterEvents = new(StringComparer.Ordinal);
 	private static readonly Dictionary<string, UavAuthorityReservation> s_uavAuthorityReservations = new(StringComparer.Ordinal);
 	private static int s_inFlightAuthorityRequestCount;
@@ -343,24 +345,29 @@ public static class FikaIntegration
 		bool created = false;
 		lock (s_networkRequestGate)
 		{
-			if (s_pendingClientRequests.TryGetValue(packet.SupportRequestId, out pending))
+			PendingRequestRegistration registration =
+				s_pendingClientRequests.GetOrAdd(
+					packet.SupportRequestId,
+					fingerprint,
+					MaxPendingClientRequests,
+					value => new ClientPendingRequest(value),
+					out pending);
+			if (registration == PendingRequestRegistration.PayloadMismatch)
 			{
-				if (!pending.Fingerprint.Equals(fingerprint))
-				{
-					return FireSupportNetworkRequestResult.Reject("RequestIdPayloadMismatch");
-				}
+				return FireSupportNetworkRequestResult.Reject(
+					"RequestIdPayloadMismatch");
 			}
-			else
+			if (registration == PendingRequestRegistration.CapacityReached)
 			{
-				if (s_pendingClientRequests.Count >= MaxPendingClientRequests)
-				{
-					return FireSupportNetworkRequestResult.Reject("TooManyPendingClientRequests");
-				}
+				return FireSupportNetworkRequestResult.Reject(
+					"TooManyPendingClientRequests");
+			}
+			if (registration == PendingRequestRegistration.InvalidRequestId)
+			{
+				return FireSupportNetworkRequestResult.Reject("InvalidRequestId");
+			}
 
-				pending = new ClientPendingRequest(fingerprint);
-				s_pendingClientRequests.Add(packet.SupportRequestId, pending);
-				created = true;
-			}
+			created = registration == PendingRequestRegistration.Created;
 		}
 
 		if (created)
@@ -428,11 +435,9 @@ public static class FikaIntegration
 		{
 			lock (s_networkRequestGate)
 			{
-				if (s_pendingClientRequests.TryGetValue(packet.SupportRequestId, out ClientPendingRequest current) &&
-				    ReferenceEquals(current, pending))
-				{
-					s_pendingClientRequests.Remove(packet.SupportRequestId);
-				}
+				s_pendingClientRequests.RemoveIfSame(
+					packet.SupportRequestId,
+					pending);
 			}
 		}
 	}
@@ -2188,21 +2193,25 @@ public static class FikaIntegration
 				return false;
 			}
 
-			if (s_acceptedClientEvents.TryGetValue(
-				    packet.SupportRequestId,
-				    out SupportRequestFingerprint existing))
+			AcceptedEventRegistration registration =
+				s_acceptedClientEvents.Register(
+					packet.SupportRequestId,
+					fingerprint);
+			if (registration == AcceptedEventRegistration.Duplicate)
 			{
-				if (existing.Equals(fingerprint))
-				{
-					rejectReason = "DuplicateAcceptedEvent";
-					return true;
-				}
+				rejectReason = "DuplicateAcceptedEvent";
+				return true;
+			}
 
-				rejectReason = "AcceptedEventPayloadMismatch";
+			if (registration != AcceptedEventRegistration.First)
+			{
+				rejectReason =
+					registration == AcceptedEventRegistration.PayloadMismatch
+						? "AcceptedEventPayloadMismatch"
+						: "AcceptedEventRequestIdInvalid";
 				return false;
 			}
 
-			s_acceptedClientEvents.Add(packet.SupportRequestId, fingerprint);
 			shouldPlay = true;
 		}
 
@@ -2562,8 +2571,7 @@ public static class FikaIntegration
 		List<AuthorityRequestEntry> authorityEntries = null;
 		lock (s_networkRequestGate)
 		{
-			pendingClients = new List<ClientPendingRequest>(s_pendingClientRequests.Values);
-			s_pendingClientRequests.Clear();
+			pendingClients = s_pendingClientRequests.ClearAndGetValues();
 			s_acceptedClientEvents.Clear();
 			s_startedClientUavLoiterEvents.Clear();
 
@@ -2857,9 +2865,7 @@ public static class FikaIntegration
 
 	private sealed class ClientPendingRequest
 	{
-		private readonly object _gate = new();
-		private bool _completed;
-		private FireSupportNetworkRequestResult _result;
+		private readonly FirstResult<FireSupportNetworkRequestResult> _result = new();
 
 		public ClientPendingRequest(SupportRequestFingerprint fingerprint)
 		{
@@ -2869,28 +2875,13 @@ public static class FikaIntegration
 		public SupportRequestFingerprint Fingerprint { get; }
 		public UniTaskCompletionSource<FireSupportNetworkRequestResult> Completion { get; } = new();
 
-		public bool IsCompleted
-		{
-			get
-			{
-				lock (_gate)
-				{
-					return _completed;
-				}
-			}
-		}
+		public bool IsCompleted => _result.IsCompleted;
 
 		public bool TrySetResult(FireSupportNetworkRequestResult result)
 		{
-			lock (_gate)
+			if (!_result.TrySet(result))
 			{
-				if (_completed)
-				{
-					return false;
-				}
-
-				_completed = true;
-				_result = result;
+				return false;
 			}
 
 			Completion.TrySetResult(result);
@@ -2899,11 +2890,7 @@ public static class FikaIntegration
 
 		public bool TryGetResult(out FireSupportNetworkRequestResult result)
 		{
-			lock (_gate)
-			{
-				result = _result;
-				return _completed;
-			}
+			return _result.TryGet(out result);
 		}
 	}
 
@@ -2913,7 +2900,7 @@ public static class FikaIntegration
 		private readonly CancellationTokenSource _cancellationTokenSource;
 		private readonly CancellationToken _raidCancellationToken;
 		private readonly List<A10TracerBurst> _bufferedTracerBursts = new();
-		private AuthorityOutcome _outcome;
+		private readonly AuthorityExecutionTransition<AuthorityOutcome> _transition = new();
 		private string _explicitCancellationReason = string.Empty;
 		private bool _acceptedDeliveryPublished;
 		private int _activeAuthorityWorkCount;
@@ -2966,9 +2953,9 @@ public static class FikaIntegration
 			}
 		}
 		public UniTaskCompletionSource<AuthorityOutcome> Completion { get; } = new();
-		public bool IsCompleted { get; private set; }
-		public bool IsAbandoned { get; private set; }
-		public bool ExecutionStarted { get; private set; }
+		public bool IsCompleted => _transition.IsCompleted;
+		public bool IsAbandoned => _transition.IsAbandoned;
+		public bool ExecutionStarted => _transition.ExecutionStarted;
 
 		public bool IsOwnedBy(NetPeer peer)
 		{
@@ -2979,12 +2966,11 @@ public static class FikaIntegration
 		{
 			lock (_gate)
 			{
-				if (IsCompleted || IsAbandoned || ExecutionStarted)
+				if (!_transition.TryBeginExecution())
 				{
 					return false;
 				}
 
-				ExecutionStarted = true;
 				_activeAuthorityWorkCount++;
 			}
 
@@ -3007,10 +2993,10 @@ public static class FikaIntegration
 		{
 			lock (_gate)
 			{
-				if (IsAbandoned ||
+				if (!_transition.TryGetResult(out AuthorityOutcome outcome) ||
+				    IsAbandoned ||
 				    _disposed ||
-				    !IsCompleted ||
-				    !_outcome.Result.Accepted)
+				    !outcome.Result.Accepted)
 				{
 					return false;
 				}
@@ -3047,13 +3033,11 @@ public static class FikaIntegration
 		{
 			lock (_gate)
 			{
-				if (IsCompleted || IsAbandoned)
+				if (!_transition.TryComplete(outcome))
 				{
 					return false;
 				}
 
-				IsCompleted = true;
-				_outcome = outcome;
 				if (!outcome.Result.Accepted)
 				{
 					_bufferedTracerBursts.Clear();
@@ -3078,13 +3062,11 @@ public static class FikaIntegration
 		{
 			lock (_gate)
 			{
-				if (IsCompleted || IsAbandoned || ExecutionStarted)
+				if (!_transition.TryCancelBeforeExecution(outcome))
 				{
 					return false;
 				}
 
-				IsCompleted = true;
-				_outcome = outcome;
 				_explicitCancellationReason = cancellationReason ?? string.Empty;
 				_bufferedTracerBursts.Clear();
 			}
@@ -3114,14 +3096,16 @@ public static class FikaIntegration
 					return true;
 				}
 
-				if (IsCompleted && !_outcome.Result.Accepted)
+				bool hasOutcome =
+					_transition.TryGetResult(out AuthorityOutcome outcome);
+				if (hasOutcome && !outcome.Result.Accepted)
 				{
 					disposition = "authority request rejected";
 					return true;
 				}
 
-				if (!IsCompleted ||
-				    (_outcome.Result.Accepted && !_acceptedDeliveryPublished))
+				if (!hasOutcome ||
+				    (outcome.Result.Accepted && !_acceptedDeliveryPublished))
 				{
 					if (_bufferedTracerBursts.Count <
 					    MaxBufferedTracerBurstsPerRequest)
@@ -3145,7 +3129,8 @@ public static class FikaIntegration
 		{
 			lock (_gate)
 			{
-				if (!IsCompleted || !_outcome.Result.Accepted)
+				if (!_transition.TryGetResult(out AuthorityOutcome outcome) ||
+				    !outcome.Result.Accepted)
 				{
 					_bufferedTracerBursts.Clear();
 					return new List<A10TracerBurst>();
@@ -3160,24 +3145,20 @@ public static class FikaIntegration
 
 		public void Abandon(FireSupportNetworkRequestResult result)
 		{
-			AuthorityOutcome outcome = default;
-			bool completeWaiters = false;
+			AuthorityOutcome outcome =
+				AuthorityOutcome.FromResult(Request, result);
+			bool completeWaiters;
 			lock (_gate)
 			{
-				if (IsAbandoned)
+				if (!_transition.Abandon(outcome, out completeWaiters))
 				{
 					return;
 				}
 
-				IsAbandoned = true;
 				_bufferedTracerBursts.Clear();
-				if (!IsCompleted)
+				if (completeWaiters)
 				{
-					IsCompleted = true;
-					outcome = AuthorityOutcome.FromResult(Request, result);
-					_outcome = outcome;
 					_explicitCancellationReason = result.Reason ?? string.Empty;
-					completeWaiters = true;
 				}
 			}
 
@@ -3199,11 +3180,7 @@ public static class FikaIntegration
 
 		public bool TryGetOutcome(out AuthorityOutcome outcome)
 		{
-			lock (_gate)
-			{
-				outcome = _outcome;
-				return IsCompleted;
-			}
+			return _transition.TryGetResult(out outcome);
 		}
 
 		public void Dispose()

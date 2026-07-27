@@ -596,18 +596,69 @@ Turn the repaired behavior into repeatable checks so later phone, Fika, payment,
 
 ### Tasks
 
-- [ ] Add focused tests for authorization-response presence semantics.
-- [ ] Add ledger lifecycle tests covering purchase, limit denial, begin, commit, refund, reconnect, and two-profile isolation.
-- [ ] Add request-state-machine tests for acceptance, rejection, timeout, duplicate packets, and teardown.
-- [ ] Add Fika settings-packet round-trip tests, including both extraction timers and dispatch values.
-- [ ] Add tuning-precedence tests for local, server, and host-synchronized values.
-- [ ] Add extraction-trigger timer initialization/reset tests.
-- [ ] Add config validation tests for wait/countdown combinations.
-- [ ] Add package-layout allowlist checks.
-- [ ] Add Fika Interop and the Fika bootstrap project to the normal solution/build verification path.
-- [ ] Provide one documented local verification command or script that builds all required projects with deployment disabled.
-- [ ] Add CI checks that do not require redistributing proprietary assemblies. Document any full-build checks that must remain local.
-- [ ] Run `git diff --check` as part of the verification path.
+- [x] Add focused tests for authorization-response presence semantics.
+- [x] Add ledger lifecycle tests covering purchase, limit denial, begin, commit, refund, reconnect, and two-profile isolation.
+- [x] Add request-state-machine tests for acceptance, rejection, timeout, duplicate packets, and teardown.
+- [x] Add Fika settings-packet round-trip tests, including both extraction timers and dispatch values.
+- [x] Add tuning-precedence tests for local, server, and host-synchronized values.
+- [x] Add extraction-trigger timer initialization/reset tests.
+- [x] Add config validation tests for wait/countdown combinations.
+- [x] Add package-layout allowlist checks.
+- [x] Add Fika Interop and the Fika bootstrap project to the normal solution/build verification path.
+- [x] Provide one documented local verification command or script that builds all required projects with deployment disabled.
+- [x] Add CI checks that do not require redistributing proprietary assemblies. Document any full-build checks that must remain local.
+- [x] Run `git diff --check` as part of the verification path.
+
+### Implementation Evidence - 2026-07-27
+
+- A zero-NuGet .NET 9 regression runner source-links the dependency-free
+  production logic under test. Its 35 cases pass: authorization snapshot
+  presence, client finalization first-wins behavior, disk-backed ledger
+  purchase/limit/consume/commit/refund/expiry/reconnect/profile isolation,
+  request acceptance/rejection/timeout/deduplication/cancellation/teardown,
+  Fika settings serialization, tuning precedence, extraction timing policy,
+  and countdown initialization/reset.
+- Six coordinated race cases cover competing request terminal outcomes,
+  authority cancel-versus-execution and completion, client commit-versus-refund,
+  concurrent ledger grants at the storage limit, and persisted ledger
+  commit-versus-refund settlement. The final suite passed 20 consecutive runs:
+  700 test executions with no failure or timeout.
+- `AuthorizationSnapshotPresence` is now the compatibility seam used by the
+  purchase runtime, so authoritative empty ledgers clear stale credits while
+  omitted empty ledgers do not. Legacy non-empty snapshots remain accepted.
+- The Fika integration now uses tested bounded pending-request, first-result,
+  accepted-event, and authority-execution transition primitives. The existing
+  lock ordering, irreversible execution-start boundary, terminal-outcome
+  replay, and teardown completion model were preserved.
+- Server validation/repair and client runtime capture now use one shared
+  extraction timing policy. `HeliExfiltrationPoint` keeps its Unity collider
+  and extraction glue but delegates duration, reset, remaining time, and
+  one-shot completion to the tested countdown clock.
+- The normal solution contains Core, Server, Fika Interop, the Fika bootstrap,
+  and the regression runner. Fika Interop's ordinary `Release` mapping no
+  longer builds `Debug`.
+- [`BUILDING.md`](../BUILDING.md) documents the proprietary-free CI command and
+  the one-command local full build. `tools/verify-ci.ps1` checks whitespace,
+  solution mappings, deployment guards, JSON/JavaScript syntax, tracked-file
+  hygiene, the package contract, runtime-to-tested-seam wiring, and all
+  regression tests.
+  `tools/verify-local.ps1` then preflights locally owned references and builds
+  the complete solution with `SkipTscDeploy=true`.
+- The declarative package contract resolves to 156 mirrored source files plus
+  exactly four TSC DLLs and eight bundles. A clean 170-file directory fixture
+  passes. The existing public v1.0.8 archive correctly fails because its two
+  stale `.gitkeep` entries are not allowlisted, proving that update-in-place
+  leakage is detected.
+- Independent final verification passes: 35 tests, all four runtime outputs,
+  package/source checks, JSON/JavaScript parsing, PowerShell parsing, solution
+  membership, and `git diff --check`. The deploy-disabled solution build has
+  0 errors and 13 warnings from pre-existing source/API conditions. No live SPT
+  file was modified.
+- CI intentionally does not load proprietary Unity, EFT, SPT, WTT, or Fika
+  assemblies. Thin `FireSupportPayment`, `FikaIntegration`,
+  `HeliExfiltrationPoint`, and server-config adapters are therefore covered by
+  source review plus the full local compile, while their dependency-free
+  production seams execute in CI. Live Phase 1-4 acceptance rows remain open.
 
 ### Exit Gate
 

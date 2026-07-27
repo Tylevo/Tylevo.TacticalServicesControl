@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "packageRoots": [
+    "BepInEx/plugins/Tylevo.TacticalServicesControl",
+    "SPT/user/mods/Tylevo.TacticalServicesControl"
+  ],
+  "mirrors": [
+    {
+      "source": "project/SamSWAT.FireSupport/CopyToOutput",
+      "destination": "BepInEx/plugins/Tylevo.TacticalServicesControl",
+      "excludedFileNames": [
+        ".gitkeep"
+      ]
+    },
+    {
+      "source": "project/SamSWAT.FireSupport.Server/CopyToOutput",
+      "destination": "SPT/user/mods/Tylevo.TacticalServicesControl",
+      "excludedFileNames": [
+        ".gitkeep"
+      ]
+    }
+  ],
+  "generatedFiles": [
+    "BepInEx/plugins/Tylevo.TacticalServicesControl/Tylevo.TacticalServicesControl.Core.dll",
+    "BepInEx/plugins/Tylevo.TacticalServicesControl/Tylevo.TacticalServicesControl.Fika.dll",
+    "BepInEx/plugins/Tylevo.TacticalServicesControl/Tylevo.TacticalServicesControl.Fika.Interop.dll",
+    "BepInEx/plugins/Tylevo.TacticalServicesControl/THIRD_PARTY_NOTICES.md",
+    "BepInEx/plugins/Tylevo.TacticalServicesControl/assets/content/ui/firesupport_audio.bundle",
+    "BepInEx/plugins/Tylevo.TacticalServicesControl/assets/content/ui/firesupport_spotter.bundle",
+    "BepInEx/plugins/Tylevo.TacticalServicesControl/assets/content/ui/firesupport_ui.bundle",
+    "BepInEx/plugins/Tylevo.TacticalServicesControl/assets/content/ui/uav_radarhud.bundle",
+    "BepInEx/plugins/Tylevo.TacticalServicesControl/assets/content/vehicles/a10_warthog.bundle",
+    "BepInEx/plugins/Tylevo.TacticalServicesControl/assets/content/vehicles/uh60_blackhawk.bundle",
+    "SPT/user/mods/Tylevo.TacticalServicesControl/Tylevo.TacticalServicesControl.Server.dll",
+    "SPT/user/mods/Tylevo.TacticalServicesControl/THIRD_PARTY_NOTICES.md",
+    "SPT/user/mods/Tylevo.TacticalServicesControl/bundles/raidops/uav_uplink_container.bundle",
+    "SPT/user/mods/Tylevo.TacticalServicesControl/bundles/raidops/uav_uplink_loot.bundle"
+  ],
+  "requiredFiles": [
+    "BepInEx/plugins/Tylevo.TacticalServicesControl/Tylevo.TacticalServicesControl.Core.dll",
+    "BepInEx/plugins/Tylevo.TacticalServicesControl/Tylevo.TacticalServicesControl.Fika.dll",
+    "BepInEx/plugins/Tylevo.TacticalServicesControl/Tylevo.TacticalServicesControl.Fika.Interop.dll",
+    "BepInEx/plugins/Tylevo.TacticalServicesControl/assets/content/ui/firesupport_audio.bundle",
+    "BepInEx/plugins/Tylevo.TacticalServicesControl/assets/content/ui/firesupport_spotter.bundle",
+    "BepInEx/plugins/Tylevo.TacticalServicesControl/assets/content/ui/firesupport_ui.bundle",
+    "BepInEx/plugins/Tylevo.TacticalServicesControl/assets/content/ui/uav_radarhud.bundle",
+    "BepInEx/plugins/Tylevo.TacticalServicesControl/assets/content/vehicles/a10_warthog.bundle",
+    "BepInEx/plugins/Tylevo.TacticalServicesControl/assets/content/vehicles/uh60_blackhawk.bundle",
+    "SPT/user/mods/Tylevo.TacticalServicesControl/Tylevo.TacticalServicesControl.Server.dll",
+    "SPT/user/mods/Tylevo.TacticalServicesControl/bundles/raidops/uav_uplink_container.bundle",
+    "SPT/user/mods/Tylevo.TacticalServicesControl/bundles/raidops/uav_uplink_loot.bundle",
+    "SPT/user/mods/Tylevo.TacticalServicesControl/config/raidops-firesupport.json",
+    "SPT/user/mods/Tylevo.TacticalServicesControl/config/tsc-config.json",
+    "SPT/user/mods/Tylevo.TacticalServicesControl/web/app.mjs",
+    "SPT/user/mods/Tylevo.TacticalServicesControl/web/index.html",
+    "SPT/user/mods/Tylevo.TacticalServicesControl/web/styles.css"
+  ],
+  "exactCounts": {
+    ".dll": 4,
+    ".bundle": 8
+  },
+  "forbiddenExtensions": [
+    ".7z",
+    ".bak",
+    ".binlog",
+    ".cfg",
+    ".deps.json",
+    ".exe",
+    ".log",
+    ".nupkg",
+    ".pdb",
+    ".runtimeconfig.json",
+    ".snupkg",
+    ".tmp",
+    ".user",
+    ".zip"
+  ],
+  "forbiddenPathSegments": [
+    ".git",
+    ".github",
+    ".vs",
+    "BepInEx/config",
+    "SPT/user/cache",
+    "SPT/user/profiles",
+    "obj",
+    "storage"
+  ],
+  "forbiddenFileNamePatterns": [
+    "^0Harmony\\.dll$",
+    "^Assembly-CSharp\\.dll$",
+    "^BepInEx(?:\\..+)?\\.dll$",
+    "^Comfort\\.dll$",
+    "^Fika\\.Core\\.dll$",
+    "^Newtonsoft\\.Json\\.dll$",
+    "^SemanticVersioning\\.dll$",
+    "^SPTarkov\\..+\\.dll$",
+    "^spt-(?:common|reflection)\\.dll$",
+    "^UniTask(?:\\..+)?\\.dll$",
+    "^UnityEngine(?:\\..+)?\\.dll$",
+    "^UnityToolkit\\.dll$",
+    "^WTT-.+\\.dll$",
+    "^ZLinq(?:\\..+)?\\.dll$",
+    "^ZString\\.dll$"
+  ]
+}

@@ -1,0 +1,41 @@
+name: Verify
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Proprietary-free verification
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run CI-safe verification
+        shell: pwsh
+        env:
+          VERIFY_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          VERIFY_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: >
+          ./tools/verify-ci.ps1
+          -BaseSha $env:VERIFY_BASE_SHA
+          -HeadSha $env:VERIFY_HEAD_SHA

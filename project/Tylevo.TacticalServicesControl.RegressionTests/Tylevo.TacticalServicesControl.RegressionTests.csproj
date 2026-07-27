@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <RootNamespace>Tylevo.TacticalServicesControl.RegressionTests</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!--
+    Deliberately source-link the small production seams under test. This project
+    has no NuGet packages and no references to EFT, SPT, BepInEx, Unity, WTT, or
+    Fika binaries, so it is safe to run in public CI.
+  -->
+  <ItemGroup>
+    <Compile Include="..\SamSWAT.FireSupport.Server\FireSupportAuthorizationLedger.cs"
+             Link="Production\FireSupportAuthorizationLedger.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\ESupportType.cs"
+             Link="Production\ESupportType.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\RaidOpsFireSupportServerConfig.cs"
+             Link="Production\RaidOpsFireSupportServerConfig.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\FireSupportAuthorizationUse.cs"
+             Link="Production\FireSupportAuthorizationUse.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\PaymentCurrency.cs"
+             Link="Production\PaymentCurrency.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\PaymentMode.cs"
+             Link="Production\PaymentMode.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\PaymentSource.cs"
+             Link="Production\PaymentSource.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\AuthorizationSnapshotPresence.cs"
+             Link="Production\AuthorizationSnapshotPresence.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\FireSupportTuningSettings.cs"
+             Link="Production\FireSupportTuningSettings.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\Vehicles\A10HeadlessFikaMode.cs"
+             Link="Production\A10HeadlessFikaMode.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\Vehicles\A10ProjectileOwnerMode.cs"
+             Link="Production\A10ProjectileOwnerMode.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Fika.Interop\FireSupportSettingsPacket.cs"
+             Link="Production\FireSupportSettingsPacket.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Fika.Interop\RequestLifecycle.cs"
+             Link="Production\RequestLifecycle.cs" />
+
+    <!-- Dependency-free extraction seams shared with runtime production code. -->
+    <Compile Include="..\SamSWAT.FireSupport\Unity\ExtractionTimingPolicy.cs"
+             Link="Production\ExtractionTimingPolicy.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\ExtractionCountdownClock.cs"
+             Link="Production\ExtractionCountdownClock.cs" />
+  </ItemGroup>
+</Project>

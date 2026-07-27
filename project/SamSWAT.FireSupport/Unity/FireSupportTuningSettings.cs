@@ -1,35 +1,9 @@
-using System;
-
 namespace SamSWAT.FireSupport.ArysReloaded.Unity;
-
-public readonly struct HelicopterTimingSnapshot
-{
-	public HelicopterTimingSnapshot(
-		ESupportType supportType,
-		float dispatchDelaySeconds,
-		int waitTimeSeconds,
-		float extractTimeSeconds,
-		float speedMultiplier)
-	{
-		SupportType = supportType;
-		DispatchDelaySeconds = dispatchDelaySeconds;
-		WaitTimeSeconds = waitTimeSeconds;
-		ExtractTimeSeconds = extractTimeSeconds;
-		SpeedMultiplier = speedMultiplier;
-	}
-
-	public ESupportType SupportType { get; }
-	public float DispatchDelaySeconds { get; }
-	public int WaitTimeSeconds { get; }
-	public float ExtractTimeSeconds { get; }
-	public float SpeedMultiplier { get; }
-}
 
 public static class FireSupportTuningSettings
 {
 	private const float DefaultA10HeadlessDamageOriginDistance = 425f;
 	private const float DefaultA10HeadlessDamageOriginAltitude = 150f;
-	private const float MinimumExtractionWindowMarginSeconds = 1f;
 	private static float? _syncedDoubleStrafeSecondPassDelay;
 	private static float? _syncedHelicopterDispatchDelay;
 	private static int? _syncedHelicopterWaitTime;
@@ -297,38 +271,18 @@ public static class FireSupportTuningSettings
 
 	public static HelicopterTimingSnapshot CaptureHelicopterTiming(ESupportType supportType)
 	{
-		ESupportType effectiveSupportType = supportType == ESupportType.PriorityExfil
-			? ESupportType.PriorityExfil
-			: ESupportType.Extract;
-		float dispatchDelaySeconds = Math.Max(
-			0f,
-			GetHelicopterDispatchDelay(effectiveSupportType));
-		int waitTimeSeconds = Math.Max(
-			1,
-			GetHelicopterWaitTime(effectiveSupportType));
-		float extractTimeSeconds = Math.Max(
-			0.1f,
-			GetHelicopterExtractTime(effectiveSupportType));
-		float speedMultiplier = Math.Max(
-			0.01f,
-			GetHelicopterSpeedMultiplier(effectiveSupportType));
-		int minimumSafeWaitTime = (int)Math.Ceiling(
-			extractTimeSeconds + MinimumExtractionWindowMarginSeconds);
-		if (waitTimeSeconds < minimumSafeWaitTime)
-		{
-			FireSupportPlugin.LogSource?.LogWarning(
-				$"Unsafe {effectiveSupportType} helicopter timing: wait={waitTimeSeconds}s, " +
-				$"extract={extractTimeSeconds:0.##}s. Using safe wait={minimumSafeWaitTime}s; " +
-				"set waitTimeSeconds to at least extractTimeSeconds + 1 second.");
-			waitTimeSeconds = minimumSafeWaitTime;
-		}
-
-		return new HelicopterTimingSnapshot(
+		ESupportType effectiveSupportType =
+			supportType == ESupportType.PriorityExfil
+				? ESupportType.PriorityExfil
+				: ESupportType.Extract;
+		return ExtractionTimingPolicy.CreateRuntimeSnapshot(
 			effectiveSupportType,
-			dispatchDelaySeconds,
-			waitTimeSeconds,
-			extractTimeSeconds,
-			speedMultiplier);
+			new ExtractionTimingValues(
+				GetHelicopterDispatchDelay(effectiveSupportType),
+				GetHelicopterWaitTime(effectiveSupportType),
+				GetHelicopterExtractTime(effectiveSupportType),
+				GetHelicopterSpeedMultiplier(effectiveSupportType)),
+			message => FireSupportPlugin.LogSource?.LogWarning(message));
 	}
 
 	public static int GetRequestCooldown()

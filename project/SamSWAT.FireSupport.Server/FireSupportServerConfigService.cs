@@ -32,15 +32,6 @@ public sealed class FireSupportServerConfigService(
 	private const string LegacyAdminTokenEnvironmentVariable = "RAIDOPS_FIRESUPPORT_ADMIN_TOKEN";
 	private const int CurrentConfigSchemaVersion = 3;
 	private const float LegacyStandardExtractionDispatchDelaySeconds = 8f;
-	private const float MinimumExtractionWindowMarginSeconds = 1f;
-	private const float MinimumAuthorizationSettlementMarginSeconds = 35f;
-	private const float MaxHelicopterDispatchDelaySeconds = 120f;
-	private const int MinHelicopterWaitTimeSeconds = 5;
-	private const int MaxHelicopterWaitTimeSeconds = 300;
-	private const float MinHelicopterExtractTimeSeconds = 1f;
-	private const float MaxHelicopterExtractTimeSeconds = 60f;
-	private const float MinHelicopterSpeedMultiplier = 0.5f;
-	private const float MaxHelicopterSpeedMultiplier = 3f;
 	private static readonly TimeSpan s_purchaseRateLimitWindow = TimeSpan.FromSeconds(2);
 
 	private static readonly JsonSerializerOptions s_jsonOptions = new()
@@ -1102,14 +1093,14 @@ public sealed class FireSupportServerConfigService(
 					Field("focusedSweep.rangeMeters", "Focused Sweep Range", "number", min: 25, max: 1000, step: 25, slider: true),
 					Field("focusedSweep.scanIntervalSeconds", "Focused Sweep Scan Interval", "number", min: 0.1, max: 10, step: 0.05)),
 				Section("extraction", "Extraction Services",
-					Field("extraction.dispatchDelaySeconds", "Extraction Dispatch Delay", "number", min: 0, max: 120, step: 1),
-					Field("extraction.waitTimeSeconds", "Extraction Wait Time", "number", min: 5, max: 300, step: 5, slider: true),
-					Field("extraction.extractTimeSeconds", "Extraction Time", "number", min: 1, max: 60, step: 1),
-					Field("extraction.speedMultiplier", "Extraction Speed", "number", min: 0.5, max: 3, step: 0.05, slider: true),
-					Field("priorityExfil.dispatchDelaySeconds", "Priority Dispatch Delay", "number", min: 0, max: 120, step: 1),
-					Field("priorityExfil.waitTimeSeconds", "Priority Wait Time", "number", min: 5, max: 300, step: 5, slider: true),
-					Field("priorityExfil.extractTimeSeconds", "Priority Extraction Time", "number", min: 1, max: 60, step: 1),
-					Field("priorityExfil.speedMultiplier", "Priority Speed", "number", min: 0.5, max: 3, step: 0.05, slider: true)),
+					Field("extraction.dispatchDelaySeconds", "Extraction Dispatch Delay", "number", min: 0, max: ExtractionTimingPolicy.MaxDispatchDelaySeconds, step: 1),
+					Field("extraction.waitTimeSeconds", "Extraction Wait Time", "number", min: ExtractionTimingPolicy.MinWaitTimeSeconds, max: ExtractionTimingPolicy.MaxWaitTimeSeconds, step: 5, slider: true),
+					Field("extraction.extractTimeSeconds", "Extraction Time", "number", min: ExtractionTimingPolicy.MinExtractTimeSeconds, max: ExtractionTimingPolicy.MaxExtractTimeSeconds, step: 1),
+					Field("extraction.speedMultiplier", "Extraction Speed", "number", min: ExtractionTimingPolicy.MinSpeedMultiplier, max: ExtractionTimingPolicy.MaxSpeedMultiplier, step: 0.05, slider: true),
+					Field("priorityExfil.dispatchDelaySeconds", "Priority Dispatch Delay", "number", min: 0, max: ExtractionTimingPolicy.MaxDispatchDelaySeconds, step: 1),
+					Field("priorityExfil.waitTimeSeconds", "Priority Wait Time", "number", min: ExtractionTimingPolicy.MinWaitTimeSeconds, max: ExtractionTimingPolicy.MaxWaitTimeSeconds, step: 5, slider: true),
+					Field("priorityExfil.extractTimeSeconds", "Priority Extraction Time", "number", min: ExtractionTimingPolicy.MinExtractTimeSeconds, max: ExtractionTimingPolicy.MaxExtractTimeSeconds, step: 1),
+					Field("priorityExfil.speedMultiplier", "Priority Speed", "number", min: ExtractionTimingPolicy.MinSpeedMultiplier, max: ExtractionTimingPolicy.MaxSpeedMultiplier, step: 0.05, slider: true)),
 				Section("fire", "Fire Support",
 					Field("a10.secondPassDelaySeconds", "A-10 Second Pass Delay", "number", min: 0, max: 60, step: 1),
 					Field("doublePass.secondPassDelaySeconds", "Double Pass Delay", "number", min: 0, max: 60, step: 1))
@@ -2011,7 +2002,7 @@ public sealed class FireSupportServerConfigService(
 				$"purchasePersistence.pendingUseTimeoutSeconds " +
 				$"({config.PurchasePersistence.PendingUseTimeoutSeconds}) must be >= " +
 				$"{requiredPendingTimeout} seconds for the supported extraction dispatch " +
-				$"maximum ({MaxHelicopterDispatchDelaySeconds:0.##}) plus authority settlement margin.";
+				$"maximum ({ExtractionTimingPolicy.MaxDispatchDelaySeconds:0.##}) plus authority settlement margin.";
 			return false;
 		}
 
@@ -2024,60 +2015,10 @@ public sealed class FireSupportServerConfigService(
 		string path,
 		out string error)
 	{
-		if (!IsFinite(settings.DispatchDelaySeconds) ||
-		    settings.DispatchDelaySeconds < 0f ||
-		    settings.DispatchDelaySeconds > MaxHelicopterDispatchDelaySeconds)
-		{
-			error =
-				$"{path}.dispatchDelaySeconds ({settings.DispatchDelaySeconds}) must be between 0 and " +
-				$"{MaxHelicopterDispatchDelaySeconds:0.##}.";
-			return false;
-		}
-
-		if (settings.WaitTimeSeconds < MinHelicopterWaitTimeSeconds ||
-		    settings.WaitTimeSeconds > MaxHelicopterWaitTimeSeconds)
-		{
-			error =
-				$"{path}.waitTimeSeconds ({settings.WaitTimeSeconds}) must be between " +
-				$"{MinHelicopterWaitTimeSeconds} and {MaxHelicopterWaitTimeSeconds}.";
-			return false;
-		}
-
-		if (!IsFinite(settings.ExtractTimeSeconds) ||
-		    settings.ExtractTimeSeconds < MinHelicopterExtractTimeSeconds ||
-		    settings.ExtractTimeSeconds > MaxHelicopterExtractTimeSeconds)
-		{
-			error =
-				$"{path}.extractTimeSeconds ({settings.ExtractTimeSeconds}) must be between " +
-				$"{MinHelicopterExtractTimeSeconds:0.##} and " +
-				$"{MaxHelicopterExtractTimeSeconds:0.##}.";
-			return false;
-		}
-
-		if (!IsFinite(settings.SpeedMultiplier) ||
-		    settings.SpeedMultiplier < MinHelicopterSpeedMultiplier ||
-		    settings.SpeedMultiplier > MaxHelicopterSpeedMultiplier)
-		{
-			error =
-				$"{path}.speedMultiplier ({settings.SpeedMultiplier}) must be between " +
-				$"{MinHelicopterSpeedMultiplier:0.##} and " +
-				$"{MaxHelicopterSpeedMultiplier:0.##}.";
-			return false;
-		}
-
-		float requiredWaitTime =
-			settings.ExtractTimeSeconds + MinimumExtractionWindowMarginSeconds;
-		if (settings.WaitTimeSeconds >= requiredWaitTime)
-		{
-			error = string.Empty;
-			return true;
-		}
-
-		error =
-			$"{path}.waitTimeSeconds ({settings.WaitTimeSeconds}) must be >= " +
-			$"{path}.extractTimeSeconds ({settings.ExtractTimeSeconds:0.##}) + " +
-			$"{MinimumExtractionWindowMarginSeconds:0.##} second so the extraction zone remains usable.";
-		return false;
+		return ExtractionTimingPolicy.TryValidate(
+			ToExtractionTimingValues(settings),
+			path,
+			out error);
 	}
 
 	private static void RepairInvalidExtractionTimings(
@@ -2101,53 +2042,30 @@ public sealed class FireSupportServerConfigService(
 		// Local BepInEx timing remains a supported fallback when shared server
 		// tuning is unavailable or disabled. Size the ledger reservation for the
 		// full supported dispatch range, not only the current dashboard values.
-		return (int)Math.Ceiling(
-			MaxHelicopterDispatchDelaySeconds +
-			MinimumAuthorizationSettlementMarginSeconds);
+		return ExtractionTimingPolicy.GetRequiredPendingUseTimeoutSeconds();
 	}
 
 	private static void RepairExtractionTiming(
 		RaidOpsFireSupportServerConfig.ExtractionSettings settings,
 		RaidOpsFireSupportServerConfig.ExtractionSettings defaults)
 	{
-		if (!IsFinite(settings.DispatchDelaySeconds) ||
-		    settings.DispatchDelaySeconds < 0f ||
-		    settings.DispatchDelaySeconds > MaxHelicopterDispatchDelaySeconds)
-		{
-			settings.DispatchDelaySeconds = defaults.DispatchDelaySeconds;
-		}
-
-		if (settings.WaitTimeSeconds < MinHelicopterWaitTimeSeconds ||
-		    settings.WaitTimeSeconds > MaxHelicopterWaitTimeSeconds)
-		{
-			settings.WaitTimeSeconds = defaults.WaitTimeSeconds;
-		}
-
-		if (!IsFinite(settings.ExtractTimeSeconds) ||
-		    settings.ExtractTimeSeconds < MinHelicopterExtractTimeSeconds ||
-		    settings.ExtractTimeSeconds > MaxHelicopterExtractTimeSeconds)
-		{
-			settings.ExtractTimeSeconds = defaults.ExtractTimeSeconds;
-		}
-
-		if (!IsFinite(settings.SpeedMultiplier) ||
-		    settings.SpeedMultiplier < MinHelicopterSpeedMultiplier ||
-		    settings.SpeedMultiplier > MaxHelicopterSpeedMultiplier)
-		{
-			settings.SpeedMultiplier = defaults.SpeedMultiplier;
-		}
-
-		int minimumSafeWaitTime = (int)Math.Ceiling(
-			settings.ExtractTimeSeconds + MinimumExtractionWindowMarginSeconds);
-		if (settings.WaitTimeSeconds < minimumSafeWaitTime)
-		{
-			settings.WaitTimeSeconds = minimumSafeWaitTime;
-		}
+		ExtractionTimingValues repaired = ExtractionTimingPolicy.Repair(
+			ToExtractionTimingValues(settings),
+			ToExtractionTimingValues(defaults));
+		settings.DispatchDelaySeconds = repaired.DispatchDelaySeconds;
+		settings.WaitTimeSeconds = repaired.WaitTimeSeconds;
+		settings.ExtractTimeSeconds = repaired.ExtractTimeSeconds;
+		settings.SpeedMultiplier = repaired.SpeedMultiplier;
 	}
 
-	private static bool IsFinite(float value)
+	private static ExtractionTimingValues ToExtractionTimingValues(
+		RaidOpsFireSupportServerConfig.ExtractionSettings settings)
 	{
-		return !float.IsNaN(value) && !float.IsInfinity(value);
+		return new ExtractionTimingValues(
+			settings.DispatchDelaySeconds,
+			settings.WaitTimeSeconds,
+			settings.ExtractTimeSeconds,
+			settings.SpeedMultiplier);
 	}
 
 	private static RaidOpsFireSupportServerConfig.A10Settings NormalizeA10Settings(

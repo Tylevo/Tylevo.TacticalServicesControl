@@ -1516,8 +1516,10 @@ public static class FireSupportPayment
 
 	private static bool ApplyIncludedAuthorizations(FireSupportPurchaseResponse response)
 	{
-		if (response?.Authorizations == null ||
-		    !response.AuthorizationsIncluded && response.Authorizations.Count == 0)
+		if (response == null ||
+		    !AuthorizationSnapshotPresence.ShouldApply(
+			    response.AuthorizationsIncluded,
+			    response.Authorizations))
 		{
 			return false;
 		}
