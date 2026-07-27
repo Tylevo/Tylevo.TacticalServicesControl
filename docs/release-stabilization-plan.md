@@ -2,7 +2,7 @@
 
 Last updated: 2026-07-27
 Target: the next public beta after the currently published 1.0.8 release
-Status: Phase 2 implementation checkpoint complete; Phase 1, 1A, and 2 live validation pending
+Status: Phase 2 live candidate installed; Phase 1, 1A, and 2 runtime validation pending
 
 This plan converts the current TSC audit and community bug reports into an ordered implementation and validation sequence. Priority describes risk; phase order also accounts for dependencies. Do not advance to the next phase until the current phase's exit gate is satisfied.
 
@@ -325,10 +325,21 @@ live acceptance.
 - `git diff --check` passes. All four deploy-suppressed builds pass with 0
   errors: Core has 28 existing warnings, Server has 9 existing warnings, and
   Fika Interop plus Fika bootstrap have 0 warnings on the final rebuilds.
-- No live SPT installation, player profile, configuration, authorization
-  ledger, release artifact, or published GitHub release was modified. Because
-  schema 4 is written on server initialization, live testing requires a ledger
-  backup and matched four-DLL install; DLL-only downgrade is unsafe.
+- Commit `440140b` was installed to the closed live `D:\SPT` instance as one
+  matched four-DLL set. Installed SHA-256 values are Core
+  `2F0C6E40ABBB61B7BE1AFD0B41EE29516D3F41A45A12AF7D590A49C67420314F`,
+  Fika bootstrap
+  `D7675DA112232912C7A32A3382F5B548D9753181B912E9A1675FFE6483E87800`,
+  Fika Interop
+  `9E0F3CD19771D021533D48272A6C175890329B7029C0DF5FF8CA51995D92EE45`,
+  and Server
+  `035E6B30709A63A5C894033A8DE45EAEB34C56EDBAA4CF4A6131CCE921E2F544`.
+- The replaced DLLs, complete pre-start `storage` directory, current
+  `tsc-config.json`, hashes, and rollback procedure are backed up at
+  `C:\Users\tylev\Desktop\RaidOps\backups\TSC-live-pre-phase2-440140b-20260727-114338`.
+  The server and game were not started, and live profile/config/ledger contents
+  were unchanged during installation. The next server initialization upgrades
+  the ledger to schema 4; DLL-only downgrade after that point is unsafe.
 - Known distributed limit: client commit/refund retries are in-memory. A crash,
   permanent logout, or backend outage beyond pending expiry can make an already
   accepted service `ExpiredRefunded` and therefore free. Closing that window
