@@ -9,6 +9,27 @@ Status:
 - Phase 2 multiplayer/headless transaction matrix: **still OPEN**. Phase 3
   evidence does not close any Phase 2 row.
 
+## Phase 7 Candidate Record
+
+Complete this record before changing any live row from `OPEN`. Do not infer a
+candidate identity from a locally installed filename.
+
+| Field | Value |
+| --- | --- |
+| Candidate version | `v1.1.0` |
+| Candidate status | `OPEN - final Phase 7 package not yet recorded` |
+| Candidate commit | `TO RECORD` |
+| Release archive filename / SHA-256 | `TO RECORD` |
+| Package manifest SHA-256 | `TO RECORD` |
+| Build evidence SHA-256 | `TO RECORD` |
+| Content evidence SHA-256 | `TO RECORD` |
+| Core DLL SHA-256 | `TO RECORD` |
+| Server DLL SHA-256 | `TO RECORD` |
+| Fika Interop DLL SHA-256 | `TO RECORD` |
+| Fika bootstrap DLL SHA-256 | `TO RECORD` |
+| Config schema / authorization-ledger schema | `3 / 5` |
+| Evidence root | `TO RECORD` |
+
 This matrix validates the requester-owned physical-phone presentation for UAV
 Recon and UAV Focused Sweep. A successful build or static review is not a live
 pass.
@@ -19,10 +40,13 @@ Before each topology:
 
 1. Stop the SPT server, game, launcher, every Fika client, and any dedicated
    headless process before installing DLLs.
-2. Record the Core, Server, Fika Interop, and Fika bootstrap SHA-256 values on
-   every participant. Do not mix source checkpoints between machines.
+2. Record the candidate commit, package manifest, and Core, Server, Fika
+   Interop, and Fika bootstrap SHA-256 values on every participant. Do not mix
+   candidates between machines.
 3. Back up the complete TSC storage directory while the server is stopped and
    use disposable profiles for forced death, disconnect, or process-exit rows.
+   Keep schema-5 storage with its matching v1.1.0 Server DLL and restore the
+   whole backup before any older-DLL rollback.
 4. Record the TSC config revision and the effective UAV duration, range, and
    cadence before entering the raid.
 5. If Phase 3 changes any Fika packet, serialized field, or request/result
@@ -37,8 +61,9 @@ obvious. Record the actual values rather than assuming packaged defaults.
 
 For every row, capture:
 
-- topology, player/profile role, map, service, config revision, and all four DLL
-  hashes;
+- row ID, tester/date, evidence location, candidate commit, package-manifest
+  identity, topology, player/profile role, map, service, config revision, and
+  all four DLL hashes;
 - request/activation identity where logged, authorization count before/after,
   activation time, phone-open/close times, and expiry time;
 - requester video showing the phone, countdown, movement/aiming, stow, and
@@ -84,7 +109,7 @@ Status values are `OPEN`, `PASS`, `FAIL`, or `BLOCKED`. Every row starts
 | P3-14 | Two-client isolation | Client A activates Standard; while it is active, Client B activates Focused at a different time. Record A, B, and host views continuously. | A and B retain independent requester identity, settings, countdown, contacts, and teardown. Neither sees or mutates the other's feed; the host sees neither feed. | OPEN |
 | P3-15 | Authority revision race | Start with revision A and distinct duration/range/cadence. During request/equip and then during an active link, save revision B with clearly different values. After expiry, activate again. | One accepted activation uses one internally consistent authority snapshot; a live revision cannot partially mix A/B or extend/mutate that link. The next accepted activation uses revision B. Phone and aircraft remain paired in both runs. | OPEN |
 | P3-16 | Duplicate/overlap admission | Duplicate one activation/request packet where test tooling permits, spam activation locally, and attempt the other UAV service while a link is active. | The active link is not restarted, extended, replaced, or charged twice. No second requester overlay, phone controller, or loiter aircraft is created from the same accepted activation. A later valid activation after expiry works. | OPEN |
-| P3-17 | Loiter identity/dedupe/lifetime | With host plus two clients observing, activate at staggered times, replay any presentation side channel where test tooling permits, then let each link expire. | Exactly one aircraft represents each accepted activation, ownership/timing cannot cross between clients, and each active orbit expires with its matching link before its configured flyoff. Record any duplicate caused by the presentation-only loiter side channel as a failure; do not infer identity from appearance alone. | OPEN |
+| P3-17 | Loiter identity/dedupe/lifetime | With host plus two clients observing, activate at staggered times, replay an accepted `StartUavLoiterPacket` where test tooling permits, then let each link expire. Record its parent `SupportRequestId` and `RequesterProfileId`. | Exactly one aircraft represents each unique accepted parent request. Both packet identity fields match the canonical accepted request, duplicate delivery is ignored, ownership/timing cannot cross between clients, and each active orbit expires with its matching link before its configured flyoff. Do not infer identity from appearance alone. | OPEN |
 | P3-18 | Requester disconnect/death | Disconnect or kill the requester during async equip, while viewing, and while stowed. Repeat once with a human host and once with a dedicated headless host. | Requester-owned UI and local presentation are removed, no observer inherits the feed, and authority/loiter state reaches a deterministic teardown. Reconnect or the next raid begins cleanly. | OPEN |
 | P3-19 | Fika raid boundary | End/restart raids with active links in the human-host and dedicated-headless topologies, including one abrupt client process exit. | No pending equip, overlay, remote phone visual, loiter object, timer, accepted-event replay, or requester mapping leaks into the next raid. Subsequent activation remains single and correctly isolated. | OPEN |
 

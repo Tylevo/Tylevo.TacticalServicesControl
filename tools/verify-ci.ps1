@@ -235,6 +235,26 @@ foreach ($relativeProject in $runtimeProjects) {
     }
 }
 
+Write-Host "Validating the exclusive release archive workflow."
+$trackedBuildDefinitions = @(
+    & git -c "safe.directory=$repositoryGitPath" -C $repositoryRoot ls-files -- "*.csproj" "*.props" "*.targets"
+)
+if ($LASTEXITCODE -ne 0) {
+    throw "git ls-files failed while locating tracked MSBuild definitions."
+}
+
+foreach ($relativeBuildDefinition in $trackedBuildDefinitions) {
+    $definitionPath = Join-Path $repositoryRoot $relativeBuildDefinition
+    $definitionText = Get-Content -LiteralPath $definitionPath -Raw
+    if ($definitionText -match '(?i)\b(?:CreateReleaseZip|RemoveReleaseExcludedContent|SevenZipPath)\b') {
+        throw "Removed legacy release-archive target/property was reintroduced in '$relativeBuildDefinition'."
+    }
+
+    if ($definitionText -match '(?i)(?:\b7z(?:\.exe)?\b|7-Zip)') {
+        throw "MSBuild definitions must not invoke 7-Zip; use tools/New-ReleasePackage.ps1: '$relativeBuildDefinition'."
+    }
+}
+
 Write-Host "Validating production wiring into proprietary-free regression seams."
 $paymentSourcePath = "project\SamSWAT.FireSupport\Unity\FireSupportPayment.cs"
 $paymentSource = Get-NormalizedCSharpSource -RelativePath $paymentSourcePath
@@ -389,6 +409,23 @@ foreach ($check in $serverWiringChecks) {
 }
 
 Write-Host "Validating shipped JSON and dashboard JavaScript syntax."
+foreach ($powerShellTool in Get-ChildItem -LiteralPath $PSScriptRoot -File -Filter "*.ps1") {
+    $toolTokens = $null
+    $toolParseErrors = $null
+    [void] [Management.Automation.Language.Parser]::ParseFile(
+        $powerShellTool.FullName,
+        [ref] $toolTokens,
+        [ref] $toolParseErrors
+    )
+    if ($toolParseErrors.Count -ne 0) {
+        throw (
+            "PowerShell syntax validation failed for '$($powerShellTool.Name)':" +
+            [Environment]::NewLine +
+            (($toolParseErrors | ForEach-Object { $_.Message }) -join [Environment]::NewLine)
+        )
+    }
+}
+
 $jsonRoots = @(
     (Join-Path $repositoryRoot "project\SamSWAT.FireSupport\CopyToOutput")
     (Join-Path $repositoryRoot "project\SamSWAT.FireSupport.Server\CopyToOutput")

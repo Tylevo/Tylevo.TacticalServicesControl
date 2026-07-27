@@ -2,7 +2,7 @@
 
 Last updated: 2026-07-27
 Target: the next public beta after the currently published 1.0.8 release
-Status: Phase 6 complete; Phase 7 pending; live Phase 1-4 acceptance matrices remain open
+Status: Phase 7 tooling ready; clean RC construction pending; live Phase 1-4 acceptance matrices remain open
 
 This plan converts the current TSC audit and community bug reports into an ordered implementation and validation sequence. Priority describes risk; phase order also accounts for dependencies. Implementation may advance at user direction while earlier live-validation rows remain open, but those rows remain cumulative release gates. Advancing implementation does not count as live acceptance or authorize publication.
 
@@ -644,16 +644,16 @@ Turn the repaired behavior into repeatable checks so later phone, Fika, payment,
   regression tests.
   `tools/verify-local.ps1` then preflights locally owned references and builds
   the complete solution with `SkipTscDeploy=true`.
-- The declarative package contract currently resolves to 155 recursively
-  mirrored source files plus 14 explicit generated files (four TSC DLLs, eight
-  bundles, and two notice files). A clean 169-file directory fixture
-  passes. The existing public v1.0.8 archive correctly fails because its two
-  stale `.gitkeep` entries are not allowlisted, proving that update-in-place
-  leakage is detected.
-- Recursive source mirrors are not a final closed inventory: a new file below a
-  mirrored source tree joins the resolved set automatically. Phase 7 must
-  replace them with a reviewed flat per-file inventory and reject source extras
-  before staging.
+- At the Phase 5 checkpoint, the declarative package contract resolved to 155
+  recursively mirrored source files plus 14 explicit generated files (four TSC
+  DLLs, eight bundles, and two notice files). A clean 169-file directory
+  fixture passed. The existing public v1.0.8 archive correctly failed because
+  its two stale `.gitkeep` entries were not allowlisted, proving that
+  update-in-place leakage was detected.
+- That Phase 5 recursive source discovery was not a final closed inventory: a
+  new file below a mirrored source tree joined the resolved set automatically.
+  Phase 7 replaced it with the reviewed schema-3 per-file inventory described
+  below.
 - Independent final verification passes: 35 tests, all four runtime outputs,
   package/source checks, JSON/JavaScript parsing, PowerShell parsing, solution
   membership, and `git diff --check`. The deploy-disabled solution build has
@@ -712,10 +712,11 @@ Convert the accumulated work into an intentional, reviewable next-release state.
   main-menu placement, multi-currency payments, scanner-only HUD, transactional
   Fika lifecycle, extraction timing, and the exact automated/live-validation
   boundary.
-- Package manifest schema 2 distinguishes archive roots from install roots.
-  The allowed top-level set is exactly `BepInEx/` plus `SPT/`, with no
-  root-level documents. The validator checks the actual root set for a stage
-  or ZIP.
+- At the Phase 6 checkpoint, package manifest schema 2 distinguished archive
+  roots from install roots. It established the allowed top-level set as exactly
+  `BepInEx/` plus `SPT/`, with no root-level documents, and checked that set
+  for a stage or ZIP. Phase 7 preserves those roots in the closed schema-3
+  manifest.
 - The redundant shipped `raidops-firesupport.json` template was removed.
   Runtime migration of an existing legacy file remains. The canonical schema-3
   template matches server defaults; its values fall within dashboard ranges.
@@ -753,18 +754,53 @@ Produce a reproducible release candidate from a clean source state and prove tha
 
 ### Build and Package Tasks
 
-- [ ] Build from a clean worktree or clean clone at the intended release commit.
-- [ ] Run all four deploy-suppressed release builds.
-- [ ] Run the complete automated verification suite.
-- [ ] Replace recursive mirror discovery with a reviewed flat per-file
-      inventory, fail on unreviewed or untracked source extras, and stage only
-      those entries into a new empty directory.
+- [x] Re-query GitHub and verify the public v1.0.8 baseline asset identity.
+- [x] Pin the release SDK, replace recursive discovery with a closed schema-3
+      inventory, require clean-build evidence, add a deterministic package
+      builder, and remove the legacy update-in-place archive path.
+- [ ] Create two detached clean worktrees at the exact reviewed tooling commit.
+- [ ] Run the complete automated verification suite and all four
+      deploy-suppressed release builds in both worktrees, each with external
+      build evidence.
+- [ ] Require identical hashes for all four runtime DLLs across both builds.
+- [ ] Package independently into two new external directories and require
+      identical archive hashes.
 - [ ] Verify the final archive roots against the resolved package contract.
-- [ ] Verify required Core, Server, Fika Interop, Fika bootstrap, assets, config, and metadata files are present and version-matched.
-- [ ] Verify WTT Common Lib, EFT/SPT/Fika proprietary assemblies, profiles, logs, caches, source prompts, and local paths are absent.
-- [ ] Extract the archive into an empty temporary directory and validate its layout.
-- [ ] Calculate and record the archive SHA-256, size, entry count, and asset-bundle count.
+- [ ] Verify required Core, Server, Fika Interop, Fika bootstrap, assets,
+      config, and metadata files are present and version-matched.
+- [ ] Verify WTT Common Lib, EFT/SPT/Fika proprietary assemblies, profiles,
+      logs, caches, source prompts, and local paths are absent.
+- [ ] Extract each archive into an empty directory, validate its layout, and
+      require stage/extraction per-file path, size, and hash equality.
+- [ ] Calculate and record the archive SHA-256, size, file count, DLL count,
+      bundle count, and evidence hashes.
 - [ ] Perform a clean-install smoke test only after explicit approval to modify a test SPT installation.
+
+### Packaging Readiness Evidence - 2026-07-27
+
+- GitHub reconfirmed public release v1.0.8 at tag `v0.9.8`, commit
+  `b7835ea7995fef08ab7c95cfe8c9bf8af2be6c0c`, with asset
+  `Tylevo.TacticalServicesControl-v1.0.8-SPT4.0.13.zip`, size `41,236,560`
+  bytes, and SHA-256
+  `C3C0390CC6641E5F82C99C3E57D8AEDA358FD0278E667E6616E53963EB2FCB8D`.
+- Package manifest schema 3 closes the installer at 169 files: 155 reviewed
+  tracked source entries, four fresh DLLs, eight Unity bundles, and two notice
+  copies. Unreviewed, missing, or untracked source entries fail validation.
+- The verified public v1.0.8 ZIP is the only bundle input. Every bundle path,
+  size, and hash is pinned; live SPT and obsolete ignored package stages are
+  excluded as sources.
+- .NET SDK `9.0.314` is pinned locally and in CI. Build evidence records the
+  exact clean commit/tree, SDK, proprietary reference hashes, output paths,
+  versions, and hashes.
+- The package builder requires matching build evidence, creates a new
+  deterministic archive, validates its stage and fresh extraction, and records
+  all 169 paths, sizes, and hashes in an external content-evidence sidecar.
+- The former 7-Zip update-in-place release targets were removed, while the
+  separately guarded developer deployment path remains.
+- Phase 2-4 and multi-currency validation matrices match the current ledger,
+  config, request, and requester-identity contracts. All live rows remain open.
+- No clean v1.1.0 candidate has been built or installed at this checkpoint; no
+  live SPT file, Git tag, release, Forge page, or public asset was changed.
 
 ### Final Live Acceptance
 

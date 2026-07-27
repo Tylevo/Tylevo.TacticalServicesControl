@@ -6,8 +6,9 @@ Last updated: 2026-07-27
 
 GitHub Releases, the matching tag, and the attached archive are authoritative
 for published TSC builds. The active development branch is
-`codex/tsc-stabilization-20260724`; its last pre-Phase-6 checkpoint is
-`29d0543`. The Phase 6 checkpoint is the commit containing this handoff.
+`codex/tsc-stabilization-20260724`; its Phase 6 checkpoint is
+`25fdaeb3fc65d6352408285f4c970bbde7b8006c`. The Phase 7 packaging-tooling
+checkpoint is the commit containing this handoff.
 
 Read these files before changing release behavior:
 
@@ -151,6 +152,27 @@ assemblies reference the Core/Interop assembly versions.
 - User docs distinguish implemented/automated behavior from open live
   acceptance work.
 
+### Phase 7 - Packaging Readiness
+
+- GitHub release metadata was re-queried and the local public v1.0.8 archive
+  was verified against its published 41,236,560-byte SHA-256 identity.
+- .NET SDK `9.0.314` is pinned for both local and CI release verification.
+- Package manifest schema 3 is a closed inventory: 155 reviewed source files,
+  four fresh build outputs, eight pinned Unity bundles, and two third-party
+  notice copies, for exactly 169 installer files.
+- The eight bundles are imported only from the verified public v1.0.8 archive;
+  their paths, sizes, and hashes are pinned. Live SPT files and obsolete
+  package-stage folders are not release inputs.
+- Clean-build evidence binds the exact Git commit/tree, SDK, proprietary
+  reference hashes, output paths, versions, and hashes before packaging.
+- The release packager requires that evidence, creates a new deterministic
+  archive, validates the stage and a fresh extraction, and writes an external
+  per-file content-evidence sidecar.
+- The former update-in-place 7-Zip release targets were removed. Normal
+  developer deployment remains separately guarded by `SkipTscDeploy`.
+- Phase 2-4 and multi-currency tester matrices were reconciled with the current
+  schemas and request identity contract. Their live rows remain open.
+
 ## Authority Boundaries
 
 The SPT HTTP server owns configuration, authenticated profile payment, and the
@@ -211,6 +233,8 @@ User-reported smoke coverage:
 
 Still open:
 
+- Two independent detached clean builds with matching four-DLL hashes, followed
+  by two matching unpublished v1.1.0 RC archives.
 - Human-host and Fika-client persistent-authorization matrices.
 - Two-client per-profile isolation.
 - Duplicate/lost/late Fika acceptance and settlement in live raids.
@@ -219,8 +243,6 @@ Still open:
 - RUB/USD/EUR live carried/stash boundary cases.
 - Dedicated-headless duplication, authorization, damage, and teardown testing.
 - Clean-install and v1.0.8-upgrade smoke tests from the final v1.1.0 archive.
-- A closed per-file release inventory. The current schema-2 package manifest
-  still discovers both `CopyToOutput` trees recursively.
 
 Do not convert an automated pass into a claim of live multiplayer acceptance.
 
@@ -243,12 +265,14 @@ The v1.1.0 archive must:
 Root-level README, changelog, license, and release-note files are not part of
 the installer. Publish those through the repository, GitHub release, and Forge.
 
-The Phase 6 checker enforces roots, destinations, required files, exact
-DLL/bundle counts, and forbidden content. Its recursive `mirrors` are not the
-final release inventory because a new file below a mirrored source tree is
-automatically included in the resolved set. Phase 7 must replace that discovery
-with a reviewed flat per-file inventory and reject unreviewed or untracked
-source extras before staging.
+Manifest schema 3 lists every installer file. Source validation fails when a
+reviewed file is missing or untracked, when an unreviewed extra appears below a
+`CopyToOutput` tree, or when an expected exclusion changes. The four DLLs come
+only from an exact clean-build evidence record. The eight bundles come only
+from the verified public v1.0.8 asset and must match their pinned size and
+SHA-256. The deterministic packager stages into a new external directory,
+creates rather than updates the ZIP, validates both stage and extraction, and
+requires per-file path, size, and hash equality.
 
 ## Verification Commands
 
@@ -258,12 +282,13 @@ CI-safe:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\verify-ci.ps1
 ```
 
-Full local, deploy-suppressed:
+Full local, deploy-suppressed, with release-build evidence:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\verify-local.ps1 `
   -SptDir "C:\Path\To\SPT" `
-  -SptSharedAssembliesDir "C:\Path\To\SPT Assemblies"
+  -SptSharedAssembliesDir "C:\Path\To\SPT Assemblies" `
+  -EvidencePath "C:\External\Evidence\build.json"
 ```
 
 Package source/layout:
@@ -278,17 +303,26 @@ Release identity:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\Test-ReleaseMetadata.ps1
 ```
 
+Closed deterministic package:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\New-ReleasePackage.ps1 `
+  -BaselineAssetArchive "C:\External\Tylevo.TacticalServicesControl-v1.0.8-SPT4.0.13.zip" `
+  -BuildEvidencePath "C:\External\Evidence\build.json" `
+  -OutputDirectory "C:\External\Package"
+```
+
 ## Phase 7 Next Steps
 
-1. Start from a clean worktree at the reviewed Phase 6 checkpoint.
-2. Run CI-safe and full local deploy-suppressed verification.
-3. Replace recursive mirror discovery with a reviewed flat per-file inventory
-   that rejects source extras, then stage all four freshly built `1.1.0.0` DLLs
-   and required assets into a new empty directory.
-4. Validate the stage, create a new archive, extract it into another empty
-   directory, and validate again.
-5. Record component versions/hashes, archive hash/size/counts, and clean logs.
-6. Run the published-v1.0.8 upgrade and clean-install smoke tests only with
+1. Commit and review the Phase 7 manifest, evidence, SDK, and packaging tools.
+2. Create two detached clean worktrees at that exact commit.
+3. Run deploy-suppressed `verify-local.ps1 -EvidencePath` in each worktree.
+4. Require identical hashes for all four freshly built `1.1.0.0` DLLs.
+5. Package independently from each worktree into new external directories and
+   require identical archive hashes.
+6. Retain the primary unpublished archive, build evidence, package evidence,
+   component versions/hashes, archive size/counts, and clean logs.
+7. Run the published-v1.0.8 upgrade and clean-install smoke tests only with
    explicit approval to modify a test SPT installation.
-7. Complete the critical solo/Fika/headless matrices or clearly mark remaining
+8. Complete the critical solo/Fika/headless matrices or clearly mark remaining
    blockers before requesting approval to publish.

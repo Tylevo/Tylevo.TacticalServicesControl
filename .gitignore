@@ -368,7 +368,6 @@ MigrationBackup/
 
 dist/
 .config/
-global.json
 *.zip
 *.7z
 project/SamSWAT.FireSupport/CopyToOutput/assets/content/ui/phone/previews/

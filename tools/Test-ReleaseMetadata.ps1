@@ -95,6 +95,40 @@ catch {
     throw "'$propsRelativePath' is not valid XML: $($_.Exception.Message)"
 }
 
+$globalJsonRelativePath = "global.json"
+try {
+    $globalJson =
+        Get-RequiredFileText -RelativePath $globalJsonRelativePath |
+            ConvertFrom-Json
+}
+catch {
+    throw "'$globalJsonRelativePath' is not valid JSON: $($_.Exception.Message)"
+}
+
+$sdkVersion = [string] $globalJson.sdk.version
+Assert-Condition `
+    -Condition ($sdkVersion -match "^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$") `
+    -Message "global.json must pin an exact three-part .NET SDK version."
+Assert-Condition `
+    -Condition ([string] $globalJson.sdk.rollForward -eq "disable") `
+    -Message "global.json must disable SDK roll-forward for reproducible release builds."
+Assert-Condition `
+    -Condition ($globalJson.sdk.allowPrerelease -eq $false) `
+    -Message "global.json must disable prerelease SDK selection."
+
+$verifyWorkflowText =
+    Get-RequiredFileText -RelativePath ".github/workflows/verify.yml"
+Assert-TextMatch `
+    -Text $verifyWorkflowText `
+    -Pattern (
+        "(?m)^\s*dotnet-version:\s*" +
+        [regex]::Escape($sdkVersion) +
+        "\s*$"
+    ) `
+    -Description (
+        "the verification workflow must install the exact global.json SDK"
+    )
+
 $version = Get-RequiredXmlValue `
     -Document $props `
     -XPath "/Project/PropertyGroup[not(@Condition)]/Version" `
@@ -278,4 +312,5 @@ Assert-TextMatch `
 Write-Host "Release metadata verification passed."
 Write-Host "  Version: $version"
 Write-Host "  Target SPT: $targetSptVersion"
+Write-Host "  .NET SDK: $sdkVersion"
 Write-Host "  Archive: $releaseArchiveName"

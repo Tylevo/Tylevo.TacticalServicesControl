@@ -108,13 +108,36 @@ function Test-IsUnderPackageRoot {
     return $false
 }
 
+function Get-TrackedFileSet {
+    param(
+        [Parameter(Mandatory)]
+        [string] $RepositoryRoot
+    )
+
+    $repositoryGitPath = $RepositoryRoot.Replace("\", "/")
+    $trackedOutput = @(
+        & git -c "safe.directory=$repositoryGitPath" -C $RepositoryRoot ls-files -- 2>&1
+    )
+    if ($LASTEXITCODE -ne 0) {
+        throw "git ls-files failed while validating package sources: $($trackedOutput -join [Environment]::NewLine)"
+    }
+
+    $tracked = New-OrdinalIgnoreCaseSet
+    foreach ($trackedFile in $trackedOutput) {
+        $entry = Normalize-PackagePath -Value ([string] $trackedFile) -Description "Tracked source path"
+        Assert-AddUnique -Set $tracked -Value $entry -Description "Tracked source files"
+    }
+
+    return ,$tracked
+}
+
 if (-not (Test-Path -LiteralPath $ManifestPath -PathType Leaf)) {
     throw "Package allowlist manifest was not found: '$ManifestPath'."
 }
 
 $resolvedSourceRoot = (Resolve-Path -LiteralPath $SourceRoot).Path
 $manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
-if ($manifest.schemaVersion -ne 2) {
+if ($manifest.schemaVersion -ne 3) {
     throw "Unsupported package allowlist schema '$($manifest.schemaVersion)'."
 }
 
@@ -160,6 +183,11 @@ foreach ($archiveRoot in $archiveRoots) {
     }
 }
 
+$trackedSourceFiles = $null
+if ($ValidateSourceInputs) {
+    $trackedSourceFiles = Get-TrackedFileSet -RepositoryRoot $resolvedSourceRoot
+}
+
 $allowed = New-OrdinalIgnoreCaseSet
 $mirrorEntries = New-OrdinalIgnoreCaseSet
 foreach ($mirror in $manifest.mirrors) {
@@ -169,34 +197,145 @@ foreach ($mirror in $manifest.mirrors) {
         throw "Mirror destination '$destination' is outside the declared install roots."
     }
 
-    $sourceDirectory = Join-Path $resolvedSourceRoot $sourceRelative.Replace("/", [IO.Path]::DirectorySeparatorChar)
-    if (-not (Test-Path -LiteralPath $sourceDirectory -PathType Container)) {
-        throw "Mirror source directory was not found: '$sourceDirectory'."
+    $declaredFiles = @($mirror.files | Where-Object { $null -ne $_ })
+    if ($declaredFiles.Count -eq 0) {
+        throw "Mirror '$sourceRelative' must declare at least one reviewed file."
     }
 
-    $excludedNames = New-OrdinalIgnoreCaseSet
-    foreach ($excludedName in @($mirror.excludedFileNames)) {
-        [void] $excludedNames.Add([string] $excludedName)
-    }
+    $reviewedSourceFiles = New-OrdinalIgnoreCaseSet
+    $includedSourceFiles = New-OrdinalIgnoreCaseSet
+    foreach ($declaredFile in $declaredFiles) {
+        $relative = Normalize-PackagePath -Value ([string] $declaredFile) -Description "Reviewed mirror file"
+        Assert-AddUnique -Set $reviewedSourceFiles -Value $relative -Description "Mirror '$sourceRelative' review inventory"
+        Assert-AddUnique -Set $includedSourceFiles -Value $relative -Description "Mirror '$sourceRelative' package inventory"
 
-    foreach ($file in Get-ChildItem -LiteralPath $sourceDirectory -File -Recurse) {
-        if ($excludedNames.Contains($file.Name)) {
-            continue
-        }
-
-        $relative = Get-RelativeFilePath -Root $sourceDirectory -File $file.FullName
         $entry = Normalize-PackagePath -Value "$destination/$relative" -Description "Mirrored package path"
         Assert-AddUnique -Set $allowed -Value $entry -Description "Allowlist"
-        [void] $mirrorEntries.Add($entry)
+        Assert-AddUnique -Set $mirrorEntries -Value $entry -Description "Mirrored package files"
+    }
+
+    $excludedFiles = @()
+    if ($null -ne $mirror.PSObject.Properties["excludedFiles"]) {
+        $excludedFiles = @($mirror.excludedFiles | Where-Object { $null -ne $_ })
+    }
+
+    foreach ($excludedFile in $excludedFiles) {
+        $relative = Normalize-PackagePath -Value ([string] $excludedFile) -Description "Reviewed excluded mirror file"
+        Assert-AddUnique -Set $reviewedSourceFiles -Value $relative -Description "Mirror '$sourceRelative' review inventory"
+    }
+
+    if ($ValidateSourceInputs) {
+        $sourceDirectory = Join-Path $resolvedSourceRoot $sourceRelative.Replace("/", [IO.Path]::DirectorySeparatorChar)
+        if (-not (Test-Path -LiteralPath $sourceDirectory -PathType Container)) {
+            throw "Mirror source directory was not found: '$sourceDirectory'."
+        }
+
+        $actualSourceFiles = New-OrdinalIgnoreCaseSet
+        foreach ($file in Get-ChildItem -LiteralPath $sourceDirectory -File -Recurse) {
+            $relative = Get-RelativeFilePath -Root $sourceDirectory -File $file.FullName
+            $normalized = Normalize-PackagePath -Value $relative -Description "Mirror source file"
+            Assert-AddUnique -Set $actualSourceFiles -Value $normalized -Description "Mirror '$sourceRelative' source tree"
+        }
+
+        foreach ($relative in $actualSourceFiles) {
+            if (-not $reviewedSourceFiles.Contains($relative)) {
+                throw "Mirror '$sourceRelative' contains an unreviewed source file: '$relative'."
+            }
+        }
+
+        foreach ($relative in $reviewedSourceFiles) {
+            if (-not $actualSourceFiles.Contains($relative)) {
+                throw "Mirror '$sourceRelative' is missing reviewed source file: '$relative'."
+            }
+
+            $trackedPath = Normalize-PackagePath -Value "$sourceRelative/$relative" -Description "Tracked mirror source"
+            if (-not $trackedSourceFiles.Contains($trackedPath)) {
+                throw "Mirror '$sourceRelative' contains an untracked reviewed source file: '$relative'."
+            }
+        }
     }
 }
 
-foreach ($generatedFile in $manifest.generatedFiles) {
-    $entry = Normalize-PackagePath -Value ([string] $generatedFile) -Description "Generated package path"
-    if (-not (Test-IsUnderPackageRoot -Entry $entry -Roots $installRoots)) {
-        throw "Generated file '$entry' is outside the declared install roots."
+$buildArtifactEntries = New-OrdinalIgnoreCaseSet
+$buildArtifactSources = New-OrdinalIgnoreCaseSet
+$assemblyNames = New-OrdinalIgnoreCaseSet
+foreach ($artifact in $manifest.buildArtifacts) {
+    $source = Normalize-PackagePath -Value ([string] $artifact.source) -Description "Build artifact source"
+    $destination = Normalize-PackagePath -Value ([string] $artifact.destination) -Description "Build artifact destination"
+    $assemblyName = [string] $artifact.assemblyName
+    if (-not $source.EndsWith(".dll", [StringComparison]::OrdinalIgnoreCase) -or
+        -not $destination.EndsWith(".dll", [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Build artifact '$source' must map one DLL to one DLL destination."
     }
 
+    if ([string]::IsNullOrWhiteSpace($assemblyName)) {
+        throw "Build artifact '$source' has no reviewed assemblyName."
+    }
+
+    if (-not (Test-IsUnderPackageRoot -Entry $destination -Roots $installRoots)) {
+        throw "Build artifact '$destination' is outside the declared install roots."
+    }
+
+    Assert-AddUnique -Set $buildArtifactSources -Value $source -Description "Build artifact sources"
+    Assert-AddUnique -Set $assemblyNames -Value $assemblyName -Description "Build artifact assembly names"
+    Assert-AddUnique -Set $buildArtifactEntries -Value $destination -Description "Build artifact destinations"
+    Assert-AddUnique -Set $allowed -Value $destination -Description "Allowlist"
+}
+
+$copiedEntries = New-OrdinalIgnoreCaseSet
+foreach ($copiedFile in $manifest.copiedFiles) {
+    $source = Normalize-PackagePath -Value ([string] $copiedFile.source) -Description "Copied source file"
+    $destination = Normalize-PackagePath -Value ([string] $copiedFile.destination) -Description "Copied package path"
+    if (-not (Test-IsUnderPackageRoot -Entry $destination -Roots $installRoots)) {
+        throw "Copied file '$destination' is outside the declared install roots."
+    }
+
+    Assert-AddUnique -Set $copiedEntries -Value $destination -Description "Copied package files"
+    Assert-AddUnique -Set $allowed -Value $destination -Description "Allowlist"
+
+    if ($ValidateSourceInputs) {
+        $sourcePath = Join-Path $resolvedSourceRoot $source.Replace("/", [IO.Path]::DirectorySeparatorChar)
+        if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+            throw "Copied source file was not found: '$source'."
+        }
+
+        if (-not $trackedSourceFiles.Contains($source)) {
+            throw "Copied source file is not tracked: '$source'."
+        }
+    }
+}
+
+$baselineFileName = [string] $manifest.baselineAssetArchive.fileName
+$baselineArchiveLength = [long] $manifest.baselineAssetArchive.length
+$baselineHash = ([string] $manifest.baselineAssetArchive.sha256).ToUpperInvariant()
+if ([string]::IsNullOrWhiteSpace($baselineFileName) -or
+    [IO.Path]::GetFileName($baselineFileName) -cne $baselineFileName -or
+    -not $baselineFileName.EndsWith(".zip", [StringComparison]::OrdinalIgnoreCase)) {
+    throw "baselineAssetArchive.fileName must be one reviewed ZIP file name."
+}
+
+if ($baselineArchiveLength -le 0 -or $baselineHash -notmatch "^[0-9A-F]{64}$") {
+    throw "baselineAssetArchive must declare a positive byte length and one exact SHA-256 digest."
+}
+
+$baselineBundleEntries = New-OrdinalIgnoreCaseSet
+foreach ($baselineFile in $manifest.baselineAssetArchive.files) {
+    $entry = Normalize-PackagePath -Value ([string] $baselineFile.path) -Description "Baseline asset package path"
+    $fileHash = ([string] $baselineFile.sha256).ToUpperInvariant()
+    $fileLength = [long] $baselineFile.length
+    if (-not $entry.EndsWith(".bundle", [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Baseline asset '$entry' is not a .bundle file."
+    }
+
+    if ($fileHash -notmatch "^[0-9A-F]{64}$" -or $fileLength -le 0) {
+        throw "Baseline asset '$entry' must declare an exact SHA-256 and positive byte length."
+    }
+
+    if (-not (Test-IsUnderPackageRoot -Entry $entry -Roots $installRoots)) {
+        throw "Baseline asset '$entry' is outside the declared install roots."
+    }
+
+    Assert-AddUnique -Set $baselineBundleEntries -Value $entry -Description "Baseline asset files"
     Assert-AddUnique -Set $allowed -Value $entry -Description "Allowlist"
 }
 
@@ -256,8 +395,8 @@ foreach ($entry in $allowed) {
     Assert-EntryPassesSecurityRules -Entry $entry
 }
 
-$generatedDllCount = @($manifest.generatedFiles | Where-Object { ([string] $_).EndsWith(".dll", [StringComparison]::OrdinalIgnoreCase) }).Count
-$generatedBundleCount = @($manifest.generatedFiles | Where-Object { ([string] $_).EndsWith(".bundle", [StringComparison]::OrdinalIgnoreCase) }).Count
+$generatedDllCount = $buildArtifactEntries.Count
+$generatedBundleCount = $baselineBundleEntries.Count
 if ($generatedDllCount -ne [int] $manifest.exactCounts.".dll") {
     throw "Allowlist declares $generatedDllCount generated DLLs; expected $($manifest.exactCounts.'.dll')."
 }
@@ -267,7 +406,7 @@ if ($generatedBundleCount -ne [int] $manifest.exactCounts.".bundle") {
 }
 
 if ($ValidateSourceInputs) {
-    Write-Host "Package allowlist source validation passed: $($mirrorEntries.Count) mirrored files, $generatedDllCount DLLs, and $generatedBundleCount bundles."
+    Write-Host "Package allowlist source validation passed: $($mirrorEntries.Count) reviewed tracked files, $generatedDllCount DLL mappings, and $generatedBundleCount pinned bundles."
 }
 
 if ([string]::IsNullOrWhiteSpace($Path)) {

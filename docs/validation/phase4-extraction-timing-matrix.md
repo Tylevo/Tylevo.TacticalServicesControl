@@ -2,8 +2,11 @@
 
 Status:
 
-- Phase 4 implementation/static review: **checkpoint `ae02516` reviewed,
-  built, and installed as a matched four-DLL candidate**.
+- Historical Phase 4 implementation checkpoint `ae02516` was reviewed, built,
+  and installed during development. It is retained as provenance only and is
+  not the current Phase 7 candidate identity.
+- v1.1.0 Phase 7 candidate record: **OPEN - final commit and package manifest
+  not yet recorded**.
 - Phase 4 live acceptance: **OPEN - not yet run**.
 - Every test row below starts `OPEN`; this document records expected evidence,
   not a test result.
@@ -12,6 +15,28 @@ Status:
   or disconnect-settlement rows.
 - Phase 3 physical-phone UAV live acceptance: **still OPEN**. Phase 4 evidence
   does not close any UAV requester, loiter, or teardown row.
+
+## Phase 7 Candidate Record
+
+Complete this record before changing any live row from `OPEN`. The commit,
+archive, and manifest must describe the exact four-DLL set installed on every
+participant.
+
+| Field | Value |
+| --- | --- |
+| Candidate version | `v1.1.0` |
+| Candidate status | `OPEN - final Phase 7 package not yet recorded` |
+| Candidate commit | `TO RECORD` |
+| Release archive filename / SHA-256 | `TO RECORD` |
+| Package manifest SHA-256 | `TO RECORD` |
+| Build evidence SHA-256 | `TO RECORD` |
+| Content evidence SHA-256 | `TO RECORD` |
+| Core DLL SHA-256 | `TO RECORD` |
+| Server DLL SHA-256 | `TO RECORD` |
+| Fika Interop DLL SHA-256 | `TO RECORD` |
+| Fika bootstrap DLL SHA-256 | `TO RECORD` |
+| Config schema / authorization-ledger schema | `3 / 5` |
+| Evidence root | `TO RECORD` |
 
 This matrix validates the server-authoritative timing contract for standard
 Extraction and Priority Exfil. It covers dispatch delay, helicopter animation
@@ -25,14 +50,15 @@ Before each topology:
 
 1. Stop the SPT server, game, launcher, every Fika client, and any dedicated
    headless process before installing DLLs.
-2. Record the Core, Server, Fika Interop, and Fika bootstrap SHA-256 values on
-   every participant. Use one matched four-DLL checkpoint everywhere. Phase 4
-   changes the Fika settings, support-request, and authority-result packet
-   layouts plus the Core/Interop request delegate, so mixed Phase 3/Phase 4
-   clients are not a valid test set.
+2. Record the candidate commit, package manifest, and Core, Server, Fika
+   Interop, and Fika bootstrap SHA-256 values on every participant. Use one
+   matched v1.1.0 four-DLL candidate everywhere. Mixed packet-contract builds
+   are not a valid test set.
 3. Back up the complete TSC storage and configuration directories while the
-   server is stopped. Use disposable profiles for death, disconnect, forced
-   cancellation, and abrupt raid-end rows.
+   server is stopped. The current contract is config schema 3 and authorization
+   ledger schema 5; keep each backup with its matching Server DLL. Use
+   disposable profiles for death, disconnect, forced cancellation, and abrupt
+   raid-end rows.
 4. Record `configSchemaVersion`, `pendingUseTimeoutSeconds`, the starting
    server config revision, the Fika timing revision, and the effective values
    for both services before entering the raid.
@@ -89,8 +115,9 @@ is insufficient.
 
 For every row, capture:
 
-- row ID, topology, participant role, map, target location, service, profile ID,
-  `configSchemaVersion`, server config revision, Fika timing revision,
+- row ID, tester/date, evidence location, candidate commit, package-manifest
+  identity, topology, participant role, map, target location, service, profile
+  ID, `configSchemaVersion`, server config revision, Fika timing revision,
   `pendingUseTimeoutSeconds`, and all four DLL hashes;
 - both services' effective dispatch, wait, countdown, and speed values;
 - authorization count before/after and support request identity where logged;
@@ -116,11 +143,11 @@ before retrying with different values.
 | ID | Scenario | Action | Required result | Status |
 | --- | --- | --- | --- | --- |
 | P4-C01 | Exact wait/countdown boundary | For both services, submit extract `10`, wait `10` and extract `10`, wait `11` through the dashboard. Submit fractional extract `10.5`, wait `11` and extract `10.5`, wait `12` through the direct API/config reload path because the dashboard uses whole-second steps. | `10/10` and `10.5/11` are rejected. `10/11` and `10.5/12` are accepted because the rule is `wait >= ceil(extract + 1)`. A rejection preserves the previous revision and the other service unchanged. | OPEN |
-| P4-C02 | Unsafe startup repair | With the server stopped and a rollback copy saved, place a schema-2 timing with extract `10.5`, wait `11`, and otherwise valid distinctive dispatch/speed values in the config, then start the server once. | Startup logs an actionable repair and saves wait `12`. Valid dispatch and speed values are preserved. No profile, authorization count, or ledger entry changes. | OPEN |
+| P4-C02 | Unsafe startup repair | With the server stopped and a rollback copy saved, place a schema-2 timing with extract `10.5`, wait `11`, and otherwise valid distinctive dispatch/speed values in the config, then start the server once. | Startup migrates and saves config schema 3, logs an actionable timing repair, and saves wait `12`. Valid dispatch, speed, and numeric price values are preserved; the pre-currency input defaults `paymentCurrency` to `RUB`. No profile, authorization count, or ledger entry changes. | OPEN |
 | P4-C03 | Unsafe update/reload rejection | Submit the same unsafe relationship through the dashboard/API and supported reload path while a valid revision is active. | The update/reload is rejected rather than repaired. The last valid revision remains authoritative and no partial field from either service is applied. | OPEN |
 | P4-C04 | Local fallback safety | Disable shared server-URL timing, explicitly clear server/synced tuning, set both standard and priority local BepInEx wait `10` and extract `30`, and request each service in solo. | Each service warns and snapshots an effective wait of `31`, proving the local values were captured and preventing departure before extraction completes. The BepInEx file is not silently rewritten. | OPEN |
 | P4-C05 | Pending authorization timeout | With persistence enabled, try timeout `154`, then `155`; separately run a `120`-second dispatch with the normal `180`-second timeout. Optionally repeat `154` with persistence disabled. | Enabled persistence rejects `154` and accepts `155`; the fixed minimum is `ceil(120 + 35) = 155`, independent of current dashboard dispatch values. The 120-second request cannot expire before its single commit. The constraint is skipped only while persistence is disabled. | OPEN |
-| P4-C06 | Schema/default migration | Test the exact published schema-less v1.0.8 config with standard dispatch `0`, a schema-less custom nonzero standard dispatch, a schema-less missing/null Extraction section, a fresh packaged config, and a schema-2 explicit standard dispatch `0`. | Every schema-less standard value migrates to schema 2 with the historical effective `8`-second delay; missing/null sections receive safe defaults. A fresh config is schema 2 with standard `8` and priority `3`. A schema-2 explicit `0` survives restart and dispatches immediately. | OPEN |
+| P4-C06 | Schema/default migration | Test the exact published schema-less v1.0.8 config with standard dispatch `0`, a schema-less custom nonzero standard dispatch, a schema-less missing/null Extraction section, a fresh packaged config, and a schema-2 explicit standard dispatch `0`. | Every legacy input saves as schema 3. Schema-less standard values retain the historical effective `8`-second delay and missing/null sections receive safe defaults. Pre-currency inputs default to `RUB` without converting numeric prices. A fresh config is schema 3 with standard `8` and priority `3`. A schema-2 explicit `0` survives migration/restart and dispatches immediately. | OPEN |
 
 ## Solo Matrix
 
@@ -137,7 +164,7 @@ before retrying with different values.
 | P4-09 | Repeat raids and alternating services | Run at least three raids, alternating standard -> priority -> standard. In each raid perform one leave/re-enter before the successful hold. | Each raid starts without an old helicopter, trigger, countdown, support-type identity, revision, or completion estimate. Every new request uses its accepted service/revision exactly once and remains usable after prior teardown. | OPEN |
 | P4-10 | Invalid standard relationship | Repeat the rejected P4-C01 boundary pairs with only standard Extraction invalid and Priority Exfil valid. Test both dashboard and direct supported config/API path. | The revision is rejected before a paid request can use it, with an actionable standard-Extraction error stating the one-second margin. The last valid config remains authoritative; no partial standard or priority update is applied. | OPEN |
 | P4-11 | Invalid priority relationship | Repeat P4-10 with only Priority Exfil invalid. | The revision is rejected before use with a Priority Exfil-specific one-second-margin error. Standard values are not mutated as a side effect, and the last valid revision remains active. | OPEN |
-| P4-12 | Packaged/migrated runtime compatibility | After P4-C06, run one request per service with a fresh schema-2 config, a migrated published config, and a schema-2 explicit standard delay of zero. | Every exposed timing field affects gameplay as labeled. Fresh and migrated defaults preserve the historical effective standard eight-second delay; schema-2 zero produces intentional immediate dispatch; priority retains its separate three-second default. | OPEN |
+| P4-12 | Packaged/migrated runtime compatibility | After P4-C06, run one request per service with a fresh schema-3 config, a published legacy config migrated to schema 3, and a schema-2 explicit standard delay of zero migrated to schema 3. | Every exposed timing field affects gameplay as labeled. Fresh and migrated defaults preserve the historical effective standard eight-second delay; the migrated explicit zero produces intentional immediate dispatch; priority retains its separate three-second default. All three saved configs remain schema 3 with a valid payment currency. | OPEN |
 
 ## Fika Matrix
 

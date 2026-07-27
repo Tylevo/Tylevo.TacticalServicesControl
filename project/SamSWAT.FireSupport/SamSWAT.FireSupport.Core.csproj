@@ -133,20 +133,4 @@
   <Target Name="PostBuild" AfterTargets="PostBuildEvent" Condition=" '$(SkipTscDeploy)' != 'true' ">
     <Exec Command="if not exist &quot;$(SptBepInExPluginsDir)$(SolutionName)&quot; (&#xA;    mkdir &quot;$(SptBepInExPluginsDir)$(SolutionName)&quot;&#xA;)&#xA;&#xA;copy &quot;$(TargetPath)&quot; &quot;$(SptBepInExPluginsDir)$(SolutionName)\$(TargetFileName)&quot;&#xA;(robocopy &quot;$(CopyToOutputDir)&quot; &quot;$(SptBepInExPluginsDir)$(SolutionName)&quot; /E /XD previews optional_highres /XF .gitkeep WHY_V7_IS_COMPONENT_BASED.txt) ^&amp; if %ERRORLEVEL% leq 3 exit 0" />
   </Target>
-
-  <Target Name="RemoveReleaseExcludedContent" AfterTargets="PostBuild" BeforeTargets="CreateReleaseZip" Condition=" '$(SkipTscDeploy)' != 'true' ">
-    <ItemGroup>
-      <ReleaseExcludedFiles Include="$(SptBepInExPluginsDir)$(SolutionName)\assets\content\ui\phone\docs\WHY_V7_IS_COMPONENT_BASED.txt" />
-      <ReleaseExcludedFiles Include="$(SptBepInExPluginsDir)$(SolutionName)\assets\content\ui\.gitkeep" />
-      <ReleaseExcludedFiles Include="$(SptBepInExPluginsDir)$(SolutionName)\assets\content\vehicles\.gitkeep" />
-      <ReleaseExcludedDirs Include="$(SptBepInExPluginsDir)$(SolutionName)\assets\content\ui\phone\previews" />
-      <ReleaseExcludedDirs Include="$(SptBepInExPluginsDir)$(SolutionName)\assets\content\ui\phone\optional_highres" />
-    </ItemGroup>
-    <Delete Files="@(ReleaseExcludedFiles)" TreatErrorsAsWarnings="true" />
-    <RemoveDir Directories="@(ReleaseExcludedDirs)" />
-  </Target>
-
-  <Target Name="CreateReleaseZip" AfterTargets="PostBuild" Condition=" '$(SkipTscDeploy)' != 'true' ">
-    <Exec Command="if not &quot;$(ConfigurationName)&quot;==&quot;Debug&quot; (&#xA;    cd /D &quot;$(SptBepInExPluginsDir)..\..\&quot;&#xA;    &quot;$(SevenZipPath)&quot; a -tzip &quot;$(ReleaseArchive)&quot; &quot;BepInEx\plugins\$(SolutionName)\*&quot;&#xA;    &quot;$(SevenZipPath)&quot; a -tzip &quot;$(ReleaseArchive)&quot; &quot;SPT\user\mods\$(SolutionName)\*&quot;&#xA;)" />
-  </Target>
 </Project>

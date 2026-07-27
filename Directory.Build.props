@@ -12,7 +12,6 @@
     <SolutionName>Tylevo.TacticalServicesControl</SolutionName>
     <DistributionDir>$(MSBuildThisFileDirectory)dist\</DistributionDir>
     <ReleaseArchive>$(DistributionDir)$(SolutionName)-v$(Version)-SPT$(TargetSptVersion).zip</ReleaseArchive>
-    <SevenZipPath Condition=" '$(SevenZipPath)' == '' ">C:\Program Files\7-Zip\7z.exe</SevenZipPath>
   </PropertyGroup>
   <PropertyGroup>
     <SptDir Condition=" '$(SptDir)' == '' ">$(MSBuildThisFileDirectory)..\..\SPT\</SptDir>

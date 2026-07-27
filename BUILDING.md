@@ -4,7 +4,8 @@ This repository does not include proprietary EFT or SPT assemblies. Provide loca
 
 ## Requirements
 
-- .NET SDK compatible with the project.
+- .NET SDK 9.0.314, pinned by `global.json` and the CI workflow with SDK
+  roll-forward disabled.
 - SPT 4.0.13 reference assemblies.
 - UnityToolkit v2.0.1.
 - WTT Client Common Lib and WTT Server Common Lib, installed separately as dependencies.
@@ -18,7 +19,6 @@ Create a local `Shared.User.props` or pass MSBuild properties:
 
 - `SptDir`: path to a local SPT-style folder used for post-build output.
 - `SptSharedAssembliesDir`: folder containing the versioned SPT reference assemblies, such as `400x/Assembly-CSharp.dll`.
-- `SevenZipPath`: optional path to `7z.exe` when creating release archives. Defaults to `C:\Program Files\7-Zip\7z.exe`.
 
 Use forward slashes or quote paths carefully when paths contain spaces.
 
@@ -65,6 +65,12 @@ Interop, the Fika bootstrap, and the regression runner. The build always passes
 the supplied SPT installation. Use `-Configuration` only when intentionally
 checking another configured target.
 
+The former MSBuild `CreateReleaseZip` and release-cleanup targets were removed
+because they read and modified the live `SptDir` tree and updated an existing
+ZIP in place. Normal `PostBuild` developer deployment remains, but release
+builds must keep `SkipTscDeploy=true`.
+`tools/New-ReleasePackage.ps1` is the only supported release archive path.
+
 The Core and Fika bootstrap retain their historical internal assembly
 identities. Their build outputs are
 `SamSWAT.FireSupport.ArysReloaded.Core.dll` and
@@ -75,9 +81,12 @@ assembly names.
 
 ## Package Layout Verification
 
-`tools/package-layout.allowlist.json` is the current package layout and source
-mapping contract. Its `archiveRoots` declare the only permitted top-level ZIP
-folders, while `installRoots` declare the exact TSC destinations below them.
+`tools/package-layout.allowlist.json` is the closed package layout, source, and
+artifact-provenance contract. Its `archiveRoots` declare the only permitted
+top-level ZIP folders, while `installRoots` declare the exact TSC destinations
+below them. Every mirrored source file and reviewed source-only exclusion is
+listed individually. The checker fails on a missing listed file, an untracked
+listed file, or any unreviewed extra below either `CopyToOutput` tree.
 Validate the source mappings without building:
 
 ```powershell
@@ -91,19 +100,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\Test-PackageLayout.p
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\Test-PackageLayout.ps1 -Path "C:\Path\To\TSC.zip"
 ```
 
-The checker normalizes and de-duplicates paths, rejects every file not present
-in the two mirrored `CopyToOutput` trees or explicit generated-file list,
-requires exactly four TSC DLLs and eight named asset bundles, asserts the exact
-archive-root set, and rejects proprietary dependencies, profiles, storage,
-logs, build artifacts, archives, and `.gitkeep` files.
-
-The schema-2 `mirrors` entries currently discover files below both
-`CopyToOutput` trees recursively. This verifies the resolved package and catches
-extra staged or archived files, but it is not yet a closed, reviewed per-file
-source inventory: a newly added source-tree file becomes part of the resolved
-set. Before release staging, Phase 7 must freeze the intended files into an
-explicit flat inventory and fail if an unreviewed or untracked source extra is
-present.
+The checker normalizes and de-duplicates paths, requires the exact 155-file
+reviewed mirror inventory, exactly four TSC DLL mappings, and exactly eight
+named asset bundles. It asserts the exact archive-root set and rejects
+proprietary dependencies, profiles, storage, logs, build artifacts, archives,
+and `.gitkeep` files from the package.
 
 The v1.1.0 package contract follows the verified public v1.0.8 artifact:
 
@@ -115,11 +116,68 @@ The v1.1.0 package contract follows the verified public v1.0.8 artifact:
 - Root-level README, changelog, license, and release-note files are not part of
   the installer.
 
-The checker validates a package but does not stage or create one. Phase 7 must
-first replace recursive mirror discovery with the reviewed per-file inventory,
-populate a new empty staging directory from those inputs, validate it, create a
-new ZIP rather than updating an old archive, extract that ZIP into another
-empty directory, and validate the extracted result again.
+## Clean Release Staging
+
+Build and verify from the exact clean commit that will identify the candidate.
+For a release candidate, write the build evidence to a new file outside the
+repository:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\verify-local.ps1 `
+  -SptDir "C:\Path\To\SPT" `
+  -SptSharedAssembliesDir "C:\Path\To\SPT Assemblies" `
+  -EvidencePath "C:\External\TSC\v1.1.0-build-evidence.json"
+```
+
+`-EvidencePath` must not already exist and must be outside the repository. Once
+that command succeeds, create the package in a separate new or empty external
+directory:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\New-ReleasePackage.ps1 `
+  -BaselineAssetArchive "C:\Path\To\Tylevo.TacticalServicesControl-v1.0.8-SPT4.0.13.zip" `
+  -OutputDirectory "C:\External\TSC\v1.1.0-candidate" `
+  -BuildEvidencePath "C:\External\TSC\v1.1.0-build-evidence.json"
+```
+
+The baseline archive is an explicit input because the eight Unity bundles are
+not tracked source files. The packager requires the verified public v1.0.8 ZIP
+SHA-256 recorded in the manifest, then verifies each allowlisted bundle's byte
+length and SHA-256 and extracts only those eight entries. It never accepts or
+reads a live SPT directory as package content.
+
+The four DLLs come only from the fixed project build-output paths recorded in
+the manifest. All four must have the reviewed assembly name,
+`AssemblyVersion`/`FileVersion` `1.1.0.0`, and
+`AssemblyInformationalVersion` `1.1.0+<current-clean-HEAD>`. This rejects old,
+mixed, or locally modified build outputs. The packager requires the external
+build evidence and matches its HEAD/tree, SDK, configuration, output paths,
+sizes, SHA-256 values, and assembly metadata against those four DLLs. Run the
+full local verification after committing packaging/source changes so the
+binaries and evidence identify that exact candidate revision.
+
+The output directory must be outside the entire repository and must be new or
+completely empty. The command creates a fresh `stage/`, validates it, creates a
+new archive without updating any prior ZIP, validates the ZIP directly,
+extracts it into a fresh `verify-extracted/`, and independently hashes all 169
+files to require exact path/size/SHA-256 equality with the stage.
+The repository root, manifest, checker, and build-output mappings are fixed by
+the tracked packaging script; release inputs must be tracked, clean, and equal
+to `HEAD`, with no external manifest or repository override. Mirrored and
+copied source content is read from exact `HEAD` blobs rather than mutable
+working-tree bytes, and the clean HEAD/tree identity is checked again before
+success.
+
+The command also writes a new external `*.content-evidence.json` sidecar with
+the source HEAD/tree, manifest identity, verified baseline archive, complete
+169-file content inventory, DLL identities and versions, bundle pins, archive
+identity, and exact file/DLL/bundle counts. The sidecar is not included in the
+installer ZIP and is never overwritten.
+
+ZIP entries are sorted ordinally and receive one fixed timestamp, so identical
+inputs on the same toolchain produce the same SHA-256. To audit
+reproducibility, run the command twice with two different empty external output
+directories and compare the reported hashes.
 
 Verify the release identity independently:
 

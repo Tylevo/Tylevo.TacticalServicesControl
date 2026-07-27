@@ -1,6 +1,31 @@
 # Phase 2 Fika Transaction Validation Matrix
 
-Status: implementation build-verified; live matrix not yet run
+Status:
+
+- v1.1.0 implementation/build checks: complete.
+- Live acceptance: **OPEN - not yet run**.
+
+## Phase 7 Candidate Record
+
+Complete this record before changing any live row from `OPEN`. The archive,
+evidence chain, and four DLL hashes must identify the exact matched candidate
+installed on every participant.
+
+| Field | Value |
+| --- | --- |
+| Candidate version | `v1.1.0` |
+| Candidate status | `OPEN - final Phase 7 package not yet recorded` |
+| Candidate commit | `TO RECORD` |
+| Release archive filename / SHA-256 | `TO RECORD` |
+| Package manifest SHA-256 | `TO RECORD` |
+| Build evidence SHA-256 | `TO RECORD` |
+| Content evidence SHA-256 | `TO RECORD` |
+| Core DLL SHA-256 | `TO RECORD` |
+| Server DLL SHA-256 | `TO RECORD` |
+| Fika Interop DLL SHA-256 | `TO RECORD` |
+| Fika bootstrap DLL SHA-256 | `TO RECORD` |
+| Config schema / authorization-ledger schema | `3 / 5` |
+| Evidence root | `TO RECORD` |
 
 This matrix validates that a TSC authorization is finalized from an explicit
 authority outcome rather than from packet transport. It applies to A-10
@@ -13,17 +38,19 @@ Before starting the SPT server:
 
 1. Stop the SPT server, game, launcher, Fika headless process, and all test
    clients.
-2. Install one matched Core, Server, Fika Interop, and Fika bootstrap build on
-   every participant.
+2. Install the exact candidate recorded above on every participant. Confirm
+   its package manifest, build evidence, content evidence, and Core, Server,
+   Fika Interop, and Fika bootstrap hashes before startup.
 3. Archive the complete
    `SPT/user/mods/Tylevo.TacticalServicesControl/storage` directory while the
    server is stopped. This preserves the primary ledger, `.bak`, and any
    recovery state as one generation; no live `.tmp` file should exist.
 4. Record the SHA-256 of every installed DLL and the pre-test storage archive.
-5. Keep the schema-4 storage directory with the matching Phase 2 Server DLL. A
-   DLL-only downgrade is not a safe rollback; restore the whole pre-upgrade
-   storage snapshot with the older DLL set. That restoration intentionally
-   discards disposable-profile ledger changes made after the snapshot.
+5. Keep the schema-5 storage directory with the matching v1.1.0 candidate
+   Server DLL. A DLL-only downgrade is not a safe rollback; restore the whole
+   pre-upgrade storage snapshot with the older DLL set. That restoration
+   intentionally discards disposable-profile ledger changes made after the
+   snapshot.
 
 Use disposable test profiles where a disconnect, forced process exit, or
 network fault is required.
@@ -57,7 +84,9 @@ fault point. Do not publish an instrumented test build.
 Record:
 
 - topology and participant/profile role;
-- service, parent `SupportRequestId`, and child pass ID when applicable;
+- service, parent `SupportRequestId`, child pass ID when applicable, and the
+  loiter packet's parent `SupportRequestId` and `RequesterProfileId` for UAV
+  rows;
 - ledger count and authorization-use state before and after;
 - effective authority executions and requester presentations;
 - requester, authority, and SPT server log excerpts;
@@ -91,7 +120,7 @@ plus the final ledger state.
 | P2-15 | Backend outage beyond pending expiry | Keep the SPT ledger endpoint unavailable beyond the pending-use timeout after an accepted service. | Record the known limitation: expiry can restore the credit before the same-ID commit arrives, leaving the delivered service free. No second execution may occur. |
 | P2-16 | Both accepted paths and cancel settlement lost (injected) | Let the authority accept, but drop the direct result, accepted broadcast, and cancel-settlement replay for more than 35 seconds while SPT HTTP remains available; then deliver a late accepted replay. | Record the known limitation: `AuthorityCancelUnsettled` refunds before authority state is known, so the accepted effect can be free and the late replay can register after the waiter is gone. It must still never execute twice. |
 
-## Known Residuals To Observe
+## Known Residuals And Contract Checks
 
 - Client finalization retries are in-memory. A process crash, permanent logout,
   or backend outage lasting beyond the server pending-use timeout can transition
@@ -101,9 +130,11 @@ plus the final ledger state.
 - A result-path partition longer than 35 seconds can produce
   `AuthorityCancelUnsettled`, an immediate refund, and a later accepted replay
   even while SPT HTTP remains healthy.
-- The UAV aircraft-loiter side-channel packet is still presentation-only and
-  does not yet carry the parent request identity. The paid recon request itself
-  is identity-bound and deduplicated.
+- The UAV aircraft-loiter presentation packet now carries the accepted parent
+  `SupportRequestId` and `RequesterProfileId`. Match both fields to the
+  canonical accepted request in live evidence. A missing/mismatched identity,
+  cross-profile presentation, or replay that creates a second aircraft is a
+  failure; live proof of this request-bound deduplication remains `OPEN`.
 - Dedicated-headless A-10 performs a side-effect-free preflight before
   acceptance, then starts damage in the accepted background phase. Record any
   world-state change between those two points that prevents the accepted pass
