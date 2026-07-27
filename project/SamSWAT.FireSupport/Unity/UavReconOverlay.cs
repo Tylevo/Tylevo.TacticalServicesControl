@@ -116,6 +116,7 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 	private float _introStartedAt;
 	private float _outroStartedAt;
 	private bool _isClosing;
+	private bool _destroyRequested;
 	private static Sprite s_timerBackgroundSprite;
 	private static Sprite s_solidSprite;
 	private static UniTask<RadarAssets>? s_radarAssetsLoadTask;
@@ -179,6 +180,24 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 		}
 
 		return destination.Count;
+	}
+
+	/// <summary>
+	/// Ends the local requester's recon session immediately. Fika disconnect
+	/// and raid-boundary paths use this instead of waiting for the normal
+	/// duration so a private feed cannot survive its owning session.
+	/// </summary>
+	public static void Deactivate(string reason)
+	{
+		UavReconOverlay instance = Instance;
+		if (instance == null)
+		{
+			return;
+		}
+
+		FireSupportPlugin.LogSource?.LogInfo(
+			$"TSC UAV recon link deactivated. reason={reason ?? "unspecified"}.");
+		instance.Close();
 	}
 
 	private bool HasActiveSession =>
@@ -330,7 +349,10 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 	protected override void OnDisable()
 	{
 		base.OnDisable();
-		Instance = null;
+		if (ReferenceEquals(Instance, this))
+		{
+			Instance = null;
+		}
 	}
 
 	private void StartRecon(
@@ -340,8 +362,8 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 		float rangeMeters)
 	{
 		_cancellationToken = cancellationToken;
-		_activeUntil = Mathf.Max(_activeUntil, Time.time + durationSeconds);
-		_activeDuration = Mathf.Max(1f, _activeUntil - Time.time);
+		_activeUntil = Time.time + durationSeconds;
+		_activeDuration = Mathf.Max(1f, durationSeconds);
 		_activeScanInterval = scanInterval > 0f
 			? scanInterval
 			: UavReconSettings.GetScanInterval(ESupportType.Uav);
@@ -1009,7 +1031,17 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 
 	private void Close()
 	{
-		Instance = null;
+		if (_destroyRequested)
+		{
+			return;
+		}
+
+		_destroyRequested = true;
+		if (ReferenceEquals(Instance, this))
+		{
+			Instance = null;
+		}
+
 		Destroy(gameObject);
 	}
 }

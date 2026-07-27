@@ -36,6 +36,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 	private bool _authorizationSessionActive;
 	private bool _authorizationInputLocked;
 	private Callback<IOnHandsUseCallback> _onUsedCallback;
+	private bool _handsUseCallbackCompleted;
 	private event Action<UavDeviceController, bool> _authorizationSessionFinished;
 	private bool _finishNotified;
 	private bool _finishPending;
@@ -126,6 +127,10 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 	public void SetOnUsedCallback(Callback<IOnHandsUseCallback> callback)
 	{
 		_onUsedCallback = callback;
+		if (_finishPending)
+		{
+			InvokeHandsUseCallbackOnce("late quick-use callback registration");
+		}
 	}
 
 	public Callback<IOnHandsUseCallback> GetOnUsedCallback()
@@ -566,11 +571,6 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 				FireSupportPlugin.LogSource.LogWarning("TerraGroup phone authorization UI skipped: screen mesh was not found.");
 				return false;
 			}
-
-			screenRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-			screenRenderer.receiveShadows = false;
-			screenRenderer.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
-			screenRenderer.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off;
 
 			_phoneScreen = gameObject.AddComponent<UavPhoneScreenRenderer>();
 			_phoneScreen.Initialize(
@@ -1162,15 +1162,6 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 		else
 		{
 			PlayOutroSuccess();
-		}
-
-		try
-		{
-			_onUsedCallback?.Invoke(new Result<IOnHandsUseCallback>(this));
-		}
-		catch (Exception ex)
-		{
-			FireSupportPlugin.LogSource.LogWarning($"TerraGroup radar monitor quick-use callback failed. {ex}");
 		}
 
 		NotifyAuthorizationFinished(success: true);
@@ -1862,15 +1853,6 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 
 		PublishPhoneVisualPhase(UavPhoneVisualPhase.End, success, 0.35f);
 
-		try
-		{
-			_onUsedCallback?.Invoke(new Result<IOnHandsUseCallback>(this));
-		}
-		catch (Exception ex)
-		{
-			FireSupportPlugin.LogSource.LogWarning($"TerraGroup phone authorization quick-use callback failed. {ex}");
-		}
-
 		NotifyAuthorizationFinished(success);
 	}
 
@@ -1898,6 +1880,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 		_finishNotified = true;
 		_finishPending = true;
 		_finishSuccess = success;
+		InvokeHandsUseCallbackOnce("phone session finished");
 
 		try
 		{
@@ -1906,6 +1889,25 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 		catch (Exception ex)
 		{
 			FireSupportPlugin.LogSource.LogWarning($"TerraGroup phone authorization finish callback failed. {ex}");
+		}
+	}
+
+	private void InvokeHandsUseCallbackOnce(string reason)
+	{
+		if (_handsUseCallbackCompleted || _onUsedCallback == null)
+		{
+			return;
+		}
+
+		_handsUseCallbackCompleted = true;
+		try
+		{
+			_onUsedCallback.Invoke(new Result<IOnHandsUseCallback>(this));
+		}
+		catch (Exception ex)
+		{
+			FireSupportPlugin.LogSource.LogWarning(
+				$"TerraGroup phone quick-use callback failed ({reason}). {ex}");
 		}
 	}
 
@@ -2226,6 +2228,15 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 
 	private void OnDestroy()
 	{
+		if (!_finishNotified &&
+		    LaunchMode != UavPhoneLaunchMode.InternalUavActivation)
+		{
+			_authorizationSessionActive = false;
+			_authorizationInputLocked = true;
+			_restoreStarted = true;
+			NotifyAuthorizationFinished(success: false);
+		}
+
 		RestoreUprightPresentationRenderers("controller destroy");
 		_uprightRevealStartedAt = -1f;
 		RestorePhoneZoom();

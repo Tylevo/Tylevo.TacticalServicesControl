@@ -10,18 +10,31 @@ namespace SamSWAT.FireSupport.ArysReloaded.Unity;
 
 public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 {
+	private static UavPhoneHotkeyController s_instance;
+
 	private bool _equipInProgress;
 	private Player _manualPlayer;
 	private Item _previousHandsItem;
 	private UavDeviceController _currentController;
+	private UavDeviceHandsService.EquipOperation _equipOperation;
 	private Coroutine _restoreCoroutine;
 	private UavPhoneLaunchMode _equipLaunchMode = UavPhoneLaunchMode.ManualAuthorization;
 	private bool _radarHoldWasPressed;
 	private bool _radarReleaseQueued;
+	private int _lifecycleGeneration;
 
 	protected override void OnStart()
 	{
+		s_instance = this;
 		HasFinishedInitialization = true;
+	}
+
+	public static void ResetForRaidBoundary(string reason)
+	{
+		if (s_instance != null)
+		{
+			s_instance.ResetLifecycleState(reason, destroyOwnedController: true);
+		}
 	}
 
 	public override void ManualUpdate()
@@ -311,6 +324,7 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 
 		try
 		{
+			int lifecycleGeneration = _lifecycleGeneration;
 			_equipInProgress = true;
 			_equipLaunchMode = launchMode;
 			_manualPlayer = player;
@@ -321,28 +335,63 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 				_radarReleaseQueued = false;
 			}
 
-			UavDeviceHandsService.BeginEquip(
+			UavDeviceHandsService.EquipOperation operation = UavDeviceHandsService.BeginEquip(
 				player,
 				uplinkItem,
 				launchMode,
-				controller => OnManualPhoneSpawned(player, controller),
-				ex => CleanupFailedManualEquip(player, ex));
+				(callbackOperation, controller) => OnManualPhoneSpawned(
+					player,
+					controller,
+					callbackOperation,
+					lifecycleGeneration),
+				(callbackOperation, ex) => OnManualEquipFailed(
+					player,
+					ex,
+					callbackOperation,
+					lifecycleGeneration));
+			if (_equipInProgress && lifecycleGeneration == _lifecycleGeneration)
+			{
+				_equipOperation = operation;
+			}
+			else
+			{
+				operation.Cancel("manual equip completed synchronously");
+			}
 		}
 		catch (Exception ex)
 		{
-			CleanupFailedManualEquip(player, ex);
+			OnManualEquipFailed(
+				player,
+				ex,
+				_equipOperation,
+				_lifecycleGeneration);
 		}
 	}
 
-	private void OnManualPhoneSpawned(Player player, UavDeviceController controller)
+	private void OnManualPhoneSpawned(
+		Player player,
+		UavDeviceController controller,
+		UavDeviceHandsService.EquipOperation operation,
+		int lifecycleGeneration)
 	{
+		if (lifecycleGeneration != _lifecycleGeneration)
+		{
+			TscDiagnostics.LogPhone("TSC Uplink ignored a phone spawn from an earlier raid lifecycle.");
+			DestroyControllerIfOwned(player, controller, "stale manual phone spawn");
+			return;
+		}
+
 		_equipInProgress = false;
+		_equipOperation = null;
 		_manualPlayer = player;
 		_currentController = controller;
 
 		if (controller == null)
 		{
-			CleanupFailedManualEquip(player, new InvalidOperationException("SpawnController callback supplied a null UavDeviceController."));
+			CleanupFailedManualEquip(
+				player,
+				new InvalidOperationException("SpawnController callback supplied a null UavDeviceController."),
+				operation);
 			return;
 		}
 
@@ -376,6 +425,13 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 			return;
 		}
 
+		if (_currentController != null &&
+		    !ReferenceEquals(_currentController, controller))
+		{
+			TscDiagnostics.LogPhone("TSC Uplink ignored a finish callback from a controller it no longer owns.");
+			return;
+		}
+
 		if (_restoreCoroutine != null)
 		{
 			FireSupportPlugin.LogSource.LogInfo("TSC Uplink finish ignored: a restore coroutine is already running.");
@@ -384,10 +440,17 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 
 		_currentController = controller;
 		Player player = _manualPlayer ?? Singleton<GameWorld>.Instance?.MainPlayer;
-		_restoreCoroutine = StartCoroutine(RestoreManualPhoneAfterOutro(player, controller));
+		_restoreCoroutine = StartCoroutine(
+			RestoreManualPhoneAfterOutro(
+				player,
+				controller,
+				_lifecycleGeneration));
 	}
 
-	private IEnumerator RestoreManualPhoneAfterOutro(Player player, UavDeviceController controller)
+	private IEnumerator RestoreManualPhoneAfterOutro(
+		Player player,
+		UavDeviceController controller,
+		int lifecycleGeneration)
 	{
 		if (controller != null)
 		{
@@ -396,6 +459,11 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 		else
 		{
 			yield return new WaitForSecondsRealtime(0.1f);
+		}
+
+		if (lifecycleGeneration != _lifecycleGeneration)
+		{
+			yield break;
 		}
 
 		TscDiagnostics.LogPhone("TSC Uplink: outro complete");
@@ -415,15 +483,28 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 				yield break;
 			}
 
-			controller?.ShutdownPhoneScreenForExternalRestore();
-
-			if (player?.HandsController is UavDeviceController)
+			bool ownsController =
+				player != null &&
+				ReferenceEquals(player.HandsController, controller);
+			bool ownsEmptyHands =
+				player != null &&
+				player.HandsController == null &&
+				ReferenceEquals(_currentController, controller);
+			if (!ownsController && !ownsEmptyHands)
 			{
+				TscDiagnostics.LogPhone(
+					$"TSC Uplink restore skipped: hands ownership moved to {player?.HandsController?.GetType().FullName ?? "<null>"}.");
+				yield break;
+			}
+
+			if (ownsController)
+			{
+				controller.ShutdownPhoneScreenForExternalRestore();
 				player.DestroyController();
 			}
 
-			TscDiagnostics.LogPhone("TSC Uplink: DestroyController + TrySetLastEquippedWeapon");
-			player?.TrySetLastEquippedWeapon(true, null);
+			TscDiagnostics.LogPhone("TSC Uplink: owned controller removed; restoring last equipped weapon");
+			player.TrySetLastEquippedWeapon(true, null);
 			TscDiagnostics.LogPhone($"TSC Uplink: restored HandsController = {player?.HandsController?.GetType().FullName ?? "<null>"}");
 		}
 		catch (Exception ex)
@@ -437,39 +518,81 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 				controller.AuthorizationSessionFinished -= OnManualAuthorizationFinished;
 			}
 
-			_currentController = null;
-			_previousHandsItem = null;
-			_manualPlayer = null;
-			_equipInProgress = false;
-			_equipLaunchMode = UavPhoneLaunchMode.ManualAuthorization;
-			_radarReleaseQueued = false;
-			_restoreCoroutine = null;
+			if (lifecycleGeneration == _lifecycleGeneration &&
+			    ReferenceEquals(_currentController, controller))
+			{
+				_currentController = null;
+				_previousHandsItem = null;
+				_manualPlayer = null;
+				_equipInProgress = false;
+				_equipLaunchMode = UavPhoneLaunchMode.ManualAuthorization;
+				_radarReleaseQueued = false;
+				_restoreCoroutine = null;
+			}
 		}
 
 		FireSupportPlugin.LogSource.LogInfo($"TSC Uplink restore finished. pendingDeployment={pendingDeployment}.");
 	}
 
-	private void CleanupFailedManualEquip(Player player, Exception exception)
+	private void OnManualEquipFailed(
+		Player player,
+		Exception exception,
+		UavDeviceHandsService.EquipOperation operation,
+		int lifecycleGeneration)
+	{
+		if (lifecycleGeneration != _lifecycleGeneration)
+		{
+			TscDiagnostics.LogPhone("TSC Uplink ignored an equip failure from an earlier raid lifecycle.");
+			return;
+		}
+
+		CleanupFailedManualEquip(player, exception, operation);
+	}
+
+	private void CleanupFailedManualEquip(
+		Player player,
+		Exception exception,
+		UavDeviceHandsService.EquipOperation operationOverride = null)
 	{
 		FireSupportPlugin.LogSource.LogWarning($"TSC Uplink explicit controller swap failed. {exception}");
 
+		UavDeviceHandsService.EquipOperation operation =
+			operationOverride ?? _equipOperation;
+		operation?.Cancel("manual equip failed");
 		try
 		{
-			UavDeviceController controller = _currentController ?? player?.HandsController as UavDeviceController;
-			controller?.ShutdownPhoneScreenForExternalRestore();
+			UavDeviceController controller = _currentController ?? operation?.Controller;
 			if (controller != null)
 			{
 				controller.AuthorizationSessionFinished -= OnManualAuthorizationFinished;
 			}
 
-			if (player?.HandsController is UavDeviceController)
+			bool ownsController =
+				player != null &&
+				controller != null &&
+				ReferenceEquals(player.HandsController, controller);
+			bool ownsEmptyHands =
+				player != null &&
+				player.HandsController == null &&
+				(operation?.MayOwnEmptyHands == true ||
+				 ReferenceEquals(_currentController, controller));
+			if (ownsController)
 			{
+				controller.ShutdownPhoneScreenForExternalRestore();
 				player.DestroyController();
 			}
 
-			TscDiagnostics.LogPhone("TSC Uplink: DestroyController + TrySetLastEquippedWeapon");
-			player?.TrySetLastEquippedWeapon(true, null);
-			TscDiagnostics.LogPhone($"TSC Uplink: restored HandsController = {player?.HandsController?.GetType().FullName ?? "<null>"}");
+			if (ownsController || ownsEmptyHands)
+			{
+				TscDiagnostics.LogPhone("TSC Uplink: failed owned equip removed; restoring last equipped weapon");
+				player.TrySetLastEquippedWeapon(true, null);
+				TscDiagnostics.LogPhone($"TSC Uplink: restored HandsController = {player.HandsController?.GetType().FullName ?? "<null>"}");
+			}
+			else
+			{
+				TscDiagnostics.LogPhone(
+					$"TSC Uplink failure restore skipped: hands ownership moved to {player?.HandsController?.GetType().FullName ?? "<null>"}.");
+			}
 		}
 		catch (Exception ex)
 		{
@@ -478,6 +601,7 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 		finally
 		{
 			_currentController = null;
+			_equipOperation = null;
 			_previousHandsItem = null;
 			_manualPlayer = null;
 			_equipInProgress = false;
@@ -487,11 +611,73 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 		}
 	}
 
+	private void ResetLifecycleState(string reason, bool destroyOwnedController)
+	{
+		_lifecycleGeneration++;
+		_radarHoldWasPressed = false;
+		_radarReleaseQueued = false;
+
+		UavDeviceHandsService.EquipOperation operation = _equipOperation;
+		operation?.Cancel(reason);
+
+		if (_restoreCoroutine != null)
+		{
+			StopCoroutine(_restoreCoroutine);
+			_restoreCoroutine = null;
+		}
+
+		Player player = _manualPlayer;
+		UavDeviceController controller = _currentController ?? operation?.Controller;
+		if (controller != null)
+		{
+			controller.AuthorizationSessionFinished -= OnManualAuthorizationFinished;
+		}
+
+		if (destroyOwnedController)
+		{
+			DestroyControllerIfOwned(player, controller, reason);
+		}
+
+		_currentController = null;
+		_equipOperation = null;
+		_previousHandsItem = null;
+		_manualPlayer = null;
+		_equipInProgress = false;
+		_equipLaunchMode = UavPhoneLaunchMode.ManualAuthorization;
+		TscDiagnostics.LogPhone($"TSC Uplink hotkey lifecycle reset: {reason}.");
+	}
+
+	private static void DestroyControllerIfOwned(
+		Player player,
+		UavDeviceController controller,
+		string reason)
+	{
+		if (player == null ||
+		    controller == null ||
+		    !ReferenceEquals(player.HandsController, controller))
+		{
+			return;
+		}
+
+		try
+		{
+			controller.ShutdownPhoneScreenForExternalRestore();
+			player.DestroyController();
+			TscDiagnostics.LogPhone($"TSC Uplink removed its owned hands controller: {reason}.");
+		}
+		catch (Exception ex)
+		{
+			FireSupportPlugin.LogSource.LogWarning(
+				$"TSC Uplink owned controller cleanup failed ({reason}). {ex}");
+		}
+	}
+
 	private void OnDestroy()
 	{
-		if (_currentController != null)
+		ResetLifecycleState("hotkey component destroyed", destroyOwnedController: true);
+		if (ReferenceEquals(s_instance, this))
 		{
-			_currentController.AuthorizationSessionFinished -= OnManualAuthorizationFinished;
+			s_instance = null;
 		}
 	}
 }

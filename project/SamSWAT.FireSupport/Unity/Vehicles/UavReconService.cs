@@ -123,6 +123,7 @@ public sealed class UavReconService(
 						dispatchCancellationToken,
 						durationSeconds,
 						supportRequestId: BuildDispatchRequestId(authorizationUse));
+				bool networkAuthorityHandled = dispatchResult.Handled;
 				if (!dispatchResult.Handled)
 				{
 					if (dispatchCancellationToken.IsCancellationRequested)
@@ -137,7 +138,11 @@ public sealed class UavReconService(
 							playActivationVisual: false,
 							scanInterval,
 							rangeMeters);
-						dispatchResult = FireSupportNetworkRequestResult.Accept("LocalRuntimeStarted");
+						dispatchResult = FireSupportNetworkRequestResult.Accept(
+							"LocalRuntimeStarted",
+							durationSeconds,
+							scanInterval,
+							rangeMeters);
 					}
 				}
 
@@ -153,6 +158,9 @@ public sealed class UavReconService(
 				}
 
 				FireSupportPayment.CommitConsumedAuthorization(authorizationUse);
+				float acceptedDurationSeconds = dispatchResult.DurationSeconds > 0f
+					? dispatchResult.DurationSeconds
+					: durationSeconds;
 
 				// Presentation and the cosmetic loiter are downstream of authority
 				// acceptance. The physical phone remains on its authorizing screen
@@ -177,10 +185,20 @@ public sealed class UavReconService(
 						cancellationToken: cancellationToken);
 				}
 
-				UavAircraftLoiterController.StartConfigured(uavCenter, durationSeconds, cancellationToken);
+				// A Fika authority publishes one request-bound loiter event from
+				// its accepted outcome. Starting another one here let a client
+				// originate an unauthenticated duplicate. Solo still owns its
+				// local cosmetic presentation.
+				if (!networkAuthorityHandled)
+				{
+					UavAircraftLoiterController.StartConfigured(
+						uavCenter,
+						acceptedDurationSeconds,
+						cancellationToken);
+				}
 
 				NotificationManagerClass.DisplayMessageNotification(
-					$"{FireSupportPayment.GetSupportName(effectiveSupportType)} active for {durationSeconds}s.",
+					$"{FireSupportPayment.GetSupportName(effectiveSupportType)} active for {acceptedDurationSeconds:0.#}s.",
 					ENotificationDurationType.Default,
 					ENotificationIconType.Default,
 					null);

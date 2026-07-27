@@ -13,6 +13,8 @@ public class FireSupportRequestPacket : INetSerializable
 	public Vector3 Rotation;
 	public int VisualSeed;
 	public float DurationSeconds;
+	public float ScanIntervalSeconds;
+	public float RangeMeters;
 	public int PassIndex;
 	public string SupportRequestId = string.Empty;
 	public string RequesterProfileId = string.Empty;
@@ -30,7 +32,9 @@ public class FireSupportRequestPacket : INetSerializable
 		float durationSeconds,
 		int passIndex = 0,
 		string requesterProfileId = "",
-		string supportRequestId = "")
+		string supportRequestId = "",
+		float scanIntervalSeconds = 0f,
+		float rangeMeters = 0f)
 	{
 		SupportType = supportType;
 		Position = position;
@@ -38,6 +42,8 @@ public class FireSupportRequestPacket : INetSerializable
 		Rotation = rotation;
 		VisualSeed = visualSeed;
 		DurationSeconds = durationSeconds;
+		ScanIntervalSeconds = scanIntervalSeconds;
+		RangeMeters = rangeMeters;
 		PassIndex = passIndex;
 		RequesterProfileId = requesterProfileId ?? string.Empty;
 		SupportRequestId = string.IsNullOrWhiteSpace(supportRequestId)
@@ -53,6 +59,8 @@ public class FireSupportRequestPacket : INetSerializable
 		writer.PutUnmanaged(Rotation);
 		writer.Put(VisualSeed);
 		writer.Put(DurationSeconds);
+		writer.Put(ScanIntervalSeconds);
+		writer.Put(RangeMeters);
 		writer.Put(PassIndex);
 		writer.Put(SupportRequestId ?? string.Empty);
 		writer.Put(RequesterProfileId ?? string.Empty);
@@ -66,6 +74,8 @@ public class FireSupportRequestPacket : INetSerializable
 		Rotation = reader.GetUnmanaged<Vector3>();
 		VisualSeed = reader.GetInt();
 		DurationSeconds = reader.GetFloat();
+		ScanIntervalSeconds = reader.GetFloat();
+		RangeMeters = reader.GetFloat();
 		PassIndex = reader.GetInt();
 		SupportRequestId = reader.GetString() ?? string.Empty;
 		RequesterProfileId = reader.GetString() ?? string.Empty;

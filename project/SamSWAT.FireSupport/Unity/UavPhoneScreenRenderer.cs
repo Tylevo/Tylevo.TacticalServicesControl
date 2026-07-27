@@ -78,6 +78,12 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 	private bool _texTransformApplied;
 	private bool _forceOpaqueDebug;
 	private bool _previousScreenRendererEnabled = true;
+	private UnityEngine.Rendering.ShadowCastingMode _previousShadowCastingMode;
+	private bool _previousReceiveShadows;
+	private UnityEngine.Rendering.LightProbeUsage _previousLightProbeUsage;
+	private UnityEngine.Rendering.ReflectionProbeUsage _previousReflectionProbeUsage;
+	private bool _rendererPresentationCaptured;
+	private bool _shutdown;
 	private Coroutine _stateFadeCoroutine;
 	private GameObject _opaqueScreenObject;
 	private Mesh _opaqueScreenMesh;
@@ -260,15 +266,31 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 
 	public void Shutdown()
 	{
+		if (_shutdown)
+		{
+			return;
+		}
+
+		_shutdown = true;
 		UnsubscribeSettingChanges();
 		StopSwipeAnimation();
+		if (_stateFadeCoroutine != null)
+		{
+			StopCoroutine(_stateFadeCoroutine);
+			_stateFadeCoroutine = null;
+		}
 
 		RestoreDebugDisabledRenderers();
 		DestroyOpaqueScreenPlane();
 
-		if (_screenRenderer != null)
+		if (_screenRenderer != null && _rendererPresentationCaptured)
 		{
 			_screenRenderer.enabled = _previousScreenRendererEnabled;
+			_screenRenderer.shadowCastingMode = _previousShadowCastingMode;
+			_screenRenderer.receiveShadows = _previousReceiveShadows;
+			_screenRenderer.lightProbeUsage = _previousLightProbeUsage;
+			_screenRenderer.reflectionProbeUsage = _previousReflectionProbeUsage;
+
 			try
 			{
 				if (_previousScreenMaterial != null)
@@ -311,24 +333,33 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		if (_canvas != null)
 		{
 			Destroy(_canvas.gameObject);
+			_canvas = null;
 		}
 
 		if (_camera != null)
 		{
+			_camera.targetTexture = null;
 			Destroy(_camera.gameObject);
+			_camera = null;
 		}
 
 		if (_renderTexture != null)
 		{
 			_renderTexture.Release();
+			Destroy(_renderTexture);
+			_renderTexture = null;
 		}
 
+		_screenRenderer = null;
+		_rendererRoot = null;
+		_previousScreenMaterial = null;
+		_previousScreenMaterials = null;
 		ResetUavRadarUiReferences();
 	}
 
 	private void OnDestroy()
 	{
-		UnsubscribeSettingChanges();
+		Shutdown();
 	}
 
 	public static Renderer FindBestScreenRenderer(Transform root, string context, bool logCandidates = true)
@@ -608,6 +639,11 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		_previousTextureScale = _previousScreenMaterial.mainTextureScale;
 		_previousTextureOffset = _previousScreenMaterial.mainTextureOffset;
 		_previousScreenRendererEnabled = _screenRenderer.enabled;
+		_previousShadowCastingMode = _screenRenderer.shadowCastingMode;
+		_previousReceiveShadows = _screenRenderer.receiveShadows;
+		_previousLightProbeUsage = _screenRenderer.lightProbeUsage;
+		_previousReflectionProbeUsage = _screenRenderer.reflectionProbeUsage;
+		_rendererPresentationCaptured = true;
 
 		_screenMaterial = CreateOpaqueLcdMaterial(_renderTexture, _forceOpaqueDebug);
 

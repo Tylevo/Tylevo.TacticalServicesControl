@@ -29,12 +29,16 @@ public sealed class UavDeviceActivationController : MonoBehaviour
 	private CancellationToken _cancellationToken;
 	private CancellationTokenSource _activationCts;
 	private UavPhoneScreenRenderer _phoneScreen;
+	private UavDeviceHandsService.EquipOperation _equipOperation;
+	private UavDeviceController _ownedController;
+	private int _equipGeneration;
 	private bool _activationStarted;
 	private bool _activationCompleted;
 	private bool _activationSucceeded;
 	private bool _cancelCallbackInvoked;
 	private bool _restored;
 	private bool _destroyed;
+	private bool _raidBoundaryReset;
 
 	private static float s_suppressUntil;
 
@@ -47,6 +51,18 @@ public sealed class UavDeviceActivationController : MonoBehaviour
 	public static void SuppressNextActivation(float windowSeconds = 20f)
 	{
 		s_suppressUntil = Time.unscaledTime + windowSeconds;
+	}
+
+	public static void ResetForRaidBoundary(string reason)
+	{
+		s_suppressUntil = 0f;
+		UavDeviceActivationController active = s_active;
+		if (active == null)
+		{
+			return;
+		}
+
+		active.ResetLifecycleState(reason);
 	}
 
 	public static bool TryPlay(Action onActivated, CancellationToken cancellationToken)
@@ -275,6 +291,7 @@ public sealed class UavDeviceActivationController : MonoBehaviour
 
 		try
 		{
+			int equipGeneration = ++_equipGeneration;
 			_previousHandsItem = _player.HandsController?.Item;
 			if (!UavDeviceConstants.IsUavDevice(_deviceItem))
 			{
@@ -282,21 +299,43 @@ public sealed class UavDeviceActivationController : MonoBehaviour
 				return false;
 			}
 
-			UavDeviceHandsService.BeginEquip(
+			UavDeviceHandsService.EquipOperation operation = UavDeviceHandsService.BeginEquip(
 				_player,
 				_deviceItem,
 				UavPhoneLaunchMode.InternalUavActivation,
-				controller =>
+				(callbackOperation, controller) =>
 				{
+					if (_destroyed || equipGeneration != _equipGeneration)
+					{
+						DestroyControllerIfOwned(controller, "stale activation phone spawn");
+						return;
+					}
+
+					_ownedController = controller;
 					TscDiagnostics.LogPhone(
 						$"TSC Uplink activation controller spawned. controller={controller?.GetType().FullName ?? "<null>"}.");
 				},
-				ex =>
+				(callbackOperation, ex) =>
 				{
+					if (_destroyed || equipGeneration != _equipGeneration)
+					{
+						return;
+					}
+
 					FireSupportPlugin.LogSource.LogWarning($"UAV activation device controller spawn failed. {ex}");
 					BeginActivationOnce();
-					RestoreHands();
+					RestoreHands(callbackOperation);
 				});
+			if (!_destroyed &&
+			    !_restored &&
+			    equipGeneration == _equipGeneration)
+			{
+				_equipOperation = operation;
+			}
+			else
+			{
+				operation.Cancel("activation equip completed synchronously");
+			}
 			return true;
 		}
 		catch (Exception ex)
@@ -326,11 +365,6 @@ public sealed class UavDeviceActivationController : MonoBehaviour
 				FireSupportPlugin.LogSource.LogWarning("TSC Uplink UI skipped: screen mesh had no renderer.");
 				return;
 			}
-
-			screenRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-			screenRenderer.receiveShadows = false;
-			screenRenderer.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
-			screenRenderer.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off;
 
 			var context = new UavPhoneScreenContext(
 				FireSupportPayment.GetActiveCost(ESupportType.Uav),
@@ -399,7 +433,12 @@ public sealed class UavDeviceActivationController : MonoBehaviour
 	{
 		try
 		{
-			return _player?.HandsController as UavDeviceController;
+			UavDeviceController controller = _ownedController ?? _equipOperation?.Controller;
+			return controller != null &&
+			       _player != null &&
+			       ReferenceEquals(_player.HandsController, controller)
+				? controller
+				: null;
 		}
 		catch
 		{
@@ -495,38 +534,170 @@ public sealed class UavDeviceActivationController : MonoBehaviour
 		activationCts?.Dispose();
 	}
 
-	private void RestoreHands()
+	private void RestoreHands(
+		UavDeviceHandsService.EquipOperation operationOverride = null)
 	{
-		if (_restored || _player == null)
+		if (_restored)
 		{
 			return;
 		}
 
 		_restored = true;
+		_equipGeneration++;
+		UavDeviceHandsService.EquipOperation operation =
+			operationOverride ?? _equipOperation;
+		Player restorePlayer = _player;
+		Item previousHandsItem = _previousHandsItem;
+		Action restoreAfterCancelledDrop =
+			!_raidBoundaryReset &&
+			restorePlayer != null &&
+			previousHandsItem != null &&
+			operation != null
+				? () => TryRestoreAfterCancelledDrop(
+					restorePlayer,
+					previousHandsItem,
+					operation)
+				: null;
+		bool restoreDeferred = operation?.Cancel(
+			"activation restore started",
+			restoreAfterCancelledDrop) == true;
+		if (_player == null)
+		{
+			_ownedController = null;
+			_equipOperation = null;
+			return;
+		}
 
 		try
 		{
 			ShutdownPhoneScreen();
 
-			if (_player.HandsController is UavDeviceController)
+			UavDeviceController controller = _ownedController ?? operation?.Controller;
+			bool ownsController =
+				controller != null &&
+				ReferenceEquals(_player.HandsController, controller);
+			bool ownsEmptyHands =
+				_player.HandsController == null &&
+				operation?.MayOwnEmptyHands == true;
+			if (ownsController)
 			{
+				controller.ShutdownPhoneScreenForExternalRestore();
 				_player.DestroyController();
 			}
 
-			if (_previousHandsItem != null)
+			if (!_raidBoundaryReset &&
+			    _previousHandsItem != null &&
+			    (ownsController || ownsEmptyHands) &&
+			    !restoreDeferred &&
+			    (operation == null || operation.TryClaimHandsRestore()))
 			{
 				_player.TrySetLastEquippedWeapon(true, null);
+			}
+			else if (!ownsController && !ownsEmptyHands && _player.HandsController != null)
+			{
+				TscDiagnostics.LogPhone(
+					$"TSC activation restore skipped: hands ownership moved to {_player.HandsController.GetType().FullName}.");
 			}
 		}
 		catch (Exception ex)
 		{
 			FireSupportPlugin.LogSource.LogWarning($"UAV activation device restore failed. {ex}");
 		}
+		finally
+		{
+			_ownedController = null;
+			_equipOperation = null;
+		}
+	}
+
+	private static void TryRestoreAfterCancelledDrop(
+		Player player,
+		Item previousHandsItem,
+		UavDeviceHandsService.EquipOperation operation)
+	{
+		if (player == null ||
+		    previousHandsItem == null ||
+		    operation == null ||
+		    !operation.IsBoundaryCurrent)
+		{
+			return;
+		}
+
+		GameWorld gameWorld = Singleton<GameWorld>.Instance;
+		if (gameWorld == null ||
+		    !ReferenceEquals(gameWorld.MainPlayer, player) ||
+		    player.ActiveHealthController?.IsAlive != true ||
+		    player.HandsController != null)
+		{
+			TscDiagnostics.LogPhone(
+				$"TSC activation delayed restore skipped: raid/player ownership changed or hands are {player.HandsController?.GetType().FullName ?? "<null>"}.");
+			return;
+		}
+
+		if (!operation.TryClaimHandsRestore())
+		{
+			return;
+		}
+
+		try
+		{
+			player.TrySetLastEquippedWeapon(true, null);
+			TscDiagnostics.LogPhone(
+				$"TSC activation restored prior hands after cancelled drop settled: {player.HandsController?.GetType().FullName ?? "<null>"}.");
+		}
+		catch (Exception ex)
+		{
+			FireSupportPlugin.LogSource.LogWarning(
+				$"TSC activation delayed hands restore failed. {ex}");
+		}
+	}
+
+	private void ResetLifecycleState(string reason)
+	{
+		if (_destroyed)
+		{
+			return;
+		}
+
+		_raidBoundaryReset = true;
+		_equipGeneration++;
+		_equipOperation?.Cancel(reason);
+		CancelActivationOnce();
+		RestoreHands();
+		if (gameObject != null)
+		{
+			DestroyImmediate(gameObject);
+		}
+	}
+
+	private void DestroyControllerIfOwned(
+		UavDeviceController controller,
+		string reason)
+	{
+		if (_player == null ||
+		    controller == null ||
+		    !ReferenceEquals(_player.HandsController, controller))
+		{
+			return;
+		}
+
+		try
+		{
+			controller.ShutdownPhoneScreenForExternalRestore();
+			_player.DestroyController();
+			TscDiagnostics.LogPhone($"TSC activation removed its owned hands controller: {reason}.");
+		}
+		catch (Exception ex)
+		{
+			FireSupportPlugin.LogSource.LogWarning(
+				$"TSC activation owned controller cleanup failed ({reason}). {ex}");
+		}
 	}
 
 	private void OnDestroy()
 	{
 		_destroyed = true;
+		_equipGeneration++;
 		if (!_activationSucceeded)
 		{
 			CancelActivationOnce();

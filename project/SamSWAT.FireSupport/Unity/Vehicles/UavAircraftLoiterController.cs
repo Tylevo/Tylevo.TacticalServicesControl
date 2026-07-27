@@ -20,9 +20,15 @@ public sealed class UavAircraftLoiterController : UpdatableComponentBase
 	private const float Uh60MinimumCruiseSpeed = 45f;
 	private const float UavDistantAudioScale = 0.18f;
 
-	private static UavAircraftLoiterController s_activeLoiter;
+	private static readonly object s_loiterGate = new();
+	private static readonly Dictionary<string, UavAircraftLoiterController> s_activeLoiters =
+		new(StringComparer.Ordinal);
+	private static readonly Dictionary<string, int> s_pendingLoiterIds =
+		new(StringComparer.Ordinal);
+	private static int s_loiterGeneration;
 
 	private readonly List<AudioSource> _audioSources = new();
+	private string _loiterId = string.Empty;
 	private UavA10LoiterRequest _request;
 	private CancellationToken _cancellationToken;
 	private Vector3 _flyoffPosition;
@@ -48,14 +54,61 @@ public sealed class UavAircraftLoiterController : UpdatableComponentBase
 		StartLocal(request, cancellationToken);
 	}
 
-	public static void StartLocal(UavA10LoiterRequest request, CancellationToken cancellationToken)
+	public static void StartLocal(
+		UavA10LoiterRequest request,
+		CancellationToken cancellationToken,
+		string loiterId = "")
 	{
 		if (!UavA10LoiterSettings.IsEnabled() || request.DurationSeconds <= 0f)
 		{
 			return;
 		}
 
-		StartLocalAsync(request, cancellationToken).Forget();
+		loiterId = string.IsNullOrWhiteSpace(loiterId)
+			? Guid.NewGuid().ToString("N")
+			: loiterId.Trim();
+		int generation;
+		lock (s_loiterGate)
+		{
+			if (s_pendingLoiterIds.ContainsKey(loiterId) ||
+			    s_activeLoiters.ContainsKey(loiterId))
+			{
+				return;
+			}
+
+			generation = s_loiterGeneration;
+			s_pendingLoiterIds.Add(loiterId, generation);
+		}
+
+		StartLocalAsync(
+			request,
+			cancellationToken,
+			loiterId,
+			generation).Forget();
+	}
+
+	public static void ResetAll(string reason)
+	{
+		List<UavAircraftLoiterController> activeLoiters;
+		lock (s_loiterGate)
+		{
+			s_loiterGeneration++;
+			activeLoiters =
+				new List<UavAircraftLoiterController>(s_activeLoiters.Values);
+			s_activeLoiters.Clear();
+			s_pendingLoiterIds.Clear();
+		}
+
+		foreach (UavAircraftLoiterController controller in activeLoiters)
+		{
+			if (controller != null)
+			{
+				controller.DestroyAircraft();
+			}
+		}
+
+		FireSupportPlugin.LogSource?.LogInfo(
+			$"UAV loiter state reset. reason={reason}");
 	}
 
 	public override void ManualUpdate()
@@ -96,18 +149,31 @@ public sealed class UavAircraftLoiterController : UpdatableComponentBase
 	{
 		base.OnDisable();
 
-		if (s_activeLoiter == this)
+		lock (s_loiterGate)
 		{
-			s_activeLoiter = null;
+			if (s_activeLoiters.TryGetValue(
+				    _loiterId,
+				    out UavAircraftLoiterController active) &&
+			    active == this)
+			{
+				s_activeLoiters.Remove(_loiterId);
+			}
 		}
 	}
 
-	private static async UniTaskVoid StartLocalAsync(UavA10LoiterRequest request, CancellationToken cancellationToken)
+	private static async UniTaskVoid StartLocalAsync(
+		UavA10LoiterRequest request,
+		CancellationToken cancellationToken,
+		string loiterId,
+		int generation)
 	{
+		bool initialized = false;
+		GameObject aircraft = null;
 		try
 		{
 			await FireSupportRuntime.EnsureInitialized();
-			if (cancellationToken.IsCancellationRequested)
+			if (cancellationToken.IsCancellationRequested ||
+			    !IsCurrentGeneration(generation))
 			{
 				return;
 			}
@@ -115,6 +181,12 @@ public sealed class UavAircraftLoiterController : UpdatableComponentBase
 			request = SanitizeRequest(request);
 			string bundlePath = GetBundlePath(request.AircraftType);
 			GameObject prefab = await AssetLoader.LoadAssetAsync(bundlePath);
+			if (cancellationToken.IsCancellationRequested ||
+			    !IsCurrentGeneration(generation))
+			{
+				return;
+			}
+
 			if (prefab == null)
 			{
 				FireSupportPlugin.LogSource.LogWarning($"UAV {GetAircraftName(request.AircraftType)} loiter skipped: prefab failed to load.");
@@ -123,31 +195,60 @@ public sealed class UavAircraftLoiterController : UpdatableComponentBase
 
 			FireSupportPlugin.LogSource.LogInfo($"UAV {GetAircraftName(request.AircraftType)} loiter asset bundle/prefab loaded.");
 
-			if (s_activeLoiter != null)
-			{
-				s_activeLoiter.DestroyAircraft();
-			}
-
-			GameObject aircraft = Instantiate(prefab);
+			aircraft = Instantiate(prefab);
 			aircraft.name = $"FireSupport UAV {GetAircraftName(request.AircraftType)} Loiter";
 
 			var controller = aircraft.AddComponent<UavAircraftLoiterController>();
-			controller.Initialize(request, cancellationToken);
+			initialized = controller.Initialize(
+				request,
+				cancellationToken,
+				loiterId,
+				generation);
+			if (!initialized)
+			{
+				Destroy(aircraft);
+				aircraft = null;
+			}
 		}
 		catch (OperationCanceledException)
 		{
 		}
 		catch (Exception ex)
 		{
+			if (aircraft != null)
+			{
+				Destroy(aircraft);
+			}
+
 			FireSupportPlugin.LogSource.LogWarning($"UAV loiter visual skipped. {ex}");
+		}
+		finally
+		{
+			if (!initialized)
+			{
+				lock (s_loiterGate)
+				{
+					if (s_pendingLoiterIds.TryGetValue(
+						    loiterId,
+						    out int pendingGeneration) &&
+					    pendingGeneration == generation)
+					{
+						s_pendingLoiterIds.Remove(loiterId);
+					}
+				}
+			}
 		}
 	}
 
-	private void Initialize(UavA10LoiterRequest request, CancellationToken cancellationToken)
+	private bool Initialize(
+		UavA10LoiterRequest request,
+		CancellationToken cancellationToken,
+		string loiterId,
+		int generation)
 	{
+		_loiterId = loiterId;
 		_request = request;
 		_cancellationToken = cancellationToken;
-		s_activeLoiter = this;
 
 		ConfigurePrefabForCosmeticLoiter(gameObject, request);
 		UpdateIngress(0f);
@@ -155,6 +256,35 @@ public sealed class UavAircraftLoiterController : UpdatableComponentBase
 		FireSupportPlugin.LogSource.LogInfo(
 			$"UAV {GetAircraftName(_request.AircraftType)} loiter started. Center={_request.Center}, duration={_request.DurationSeconds:0.0}s, radius={_request.Radius:0.0}m, altitude={_request.Altitude:0.0}m.");
 		HasFinishedInitialization = true;
+
+		// Publish the controller only after every initialization step that can
+		// throw has succeeded. Otherwise a failed prefab configuration leaves
+		// a dead entry that permanently dedupes the request ID.
+		lock (s_loiterGate)
+		{
+			if (generation != s_loiterGeneration)
+			{
+				return false;
+			}
+
+			s_pendingLoiterIds.Remove(loiterId);
+			if (s_activeLoiters.ContainsKey(loiterId))
+			{
+				return false;
+			}
+
+			s_activeLoiters.Add(loiterId, this);
+		}
+
+		return true;
+	}
+
+	private static bool IsCurrentGeneration(int generation)
+	{
+		lock (s_loiterGate)
+		{
+			return generation == s_loiterGeneration;
+		}
 	}
 
 	private static UavA10LoiterRequest SanitizeRequest(UavA10LoiterRequest request)
@@ -332,7 +462,8 @@ public sealed class UavAircraftLoiterController : UpdatableComponentBase
 	{
 		_expired = true;
 		float orbitElapsed = Mathf.Max(0f, _request.DurationSeconds - _request.IngressDuration);
-		float angle = _request.Direction * Mathf.PI * 2f * (orbitElapsed / _request.OrbitPeriod);
+		float angularSpeed = GetCurrentSpeed() / Mathf.Max(1f, _request.Radius);
+		float angle = _request.Direction * angularSpeed * orbitElapsed;
 		GetOrbitFrame(angle, out _flyoffPosition, out _flyoffDirection);
 		_flyoffStartTime = Time.time;
 		_flyoffSpeed = GetCurrentSpeed();

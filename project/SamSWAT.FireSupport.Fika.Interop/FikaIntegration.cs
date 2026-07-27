@@ -52,6 +52,8 @@ public static class FikaIntegration
 	private static readonly Dictionary<string, ClientPendingRequest> s_pendingClientRequests = new(StringComparer.Ordinal);
 	private static readonly Dictionary<string, AuthorityRequestEntry> s_authorityRequests = new(StringComparer.Ordinal);
 	private static readonly Dictionary<string, SupportRequestFingerprint> s_acceptedClientEvents = new(StringComparer.Ordinal);
+	private static readonly HashSet<string> s_startedClientUavLoiterEvents = new(StringComparer.Ordinal);
+	private static readonly Dictionary<string, UavAuthorityReservation> s_uavAuthorityReservations = new(StringComparer.Ordinal);
 	private static int s_inFlightAuthorityRequestCount;
 	private static int s_hostSettingsRevision;
 	private static int s_currentHostSettingsRevision;
@@ -194,7 +196,6 @@ public static class FikaIntegration
 					server.RegisterPacket<FireSupportRequestPacket, NetPeer>(OnServerSupportRequest);
 					server.RegisterPacket<FireSupportCancelPacket, NetPeer>(OnServerSupportCancel);
 					server.RegisterPacket<FireSupportSettingsPacket, NetPeer>(OnServerSettingsRequest);
-					server.RegisterPacket<StartUavLoiterPacket, NetPeer>(OnServerStartUavLoiter);
 					server.RegisterPacket<A10TracerBurstPacket, NetPeer>(OnServerA10TracerBurst);
 					if (RemotePhoneVisualSyncEnabled)
 					{
@@ -281,7 +282,13 @@ public static class FikaIntegration
 			durationSeconds,
 			passIndex,
 			GetLocalProfileId(),
-			supportRequestId);
+			supportRequestId,
+			IsUavType(supportType)
+				? UavReconSettings.GetScanInterval(supportType)
+				: 0f,
+			IsUavType(supportType)
+				? UavReconSettings.GetRangeMeters(supportType)
+				: 0f);
 
 		if (FikaBackendUtils.IsServer)
 		{
@@ -696,10 +703,25 @@ public static class FikaIntegration
 				}
 			}
 
+			string executionStartRejectReason = string.Empty;
 			lock (s_networkRequestGate)
 			{
-				if (!entry.TryBeginExecution())
+				if (IsUavType(request.SupportType) &&
+				    !TryReserveUavAuthorityLinkNoLock(
+					    request,
+					    out executionStartRejectReason))
 				{
+					// The reservation is requester-scoped. Other clients can
+					// hold independent recon links, but one requester cannot
+					// race a second fresh UAV request past authority.
+				}
+				else if (!entry.TryBeginExecution())
+				{
+					if (IsUavType(request.SupportType))
+					{
+						ReleaseUavAuthorityReservationNoLock(request);
+					}
+
 					if (entry.TryGetOutcome(
 						    out AuthorityOutcome terminalOutcome))
 					{
@@ -710,6 +732,13 @@ public static class FikaIntegration
 						request,
 						"AuthorityExecutionStartRejected");
 				}
+			}
+
+			if (!string.IsNullOrEmpty(executionStartRejectReason))
+			{
+				return AuthorityOutcome.Rejected(
+					request,
+					executionStartRejectReason);
 			}
 
 			bool success;
@@ -759,10 +788,25 @@ public static class FikaIntegration
 		{
 			if (!entry.TryComplete(outcome))
 			{
+				if (IsUavType(entry.Request.SupportType))
+				{
+					ReleaseUavAuthorityReservationNoLock(entry.Request);
+				}
 				return false;
 			}
 
 			s_inFlightAuthorityRequestCount = Math.Max(0, s_inFlightAuthorityRequestCount - 1);
+			if (IsUavType(entry.Request.SupportType))
+			{
+				if (outcome.Result.Accepted)
+				{
+					AcceptUavAuthorityReservationNoLock(outcome.AcceptedRequest);
+				}
+				else
+				{
+					ReleaseUavAuthorityReservationNoLock(entry.Request);
+				}
+			}
 
 			if (outcome.Result.Accepted &&
 			    IsA10Type(outcome.AcceptedRequest.SupportType) &&
@@ -781,6 +825,17 @@ public static class FikaIntegration
 				entry.OriginPeer,
 				broadcastToAll: true,
 				reason: $"authority accepted {source}");
+
+			if (IsUavType(outcome.AcceptedRequest.SupportType))
+			{
+				PublishAcceptedUavLoiter(outcome.AcceptedRequest);
+				ReleaseUavAuthorityReservationAfterExpiryAsync(
+						outcome.AcceptedRequest.RequesterProfileId,
+						outcome.AcceptedRequest.SupportRequestId,
+						outcome.AcceptedRequest.DurationSeconds,
+						GetRaidCancellationToken())
+					.Forget();
+			}
 		}
 
 		List<A10TracerBurst> bufferedTracerBursts =
@@ -888,28 +943,19 @@ public static class FikaIntegration
 	{
 		try
 		{
-			if (FikaBackendUtils.IsServer)
+			if (FikaBackendUtils.IsServer || FikaBackendUtils.IsClient)
 			{
-				UavA10LoiterRequest authoritativeRequest = UavA10LoiterSettings.ApplyHostAuthority(request);
-				var packet = new StartUavLoiterPacket(authoritativeRequest);
-				Singleton<FikaServer>.Instance.SendData(
-					ref packet,
-					DeliveryMethod.ReliableOrdered,
-					broadcast: true);
-				UavAircraftLoiterController.StartLocal(authoritativeRequest, cancellationToken);
-				return true;
-			}
-
-			if (FikaBackendUtils.IsClient)
-			{
-				var packet = new StartUavLoiterPacket(request);
-				Singleton<FikaClient>.Instance.SendData(ref packet, DeliveryMethod.ReliableOrdered);
+				// Fika loiter presentation is emitted only by the authority
+				// outcome publisher. Suppress any downstream local attempt so a
+				// requester cannot create a second, unauthenticated command.
+				TscDiagnostics.LogFika(
+					"TSC UAV local loiter request suppressed; awaiting accepted authority presentation.");
 				return true;
 			}
 		}
 		catch (Exception ex)
 		{
-			s_logSource?.LogWarning($"UAV A-10 loiter packet failed; skipping aircraft visual. {ex}");
+			s_logSource?.LogWarning($"UAV loiter authority-state check failed; skipping aircraft visual. {ex}");
 			return true;
 		}
 
@@ -1197,24 +1243,55 @@ public static class FikaIntegration
 			FireSupportNetworkRequestResult.Accept(
 				string.IsNullOrWhiteSpace(packet.Reason)
 					? "AuthorityAccepted"
-					: packet.Reason));
+					: packet.Reason,
+				packet.DurationSeconds,
+				packet.ScanIntervalSeconds,
+				packet.RangeMeters));
 	}
 
-	private static void OnServerStartUavLoiter(StartUavLoiterPacket packet, NetPeer peer)
+	private static void PublishAcceptedUavLoiter(FireSupportRequestPacket acceptedSupport)
 	{
 		try
 		{
-			UavA10LoiterRequest request = UavA10LoiterSettings.ApplyHostAuthority(packet.ToRequest());
-			packet = new StartUavLoiterPacket(request);
-			Singleton<FikaServer>.Instance.SendData(
+			if (acceptedSupport == null ||
+			    !IsUavType(acceptedSupport.SupportType) ||
+			    !UavA10LoiterSettings.IsEnabled())
+			{
+				return;
+			}
+
+			UavA10LoiterRequest request =
+				UavA10LoiterSettings.CreateConfiguredRequest(
+					acceptedSupport.Position,
+					acceptedSupport.DurationSeconds);
+			var packet = new StartUavLoiterPacket(acceptedSupport, request);
+			FikaServer server = GetServer();
+			if (server == null)
+			{
+				s_logSource?.LogWarning(
+					$"TSC UAV accepted loiter publish skipped: server unavailable requestId={A10AuthorityDiagnostics.FormatRequestId(acceptedSupport.SupportRequestId)}.");
+				return;
+			}
+
+			server.SendData(
 				ref packet,
 				DeliveryMethod.ReliableOrdered,
 				broadcast: true);
-			UavAircraftLoiterController.StartLocal(request, GetRaidCancellationToken());
+
+			if (!IsFikaHeadlessHost())
+			{
+				UavAircraftLoiterController.StartLocal(
+					request,
+					GetRaidCancellationToken(),
+					acceptedSupport.SupportRequestId);
+			}
+
+			TscDiagnostics.LogFika(
+				$"TSC UAV authoritative loiter published type={acceptedSupport.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(acceptedSupport.SupportRequestId)} requester={A10AuthorityDiagnostics.ShortId(acceptedSupport.RequesterProfileId)} localVisual={!IsFikaHeadlessHost()}.");
 		}
 		catch (Exception ex)
 		{
-			s_logSource?.LogWarning($"UAV A-10 loiter server broadcast failed; skipping aircraft visual. {ex}");
+			s_logSource?.LogWarning($"TSC UAV accepted loiter publish failed; skipping aircraft visual. {ex}");
 		}
 	}
 
@@ -1222,12 +1299,84 @@ public static class FikaIntegration
 	{
 		try
 		{
-			UavAircraftLoiterController.StartLocal(packet.ToRequest(), GetRaidCancellationToken());
+			if (!TryAcceptClientUavLoiterPacket(packet, out string rejectReason))
+			{
+				TscDiagnostics.LogFika(
+					$"TSC UAV loiter event ignored requestId={A10AuthorityDiagnostics.FormatRequestId(packet?.SupportRequestId)} reason={rejectReason}.");
+				return;
+			}
+
+			UavAircraftLoiterController.StartLocal(
+				packet.ToRequest(),
+				GetRaidCancellationToken(),
+				packet.SupportRequestId);
 		}
 		catch (Exception ex)
 		{
-			s_logSource?.LogWarning($"UAV A-10 loiter client visual failed. {ex}");
+			s_logSource?.LogWarning($"TSC UAV loiter client visual failed. {ex}");
 		}
+	}
+
+	private static bool TryAcceptClientUavLoiterPacket(
+		StartUavLoiterPacket packet,
+		out string reason)
+	{
+		reason = string.Empty;
+		if (packet == null ||
+		    !IsUavType(packet.SupportType) ||
+		    string.IsNullOrWhiteSpace(packet.SupportRequestId) ||
+		    string.IsNullOrWhiteSpace(packet.RequesterProfileId))
+		{
+			reason = "InvalidLoiterIdentity";
+			return false;
+		}
+
+		if (!IsFinite(packet.Center) ||
+		    !IsFinite(packet.ModelRotationOffset) ||
+		    !IsFinite(packet.DurationSeconds) ||
+		    !IsFinite(packet.Radius) ||
+		    !IsFinite(packet.Altitude) ||
+		    !IsFinite(packet.OrbitPeriod) ||
+		    !IsFinite(packet.IngressDuration) ||
+		    !IsFinite(packet.IngressDistance) ||
+		    !IsFinite(packet.EngineVolume) ||
+		    !IsFinite(packet.StartAngle) ||
+		    packet.DurationSeconds <= 0f ||
+		    packet.Radius <= 0f ||
+		    packet.Altitude <= 0f ||
+		    packet.OrbitPeriod <= 0f ||
+		    (packet.AircraftType != UavLoiterAircraftType.A10 &&
+		     packet.AircraftType != UavLoiterAircraftType.Uh60) ||
+		    (packet.Direction != -1 && packet.Direction != 1))
+		{
+			reason = "InvalidLoiterGeometry";
+			return false;
+		}
+
+		lock (s_networkRequestGate)
+		{
+			if (!s_acceptedClientEvents.TryGetValue(
+				    packet.SupportRequestId,
+				    out SupportRequestFingerprint acceptedEvent))
+			{
+				reason = "AcceptedSupportEventUnavailable";
+				return false;
+			}
+
+			if (!acceptedEvent.MatchesUavLoiter(packet))
+			{
+				reason = "AcceptedSupportPayloadMismatch";
+				return false;
+			}
+
+			if (!s_startedClientUavLoiterEvents.Add(packet.SupportRequestId))
+			{
+				reason = "DuplicateLoiterEvent";
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	private static void OnServerUavPhoneVisual(UavPhoneVisualPacket packet, NetPeer peer)
@@ -1757,8 +1906,8 @@ public static class FikaIntegration
 				packet.DurationSeconds,
 				cancellationToken,
 				playActivationVisual: false,
-				UavReconSettings.GetScanInterval(packet.SupportType),
-				UavReconSettings.GetRangeMeters(packet.SupportType));
+				packet.ScanIntervalSeconds,
+				packet.RangeMeters);
 
 			return true;
 		}
@@ -1934,7 +2083,11 @@ public static class FikaIntegration
 		}
 
 		pending.TrySetResult(
-			FireSupportNetworkRequestResult.Accept("AuthorityAcceptedBroadcast"));
+			FireSupportNetworkRequestResult.Accept(
+				"AuthorityAcceptedBroadcast",
+				packet.DurationSeconds,
+				packet.ScanIntervalSeconds,
+				packet.RangeMeters));
 	}
 
 	private static bool TryRegisterClientSupportEvent(
@@ -2053,10 +2206,20 @@ public static class FikaIntegration
 		if (!IsFinite(packet.Position) ||
 		    !IsFinite(packet.Direction) ||
 		    !IsFinite(packet.Rotation) ||
-		    float.IsNaN(packet.DurationSeconds) ||
-		    float.IsInfinity(packet.DurationSeconds))
+		    !IsFinite(packet.DurationSeconds) ||
+		    !IsFinite(packet.ScanIntervalSeconds) ||
+		    !IsFinite(packet.RangeMeters))
 		{
 			reason = "InvalidRequestGeometry";
+			return false;
+		}
+
+		if (IsUavType(packet.SupportType) &&
+		    (packet.DurationSeconds <= 0f ||
+		     packet.ScanIntervalSeconds <= 0f ||
+		     packet.RangeMeters <= 0f))
+		{
+			reason = "InvalidUavContract";
 			return false;
 		}
 
@@ -2116,6 +2279,11 @@ public static class FikaIntegration
 		       !float.IsInfinity(value.z);
 	}
 
+	private static bool IsFinite(float value)
+	{
+		return !float.IsNaN(value) && !float.IsInfinity(value);
+	}
+
 	private static FireSupportRequestPacket CloneSupportRequest(
 		FireSupportRequestPacket packet)
 	{
@@ -2128,7 +2296,9 @@ public static class FikaIntegration
 			packet.DurationSeconds,
 			packet.PassIndex,
 			packet.RequesterProfileId,
-			packet.SupportRequestId);
+			packet.SupportRequestId,
+			packet.ScanIntervalSeconds,
+			packet.RangeMeters);
 	}
 
 	private static FireSupportRequestPacket CreateRequestFromCancel(
@@ -2142,10 +2312,143 @@ public static class FikaIntegration
 			Rotation = Vector3.zero,
 			VisualSeed = 0,
 			DurationSeconds = 0f,
+			ScanIntervalSeconds = 0f,
+			RangeMeters = 0f,
 			PassIndex = packet.PassIndex,
 			RequesterProfileId = packet.RequesterProfileId ?? string.Empty,
 			SupportRequestId = packet.SupportRequestId ?? string.Empty
 		};
+	}
+
+	private static bool TryReserveUavAuthorityLinkNoLock(
+		FireSupportRequestPacket request,
+		out string reason)
+	{
+		reason = string.Empty;
+		PruneExpiredUavAuthorityReservationsNoLock();
+
+		string requesterProfileId = request.RequesterProfileId ?? string.Empty;
+		if (s_uavAuthorityReservations.TryGetValue(
+			    requesterProfileId,
+			    out UavAuthorityReservation existing))
+		{
+			if (string.Equals(
+				    existing.SupportRequestId,
+				    request.SupportRequestId,
+				    StringComparison.Ordinal))
+			{
+				return true;
+			}
+
+			reason = "RequesterUavLinkAlreadyActive";
+			return false;
+		}
+
+		s_uavAuthorityReservations.Add(
+			requesterProfileId,
+			new UavAuthorityReservation(
+				request.SupportRequestId,
+				float.PositiveInfinity));
+		return true;
+	}
+
+	private static void AcceptUavAuthorityReservationNoLock(
+		FireSupportRequestPacket request)
+	{
+		string requesterProfileId = request?.RequesterProfileId ?? string.Empty;
+		if (!s_uavAuthorityReservations.TryGetValue(
+			    requesterProfileId,
+			    out UavAuthorityReservation reservation) ||
+		    !string.Equals(
+			    reservation.SupportRequestId,
+			    request?.SupportRequestId,
+			    StringComparison.Ordinal))
+		{
+			return;
+		}
+
+		reservation.ExpiresAt =
+			Time.realtimeSinceStartup + Mathf.Max(1f, request.DurationSeconds);
+	}
+
+	private static void ReleaseUavAuthorityReservationNoLock(
+		FireSupportRequestPacket request)
+	{
+		ReleaseUavAuthorityReservationNoLock(
+			request?.RequesterProfileId,
+			request?.SupportRequestId);
+	}
+
+	private static void ReleaseUavAuthorityReservationNoLock(
+		string requesterProfileId,
+		string supportRequestId)
+	{
+		requesterProfileId ??= string.Empty;
+		if (s_uavAuthorityReservations.TryGetValue(
+			    requesterProfileId,
+			    out UavAuthorityReservation reservation) &&
+		    string.Equals(
+			    reservation.SupportRequestId,
+			    supportRequestId ?? string.Empty,
+			    StringComparison.Ordinal))
+		{
+			s_uavAuthorityReservations.Remove(requesterProfileId);
+		}
+	}
+
+	private static void PruneExpiredUavAuthorityReservationsNoLock()
+	{
+		if (s_uavAuthorityReservations.Count == 0)
+		{
+			return;
+		}
+
+		float now = Time.realtimeSinceStartup;
+		List<string> expiredProfiles = null;
+		foreach (KeyValuePair<string, UavAuthorityReservation> pair in s_uavAuthorityReservations)
+		{
+			if (pair.Value.ExpiresAt <= now)
+			{
+				expiredProfiles ??= new List<string>();
+				expiredProfiles.Add(pair.Key);
+			}
+		}
+
+		if (expiredProfiles == null)
+		{
+			return;
+		}
+
+		foreach (string profileId in expiredProfiles)
+		{
+			s_uavAuthorityReservations.Remove(profileId);
+		}
+	}
+
+	private static async UniTaskVoid ReleaseUavAuthorityReservationAfterExpiryAsync(
+		string requesterProfileId,
+		string supportRequestId,
+		float durationSeconds,
+		CancellationToken cancellationToken)
+	{
+		try
+		{
+			await UniTask.WaitForSeconds(
+				Mathf.Max(1f, durationSeconds),
+				cancellationToken: cancellationToken);
+		}
+		catch (OperationCanceledException)
+		{
+		}
+		finally
+		{
+			lock (s_networkRequestGate)
+			{
+				ReleaseUavAuthorityReservationNoLock(
+					requesterProfileId,
+					supportRequestId);
+			}
+		}
 	}
 
 	private static void ResetNetworkRequestState(
@@ -2153,6 +2456,8 @@ public static class FikaIntegration
 		FireSupportNetworkRequestResult pendingResult,
 		bool clearAuthorityOutcomes)
 	{
+		UavReconOverlay.Deactivate(reason);
+
 		List<ClientPendingRequest> pendingClients;
 		List<AuthorityRequestEntry> authorityEntries = null;
 		lock (s_networkRequestGate)
@@ -2160,11 +2465,13 @@ public static class FikaIntegration
 			pendingClients = new List<ClientPendingRequest>(s_pendingClientRequests.Values);
 			s_pendingClientRequests.Clear();
 			s_acceptedClientEvents.Clear();
+			s_startedClientUavLoiterEvents.Clear();
 
 			if (clearAuthorityOutcomes)
 			{
 				authorityEntries = new List<AuthorityRequestEntry>(s_authorityRequests.Values);
 				s_authorityRequests.Clear();
+				s_uavAuthorityReservations.Clear();
 				s_inFlightAuthorityRequestCount = 0;
 			}
 		}
@@ -2182,12 +2489,14 @@ public static class FikaIntegration
 			}
 		}
 
+		UavAircraftLoiterController.ResetAll(reason);
 		TscDiagnostics.LogFika(
 			$"TSC Fika network request state cleared reason={reason} authority={clearAuthorityOutcomes}");
 	}
 
 	private static void OnFikaGameEnded(FikaGameEndedEvent @event)
 	{
+		UavReconOverlay.Deactivate("Fika game ended");
 		ResetNetworkRequestState(
 			"Fika game ended",
 			FireSupportNetworkRequestResult.Cancel("RaidEnded"),
@@ -2202,6 +2511,7 @@ public static class FikaIntegration
 		{
 			if (FikaBackendUtils.IsClient)
 			{
+				UavReconOverlay.Deactivate("Fika host peer disconnected");
 				ResetNetworkRequestState(
 					"Fika host peer disconnected",
 					FireSupportNetworkRequestResult.Cancel("FikaPeerDisconnected"),
@@ -2219,6 +2529,8 @@ public static class FikaIntegration
 		}
 
 		NetPeer disconnectedPeer = @event.Peer;
+		string disconnectedProfileId =
+			disconnectedPeer?.Player?.ProfileId ?? string.Empty;
 		List<AuthorityRequestEntry> disconnectedEntries = new();
 		lock (s_networkRequestGate)
 		{
@@ -2242,6 +2554,11 @@ public static class FikaIntegration
 					s_inFlightAuthorityRequestCount =
 						Math.Max(0, s_inFlightAuthorityRequestCount - 1);
 				}
+			}
+
+			if (!string.IsNullOrWhiteSpace(disconnectedProfileId))
+			{
+				s_uavAuthorityReservations.Remove(disconnectedProfileId);
 			}
 		}
 	}
@@ -2326,8 +2643,10 @@ public static class FikaIntegration
 		if (IsUavType(packet.SupportType))
 		{
 			packet.DurationSeconds = UavReconSettings.GetConfiguredDurationSeconds(packet.SupportType);
+			packet.ScanIntervalSeconds = UavReconSettings.GetConfiguredScanInterval(packet.SupportType);
+			packet.RangeMeters = UavReconSettings.GetConfiguredRangeMeters(packet.SupportType);
 			TscDiagnostics.LogFika(
-				$"TSC Fika host-authoritative UAV duration type={packet.SupportType} duration={packet.DurationSeconds:0.#}s requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)}");
+				$"TSC Fika host-authoritative UAV contract type={packet.SupportType} duration={packet.DurationSeconds:0.#}s scan={packet.ScanIntervalSeconds:0.##}s range={packet.RangeMeters:0.#}m requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)}");
 		}
 	}
 
@@ -2769,6 +3088,20 @@ public static class FikaIntegration
 		}
 	}
 
+	private sealed class UavAuthorityReservation
+	{
+		public UavAuthorityReservation(
+			string supportRequestId,
+			float expiresAt)
+		{
+			SupportRequestId = supportRequestId ?? string.Empty;
+			ExpiresAt = expiresAt;
+		}
+
+		public string SupportRequestId { get; }
+		public float ExpiresAt { get; set; }
+	}
+
 	private readonly struct AuthorityOutcome
 	{
 		private AuthorityOutcome(
@@ -2788,7 +3121,11 @@ public static class FikaIntegration
 		public static AuthorityOutcome Accepted(FireSupportRequestPacket request)
 		{
 			FireSupportRequestPacket acceptedRequest = CloneSupportRequest(request);
-			var result = FireSupportNetworkRequestResult.Accept("AuthorityAccepted");
+			var result = FireSupportNetworkRequestResult.Accept(
+				"AuthorityAccepted",
+				acceptedRequest.DurationSeconds,
+				acceptedRequest.ScanIntervalSeconds,
+				acceptedRequest.RangeMeters);
 			return new AuthorityOutcome(
 				result,
 				new FireSupportAuthorityResultPacket(
@@ -2812,6 +3149,14 @@ public static class FikaIntegration
 			FireSupportNetworkRequestResult result)
 		{
 			FireSupportRequestPacket snapshot = CloneSupportRequest(request);
+			if (result.Accepted)
+			{
+				result = FireSupportNetworkRequestResult.Accept(
+					result.Reason,
+					snapshot.DurationSeconds,
+					snapshot.ScanIntervalSeconds,
+					snapshot.RangeMeters);
+			}
 			return new AuthorityOutcome(
 				result,
 				new FireSupportAuthorityResultPacket(
@@ -2830,6 +3175,8 @@ public static class FikaIntegration
 		private readonly Vector3 _rotation;
 		private readonly int _visualSeed;
 		private readonly float _durationSeconds;
+		private readonly float _scanIntervalSeconds;
+		private readonly float _rangeMeters;
 		private readonly int _passIndex;
 		private readonly string _requesterProfileId;
 
@@ -2841,6 +3188,8 @@ public static class FikaIntegration
 			_rotation = packet.Rotation;
 			_visualSeed = packet.VisualSeed;
 			_durationSeconds = packet.DurationSeconds;
+			_scanIntervalSeconds = packet.ScanIntervalSeconds;
+			_rangeMeters = packet.RangeMeters;
 			_passIndex = packet.PassIndex;
 			_requesterProfileId = packet.RequesterProfileId ?? string.Empty;
 		}
@@ -2876,8 +3225,23 @@ public static class FikaIntegration
 			       _rotation.Equals(packet.Rotation) &&
 			       _visualSeed == packet.VisualSeed &&
 			       (IsUavType(_supportType) ||
-			        _durationSeconds.Equals(packet.DurationSeconds)) &&
+			        (_durationSeconds.Equals(packet.DurationSeconds) &&
+			         _scanIntervalSeconds.Equals(packet.ScanIntervalSeconds) &&
+			         _rangeMeters.Equals(packet.RangeMeters))) &&
 			       _passIndex == packet.PassIndex &&
+			       string.Equals(
+				       _requesterProfileId,
+				       packet.RequesterProfileId,
+				       StringComparison.Ordinal);
+		}
+
+		public bool MatchesUavLoiter(StartUavLoiterPacket packet)
+		{
+			return packet != null &&
+			       IsUavType(_supportType) &&
+			       _supportType == packet.SupportType &&
+			       _position.Equals(packet.Center) &&
+			       _durationSeconds.Equals(packet.DurationSeconds) &&
 			       string.Equals(
 				       _requesterProfileId,
 				       packet.RequesterProfileId,
@@ -2892,6 +3256,8 @@ public static class FikaIntegration
 			       _rotation.Equals(other._rotation) &&
 			       _visualSeed == other._visualSeed &&
 			       _durationSeconds.Equals(other._durationSeconds) &&
+			       _scanIntervalSeconds.Equals(other._scanIntervalSeconds) &&
+			       _rangeMeters.Equals(other._rangeMeters) &&
 			       _passIndex == other._passIndex &&
 			       string.Equals(
 				       _requesterProfileId,
@@ -2914,6 +3280,8 @@ public static class FikaIntegration
 				hash = hash * 397 ^ _rotation.GetHashCode();
 				hash = hash * 397 ^ _visualSeed;
 				hash = hash * 397 ^ _durationSeconds.GetHashCode();
+				hash = hash * 397 ^ _scanIntervalSeconds.GetHashCode();
+				hash = hash * 397 ^ _rangeMeters.GetHashCode();
 				hash = hash * 397 ^ _passIndex;
 				hash = hash * 397 ^ StringComparer.Ordinal.GetHashCode(
 					_requesterProfileId ?? string.Empty);

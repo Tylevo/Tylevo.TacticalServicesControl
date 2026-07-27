@@ -22,6 +22,8 @@ public sealed class FireSupportAuthorityResultPacket : INetSerializable
 	public Vector3 Rotation;
 	public int VisualSeed;
 	public float DurationSeconds;
+	public float ScanIntervalSeconds;
+	public float RangeMeters;
 
 	public FireSupportAuthorityResultPacket()
 	{
@@ -43,6 +45,8 @@ public sealed class FireSupportAuthorityResultPacket : INetSerializable
 		Rotation = request?.Rotation ?? Vector3.zero;
 		VisualSeed = request?.VisualSeed ?? 0;
 		DurationSeconds = request?.DurationSeconds ?? 0f;
+		ScanIntervalSeconds = request?.ScanIntervalSeconds ?? 0f;
+		RangeMeters = request?.RangeMeters ?? 0f;
 	}
 
 	public FireSupportRequestPacket ToSupportRequest()
@@ -56,7 +60,9 @@ public sealed class FireSupportAuthorityResultPacket : INetSerializable
 			DurationSeconds,
 			PassIndex,
 			RequesterProfileId,
-			SupportRequestId);
+			SupportRequestId,
+			ScanIntervalSeconds,
+			RangeMeters);
 	}
 
 	public void Serialize(NetDataWriter writer)
@@ -72,6 +78,8 @@ public sealed class FireSupportAuthorityResultPacket : INetSerializable
 		writer.PutUnmanaged(Rotation);
 		writer.Put(VisualSeed);
 		writer.Put(DurationSeconds);
+		writer.Put(ScanIntervalSeconds);
+		writer.Put(RangeMeters);
 	}
 
 	public void Deserialize(NetDataReader reader)
@@ -87,5 +95,7 @@ public sealed class FireSupportAuthorityResultPacket : INetSerializable
 		Rotation = reader.GetUnmanaged<Vector3>();
 		VisualSeed = reader.GetInt();
 		DurationSeconds = reader.GetFloat();
+		ScanIntervalSeconds = reader.GetFloat();
+		RangeMeters = reader.GetFloat();
 	}
 }

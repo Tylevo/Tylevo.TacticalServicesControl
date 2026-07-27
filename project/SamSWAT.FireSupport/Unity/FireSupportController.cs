@@ -27,15 +27,55 @@ public class FireSupportController : UIInputNode
 	[NonSerialized] private bool _canCallSupport = true;
 	[NonSerialized] private int _cooldownTimer;
 
+	private static int s_creationGeneration;
+
 	public static FireSupportController Instance { get; private set; }
 
 	public int CooldownSecondsRemaining => _cooldownTimer;
 
 	public static async UniTask<FireSupportController> Create(GesturesMenu gesturesMenu)
 	{
-		Instance = new GameObject("FireSupportController").AddComponent<FireSupportController>();
-		await Instance.Initialize(gesturesMenu);
-		return Instance;
+		int generation = Interlocked.Increment(ref s_creationGeneration);
+		var controller = new GameObject("FireSupportController").AddComponent<FireSupportController>();
+		Instance = controller;
+
+		try
+		{
+			await controller.Initialize(gesturesMenu, generation);
+			controller.ThrowIfCreationIsStale(generation);
+			return controller;
+		}
+		catch
+		{
+			if (controller != null)
+			{
+				DestroyImmediate(controller);
+			}
+
+			// OnDestroy may have run before an awaited runtime initialization
+			// completed. If no replacement owns the runtime, dispose that late
+			// completion instead of carrying it into the menu or next raid.
+			if (Instance == null)
+			{
+				FireSupportRuntime.Dispose();
+			}
+
+			throw;
+		}
+	}
+
+	public static void DestroyCurrent(string reason)
+	{
+		Interlocked.Increment(ref s_creationGeneration);
+		FireSupportController controller = Instance;
+		if (controller == null)
+		{
+			return;
+		}
+
+		FireSupportPlugin.LogSource?.LogInfo(
+			$"TSC fire-support controller ending. reason={reason ?? "unspecified"}.");
+		DestroyImmediate(controller);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -50,12 +90,21 @@ public class FireSupportController : UIInputNode
 		return _cooldownTimer == 0 && _canCallSupport;
 	}
 
-	private async UniTask Initialize(GesturesMenu gesturesMenu)
+	private async UniTask Initialize(GesturesMenu gesturesMenu, int generation)
 	{
 		_gesturesMenu = gesturesMenu;
 		await FireSupportRuntime.EnsureInitialized();
+		ThrowIfCreationIsStale(generation);
 		_audio = FireSupportAudio.Instance;
-		_spotter = await FireSupportSpotter.Load();
+
+		FireSupportSpotter loadedSpotter =
+			await FireSupportSpotter.Load(destroyCancellationToken);
+		if (!IsCreationCurrent(generation))
+		{
+			ThrowIfCreationIsStale(generation);
+		}
+
+		_spotter = loadedSpotter;
 
 		var heliExfil = new HeliExfiltrationService(
 			_spotter,
@@ -88,13 +137,41 @@ public class FireSupportController : UIInputNode
 			ESupportType.FocusedSweep);
 		_services[focusedSweep.SupportType] = focusedSweep;
 
-		_ui = await FireSupportUI.Load(_services, gesturesMenu);
-		_ui.SupportRequested += OnSupportRequested;
+		FireSupportUI loadedUi =
+			await FireSupportUI.Load(
+				_services,
+				gesturesMenu,
+				destroyCancellationToken);
+		if (!IsCreationCurrent(generation))
+		{
+			loadedUi?.Dispose();
+			ThrowIfCreationIsStale(generation);
+		}
 
+		_ui = loadedUi;
+		_ui.SupportRequested += OnSupportRequested;
+	}
+
+	private bool IsCreationCurrent(int generation)
+	{
+		return this != null &&
+		       ReferenceEquals(Instance, this) &&
+		       Volatile.Read(ref s_creationGeneration) == generation &&
+		       !destroyCancellationToken.IsCancellationRequested;
+	}
+
+	private void ThrowIfCreationIsStale(int generation)
+	{
+		if (!IsCreationCurrent(generation))
+		{
+			throw new OperationCanceledException("Fire-support controller creation was superseded or its raid ended.");
+		}
 	}
 
 	private void OnDestroy()
 	{
+		bool ownsCurrentController = ReferenceEquals(Instance, this);
+
 		if (_ui != null)
 		{
 			_ui.SupportRequested -= OnSupportRequested;
@@ -108,10 +185,15 @@ public class FireSupportController : UIInputNode
 			_spotter = null;
 		}
 
-		FireSupportRuntime.Dispose();
-		if (Instance == this)
+		// A superseded controller can finish an awaited load after its
+		// replacement is already live. Its teardown owns only the objects it
+		// captured above; disposing the shared runtime here would pull the
+		// replacement's audio, pools, and bundles out from underneath it.
+		if (ownsCurrentController)
 		{
+			FireSupportRuntime.Dispose();
 			Instance = null;
+			Interlocked.Increment(ref s_creationGeneration);
 		}
 	}
 

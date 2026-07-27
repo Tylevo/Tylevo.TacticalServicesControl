@@ -18,15 +18,19 @@ public class GameWorldDisposePatch : ModulePatch
 	[PatchPrefix]
 	private static void PatchPrefix()
 	{
+		UavDeviceHandsService.CancelAllPending("raid disposed");
+		UavPhoneHotkeyController.ResetForRaidBoundary("raid disposed");
+		UavDeviceActivationController.ResetForRaidBoundary("raid disposed");
+		UavReconOverlay.Deactivate("raid disposed");
+		UavAircraftLoiterController.ResetAll("raid disposed");
 		FireSupportAuthorizations.Reset();
 		FireSupportServerConfigClient.OnRaidEnded();
 
-		if (FireSupportController.Instance != null)
+		bool hadController = FireSupportController.Instance != null;
+		FireSupportController.DestroyCurrent("raid disposed");
+		if (!hadController)
 		{
-			UnityEngine.Object.DestroyImmediate(FireSupportController.Instance);
-			return;
+			FireSupportRuntime.Dispose();
 		}
-
-		FireSupportRuntime.Dispose();
 	}
 }

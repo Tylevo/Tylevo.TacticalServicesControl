@@ -22,16 +22,20 @@ public class FireSupportSpotter : ScriptableObject
 	private Transform _spotterDirectionStartTransform;
 	private Transform _spotterDirectionEndTransform;
 
-	public static async UniTask<FireSupportSpotter> Load()
+	public static async UniTask<FireSupportSpotter> Load(
+		CancellationToken cancellationToken = default)
 	{
 		var instance =
 			await AssetLoader.LoadAssetAsync<FireSupportSpotter>("assets/content/ui/firesupport_spotter.bundle");
+		cancellationToken.ThrowIfCancellationRequested();
 
 		while (InputManagerUtil.GetInputManager() == null)
 		{
 			await UniTask.Yield();
+			cancellationToken.ThrowIfCancellationRequested();
 		}
 
+		cancellationToken.ThrowIfCancellationRequested();
 		instance.Initialize();
 
 		return instance;

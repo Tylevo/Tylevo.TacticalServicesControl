@@ -16,14 +16,25 @@ public enum FireSupportNetworkRequestState
 
 public readonly struct FireSupportNetworkRequestResult
 {
-	private FireSupportNetworkRequestResult(FireSupportNetworkRequestState state, string reason)
+	private FireSupportNetworkRequestResult(
+		FireSupportNetworkRequestState state,
+		string reason,
+		float durationSeconds = 0f,
+		float scanIntervalSeconds = 0f,
+		float rangeMeters = 0f)
 	{
 		State = state;
 		Reason = reason ?? string.Empty;
+		DurationSeconds = durationSeconds;
+		ScanIntervalSeconds = scanIntervalSeconds;
+		RangeMeters = rangeMeters;
 	}
 
 	public FireSupportNetworkRequestState State { get; }
 	public string Reason { get; }
+	public float DurationSeconds { get; }
+	public float ScanIntervalSeconds { get; }
+	public float RangeMeters { get; }
 	public bool Handled => State != FireSupportNetworkRequestState.NotHandled;
 	public bool Accepted => State == FireSupportNetworkRequestState.Accepted;
 
@@ -32,9 +43,18 @@ public readonly struct FireSupportNetworkRequestResult
 		return new FireSupportNetworkRequestResult(FireSupportNetworkRequestState.NotHandled, reason);
 	}
 
-	public static FireSupportNetworkRequestResult Accept(string reason = "")
+	public static FireSupportNetworkRequestResult Accept(
+		string reason = "",
+		float durationSeconds = 0f,
+		float scanIntervalSeconds = 0f,
+		float rangeMeters = 0f)
 	{
-		return new FireSupportNetworkRequestResult(FireSupportNetworkRequestState.Accepted, reason);
+		return new FireSupportNetworkRequestResult(
+			FireSupportNetworkRequestState.Accepted,
+			reason,
+			durationSeconds,
+			scanIntervalSeconds,
+			rangeMeters);
 	}
 
 	public static FireSupportNetworkRequestResult Reject(string reason)
