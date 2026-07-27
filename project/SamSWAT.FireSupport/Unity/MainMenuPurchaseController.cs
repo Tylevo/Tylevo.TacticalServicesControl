@@ -97,6 +97,8 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 	private string _sessionKey = string.Empty;
 	private string _ambiguousRequestId = string.Empty;
 	private ESupportType _ambiguousType = ESupportType.None;
+	private int _ambiguousPrice = -1;
+	private PaymentCurrency _ambiguousCurrency = PaymentCurrency.RUB;
 	private int _generation;
 	private int _layoutScansRemaining;
 	private float _nextLayoutScanAt;
@@ -1258,7 +1260,7 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 			: "INSUFFICIENT FUNDS";
 	}
 
-	private static bool TryResolvePurchaseTerms(
+	private bool TryResolvePurchaseTerms(
 		RaidOpsFireSupportServerConfig snapshot,
 		ServiceDescriptor descriptor,
 		string preparedRequestId,
@@ -1277,33 +1279,54 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 			return price >= 0;
 		}
 
-		if (snapshot.PreparedPurchaseDetails == null ||
-		    !snapshot.PreparedPurchaseDetails.TryGetValue(
-			    descriptor.ConfigKey,
-			    out FireSupportPreparedPurchaseQuote preparedQuote))
+		if (snapshot.PreparedPurchaseDetails == null)
 		{
 			// Legacy snapshots expose only the request ID. Preserve their
 			// recovery behavior by retrying against the current list terms.
 			return price >= 0;
 		}
 
-		if (preparedQuote == null ||
-		    !string.Equals(
-			    preparedQuote.RequestId?.Trim(),
-			    preparedRequestId,
-			    StringComparison.Ordinal) ||
-		    preparedQuote.Price < 0 ||
-		    !PaymentCurrencyInfo.TryParse(
-			    preparedQuote.Currency,
-			    out PaymentCurrency preparedCurrency))
+		if (snapshot.PreparedPurchaseDetails.TryGetValue(
+			    descriptor.ConfigKey,
+			    out FireSupportPreparedPurchaseQuote preparedQuote))
 		{
-			return false;
+			if (preparedQuote == null ||
+			    !string.Equals(
+				    preparedQuote.RequestId?.Trim(),
+				    preparedRequestId,
+				    StringComparison.Ordinal) ||
+			    preparedQuote.Price < 0 ||
+			    !PaymentCurrencyInfo.TryParse(
+				    preparedQuote.Currency,
+				    out PaymentCurrency preparedCurrency))
+			{
+				return false;
+			}
+
+			price = preparedQuote.Price;
+			currency = preparedCurrency;
+			recoveredPreparedQuote = true;
+			return true;
 		}
 
-		price = preparedQuote.Price;
-		currency = preparedCurrency;
-		recoveredPreparedQuote = true;
-		return true;
+		// An accepted response can be lost after the server removes the
+		// prepared row. Only the exact locally remembered idempotency key may
+		// reuse the terms accepted by that click; an unrelated incomplete
+		// details map is never interpreted using current prices.
+		if (_ambiguousType == descriptor.Type &&
+		    string.Equals(
+			    _ambiguousRequestId,
+			    preparedRequestId,
+			    StringComparison.Ordinal) &&
+		    _ambiguousPrice >= 0)
+		{
+			price = _ambiguousPrice;
+			currency = _ambiguousCurrency;
+			recoveredPreparedQuote = true;
+			return true;
+		}
+
+		return false;
 	}
 
 	private void BeginPurchase(
@@ -1417,8 +1440,11 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 			if (response == null ||
 			    !string.Equals(response.RequestId, requestId, StringComparison.Ordinal))
 			{
-				_ambiguousRequestId = requestId;
-				_ambiguousType = supportType;
+				RememberAmbiguousPurchase(
+					requestId,
+					supportType,
+					expectedCost,
+					expectedCurrency);
 				_ready = false;
 				SetStatus(
 					"Purchase response could not be correlated. REFRESH, then RETRY with the original request ID.",
@@ -1441,8 +1467,11 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 					// The server may have committed before the response was lost.
 					// Retain the click's ID and require an authoritative refresh
 					// before a new ID can be generated.
-					_ambiguousRequestId = requestId;
-					_ambiguousType = supportType;
+					RememberAmbiguousPurchase(
+						requestId,
+						supportType,
+						expectedCost,
+						expectedCurrency);
 					_ready = false;
 					SetStatus(
 						"Purchase outcome is uncertain. REFRESH, then RETRY with the original request ID.",
@@ -1459,8 +1488,11 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 		{
 			if (!_destroyed && generation == _generation)
 			{
-				_ambiguousRequestId = requestId;
-				_ambiguousType = supportType;
+				RememberAmbiguousPurchase(
+					requestId,
+					supportType,
+					expectedCost,
+					expectedCurrency);
 				_ready = false;
 				SetStatus(
 					$"Purchase outcome is uncertain ({ex.Message}). REFRESH, then RETRY with the original request ID.",
@@ -1611,6 +1643,48 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 		}
 
 		bool hasPreparedPurchase = snapshot.PreparedPurchases.Count > 0;
+		if (hasPreparedPurchase)
+		{
+			foreach (KeyValuePair<string, string> pending in snapshot.PreparedPurchases)
+			{
+				bool knownService = false;
+				foreach (ServiceDescriptor service in s_services)
+				{
+					if (string.Equals(
+						    service.ConfigKey,
+						    pending.Key,
+						    StringComparison.OrdinalIgnoreCase))
+					{
+						knownService = true;
+						break;
+					}
+				}
+
+				if (string.IsNullOrWhiteSpace(pending.Value) || !knownService)
+				{
+					reason =
+						$"Server returned an invalid recovery record for {pending.Key}.";
+					return false;
+				}
+
+				if (snapshot.PreparedPurchaseDetails != null &&
+				    (!snapshot.PreparedPurchaseDetails.TryGetValue(
+					     pending.Key,
+					     out FireSupportPreparedPurchaseQuote quote) ||
+				     quote == null ||
+				     !string.Equals(
+					     quote.RequestId?.Trim(),
+					     pending.Value.Trim(),
+					     StringComparison.Ordinal) ||
+				     quote.Price < 0 ||
+				     !PaymentCurrencyInfo.TryParse(quote.Currency, out _)))
+				{
+					reason =
+						$"Server omitted valid recovery terms for {pending.Key}.";
+					return false;
+				}
+			}
+		}
 		if (!snapshot.PurchasePersistence.Enabled && !hasPreparedPurchase)
 		{
 			reason = "Pre-raid buying requires Purchase Persistence on the TSC server.";
@@ -1693,8 +1767,43 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 					continue;
 				}
 
-				_ambiguousRequestId = requestId;
-				_ambiguousType = service.Type;
+				if (snapshot.PreparedPurchaseDetails == null)
+				{
+					int currentPrice = GetPrice(snapshot, service.ConfigKey);
+					if (currentPrice < 0)
+					{
+						return false;
+					}
+
+					RememberAmbiguousPurchase(
+						requestId,
+						service.Type,
+						currentPrice,
+						FireSupportServerConfigClient.GetSnapshotCurrency(snapshot));
+					return true;
+				}
+
+				if (!snapshot.PreparedPurchaseDetails.TryGetValue(
+					    service.ConfigKey,
+					    out FireSupportPreparedPurchaseQuote preparedQuote) ||
+				    preparedQuote == null ||
+				    !string.Equals(
+					    preparedQuote.RequestId?.Trim(),
+					    requestId,
+					    StringComparison.Ordinal) ||
+				    preparedQuote.Price < 0 ||
+				    !PaymentCurrencyInfo.TryParse(
+					    preparedQuote.Currency,
+					    out PaymentCurrency preparedCurrency))
+				{
+					return false;
+				}
+
+				RememberAmbiguousPurchase(
+					requestId,
+					service.Type,
+					preparedQuote.Price,
+					preparedCurrency);
 				return true;
 			}
 		}
@@ -1790,6 +1899,8 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 		_pendingType = ESupportType.None;
 		_ambiguousRequestId = string.Empty;
 		_ambiguousType = ESupportType.None;
+		_ambiguousPrice = -1;
+		_ambiguousCurrency = PaymentCurrency.RUB;
 		HidePurchaseConfirmation(redraw: false);
 		if (_pageRoot != null)
 		{
@@ -1853,7 +1964,21 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 		{
 			_ambiguousRequestId = string.Empty;
 			_ambiguousType = ESupportType.None;
+			_ambiguousPrice = -1;
+			_ambiguousCurrency = PaymentCurrency.RUB;
 		}
+	}
+
+	private void RememberAmbiguousPurchase(
+		string requestId,
+		ESupportType supportType,
+		int price,
+		PaymentCurrency currency)
+	{
+		_ambiguousRequestId = requestId ?? string.Empty;
+		_ambiguousType = supportType;
+		_ambiguousPrice = price;
+		_ambiguousCurrency = PaymentCurrencyInfo.Normalize(currency);
 	}
 
 	private static string FormatPurchaseFailure(string reason)

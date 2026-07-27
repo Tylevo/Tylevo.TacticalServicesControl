@@ -50,6 +50,7 @@ public static class FireSupportPayment
 	private static PaymentSource? _serverPaymentSource;
 	private static PaymentCurrency? _serverPaymentCurrency;
 	private static int? _serverStashCurrencyBalance;
+	private static PaymentCurrency? _serverStashBalanceCurrency;
 	private static int _serverConfigRevision;
 	private static bool _serverConfigUnavailable;
 	private static bool _serverPaymentCurrencyInvalid;
@@ -250,6 +251,7 @@ public static class FireSupportPayment
 		_serverPaymentSource = null;
 		_serverPaymentCurrency = null;
 		_serverStashCurrencyBalance = null;
+		_serverStashBalanceCurrency = null;
 		_serverConfigRevision = 0;
 		_serverConfigUnavailable = false;
 		_serverPaymentCurrencyInvalid = false;
@@ -289,8 +291,11 @@ public static class FireSupportPayment
 	public static void ClearServerProfileState()
 	{
 		bool hadServerProfileState =
-			_serverStashCurrencyBalance.HasValue || _lastPurchaseDenial != null;
+			_serverStashCurrencyBalance.HasValue ||
+			_serverStashBalanceCurrency.HasValue ||
+			_lastPurchaseDenial != null;
 		_serverStashCurrencyBalance = null;
+		_serverStashBalanceCurrency = null;
 		_lastPurchaseDenial = null;
 		if (hadServerProfileState)
 		{
@@ -330,6 +335,9 @@ public static class FireSupportPayment
 		_serverPaymentCurrency = PaymentCurrencyInfo.Normalize(paymentCurrency);
 		_serverConfigRevision = revision;
 		_serverStashCurrencyBalance = stashCurrencyBalance;
+		_serverStashBalanceCurrency = stashCurrencyBalance.HasValue
+			? _serverPaymentCurrency
+			: null;
 		_serverConfigUnavailable = false;
 		_serverPaymentCurrencyInvalid = false;
 		_serverConfigUnavailableReason = null;
@@ -340,13 +348,19 @@ public static class FireSupportPayment
 	public static void SetServerProfileState(
 		int revision,
 		int? stashCurrencyBalance,
+		PaymentCurrency paymentCurrency,
 		bool persistenceEnabled,
 		bool refundFailedDispatch,
 		bool spendCreditsBeforeCash,
 		bool allowAutoPurchaseOnUse)
 	{
+		PaymentCurrency normalizedCurrency =
+			PaymentCurrencyInfo.Normalize(paymentCurrency);
 		_serverConfigRevision = revision;
 		_serverStashCurrencyBalance = stashCurrencyBalance;
+		_serverStashBalanceCurrency = stashCurrencyBalance.HasValue
+			? normalizedCurrency
+			: null;
 		_serverConfigUnavailable = false;
 		_serverPaymentCurrencyInvalid = false;
 		_serverConfigUnavailableReason = null;
@@ -355,7 +369,7 @@ public static class FireSupportPayment
 		_serverSpendCreditsBeforeCash = spendCreditsBeforeCash;
 		_serverAllowAutoPurchaseOnUse = allowAutoPurchaseOnUse;
 		TscDiagnostics.LogPayment(
-			$"Using server URL TSC profile state revision={revision}: stashBalance={(stashCurrencyBalance.HasValue ? FormatCurrency(stashCurrencyBalance.Value) : "unknown")}, persistence={persistenceEnabled}");
+			$"Using server URL TSC profile state revision={revision}: currency={normalizedCurrency}, stashBalance={(stashCurrencyBalance.HasValue ? FormatCurrency(stashCurrencyBalance.Value, normalizedCurrency) : "unknown")}, persistence={persistenceEnabled}");
 	}
 
 	public static void SetServerPurchasePersistence(
@@ -459,16 +473,18 @@ public static class FireSupportPayment
 	public static int GetEffectiveBalance()
 	{
 		PaymentSource paymentSource = GetActivePaymentSource();
+		PaymentCurrency paymentCurrency = GetActivePaymentCurrency();
 		int carriedCurrency = GetCarriedCurrency();
+		int? stashCurrency = GetServerStashBalance(paymentCurrency);
 		return paymentSource switch
 		{
 			PaymentSource.CarriedRoubles => carriedCurrency,
-			PaymentSource.StashRoubles => _serverStashCurrencyBalance ?? -1,
-			PaymentSource.PreferCarriedThenStash => _serverStashCurrencyBalance.HasValue
-				? carriedCurrency + _serverStashCurrencyBalance.Value
+			PaymentSource.StashRoubles => stashCurrency ?? -1,
+			PaymentSource.PreferCarriedThenStash => stashCurrency.HasValue
+				? carriedCurrency + stashCurrency.Value
 				: carriedCurrency,
-			PaymentSource.PreferStashThenCarried => _serverStashCurrencyBalance.HasValue
-				? carriedCurrency + _serverStashCurrencyBalance.Value
+			PaymentSource.PreferStashThenCarried => stashCurrency.HasValue
+				? carriedCurrency + stashCurrency.Value
 				: carriedCurrency,
 			_ => carriedCurrency
 		};
@@ -1187,7 +1203,7 @@ public static class FireSupportPayment
 			PaymentSource = nameof(PaymentSource.StashRoubles),
 			Currency = PaymentCurrencyInfo.GetCode(expectedCurrency),
 			NewBalance = expectedCurrency == GetActivePaymentCurrency()
-				? _serverStashCurrencyBalance ?? -1
+				? GetServerStashBalance(expectedCurrency) ?? -1
 				: -1,
 			AuthorizationGranted = false,
 			ServerRevision = _serverConfigRevision,
@@ -1308,6 +1324,7 @@ public static class FireSupportPayment
 			    expectedCurrency == GetActivePaymentCurrency())
 			{
 				_serverStashCurrencyBalance = serverResult.NewBalance;
+				_serverStashBalanceCurrency = expectedCurrency;
 			}
 
 			bool authorizationsApplied =
@@ -1435,18 +1452,30 @@ public static class FireSupportPayment
 			serverResult.ServerRevision = serverResult.ServerRevision > 0 ? serverResult.ServerRevision : _serverConfigRevision;
 			bool responseCurrencyMatches =
 				TryNormalizeResponseCurrency(serverResult, paymentCurrency);
+			bool activeCurrencyMatchesRequest =
+				paymentCurrency == GetActivePaymentCurrency();
 			if (!responseCurrencyMatches)
 			{
 				serverResult.Ok = false;
 				serverResult.AuthorizationGranted = false;
 				serverResult.Reason = "PurchaseCurrencyMismatch";
 			}
+			else if (!activeCurrencyMatchesRequest && !serverResult.Ok)
+			{
+				// The denial belongs to the currency pinned before the await.
+				// Do not let a hybrid payment policy fall back to carried cash
+				// after the active host/server currency has changed.
+				serverResult.AuthorizationGranted = false;
+				serverResult.Reason = "PurchaseCurrencyMismatch";
+				serverResult.NewBalance = -1;
+			}
 
 			if (responseCurrencyMatches &&
-			    paymentCurrency == GetActivePaymentCurrency() &&
+			    activeCurrencyMatchesRequest &&
 			    serverResult.NewBalance >= 0)
 			{
 				_serverStashCurrencyBalance = serverResult.NewBalance;
+				_serverStashBalanceCurrency = paymentCurrency;
 			}
 
 			bool authorizationsApplied =
@@ -1811,23 +1840,35 @@ public static class FireSupportPayment
 
 	private static bool ShouldUseCarriedForPurchase(PaymentSource paymentSource, int cost)
 	{
+		int? stashBalance = GetServerStashBalance(GetActivePaymentCurrency());
 		return paymentSource == PaymentSource.CarriedRoubles ||
 		       paymentSource == PaymentSource.PreferCarriedThenStash && GetCarriedCurrency() >= cost ||
 		       paymentSource == PaymentSource.PreferStashThenCarried &&
-		       _serverStashCurrencyBalance.HasValue &&
-		       _serverStashCurrencyBalance.Value < cost &&
+		       stashBalance.HasValue &&
+		       stashBalance.Value < cost &&
 		       GetCarriedCurrency() >= cost;
 	}
 
 	private static bool CanSpendCarriedForActivePaymentSource(int cost)
 	{
 		PaymentSource paymentSource = GetActivePaymentSource();
+		int? stashBalance = GetServerStashBalance(GetActivePaymentCurrency());
 		return paymentSource == PaymentSource.CarriedRoubles ||
 		       paymentSource == PaymentSource.PreferCarriedThenStash && GetCarriedCurrency() >= cost ||
 		       paymentSource == PaymentSource.PreferStashThenCarried &&
-		       _serverStashCurrencyBalance.HasValue &&
-		       _serverStashCurrencyBalance.Value < cost &&
+		       stashBalance.HasValue &&
+		       stashBalance.Value < cost &&
 		       GetCarriedCurrency() >= cost;
+	}
+
+	private static int? GetServerStashBalance(PaymentCurrency currency)
+	{
+		currency = PaymentCurrencyInfo.Normalize(currency);
+		return _serverStashCurrencyBalance.HasValue &&
+		       _serverStashBalanceCurrency.HasValue &&
+		       _serverStashBalanceCurrency.Value == currency
+			? _serverStashCurrencyBalance
+			: null;
 	}
 
 	private static void LogEffectiveCostIfChanged(ESupportType supportType, int cost, string source)

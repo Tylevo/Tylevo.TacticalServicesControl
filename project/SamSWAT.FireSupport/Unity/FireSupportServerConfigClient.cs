@@ -585,6 +585,18 @@ public static class FireSupportServerConfigClient
 		RaidOpsFireSupportServerConfig snapshot,
 		long mutationEpochAtRequest)
 	{
+		if (!HasValidSnapshotCurrency(snapshot))
+		{
+			if (ShouldApplyLocalGlobalSettings())
+			{
+				ClearServerGlobalOverrides(notify: false);
+			}
+			FireSupportPayment.MarkServerPaymentCurrencyInvalid(
+				$"schema={snapshot.ConfigSchemaVersion}, value={snapshot.PaymentCurrency ?? "<missing>"}");
+			FireSupportPayment.NotifySettingsChanged(snapshot);
+			return;
+		}
+
 		int revision = Math.Max(0, snapshot.Revision);
 		bool playerStateIncluded =
 			snapshot.PlayerStateIncluded ||
@@ -616,18 +628,6 @@ public static class FireSupportServerConfigClient
 		{
 			FireSupportPlugin.LogSource.LogWarning(
 				"TSC config snapshot did not include authenticated player state; preserving the last known stash, persistence, and authorization state.");
-		}
-
-		if (!HasValidSnapshotCurrency(snapshot))
-		{
-			if (ShouldApplyLocalGlobalSettings())
-			{
-				ClearServerGlobalOverrides(notify: false);
-			}
-			FireSupportPayment.MarkServerPaymentCurrencyInvalid(
-				$"schema={snapshot.ConfigSchemaVersion}, value={snapshot.PaymentCurrency ?? "<missing>"}");
-			FireSupportPayment.NotifySettingsChanged(snapshot);
-			return;
 		}
 
 		if (ShouldApplyLocalGlobalSettings())
@@ -668,6 +668,7 @@ public static class FireSupportServerConfigClient
 		FireSupportPayment.SetServerProfileState(
 			revision,
 			GetSnapshotStashBalance(snapshot, currency),
+			currency,
 			snapshot.PurchasePersistence?.Enabled == true,
 			snapshot.PurchasePersistence?.RefundFailedDispatch != false,
 			snapshot.PurchasePersistence?.SpendCreditsBeforeCash != false,
