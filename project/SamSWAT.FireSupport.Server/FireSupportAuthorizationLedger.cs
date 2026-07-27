@@ -10,11 +10,15 @@ public sealed class FireSupportAuthorizationLedger(
 	ISptLogger<FireSupportAuthorizationLedger> logger)
 {
 	public const int MaxPersistentPurchaseRequestIdLength = 128;
-	private const int CurrentSchemaVersion = 3;
+	private const int CurrentSchemaVersion = 4;
 	private const int MaxTransactionsPerProfile = 512;
 	private const string PersistentPurchaseIdentity = "BuyPersistentAuthorization";
 	private const string PersistentPurchasePreparedState = "Prepared";
 	private const string PersistentPurchaseAcceptedState = "Accepted";
+	private const string AuthorizationUsePendingState = "Pending";
+	private const string AuthorizationUseCommittedState = "Committed";
+	private const string AuthorizationUseRefundedState = "Refunded";
+	private const string AuthorizationUseExpiredRefundedState = "ExpiredRefunded";
 
 	private static readonly JsonSerializerOptions s_jsonOptions = new()
 	{
@@ -45,12 +49,17 @@ public sealed class FireSupportAuthorizationLedger(
 		}
 	}
 
-	public Dictionary<string, int> GetCredits(string profileId, int pendingTimeoutSeconds)
+	public Dictionary<string, int> GetCredits(
+		string profileId,
+		int pendingTimeoutSeconds,
+		int maxStored)
 	{
 		lock (_gate)
 		{
 			FireSupportAuthorizationLedgerState snapshot = CloneState(_state);
-			if (PruneExpiredPendingLocked(TimeSpan.FromSeconds(Math.Max(1, pendingTimeoutSeconds))) &&
+			if (PruneExpiredPendingLocked(
+				    TimeSpan.FromSeconds(Math.Max(1, pendingTimeoutSeconds)),
+				    maxStored) &&
 			    !TrySaveMutationLocked(snapshot, out _))
 			{
 				logger.Warning("TSC authorization ledger could not persist expired pending-use cleanup.");
@@ -115,8 +124,16 @@ public sealed class FireSupportAuthorizationLedger(
 
 		lock (_gate)
 		{
+			if (!TryPruneExpiredPendingAndPersistLocked(
+				    TimeSpan.FromSeconds(Math.Max(1, pendingTimeoutSeconds)),
+				    maxStored,
+				    out reason))
+			{
+				credits = GetCreditsFromStateLocked(profileId);
+				return false;
+			}
+
 			FireSupportAuthorizationLedgerState snapshot = CloneState(_state);
-			PruneExpiredPendingLocked(TimeSpan.FromSeconds(Math.Max(1, pendingTimeoutSeconds)));
 			FireSupportPlayerAuthorizations profile = GetProfileLocked(profileId);
 			int current = GetCredit(profile, service);
 			int limit = Math.Max(1, maxStored);
@@ -458,6 +475,7 @@ public sealed class FireSupportAuthorizationLedger(
 		string profileId,
 		ESupportType supportType,
 		string requestId,
+		int maxStored,
 		int pendingTimeoutSeconds,
 		out Dictionary<string, int> credits,
 		out string reason)
@@ -465,23 +483,68 @@ public sealed class FireSupportAuthorizationLedger(
 		credits = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 		reason = string.Empty;
 		string service = ToLedgerKey(supportType);
-		if (string.IsNullOrWhiteSpace(profileId) || string.IsNullOrWhiteSpace(service))
+		requestId = requestId?.Trim() ?? string.Empty;
+		if (string.IsNullOrWhiteSpace(profileId) ||
+		    string.IsNullOrWhiteSpace(service) ||
+		    string.IsNullOrWhiteSpace(requestId) ||
+		    requestId.Length > MaxPersistentPurchaseRequestIdLength)
 		{
 			reason = "InvalidAuthorizationRequest";
 			return false;
 		}
 
-		requestId = string.IsNullOrWhiteSpace(requestId) ? Guid.NewGuid().ToString("N") : requestId.Trim();
 		lock (_gate)
 		{
-			FireSupportAuthorizationLedgerState snapshot = CloneState(_state);
-			PruneExpiredPendingLocked(TimeSpan.FromSeconds(Math.Max(1, pendingTimeoutSeconds)));
-			FireSupportPlayerAuthorizations profile = GetProfileLocked(profileId);
-			if (HasTransactionLocked(profile, "Consume", requestId))
+			if (!TryPruneExpiredPendingAndPersistLocked(
+				    TimeSpan.FromSeconds(Math.Max(1, pendingTimeoutSeconds)),
+				    maxStored,
+				    out reason))
 			{
-				credits = new Dictionary<string, int>(profile.Credits, StringComparer.OrdinalIgnoreCase);
-				reason = "AlreadyConsumed";
-				return true;
+				credits = GetCreditsFromStateLocked(profileId);
+				return false;
+			}
+
+			FireSupportPlayerAuthorizations profile = GetProfileLocked(profileId);
+			credits = new Dictionary<string, int>(profile.Credits, StringComparer.OrdinalIgnoreCase);
+			if (profile.AuthorizationUses.TryGetValue(
+				    requestId,
+				    out FireSupportAuthorizationUseRecord? existingUse))
+			{
+				if (!IsMatchingAuthorizationUse(existingUse, service, quantity: 1))
+				{
+					reason = "AuthorizationRequestConflict";
+					return false;
+				}
+
+				if (IsAuthorizationUsePending(existingUse))
+				{
+					reason = "AlreadyConsumed";
+					return true;
+				}
+
+				if (IsAuthorizationUseCommitted(existingUse))
+				{
+					reason = "AlreadyCommitted";
+					// A committed use is terminal. Treating a replayed Consume as
+					// success would authorize another gameplay dispatch without
+					// reserving another credit.
+					return false;
+				}
+
+				if (IsAuthorizationUseRefunded(existingUse))
+				{
+					reason = "AlreadyRefunded";
+					return false;
+				}
+
+				if (IsAuthorizationUseExpiredRefunded(existingUse))
+				{
+					reason = "AuthorizationUseExpired";
+					return false;
+				}
+
+				reason = "AuthorizationUseStateInvalid";
+				return false;
 			}
 
 			int current = GetCredit(profile, service);
@@ -492,13 +555,16 @@ public sealed class FireSupportAuthorizationLedger(
 				return false;
 			}
 
+			FireSupportAuthorizationLedgerState snapshot = CloneState(_state);
 			profile.Credits[service] = current - 1;
-			profile.Pending[requestId] = new FireSupportPendingAuthorizationUse
+			profile.AuthorizationUses[requestId] = new FireSupportAuthorizationUseRecord
 			{
 				RequestId = requestId,
 				Service = service,
 				Quantity = 1,
-				CreatedUtc = DateTimeOffset.UtcNow
+				State = AuthorizationUsePendingState,
+				CreatedUtc = DateTimeOffset.UtcNow,
+				Reason = string.Empty
 			};
 			AddTransactionLocked(profile, "Consume", service, 1, 0, requestId, reason: string.Empty);
 			if (!TrySaveMutationLocked(snapshot, out reason))
@@ -525,7 +591,11 @@ public sealed class FireSupportAuthorizationLedger(
 		credits = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 		reason = string.Empty;
 		string service = ToLedgerKey(supportType);
-		if (string.IsNullOrWhiteSpace(profileId) || string.IsNullOrWhiteSpace(service) || string.IsNullOrWhiteSpace(requestId))
+		requestId = requestId?.Trim() ?? string.Empty;
+		if (string.IsNullOrWhiteSpace(profileId) ||
+		    string.IsNullOrWhiteSpace(service) ||
+		    string.IsNullOrWhiteSpace(requestId) ||
+		    requestId.Length > MaxPersistentPurchaseRequestIdLength)
 		{
 			reason = "InvalidAuthorizationRequest";
 			return false;
@@ -533,50 +603,65 @@ public sealed class FireSupportAuthorizationLedger(
 
 		lock (_gate)
 		{
-			FireSupportAuthorizationLedgerState snapshot = CloneState(_state);
-			PruneExpiredPendingLocked(TimeSpan.FromSeconds(Math.Max(1, pendingTimeoutSeconds)));
-			FireSupportPlayerAuthorizations profile = GetProfileLocked(profileId);
-			string trimmedRequestId = requestId.Trim();
-			if (HasTransactionLocked(profile, "Refund", trimmedRequestId))
+			if (!TryPruneExpiredPendingAndPersistLocked(
+				    TimeSpan.FromSeconds(Math.Max(1, pendingTimeoutSeconds)),
+				    maxStored,
+				    out reason))
 			{
-				credits = new Dictionary<string, int>(profile.Credits, StringComparer.OrdinalIgnoreCase);
+				credits = GetCreditsFromStateLocked(profileId);
+				return false;
+			}
+
+			FireSupportPlayerAuthorizations profile = GetProfileLocked(profileId);
+			string trimmedRequestId = requestId;
+			credits = new Dictionary<string, int>(profile.Credits, StringComparer.OrdinalIgnoreCase);
+			if (!profile.AuthorizationUses.TryGetValue(
+				    trimmedRequestId,
+				    out FireSupportAuthorizationUseRecord? authorizationUse))
+			{
+				reason = "ConsumedAuthorizationNotFound";
+				return false;
+			}
+
+			if (!IsMatchingAuthorizationUse(authorizationUse, service, quantity: 1))
+			{
+				reason = "AuthorizationRequestConflict";
+				return false;
+			}
+
+			if (IsAuthorizationUseRefunded(authorizationUse) ||
+			    IsAuthorizationUseExpiredRefunded(authorizationUse))
+			{
 				reason = "AlreadyRefunded";
 				return true;
 			}
 
-			if (!profile.Pending.Remove(trimmedRequestId, out FireSupportPendingAuthorizationUse? pending))
+			if (IsAuthorizationUseCommitted(authorizationUse))
 			{
-				if (HasTransactionLocked(profile, "Commit", trimmedRequestId))
-				{
-					credits = new Dictionary<string, int>(profile.Credits, StringComparer.OrdinalIgnoreCase);
-					reason = "AlreadyCommitted";
-					return false;
-				}
-
-				if (!HasTransactionLocked(profile, "Consume", trimmedRequestId))
-				{
-					credits = new Dictionary<string, int>(profile.Credits, StringComparer.OrdinalIgnoreCase);
-					reason = "ConsumedAuthorizationNotFound";
-					return false;
-				}
-
-				pending = new FireSupportPendingAuthorizationUse
-				{
-					RequestId = trimmedRequestId,
-					Service = service,
-					Quantity = 1,
-					CreatedUtc = DateTimeOffset.UtcNow
-				};
+				reason = "AlreadyCommitted";
+				return false;
 			}
 
-			string refundService = string.IsNullOrWhiteSpace(pending.Service) ? service : pending.Service;
-			int limit = Math.Max(1, maxStored);
-			int current = GetCredit(profile, refundService);
-			int preparedReservations = GetPreparedReservationCountLocked(profile, refundService);
-			int effectiveLimit = Math.Max(current, limit - preparedReservations);
-			profile.Credits[refundService] =
-				Math.Min(effectiveLimit, current + Math.Max(1, pending.Quantity));
-			AddTransactionLocked(profile, "Refund", refundService, Math.Max(1, pending.Quantity), 0, requestId, refundReason);
+			if (!IsAuthorizationUsePending(authorizationUse))
+			{
+				reason = "AuthorizationUseStateInvalid";
+				return false;
+			}
+
+			FireSupportAuthorizationLedgerState snapshot = CloneState(_state);
+			int quantity = Math.Max(1, authorizationUse.Quantity);
+			RestoreAuthorizationCreditLocked(profile, authorizationUse.Service, quantity, maxStored);
+			authorizationUse.State = AuthorizationUseRefundedState;
+			authorizationUse.CompletedUtc = DateTimeOffset.UtcNow;
+			authorizationUse.Reason = refundReason ?? string.Empty;
+			AddTransactionLocked(
+				profile,
+				"Refund",
+				authorizationUse.Service,
+				quantity,
+				0,
+				trimmedRequestId,
+				authorizationUse.Reason);
 			if (!TrySaveMutationLocked(snapshot, out reason))
 			{
 				credits = GetCreditsFromStateLocked(profileId);
@@ -592,6 +677,7 @@ public sealed class FireSupportAuthorizationLedger(
 		string profileId,
 		ESupportType supportType,
 		string requestId,
+		int maxStored,
 		int pendingTimeoutSeconds,
 		out Dictionary<string, int> credits,
 		out string reason)
@@ -599,7 +685,11 @@ public sealed class FireSupportAuthorizationLedger(
 		credits = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 		reason = string.Empty;
 		string service = ToLedgerKey(supportType);
-		if (string.IsNullOrWhiteSpace(profileId) || string.IsNullOrWhiteSpace(service) || string.IsNullOrWhiteSpace(requestId))
+		requestId = requestId?.Trim() ?? string.Empty;
+		if (string.IsNullOrWhiteSpace(profileId) ||
+		    string.IsNullOrWhiteSpace(service) ||
+		    string.IsNullOrWhiteSpace(requestId) ||
+		    requestId.Length > MaxPersistentPurchaseRequestIdLength)
 		{
 			reason = "InvalidAuthorizationRequest";
 			return false;
@@ -607,47 +697,75 @@ public sealed class FireSupportAuthorizationLedger(
 
 		lock (_gate)
 		{
-			FireSupportAuthorizationLedgerState snapshot = CloneState(_state);
-			PruneExpiredPendingLocked(TimeSpan.FromSeconds(Math.Max(1, pendingTimeoutSeconds)));
+			if (!TryPruneExpiredPendingAndPersistLocked(
+				    TimeSpan.FromSeconds(Math.Max(1, pendingTimeoutSeconds)),
+				    maxStored,
+				    out reason))
+			{
+				credits = GetCreditsFromStateLocked(profileId);
+				return false;
+			}
+
 			FireSupportPlayerAuthorizations profile = GetProfileLocked(profileId);
-			string trimmedRequestId = requestId.Trim();
-			if (profile.Pending.Remove(trimmedRequestId, out FireSupportPendingAuthorizationUse? pending))
+			credits = new Dictionary<string, int>(profile.Credits, StringComparer.OrdinalIgnoreCase);
+			if (!profile.AuthorizationUses.TryGetValue(
+				    requestId,
+				    out FireSupportAuthorizationUseRecord? authorizationUse))
 			{
-				string committedService = string.IsNullOrWhiteSpace(pending.Service) ? service : pending.Service;
-				AddTransactionLocked(profile, "Commit", committedService, Math.Max(1, pending.Quantity), 0, requestId, "DispatchAccepted");
-				if (!TrySaveMutationLocked(snapshot, out reason))
-				{
-					credits = GetCreditsFromStateLocked(profileId);
-					return false;
-				}
+				reason = "ConsumedAuthorizationNotFound";
+				return false;
+			}
 
-				credits = new Dictionary<string, int>(profile.Credits, StringComparer.OrdinalIgnoreCase);
+			if (!IsMatchingAuthorizationUse(authorizationUse, service, quantity: 1))
+			{
+				reason = "AuthorizationRequestConflict";
+				return false;
+			}
+
+			if (IsAuthorizationUseCommitted(authorizationUse))
+			{
+				reason = "AlreadyCommitted";
 				return true;
 			}
 
-			if (HasTransactionLocked(profile, "Commit", trimmedRequestId))
+			if (IsAuthorizationUseRefunded(authorizationUse))
 			{
-				credits = new Dictionary<string, int>(profile.Credits, StringComparer.OrdinalIgnoreCase);
-				reason = "AlreadyConsumed";
-				return true;
+				reason = "AlreadyRefunded";
+				return false;
 			}
 
-			if (HasTransactionLocked(profile, "Consume", trimmedRequestId))
+			if (IsAuthorizationUseExpiredRefunded(authorizationUse))
 			{
-				AddTransactionLocked(profile, "Commit", service, 1, 0, requestId, "DispatchAcceptedLegacyConsume");
-				if (!TrySaveMutationLocked(snapshot, out reason))
-				{
-					credits = GetCreditsFromStateLocked(profileId);
-					return false;
-				}
+				reason = "AuthorizationUseExpired";
+				return false;
+			}
 
-				credits = new Dictionary<string, int>(profile.Credits, StringComparer.OrdinalIgnoreCase);
-				return true;
+			if (!IsAuthorizationUsePending(authorizationUse))
+			{
+				reason = "AuthorizationUseStateInvalid";
+				return false;
+			}
+
+			FireSupportAuthorizationLedgerState snapshot = CloneState(_state);
+			authorizationUse.State = AuthorizationUseCommittedState;
+			authorizationUse.CompletedUtc = DateTimeOffset.UtcNow;
+			authorizationUse.Reason = "DispatchAccepted";
+			AddTransactionLocked(
+				profile,
+				"Commit",
+				authorizationUse.Service,
+				Math.Max(1, authorizationUse.Quantity),
+				0,
+				requestId,
+				authorizationUse.Reason);
+			if (!TrySaveMutationLocked(snapshot, out reason))
+			{
+				credits = GetCreditsFromStateLocked(profileId);
+				return false;
 			}
 
 			credits = new Dictionary<string, int>(profile.Credits, StringComparer.OrdinalIgnoreCase);
-			reason = "ConsumedAuthorizationNotFound";
-			return false;
+			return true;
 		}
 	}
 
@@ -716,6 +834,9 @@ public sealed class FireSupportAuthorizationLedger(
 		catch (Exception ex)
 		{
 			_state = snapshot;
+			// JSON cloning does not preserve dictionary comparers. Re-normalize
+			// after rollback so request IDs remain case-insensitive.
+			NormalizeStateLocked();
 			reason = "AuthorizationLedgerSaveFailed";
 			logger.Error("TSC authorization ledger mutation was rolled back after a disk write failure.", ex);
 			return false;
@@ -777,11 +898,182 @@ public sealed class FireSupportAuthorizationLedger(
 			profile.Credits = profile.Credits == null
 				? new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
 				: new Dictionary<string, int>(profile.Credits, StringComparer.OrdinalIgnoreCase);
-			profile.Pending = profile.Pending == null
+			Dictionary<string, FireSupportPendingAuthorizationUse> legacyPending = profile.Pending == null
 				? new Dictionary<string, FireSupportPendingAuthorizationUse>(StringComparer.OrdinalIgnoreCase)
 				: new Dictionary<string, FireSupportPendingAuthorizationUse>(
 					profile.Pending,
 					StringComparer.OrdinalIgnoreCase);
+
+			profile.Transactions = profile.Transactions?
+				.Where(transaction => transaction != null)
+				.ToList() ?? new List<FireSupportAuthorizationTransaction>();
+
+			var normalizedAuthorizationUses =
+				new Dictionary<string, FireSupportAuthorizationUseRecord>(StringComparer.OrdinalIgnoreCase);
+			foreach (KeyValuePair<string, FireSupportAuthorizationUseRecord> authorizationUsePair in
+			         profile.AuthorizationUses ??
+			         new Dictionary<string, FireSupportAuthorizationUseRecord>())
+			{
+				FireSupportAuthorizationUseRecord? authorizationUse = authorizationUsePair.Value;
+				string requestId = string.IsNullOrWhiteSpace(authorizationUse?.RequestId)
+					? authorizationUsePair.Key?.Trim() ?? string.Empty
+					: authorizationUse.RequestId.Trim();
+				if (authorizationUse == null ||
+				    string.IsNullOrWhiteSpace(requestId) ||
+				    string.IsNullOrWhiteSpace(authorizationUse.Service))
+				{
+					continue;
+				}
+
+				authorizationUse.RequestId = requestId;
+				authorizationUse.Service = authorizationUse.Service.Trim();
+				authorizationUse.Quantity = Math.Max(1, authorizationUse.Quantity);
+				authorizationUse.State = NormalizeAuthorizationUseState(authorizationUse.State);
+				authorizationUse.CreatedUtc = authorizationUse.CreatedUtc == default
+					? DateTimeOffset.UtcNow
+					: authorizationUse.CreatedUtc;
+				if (string.IsNullOrWhiteSpace(authorizationUse.State))
+				{
+					// An unknown schema-4 state must never become refundable or
+					// consumable by guessing. Preserve the debit as committed.
+					authorizationUse.State = AuthorizationUseCommittedState;
+					authorizationUse.CompletedUtc ??= DateTimeOffset.UtcNow;
+					authorizationUse.Reason = "InvalidPersistedStatePreservedAsCommitted";
+				}
+				else if (IsAuthorizationUsePending(authorizationUse))
+				{
+					authorizationUse.CompletedUtc = null;
+				}
+				else
+				{
+					authorizationUse.CompletedUtc ??= authorizationUse.CreatedUtc;
+				}
+
+				authorizationUse.Reason ??= string.Empty;
+				normalizedAuthorizationUses[requestId] = authorizationUse;
+			}
+
+			IEnumerable<string> legacyAuthorizationRequestIds = legacyPending.Keys
+				.Concat(profile.Transactions
+					.Where(IsAuthorizationUseTransaction)
+					.Select(transaction => transaction.RequestId?.Trim() ?? string.Empty))
+				.Where(requestId => !string.IsNullOrWhiteSpace(requestId))
+				.Distinct(StringComparer.OrdinalIgnoreCase);
+			foreach (string requestId in legacyAuthorizationRequestIds)
+			{
+				if (normalizedAuthorizationUses.ContainsKey(requestId))
+				{
+					continue;
+				}
+
+				legacyPending.TryGetValue(
+					requestId,
+					out FireSupportPendingAuthorizationUse? pending);
+				List<FireSupportAuthorizationTransaction> lifecycleTransactions = profile.Transactions
+					.Where(transaction =>
+						IsAuthorizationUseTransaction(transaction) &&
+						string.Equals(
+							transaction.RequestId,
+							requestId,
+							StringComparison.OrdinalIgnoreCase))
+					.ToList();
+				FireSupportAuthorizationTransaction? consume = lifecycleTransactions.LastOrDefault(
+					transaction => string.Equals(
+						transaction.Type,
+						"Consume",
+						StringComparison.OrdinalIgnoreCase));
+				FireSupportAuthorizationTransaction? refund = lifecycleTransactions.LastOrDefault(
+					transaction => string.Equals(
+						transaction.Type,
+						"Refund",
+						StringComparison.OrdinalIgnoreCase));
+				FireSupportAuthorizationTransaction? expiredRefund = lifecycleTransactions.LastOrDefault(
+					transaction => string.Equals(
+						transaction.Type,
+						"RefundExpiredPending",
+						StringComparison.OrdinalIgnoreCase));
+				FireSupportAuthorizationTransaction? commit = lifecycleTransactions.LastOrDefault(
+					transaction =>
+						string.Equals(transaction.Type, "Commit", StringComparison.OrdinalIgnoreCase) ||
+						string.Equals(
+							transaction.Type,
+							"CommitExpiredPending",
+							StringComparison.OrdinalIgnoreCase));
+
+				// A retained refund is terminal even if an older build later wrote
+				// a legacy commit fallback for the same request.
+				FireSupportAuthorizationTransaction? identityTransaction =
+					refund ?? expiredRefund ?? commit ?? consume;
+				string service = !string.IsNullOrWhiteSpace(identityTransaction?.Service)
+					? identityTransaction.Service.Trim()
+					: pending?.Service?.Trim() ?? string.Empty;
+				if (string.IsNullOrWhiteSpace(service))
+				{
+					continue;
+				}
+
+				int quantity = Math.Max(
+					1,
+					identityTransaction?.Quantity ?? pending?.Quantity ?? 1);
+				DateTimeOffset createdUtc =
+					pending?.CreatedUtc ??
+					consume?.CreatedUtc ??
+					identityTransaction?.CreatedUtc ??
+					DateTimeOffset.UtcNow;
+				var migrated = new FireSupportAuthorizationUseRecord
+				{
+					RequestId = requestId,
+					Service = service,
+					Quantity = quantity,
+					CreatedUtc = createdUtc
+				};
+				if (refund != null)
+				{
+					migrated.State = AuthorizationUseRefundedState;
+					migrated.CompletedUtc = refund.CreatedUtc;
+					migrated.Reason = string.IsNullOrWhiteSpace(refund.Reason)
+						? "MigratedRefund"
+						: refund.Reason;
+				}
+				else if (expiredRefund != null)
+				{
+					migrated.State = AuthorizationUseExpiredRefundedState;
+					migrated.CompletedUtc = expiredRefund.CreatedUtc;
+					migrated.Reason = string.IsNullOrWhiteSpace(expiredRefund.Reason)
+						? "PendingUseTimeout"
+						: expiredRefund.Reason;
+				}
+				else if (commit != null)
+				{
+					migrated.State = AuthorizationUseCommittedState;
+					migrated.CompletedUtc = commit.CreatedUtc;
+					migrated.Reason = string.IsNullOrWhiteSpace(commit.Reason)
+						? "MigratedCommit"
+						: commit.Reason;
+				}
+				else if (pending != null)
+				{
+					migrated.State = AuthorizationUsePendingState;
+					migrated.Reason = string.Empty;
+				}
+				else
+				{
+					// A legacy Consume without its Pending entry was already
+					// charged. Conservatively preserve it as terminal rather than
+					// inventing a refund or allowing another consume.
+					migrated.State = AuthorizationUseCommittedState;
+					migrated.CompletedUtc = consume?.CreatedUtc ?? DateTimeOffset.UtcNow;
+					migrated.Reason = "LegacyConsumeWithoutPendingPreservedAsCommitted";
+				}
+
+				normalizedAuthorizationUses[requestId] = migrated;
+			}
+
+			profile.AuthorizationUses = normalizedAuthorizationUses;
+			// Retained only as a schema-3 migration input. Schema 4 writes all
+			// lifecycle state through AuthorizationUses.
+			profile.Pending =
+				new Dictionary<string, FireSupportPendingAuthorizationUse>(StringComparer.OrdinalIgnoreCase);
 
 			var normalizedPurchases =
 				new Dictionary<string, FireSupportPersistentPurchaseRecord>(StringComparer.OrdinalIgnoreCase);
@@ -805,9 +1097,6 @@ public sealed class FireSupportAuthorizationLedger(
 				normalizedPurchases[requestId] = purchase;
 			}
 
-			profile.Transactions = profile.Transactions?
-				.Where(transaction => transaction != null)
-				.ToList() ?? new List<FireSupportAuthorizationTransaction>();
 			foreach (FireSupportAuthorizationTransaction transaction in profile.Transactions)
 			{
 				string requestId = transaction.RequestId?.Trim() ?? string.Empty;
@@ -853,30 +1142,65 @@ public sealed class FireSupportAuthorizationLedger(
 
 		profile.Credits ??= new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 		profile.Pending ??= new Dictionary<string, FireSupportPendingAuthorizationUse>(StringComparer.OrdinalIgnoreCase);
+		profile.AuthorizationUses ??=
+			new Dictionary<string, FireSupportAuthorizationUseRecord>(StringComparer.OrdinalIgnoreCase);
 		profile.PersistentPurchases ??=
 			new Dictionary<string, FireSupportPersistentPurchaseRecord>(StringComparer.OrdinalIgnoreCase);
 		profile.Transactions ??= new List<FireSupportAuthorizationTransaction>();
 		return profile;
 	}
 
-	private bool PruneExpiredPendingLocked(TimeSpan timeout)
+	private bool TryPruneExpiredPendingAndPersistLocked(
+		TimeSpan timeout,
+		int maxStored,
+		out string reason)
+	{
+		FireSupportAuthorizationLedgerState snapshot = CloneState(_state);
+		if (!PruneExpiredPendingLocked(timeout, maxStored))
+		{
+			reason = string.Empty;
+			return true;
+		}
+
+		return TrySaveMutationLocked(snapshot, out reason);
+	}
+
+	private bool PruneExpiredPendingLocked(TimeSpan timeout, int maxStored)
 	{
 		bool changed = false;
 		DateTimeOffset cutoff = DateTimeOffset.UtcNow - timeout;
+		DateTimeOffset completedUtc = DateTimeOffset.UtcNow;
 		foreach (FireSupportPlayerAuthorizations profile in _state.Profiles.Values)
 		{
-			foreach (string requestId in profile.Pending
-				         .Where(pair => pair.Value.CreatedUtc < cutoff)
+			profile.AuthorizationUses ??=
+				new Dictionary<string, FireSupportAuthorizationUseRecord>(StringComparer.OrdinalIgnoreCase);
+			foreach (string requestId in profile.AuthorizationUses
+				         .Where(pair =>
+					         pair.Value != null &&
+					         IsAuthorizationUsePending(pair.Value) &&
+					         pair.Value.CreatedUtc < cutoff)
 				         .Select(pair => pair.Key)
 				         .ToList())
 			{
-				FireSupportPendingAuthorizationUse pending = profile.Pending[requestId];
-				profile.Pending.Remove(requestId);
+				FireSupportAuthorizationUseRecord pending = profile.AuthorizationUses[requestId];
 				changed = true;
 				if (!string.IsNullOrWhiteSpace(pending.Service))
 				{
-					AddTransactionLocked(profile, "CommitExpiredPending", pending.Service, Math.Max(1, pending.Quantity), 0, requestId, "PendingUseTimeout");
+					int quantity = Math.Max(1, pending.Quantity);
+					RestoreAuthorizationCreditLocked(profile, pending.Service, quantity, maxStored);
+					AddTransactionLocked(
+						profile,
+						"RefundExpiredPending",
+						pending.Service,
+						quantity,
+						0,
+						requestId,
+						"PendingUseTimeout");
 				}
+
+				pending.State = AuthorizationUseExpiredRefundedState;
+				pending.CompletedUtc = completedUtc;
+				pending.Reason = "PendingUseTimeout";
 			}
 		}
 
@@ -888,15 +1212,22 @@ public sealed class FireSupportAuthorizationLedger(
 		return profile.Credits.TryGetValue(service, out int count) ? Math.Max(0, count) : 0;
 	}
 
-	private static bool HasTransactionLocked(
+	private static void RestoreAuthorizationCreditLocked(
 		FireSupportPlayerAuthorizations profile,
-		string type,
-		string requestId)
+		string service,
+		int quantity,
+		int maxStored)
 	{
-		return !string.IsNullOrWhiteSpace(requestId) &&
-		       profile.Transactions.Any(transaction =>
-			       string.Equals(transaction.Type, type, StringComparison.OrdinalIgnoreCase) &&
-			       string.Equals(transaction.RequestId, requestId, StringComparison.OrdinalIgnoreCase));
+		int current = GetCredit(profile, service);
+		int restoredQuantity = Math.Max(1, quantity);
+
+		// A refund returns a credit the player already owned. If the configured
+		// storage limit was lowered while this use was Pending, applying the new
+		// cap here would report a successful refund while silently restoring
+		// nothing. Allow the balance to sit above the new limit; grant/purchase
+		// paths still enforce that limit until normal use brings it back under.
+		profile.Credits[service] =
+			(int)Math.Min(int.MaxValue, (long)current + restoredQuantity);
 	}
 
 	private static FireSupportAuthorizationTransaction? FindTransactionByRequestIdLocked(
@@ -974,6 +1305,91 @@ public sealed class FireSupportAuthorizationLedger(
 			StringComparison.OrdinalIgnoreCase);
 	}
 
+	private static string NormalizeAuthorizationUseState(string? state)
+	{
+		if (string.Equals(state, AuthorizationUsePendingState, StringComparison.OrdinalIgnoreCase))
+		{
+			return AuthorizationUsePendingState;
+		}
+
+		if (string.Equals(state, AuthorizationUseCommittedState, StringComparison.OrdinalIgnoreCase))
+		{
+			return AuthorizationUseCommittedState;
+		}
+
+		if (string.Equals(state, AuthorizationUseRefundedState, StringComparison.OrdinalIgnoreCase))
+		{
+			return AuthorizationUseRefundedState;
+		}
+
+		return string.Equals(
+			state,
+			AuthorizationUseExpiredRefundedState,
+			StringComparison.OrdinalIgnoreCase)
+			? AuthorizationUseExpiredRefundedState
+			: string.Empty;
+	}
+
+	private static bool IsAuthorizationUseTransaction(FireSupportAuthorizationTransaction transaction)
+	{
+		return transaction != null &&
+		       (string.Equals(transaction.Type, "Consume", StringComparison.OrdinalIgnoreCase) ||
+		        string.Equals(transaction.Type, "Commit", StringComparison.OrdinalIgnoreCase) ||
+		        string.Equals(transaction.Type, "Refund", StringComparison.OrdinalIgnoreCase) ||
+		        string.Equals(
+			        transaction.Type,
+			        "CommitExpiredPending",
+			        StringComparison.OrdinalIgnoreCase) ||
+		        string.Equals(
+			        transaction.Type,
+			        "RefundExpiredPending",
+			        StringComparison.OrdinalIgnoreCase));
+	}
+
+	private static bool IsMatchingAuthorizationUse(
+		FireSupportAuthorizationUseRecord authorizationUse,
+		string service,
+		int quantity)
+	{
+		return string.Equals(
+			       authorizationUse.Service,
+			       service,
+			       StringComparison.OrdinalIgnoreCase) &&
+		       authorizationUse.Quantity == quantity;
+	}
+
+	private static bool IsAuthorizationUsePending(FireSupportAuthorizationUseRecord authorizationUse)
+	{
+		return string.Equals(
+			authorizationUse.State,
+			AuthorizationUsePendingState,
+			StringComparison.OrdinalIgnoreCase);
+	}
+
+	private static bool IsAuthorizationUseCommitted(FireSupportAuthorizationUseRecord authorizationUse)
+	{
+		return string.Equals(
+			authorizationUse.State,
+			AuthorizationUseCommittedState,
+			StringComparison.OrdinalIgnoreCase);
+	}
+
+	private static bool IsAuthorizationUseRefunded(FireSupportAuthorizationUseRecord authorizationUse)
+	{
+		return string.Equals(
+			authorizationUse.State,
+			AuthorizationUseRefundedState,
+			StringComparison.OrdinalIgnoreCase);
+	}
+
+	private static bool IsAuthorizationUseExpiredRefunded(FireSupportAuthorizationUseRecord authorizationUse)
+	{
+		return string.Equals(
+			authorizationUse.State,
+			AuthorizationUseExpiredRefundedState,
+			StringComparison.OrdinalIgnoreCase);
+	}
+
 	private static int GetPreparedReservationCountLocked(
 		FireSupportPlayerAuthorizations profile,
 		string service)
@@ -991,9 +1407,10 @@ public sealed class FireSupportAuthorizationLedger(
 		FireSupportPlayerAuthorizations profile,
 		string service)
 	{
-		long pending = profile.Pending.Values
+		long pending = profile.AuthorizationUses.Values
 			.Where(use =>
 				use != null &&
+				IsAuthorizationUsePending(use) &&
 				string.Equals(use.Service, service, StringComparison.OrdinalIgnoreCase))
 			.Sum(use => (long)Math.Max(0, use.Quantity));
 		return pending >= int.MaxValue ? int.MaxValue : (int)pending;
@@ -1092,14 +1509,17 @@ public enum PersistentPurchaseReplayStatus
 
 public sealed class FireSupportAuthorizationLedgerState
 {
-	public int SchemaVersion { get; set; } = 3;
+	public int SchemaVersion { get; set; } = 4;
 	public Dictionary<string, FireSupportPlayerAuthorizations> Profiles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 public sealed class FireSupportPlayerAuthorizations
 {
 	public Dictionary<string, int> Credits { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+	// Retained only so schema-3 ledger files can migrate their pending entries.
 	public Dictionary<string, FireSupportPendingAuthorizationUse> Pending { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+	public Dictionary<string, FireSupportAuthorizationUseRecord> AuthorizationUses { get; set; } =
+		new(StringComparer.OrdinalIgnoreCase);
 	public Dictionary<string, FireSupportPersistentPurchaseRecord> PersistentPurchases { get; set; } =
 		new(StringComparer.OrdinalIgnoreCase);
 	public List<FireSupportAuthorizationTransaction> Transactions { get; set; } = new();
@@ -1127,6 +1547,17 @@ public sealed class FireSupportPendingAuthorizationUse
 	public string Service { get; set; } = string.Empty;
 	public int Quantity { get; set; }
 	public DateTimeOffset CreatedUtc { get; set; }
+}
+
+public sealed class FireSupportAuthorizationUseRecord
+{
+	public string RequestId { get; set; } = string.Empty;
+	public string Service { get; set; } = string.Empty;
+	public int Quantity { get; set; }
+	public string State { get; set; } = string.Empty;
+	public DateTimeOffset CreatedUtc { get; set; }
+	public DateTimeOffset? CompletedUtc { get; set; }
+	public string Reason { get; set; } = string.Empty;
 }
 
 public sealed class FireSupportAuthorizationTransaction

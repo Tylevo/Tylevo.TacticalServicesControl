@@ -5,6 +5,28 @@ namespace SamSWAT.FireSupport.ArysReloaded.Unity;
 
 public sealed class A10HeadlessDamageExecutor : IA10StrikeExecutor
 {
+	public static bool TryPreflight(
+		A10StrikeRequest request,
+		out string reason)
+	{
+		A10HeadlessFikaMode mode =
+			FireSupportTuningSettings.GetA10HeadlessFikaMode();
+		if (mode == A10HeadlessFikaMode.Disabled)
+		{
+			reason = "HeadlessA10Disabled";
+			return false;
+		}
+
+		return A10DamageOnlyPass.TryPreflight(request, out reason);
+	}
+
+	public static UniTask<bool> ExecuteAcceptedAsync(
+		A10StrikeRequest request,
+		CancellationToken cancellationToken)
+	{
+		return A10DamageOnlyPass.ExecuteAsync(request, cancellationToken);
+	}
+
 	public async UniTask<bool> ExecuteAsync(A10StrikeRequest request, CancellationToken cancellationToken)
 	{
 		A10HeadlessFikaMode mode = FireSupportTuningSettings.GetA10HeadlessFikaMode();

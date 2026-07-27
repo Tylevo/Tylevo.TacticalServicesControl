@@ -30,6 +30,16 @@ public static class FikaIntegration
 {
 	private const int SettingsBroadcastDebounceMs = 250;
 	private const float ClientSettingsRetryDelaySeconds = 1.5f;
+	private const float ClientRequestRetryDelaySeconds = 4f;
+	private const float AuthorityRequestTimeoutSeconds = 20f;
+	private const float ClientRequestTimeoutSeconds = 30f;
+	private const float ClientCancelSettlementSeconds = 5f;
+	private const int MaxPendingClientRequests = 8;
+	private const int MaxInFlightAuthorityRequests = 128;
+	private const int MaxAuthorityRequestEntries = 512;
+	private const int MaxBufferedTracerBurstsPerRequest = 8;
+	private const int MaxSupportRequestIdLength = 96;
+	private const int MaxRequesterProfileIdLength = 128;
 	private const int MaxA10TracerSegmentsPerPacket = 20;
 	private static readonly bool RemotePhoneVisualSyncEnabled = false;
 
@@ -38,10 +48,11 @@ public static class FikaIntegration
 	private static FikaServer s_server;
 	private static FikaClient s_client;
 	private static readonly HashSet<object> s_registeredPacketManagers = new();
-	private static readonly object s_supportRequestGate = new();
-	private static readonly HashSet<string> s_inFlightSupportRequests = new(StringComparer.Ordinal);
-	private static readonly HashSet<string> s_completedSupportRequests = new(StringComparer.Ordinal);
-	private static readonly Queue<string> s_completedSupportRequestOrder = new();
+	private static readonly object s_networkRequestGate = new();
+	private static readonly Dictionary<string, ClientPendingRequest> s_pendingClientRequests = new(StringComparer.Ordinal);
+	private static readonly Dictionary<string, AuthorityRequestEntry> s_authorityRequests = new(StringComparer.Ordinal);
+	private static readonly Dictionary<string, SupportRequestFingerprint> s_acceptedClientEvents = new(StringComparer.Ordinal);
+	private static int s_inFlightAuthorityRequestCount;
 	private static int s_hostSettingsRevision;
 	private static int s_currentHostSettingsRevision;
 	private static bool s_hasHostSettingsOverride;
@@ -68,6 +79,8 @@ public static class FikaIntegration
 		FireSupportPayment.SettingsChanged += OnEffectiveSettingsChanged;
 		FireSupportExtraction.ExtractOverride = OnExtractOverride;
 		FikaEventDispatcher.SubscribeEvent<FikaNetworkManagerCreatedEvent>(OnFikaNetworkManagerCreated);
+		FikaEventDispatcher.SubscribeEvent<FikaGameEndedEvent>(OnFikaGameEnded);
+		FikaEventDispatcher.SubscribeEvent<PeerDisconnectedEvent>(OnPeerDisconnected);
 	}
 
 	public static void Disable()
@@ -87,6 +100,8 @@ public static class FikaIntegration
 		}
 		FireSupportPayment.SettingsChanged -= OnEffectiveSettingsChanged;
 		FikaEventDispatcher.UnsubscribeEvent<FikaNetworkManagerCreatedEvent>(OnFikaNetworkManagerCreated);
+		FikaEventDispatcher.UnsubscribeEvent<FikaGameEndedEvent>(OnFikaGameEnded);
+		FikaEventDispatcher.UnsubscribeEvent<PeerDisconnectedEvent>(OnPeerDisconnected);
 		s_settingsBroadcastDebounceCts?.Cancel();
 		s_settingsBroadcastDebounceCts?.Dispose();
 		s_settingsBroadcastDebounceCts = null;
@@ -94,7 +109,10 @@ public static class FikaIntegration
 		s_registeredPacketManagers.Clear();
 		s_server = null;
 		s_client = null;
-		ClearSupportRequestGates("plugin destroyed");
+		ResetNetworkRequestState(
+			"plugin destroyed",
+			FireSupportNetworkRequestResult.Cancel("FikaIntegrationDisabled"),
+			clearAuthorityOutcomes: true);
 		A10TracerNetworking.SetNetworkAuthorityActive(false, "plugin destroyed");
 		A10TracerNetworking.SetAuthorityRole(A10AuthorityRole.Singleplayer.ToString());
 		ClearHostAuthority("plugin destroyed");
@@ -103,12 +121,14 @@ public static class FikaIntegration
 
 	public static void OnUpdate()
 	{
+		bool disconnected = false;
 		try
 		{
 			if (A10TracerNetworking.IsNetworkAuthorityActive &&
 			    !FikaBackendUtils.IsServer &&
 			    !FikaBackendUtils.IsClient)
 			{
+				disconnected = true;
 				A10TracerNetworking.SetNetworkAuthorityActive(false, "Fika session disconnected");
 			}
 		}
@@ -116,8 +136,20 @@ public static class FikaIntegration
 		{
 			if (A10TracerNetworking.IsNetworkAuthorityActive)
 			{
+				disconnected = true;
 				A10TracerNetworking.SetNetworkAuthorityActive(false, "Fika state unavailable");
 			}
+		}
+
+		if (disconnected)
+		{
+			s_server = null;
+			s_client = null;
+			s_registeredPacketManagers.Clear();
+			ResetNetworkRequestState(
+				"Fika session disconnected",
+				FireSupportNetworkRequestResult.Cancel("FikaSessionDisconnected"),
+				clearAuthorityOutcomes: true);
 		}
 
 		if (!s_hasHostSettingsOverride)
@@ -143,16 +175,24 @@ public static class FikaIntegration
 		switch (@event.Manager)
 		{
 			case FikaServer server:
+				if (!ReferenceEquals(s_server, server) || s_client != null)
+				{
+					s_registeredPacketManagers.Clear();
+					ResetNetworkRequestState(
+						"hosting Fika session",
+						FireSupportNetworkRequestResult.Cancel("FikaManagerChanged"),
+						clearAuthorityOutcomes: true);
+				}
 				s_server = server;
 				s_client = null;
 				A10TracerNetworking.SetAuthorityRole(GetA10AuthorityRole().ToString());
 				A10TracerNetworking.SetNetworkAuthorityActive(true, "hosting Fika session");
 				A10AuthorityDiagnostics.LogOptionalVisualModsOnce();
-				ClearSupportRequestGates("hosting Fika session");
 				ClearHostAuthority("hosting Fika session");
 				if (TryMarkPacketRegistration(server, "server"))
 				{
 					server.RegisterPacket<FireSupportRequestPacket, NetPeer>(OnServerSupportRequest);
+					server.RegisterPacket<FireSupportCancelPacket, NetPeer>(OnServerSupportCancel);
 					server.RegisterPacket<FireSupportSettingsPacket, NetPeer>(OnServerSettingsRequest);
 					server.RegisterPacket<StartUavLoiterPacket, NetPeer>(OnServerStartUavLoiter);
 					server.RegisterPacket<A10TracerBurstPacket, NetPeer>(OnServerA10TracerBurst);
@@ -165,17 +205,25 @@ public static class FikaIntegration
 				BroadcastHostSettings("network manager created");
 				break;
 			case FikaClient client:
+				if (!ReferenceEquals(s_client, client) || s_server != null)
+				{
+					s_registeredPacketManagers.Clear();
+					ResetNetworkRequestState(
+						"joining Fika host",
+						FireSupportNetworkRequestResult.Cancel("FikaManagerChanged"),
+						clearAuthorityOutcomes: true);
+				}
 				s_client = client;
 				s_server = null;
 				A10TracerNetworking.SetAuthorityRole(A10AuthorityRole.FikaClient.ToString());
 				A10TracerNetworking.SetNetworkAuthorityActive(true, "joining Fika host");
 				A10AuthorityDiagnostics.LogOptionalVisualModsOnce();
-				ClearSupportRequestGates("joining Fika host");
 				ClearHostAuthority("joining Fika host");
 				FireSupportServerConfigClient.SetFikaClientHostAuthorityActive(true, "joining Fika host");
 				if (TryMarkPacketRegistration(client, "client"))
 				{
 					client.RegisterPacket<FireSupportRequestPacket>(OnClientSupportBroadcast);
+					client.RegisterPacket<FireSupportAuthorityResultPacket>(OnClientAuthorityResult);
 					client.RegisterPacket<FireSupportSettingsPacket>(OnClientSettingsResponse);
 					client.RegisterPacket<StartUavLoiterPacket>(OnClientStartUavLoiter);
 					client.RegisterPacket<A10TracerBurstPacket>(OnClientA10TracerBurst);
@@ -203,7 +251,7 @@ public static class FikaIntegration
 		return true;
 	}
 
-	private static bool OnLocalSupportRequested(
+	private static async UniTask<FireSupportNetworkRequestResult> OnLocalSupportRequested(
 		ESupportType supportType,
 		Vector3 position,
 		Vector3 direction,
@@ -211,11 +259,17 @@ public static class FikaIntegration
 		int visualSeed,
 		float durationSeconds,
 		int passIndex,
+		string supportRequestId,
 		CancellationToken cancellationToken)
 	{
 		if (!IsSupportedNetworkType(supportType))
 		{
-			return false;
+			return FireSupportNetworkRequestResult.NotHandled("UnsupportedNetworkType");
+		}
+
+		if (cancellationToken.IsCancellationRequested)
+		{
+			return FireSupportNetworkRequestResult.Cancel();
 		}
 
 		var packet = new FireSupportRequestPacket(
@@ -227,46 +281,605 @@ public static class FikaIntegration
 			durationSeconds,
 			passIndex,
 			GetLocalProfileId(),
-			Guid.NewGuid().ToString("N"));
+			supportRequestId);
 
 		if (FikaBackendUtils.IsServer)
 		{
-			ApplyHostAuthority(packet);
-			if (!TryBeginAuthorityRequest(packet, "local host request"))
-			{
-				return true;
-			}
-
-			ExecuteAuthoritySupport(packet, cancellationToken, playUavActivationVisual: true).Forget();
-			BroadcastSupportPacket(packet, peer: null, broadcastToAll: true, reason: "local host request");
-			return true;
+			return await ProcessAuthoritySupportRequestAsync(
+				packet,
+				peer: null,
+				cancellationToken,
+				playUavActivationVisual: true,
+				source: "local host request");
 		}
 
 		if (FikaBackendUtils.IsClient)
 		{
-			// Clients never create authoritative damage. They wait for the host/headless
-			// accepted/broadcast packet, then run local visual/UI playback only. Optional
-			// A-10 prediction remains behind a hidden diagnostics switch.
-			if (IsA10Type(packet.SupportType) &&
-			    FireSupportTuningSettings.IsA10ClientVisualPredictionEnabled())
+			return await SendClientSupportRequestAsync(packet, cancellationToken);
+		}
+
+		return FireSupportNetworkRequestResult.NotHandled("NoFikaSession");
+	}
+
+	private static async UniTask<FireSupportNetworkRequestResult> SendClientSupportRequestAsync(
+		FireSupportRequestPacket packet,
+		CancellationToken cancellationToken)
+	{
+		if (!TryValidateSupportRequest(packet, out string validationReason))
+		{
+			return FireSupportNetworkRequestResult.Reject(validationReason);
+		}
+
+		var fingerprint = new SupportRequestFingerprint(packet);
+		ClientPendingRequest pending;
+		bool created = false;
+		lock (s_networkRequestGate)
+		{
+			if (s_pendingClientRequests.TryGetValue(packet.SupportRequestId, out pending))
 			{
-				A10TracerNetworking.TrackLocalVisualPrediction(
-					packet.SupportRequestId,
-					packet.SupportType,
-					packet.VisualSeed,
-					packet.PassIndex,
-					packet.Position,
-					cancellationToken);
-				ExecuteClientSupportVisual(packet, cancellationToken, playUavActivationVisual: true).Forget();
+				if (!pending.Fingerprint.Equals(fingerprint))
+				{
+					return FireSupportNetworkRequestResult.Reject("RequestIdPayloadMismatch");
+				}
+			}
+			else
+			{
+				if (s_pendingClientRequests.Count >= MaxPendingClientRequests)
+				{
+					return FireSupportNetworkRequestResult.Reject("TooManyPendingClientRequests");
+				}
+
+				pending = new ClientPendingRequest(fingerprint);
+				s_pendingClientRequests.Add(packet.SupportRequestId, pending);
+				created = true;
+			}
+		}
+
+		if (created)
+		{
+			if (!TrySendClientSupportPacket(packet, "initial request"))
+			{
+				pending.TrySetResult(
+					FireSupportNetworkRequestResult.Reject("FikaClientUnavailable"));
+			}
+			else
+			{
+				RetryClientSupportRequestAsync(packet, pending, cancellationToken).Forget();
+			}
+		}
+
+		using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+		timeoutCts.CancelAfter(TimeSpan.FromSeconds(ClientRequestTimeoutSeconds));
+		try
+		{
+			FireSupportNetworkRequestResult result =
+				await pending.Completion.Task.AttachExternalCancellation(timeoutCts.Token);
+			return result;
+		}
+		catch (OperationCanceledException)
+		{
+			if (pending.TryGetResult(out FireSupportNetworkRequestResult completed))
+			{
+				return completed;
+			}
+
+			bool callerCancelled = cancellationToken.IsCancellationRequested;
+			TrySendClientCancelPacket(
+				packet,
+				callerCancelled ? "caller cancellation" : "client timeout");
+
+			// Cancellation is authority-arbitrated. Give the host a bounded chance
+			// to either cancel the in-flight executor or replay an Accepted result
+			// that won the race before the cancel packet arrived.
+			using var settlementCts = new CancellationTokenSource(
+				TimeSpan.FromSeconds(ClientCancelSettlementSeconds));
+			try
+			{
+				return await pending.Completion.Task.AttachExternalCancellation(
+					settlementCts.Token);
+			}
+			catch (OperationCanceledException)
+			{
+				if (pending.TryGetResult(out completed))
+				{
+					return completed;
+				}
+			}
+
+			FireSupportNetworkRequestResult unsettled = callerCancelled
+				? FireSupportNetworkRequestResult.Cancel("AuthorityCancelUnsettled")
+				: FireSupportNetworkRequestResult.Timeout("AuthorityCancelUnsettled");
+			pending.TrySetResult(unsettled);
+			return pending.TryGetResult(out completed) ? completed : unsettled;
+		}
+		finally
+		{
+			lock (s_networkRequestGate)
+			{
+				if (s_pendingClientRequests.TryGetValue(packet.SupportRequestId, out ClientPendingRequest current) &&
+				    ReferenceEquals(current, pending))
+				{
+					s_pendingClientRequests.Remove(packet.SupportRequestId);
+				}
+			}
+		}
+	}
+
+	private static bool TrySendClientSupportPacket(FireSupportRequestPacket packet, string reason)
+	{
+		try
+		{
+			FikaClient client = s_client ?? Singleton<FikaClient>.Instance;
+			if (client == null)
+			{
+				return false;
 			}
 
 			TscDiagnostics.LogFika(
-				$"TSC Fika support request sent type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)}; waiting for host authority.");
-			Singleton<FikaClient>.Instance.SendData(ref packet, DeliveryMethod.ReliableOrdered);
+				$"TSC Fika support request sent type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} reason={reason}; waiting for host authority.");
+			client.SendData(ref packet, DeliveryMethod.ReliableOrdered);
 			return true;
 		}
+		catch (Exception ex)
+		{
+			s_logSource?.LogWarning(
+				$"TSC Fika support request send failed type={packet?.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet?.SupportRequestId)} reason={reason}. {ex}");
+			return false;
+		}
+	}
 
-		return false;
+	private static bool TrySendClientCancelPacket(
+		FireSupportRequestPacket request,
+		string reason)
+	{
+		try
+		{
+			FikaClient client = s_client ?? Singleton<FikaClient>.Instance;
+			if (client == null)
+			{
+				return false;
+			}
+
+			var packet = new FireSupportCancelPacket(request);
+			client.SendData(ref packet, DeliveryMethod.ReliableOrdered);
+			TscDiagnostics.LogFika(
+				$"TSC Fika support cancellation sent type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} reason={reason}; awaiting authority settlement.");
+			return true;
+		}
+		catch (Exception ex)
+		{
+			s_logSource?.LogWarning(
+				$"TSC Fika support cancellation send failed type={request?.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(request?.SupportRequestId)} reason={reason}. {ex}");
+			return false;
+		}
+	}
+
+	private static async UniTaskVoid RetryClientSupportRequestAsync(
+		FireSupportRequestPacket packet,
+		ClientPendingRequest pending,
+		CancellationToken cancellationToken)
+	{
+		try
+		{
+			await UniTask.WaitForSeconds(
+				ClientRequestRetryDelaySeconds,
+				cancellationToken: cancellationToken);
+
+			lock (s_networkRequestGate)
+			{
+				if (pending.IsCompleted ||
+				    !s_pendingClientRequests.TryGetValue(packet.SupportRequestId, out ClientPendingRequest current) ||
+				    !ReferenceEquals(current, pending))
+				{
+					return;
+				}
+			}
+
+			TrySendClientSupportPacket(packet, "single retry");
+		}
+		catch (OperationCanceledException)
+		{
+		}
+		catch (Exception ex)
+		{
+			s_logSource?.LogWarning(
+				$"TSC Fika support request retry failed requestId={A10AuthorityDiagnostics.FormatRequestId(packet?.SupportRequestId)}. {ex}");
+		}
+	}
+
+	private static async UniTask<FireSupportNetworkRequestResult> ProcessAuthoritySupportRequestAsync(
+		FireSupportRequestPacket receivedPacket,
+		NetPeer peer,
+		CancellationToken cancellationToken,
+		bool playUavActivationVisual,
+		string source)
+	{
+		if (!TryValidateSupportRequest(receivedPacket, out string validationReason))
+		{
+			FireSupportNetworkRequestResult invalid =
+				FireSupportNetworkRequestResult.Reject(validationReason);
+			TrySendAuthorityResult(
+				peer,
+				new FireSupportAuthorityResultPacket(
+					receivedPacket,
+					accepted: false,
+					validationReason),
+				$"invalid {source}");
+			return invalid;
+		}
+
+		FireSupportRequestPacket request = CloneSupportRequest(receivedPacket);
+		var fingerprint = new SupportRequestFingerprint(request);
+		AuthorityRequestEntry entry;
+		bool created = false;
+		string immediateRejectReason = string.Empty;
+
+		lock (s_networkRequestGate)
+		{
+			if (s_authorityRequests.TryGetValue(request.SupportRequestId, out entry))
+			{
+				if (!entry.Fingerprint.Equals(fingerprint))
+				{
+					immediateRejectReason = "RequestIdPayloadMismatch";
+				}
+				else if (!entry.IsOwnedBy(peer))
+				{
+					immediateRejectReason = "RequestIdPeerMismatch";
+				}
+			}
+			else if (s_authorityRequests.Count >= MaxAuthorityRequestEntries)
+			{
+				// Never evict a terminal request ID during the raid. Once the
+				// bounded table is full, unknown IDs are rejected so a late replay
+				// cannot be admitted as fresh work after its original rejection.
+				immediateRejectReason = "AuthorityRequestCapacityReached";
+				entry = null;
+			}
+			else if (s_inFlightAuthorityRequestCount >= MaxInFlightAuthorityRequests)
+			{
+				immediateRejectReason = "TooManyInFlightAuthorityRequests";
+				// This rejection is transient at the authority level, but it is
+				// terminal for this request ID. Cache it so a retry cannot execute
+				// after the requester has already observed the rejection/refund.
+				entry = new AuthorityRequestEntry(
+					request,
+					fingerprint,
+					peer,
+					cancellationToken);
+				entry.TryComplete(
+					AuthorityOutcome.Rejected(
+						request,
+						immediateRejectReason));
+				entry.MarkAuthorityWorkFinished();
+				s_authorityRequests.Add(request.SupportRequestId, entry);
+			}
+			else
+			{
+				entry = new AuthorityRequestEntry(
+					request,
+					fingerprint,
+					peer,
+					cancellationToken);
+				s_authorityRequests.Add(request.SupportRequestId, entry);
+				s_inFlightAuthorityRequestCount++;
+				created = true;
+			}
+		}
+
+		if (!string.IsNullOrEmpty(immediateRejectReason))
+		{
+			var rejectionPacket = new FireSupportAuthorityResultPacket(
+				request,
+				accepted: false,
+				immediateRejectReason);
+			TrySendAuthorityResult(peer, rejectionPacket, $"rejected {source}");
+			return FireSupportNetworkRequestResult.Reject(immediateRejectReason);
+		}
+
+		if (!created)
+		{
+			AuthorityOutcome replay = await entry.Completion.Task;
+			ReplayAuthorityOutcome(entry, replay, peer, source);
+			return replay.Result;
+		}
+
+		try
+		{
+			AuthorityOutcome outcome = await ExecuteAuthorityRequestAsync(
+				entry,
+				playUavActivationVisual,
+				source);
+			if (TryPublishAuthorityOutcome(entry, outcome, source))
+			{
+				return outcome.Result;
+			}
+
+			return entry.TryGetOutcome(out AuthorityOutcome completed)
+				? completed.Result
+				: FireSupportNetworkRequestResult.Cancel("AuthorityRequestReset");
+		}
+		finally
+		{
+			entry.MarkAuthorityWorkFinished();
+		}
+	}
+
+	private static async UniTask<AuthorityOutcome> ExecuteAuthorityRequestAsync(
+		AuthorityRequestEntry entry,
+		bool playUavActivationVisual,
+		string source)
+	{
+		FireSupportRequestPacket request = CloneSupportRequest(entry.Request);
+
+		try
+		{
+			// Cache requester-identity failures in the same authority entry as
+			// every other admitted outcome. Otherwise a request rejected while
+			// Fika is still binding peer.Player could be replayed later with the
+			// same ID and execute after the requester has already refunded it.
+			if (!TryValidateRequesterPeer(
+				    request,
+				    entry.OriginPeer,
+				    out string requesterValidationReason))
+			{
+				return AuthorityOutcome.Rejected(
+					request,
+					requesterValidationReason);
+			}
+
+			ApplyHostAuthority(request);
+
+			if (entry.CancellationToken.IsCancellationRequested)
+			{
+				return AuthorityOutcome.Rejected(request, entry.CancellationReason);
+			}
+
+			if (Singleton<GameWorld>.Instance == null)
+			{
+				return AuthorityOutcome.Rejected(request, "RaidUnavailable");
+			}
+
+			if (!FireSupportServiceAvailability.IsServiceEnabled(request.SupportType))
+			{
+				return AuthorityOutcome.Rejected(request, "ServiceDisabled");
+			}
+
+			if (IsA10Type(request.SupportType) &&
+			    IsFikaHeadlessHost() &&
+			    FireSupportTuningSettings.GetA10HeadlessFikaMode() == A10HeadlessFikaMode.Disabled)
+			{
+				return AuthorityOutcome.Rejected(request, "HeadlessA10Disabled");
+			}
+
+			if (IsA10Type(request.SupportType) && IsFikaHeadlessHost())
+			{
+				A10StrikeRequest strikeRequest = CreateA10StrikeRequest(
+					request,
+					visualOnly: false,
+					A10AuthorityRole.FikaHeadlessHost);
+				if (!A10HeadlessDamageExecutor.TryPreflight(
+					    strikeRequest,
+					    out string preflightReason))
+				{
+					return AuthorityOutcome.Rejected(
+						request,
+						string.IsNullOrWhiteSpace(preflightReason)
+							? "HeadlessA10PreflightRejected"
+							: preflightReason);
+				}
+
+				if (entry.CancellationToken.IsCancellationRequested)
+				{
+					return AuthorityOutcome.Rejected(
+						request,
+						entry.CancellationReason);
+				}
+
+				// The irreversible damage pass is launched only after
+				// TryPublishAuthorityOutcome wins Accepted and publishes the
+				// canonical start payload.
+				return AuthorityOutcome.Accepted(request);
+			}
+
+			if (!IsUavType(request.SupportType))
+			{
+				// Asset/pool initialization can yield, but it has no support
+				// side effects. Keep the request cancellable during that work
+				// and move the irreversible execution-start boundary to the
+				// short ProcessRequest invocation that follows.
+				await FireSupportRuntime.EnsureInitialized();
+				if (entry.CancellationToken.IsCancellationRequested)
+				{
+					return AuthorityOutcome.Rejected(
+						request,
+						entry.CancellationReason);
+				}
+			}
+
+			lock (s_networkRequestGate)
+			{
+				if (!entry.TryBeginExecution())
+				{
+					if (entry.TryGetOutcome(
+						    out AuthorityOutcome terminalOutcome))
+					{
+						return terminalOutcome;
+					}
+
+					return AuthorityOutcome.Rejected(
+						request,
+						"AuthorityExecutionStartRejected");
+				}
+			}
+
+			bool success;
+			try
+			{
+				success = await ExecuteSupportCore(
+					request,
+					visualOnly: false,
+					entry.CancellationToken,
+					playUavActivationVisual);
+			}
+			finally
+			{
+				entry.MarkAuthorityWorkFinished();
+			}
+
+			if (success)
+			{
+				return AuthorityOutcome.Accepted(request);
+			}
+
+			return AuthorityOutcome.Rejected(
+				request,
+				entry.CancellationToken.IsCancellationRequested
+					? entry.CancellationReason
+					: "ExecutorRejected");
+		}
+		catch (OperationCanceledException)
+		{
+			return AuthorityOutcome.Rejected(request, entry.CancellationReason);
+		}
+		catch (Exception ex)
+		{
+			s_logSource?.LogWarning(
+				$"TSC Fika authority execution failed type={request.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(request.SupportRequestId)} source={source}. {ex}");
+			return AuthorityOutcome.Rejected(request, "AuthorityExecutionFailed");
+		}
+	}
+
+	private static bool TryPublishAuthorityOutcome(
+		AuthorityRequestEntry entry,
+		AuthorityOutcome outcome,
+		string source)
+	{
+		bool startAcceptedHeadlessA10 = false;
+		lock (s_networkRequestGate)
+		{
+			if (!entry.TryComplete(outcome))
+			{
+				return false;
+			}
+
+			s_inFlightAuthorityRequestCount = Math.Max(0, s_inFlightAuthorityRequestCount - 1);
+
+			if (outcome.Result.Accepted &&
+			    IsA10Type(outcome.AcceptedRequest.SupportType) &&
+			    IsFikaHeadlessHost())
+			{
+				startAcceptedHeadlessA10 =
+					entry.TryReserveAcceptedBackgroundWork();
+			}
+		}
+
+		TrySendAuthorityResult(entry.OriginPeer, outcome.ResultPacket, source);
+		if (outcome.Result.Accepted)
+		{
+			BroadcastSupportPacket(
+				outcome.AcceptedRequest,
+				entry.OriginPeer,
+				broadcastToAll: true,
+				reason: $"authority accepted {source}");
+		}
+
+		List<A10TracerBurst> bufferedTracerBursts =
+			entry.MarkAcceptedDeliveryPublishedAndDrainTracerBursts();
+		foreach (A10TracerBurst burst in bufferedTracerBursts)
+		{
+			BroadcastA10TracerBurst(burst, "after authority accepted delivery");
+		}
+
+		if (startAcceptedHeadlessA10)
+		{
+			ExecuteAcceptedHeadlessA10PassAsync(
+					outcome.AcceptedRequest,
+					entry)
+				.Forget();
+		}
+
+		TscDiagnostics.LogFika(
+			$"TSC Fika authority completed support request type={entry.Request.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(entry.Request.SupportRequestId)} accepted={outcome.Result.Accepted} reason={outcome.Result.Reason} source={source}");
+		return true;
+	}
+
+	private static void ReplayAuthorityOutcome(
+		AuthorityRequestEntry entry,
+		AuthorityOutcome outcome,
+		NetPeer peer,
+		string source)
+	{
+		TscDiagnostics.LogFika(
+			$"TSC Fika duplicate support request converged type={entry.Request.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(entry.Request.SupportRequestId)} accepted={outcome.Result.Accepted} source={source}");
+		TrySendAuthorityResult(peer, outcome.ResultPacket, $"duplicate replay {source}");
+		if (peer != null && outcome.Result.Accepted)
+		{
+			SendAcceptedSupportToPeer(
+				outcome.AcceptedRequest,
+				peer,
+				$"duplicate replay {source}");
+		}
+	}
+
+	private static bool TrySendAuthorityResult(
+		NetPeer peer,
+		FireSupportAuthorityResultPacket packet,
+		string reason)
+	{
+		if (peer == null)
+		{
+			return false;
+		}
+
+		try
+		{
+			FikaServer server = GetServer();
+			if (server == null)
+			{
+				return false;
+			}
+
+			server.SendData(
+				ref packet,
+				DeliveryMethod.ReliableOrdered,
+				peer);
+			TscDiagnostics.LogFika(
+				$"TSC Fika authority result sent type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} accepted={packet.Accepted} reason={packet.Reason} sendReason={reason}");
+			return true;
+		}
+		catch (Exception ex)
+		{
+			s_logSource?.LogWarning(
+				$"TSC Fika authority result send failed requestId={A10AuthorityDiagnostics.FormatRequestId(packet?.SupportRequestId)} reason={reason}. {ex}");
+			return false;
+		}
+	}
+
+	private static void SendAcceptedSupportToPeer(
+		FireSupportRequestPacket packet,
+		NetPeer peer,
+		string reason)
+	{
+		try
+		{
+			FikaServer server = GetServer();
+			if (server == null || peer == null)
+			{
+				return;
+			}
+
+			server.SendData(
+				ref packet,
+				DeliveryMethod.ReliableOrdered,
+				peer);
+			TscDiagnostics.LogFika(
+				$"TSC Fika accepted support replay sent type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} reason={reason}");
+		}
+		catch (Exception ex)
+		{
+			s_logSource?.LogWarning(
+				$"TSC Fika accepted support replay failed requestId={A10AuthorityDiagnostics.FormatRequestId(packet?.SupportRequestId)} reason={reason}. {ex}");
+		}
 	}
 
 	private static bool OnLocalUavLoiterRequested(
@@ -356,43 +969,235 @@ public static class FikaIntegration
 
 	private static void OnServerSupportRequest(FireSupportRequestPacket packet, NetPeer peer)
 	{
-		CancellationToken cancellationToken = GetRaidCancellationToken();
-
-		packet?.EnsureRequestId();
 		if (packet == null)
 		{
 			return;
 		}
 
-		ApplyHostAuthority(packet);
-		if (!FireSupportServiceAvailability.IsServiceEnabled(packet.SupportType))
+		ProcessAuthoritySupportRequestAsync(
+				packet,
+				peer,
+				GetRaidCancellationToken(),
+				playUavActivationVisual: false,
+				source: "client request")
+			.Forget();
+	}
+
+	private static void OnServerSupportCancel(
+		FireSupportCancelPacket packet,
+		NetPeer peer)
+	{
+		ProcessAuthorityCancelAsync(packet, peer).Forget();
+	}
+
+	private static async UniTaskVoid ProcessAuthorityCancelAsync(
+		FireSupportCancelPacket packet,
+		NetPeer peer)
+	{
+		if (packet == null)
 		{
-			s_logSource?.LogWarning(
-				$"TSC Fika settings: ignored disabled support request type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)}");
 			return;
 		}
 
-		if (!TryBeginAuthorityRequest(packet, "client request"))
+		AuthorityRequestEntry entry = null;
+		AuthorityOutcome outcome = default;
+		string rejectReason = string.Empty;
+		bool cancelWon = false;
+		bool awaitStartedExecution = false;
+		lock (s_networkRequestGate)
 		{
+			if (string.IsNullOrWhiteSpace(packet.SupportRequestId) ||
+			    !s_authorityRequests.TryGetValue(packet.SupportRequestId, out entry))
+			{
+				rejectReason = "CancelRequestUnknown";
+			}
+			else if (!entry.IsOwnedBy(peer))
+			{
+				rejectReason = "CancelPeerMismatch";
+			}
+			else if (!entry.Fingerprint.MatchesCancel(packet))
+			{
+				rejectReason = "CancelIdentityMismatch";
+			}
+			else if (entry.ExecutionStarted &&
+			         !entry.TryGetOutcome(out outcome))
+			{
+				// Starting a runtime is the irreversible commit point for
+				// human-host A-10, extraction, and UAV. Cancellation after this
+				// point waits for the executor result and cannot manufacture a
+				// refund while the effect is live.
+				awaitStartedExecution = true;
+			}
+			else if (!entry.TryGetOutcome(out outcome))
+			{
+				outcome = AuthorityOutcome.FromResult(
+					entry.Request,
+					FireSupportNetworkRequestResult.Cancel("RequesterCancelled"));
+				cancelWon = entry.TryCancelAndComplete(
+					outcome,
+					"RequesterCancelled");
+				if (cancelWon)
+				{
+					s_inFlightAuthorityRequestCount =
+						Math.Max(0, s_inFlightAuthorityRequestCount - 1);
+				}
+				else
+				{
+					entry.TryGetOutcome(out outcome);
+				}
+			}
+		}
+
+		if (!string.IsNullOrEmpty(rejectReason))
+		{
+			FireSupportRequestPacket cancelIdentity = CreateRequestFromCancel(packet);
+			TrySendAuthorityResult(
+				peer,
+				new FireSupportAuthorityResultPacket(
+					cancelIdentity,
+					accepted: false,
+					rejectReason),
+				"cancel rejected");
 			return;
 		}
 
-		ExecuteAuthoritySupport(packet, cancellationToken, playUavActivationVisual: false).Forget();
-		bool broadcastToAll = IsA10Type(packet.SupportType) ||
-		                      IsExtractionType(packet.SupportType) ||
-		                      IsUavType(packet.SupportType);
-		BroadcastSupportPacket(packet, peer, broadcastToAll, "host accepted client request");
+		if (awaitStartedExecution)
+		{
+			outcome = await entry.Completion.Task;
+		}
+
+		if (entry == null || outcome.Result.State == FireSupportNetworkRequestState.NotHandled)
+		{
+			TrySendAuthorityResult(
+				peer,
+				new FireSupportAuthorityResultPacket(
+					CreateRequestFromCancel(packet),
+					accepted: false,
+					"CancelSettlementUnavailable"),
+				"cancel settlement unavailable");
+			return;
+		}
+
+		TscDiagnostics.LogFika(
+			$"TSC Fika authority cancellation settled type={entry.Request.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(entry.Request.SupportRequestId)} cancelWon={cancelWon} accepted={outcome.Result.Accepted} reason={outcome.Result.Reason}");
+		ReplayAuthorityOutcome(
+			entry,
+			outcome,
+			peer,
+			cancelWon ? "client cancellation accepted" : "client cancellation lost terminal race");
 	}
 
 	private static void OnClientSupportBroadcast(FireSupportRequestPacket packet)
 	{
-		packet?.EnsureRequestId();
 		if (packet == null)
 		{
 			return;
 		}
 
+		if (!TryRegisterClientSupportEvent(
+			    packet,
+			    out bool shouldPlay,
+			    out string rejectReason))
+		{
+			TscDiagnostics.LogFika(
+				$"TSC Fika accepted support event ignored type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} reason={rejectReason}");
+			return;
+		}
+
+		CompleteClientRequestFromAcceptedEvent(packet);
+		if (!shouldPlay)
+		{
+			TscDiagnostics.LogFika(
+				$"TSC Fika duplicate accepted support event converged type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)}");
+			return;
+		}
+
 		ExecuteClientSupportVisual(packet, GetRaidCancellationToken(), playUavActivationVisual: false).Forget();
+	}
+
+	private static void OnClientAuthorityResult(FireSupportAuthorityResultPacket packet)
+	{
+		if (packet == null || string.IsNullOrWhiteSpace(packet.SupportRequestId))
+		{
+			return;
+		}
+
+		ClientPendingRequest pending = null;
+		lock (s_networkRequestGate)
+		{
+			if (s_pendingClientRequests.TryGetValue(packet.SupportRequestId, out pending) &&
+			    !pending.Fingerprint.MatchesResult(packet))
+			{
+				s_logSource?.LogWarning(
+					$"TSC Fika authority result identity mismatch requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)}");
+				pending.TrySetResult(
+					FireSupportNetworkRequestResult.Reject("AuthorityResultIdentityMismatch"));
+				return;
+			}
+		}
+
+		if (!packet.Accepted)
+		{
+			if (pending == null)
+			{
+				TscDiagnostics.LogFika(
+					$"TSC Fika late rejected authority result ignored type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} reason={packet.Reason}");
+				return;
+			}
+
+			pending.TrySetResult(MapAuthorityRejection(packet.Reason));
+			return;
+		}
+
+		FireSupportRequestPacket acceptedRequest = packet.ToSupportRequest();
+		if (pending != null &&
+		    !pending.Fingerprint.MatchesAcceptedRequest(acceptedRequest))
+		{
+			s_logSource?.LogWarning(
+				$"TSC Fika accepted authority payload mismatch requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)}");
+			pending.TrySetResult(
+				FireSupportNetworkRequestResult.Reject(
+					"AuthorityAcceptedPayloadMismatch"));
+			return;
+		}
+
+		if (!TryRegisterClientSupportEvent(
+			    acceptedRequest,
+			    out bool shouldPlay,
+			    out string rejectReason))
+		{
+			s_logSource?.LogWarning(
+				$"TSC Fika accepted authority payload rejected requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} reason={rejectReason}");
+			pending?.TrySetResult(
+				FireSupportNetworkRequestResult.Reject(
+					"AuthorityAcceptedPayloadInvalid"));
+			return;
+		}
+
+		// Register the canonical payload before completing the purchase waiter.
+		// This result packet is sufficient to start the requester visual even if
+		// the following accepted-event broadcast is lost.
+		if (shouldPlay)
+		{
+			ExecuteClientSupportVisual(
+					acceptedRequest,
+					GetRaidCancellationToken(),
+					playUavActivationVisual: false)
+				.Forget();
+		}
+
+		if (pending == null)
+		{
+			TscDiagnostics.LogFika(
+				$"TSC Fika late accepted authority result registered type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} visualStarted={shouldPlay}");
+			return;
+		}
+
+		pending.TrySetResult(
+			FireSupportNetworkRequestResult.Accept(
+				string.IsNullOrWhiteSpace(packet.Reason)
+					? "AuthorityAccepted"
+					: packet.Reason));
 	}
 
 	private static void OnServerStartUavLoiter(StartUavLoiterPacket packet, NetPeer peer)
@@ -491,21 +1296,72 @@ public static class FikaIntegration
 				return;
 			}
 
+			if (!string.IsNullOrWhiteSpace(burst.SupportRequestId))
+			{
+				string disposition = string.Empty;
+				bool handled = false;
+				lock (s_networkRequestGate)
+				{
+					if (s_authorityRequests.TryGetValue(
+						    burst.SupportRequestId,
+						    out AuthorityRequestEntry entry))
+					{
+						handled = entry.TryBufferTracerBurst(
+							burst,
+							out disposition);
+					}
+				}
+
+				if (handled)
+				{
+					TscDiagnostics.LogFika(
+						$"A-10 tracer sync held requestId={A10AuthorityDiagnostics.FormatRequestId(burst.SupportRequestId)} burst={burst.BurstId} disposition={disposition}");
+					return;
+				}
+			}
+
+			BroadcastA10TracerBurst(burst, "authority already accepted");
+		}
+		catch (Exception ex)
+		{
+			s_logSource?.LogWarning($"A-10 tracer sync broadcast failed. {ex}");
+		}
+	}
+
+	private static void BroadcastA10TracerBurst(
+		A10TracerBurst burst,
+		string reason)
+	{
+		try
+		{
+			if (burst?.Segments == null || burst.Segments.Length == 0)
+			{
+				return;
+			}
+
 			FikaServer server = GetServer();
 			if (server == null)
 			{
 				s_logSource?.LogWarning(
-					$"A-10 tracer sync skipped; server unavailable burst={burst?.BurstId ?? 0}");
+					$"A-10 tracer sync skipped; server unavailable burst={burst.BurstId}");
 				return;
 			}
 
 			int totalSegments = burst.Segments.Length;
-			for (int offset = 0; offset < totalSegments; offset += MaxA10TracerSegmentsPerPacket)
+			for (int offset = 0;
+			     offset < totalSegments;
+			     offset += MaxA10TracerSegmentsPerPacket)
 			{
-				int count = Math.Min(MaxA10TracerSegmentsPerPacket, totalSegments - offset);
+				int count = Math.Min(
+					MaxA10TracerSegmentsPerPacket,
+					totalSegments - offset);
 				var chunk = new A10TracerSegment[count];
 				Array.Copy(burst.Segments, offset, chunk, 0, count);
-				var packet = new A10TracerBurstPacket(burst, offset, totalSegments, chunk);
+				var packet = new A10TracerBurstPacket(
+					burst,
+					offset,
+					totalSegments,
+					chunk);
 				server.SendData(
 					ref packet,
 					DeliveryMethod.ReliableOrdered,
@@ -513,11 +1369,12 @@ public static class FikaIntegration
 			}
 
 			TscDiagnostics.LogFika(
-				$"A-10 tracer sync: broadcast burst={burst.BurstId} pass={burst.PassIndex} segments={totalSegments}");
+				$"A-10 tracer sync: broadcast burst={burst.BurstId} requestId={A10AuthorityDiagnostics.FormatRequestId(burst.SupportRequestId)} pass={burst.PassIndex} segments={totalSegments} reason={reason}");
 		}
 		catch (Exception ex)
 		{
-			s_logSource?.LogWarning($"A-10 tracer sync broadcast failed. {ex}");
+			s_logSource?.LogWarning(
+				$"A-10 tracer sync broadcast failed burst={burst?.BurstId ?? 0} reason={reason}. {ex}");
 		}
 	}
 
@@ -818,28 +1675,46 @@ public static class FikaIntegration
 		}
 	}
 
-	private static async UniTaskVoid ExecuteAuthoritySupport(
-		FireSupportRequestPacket packet,
-		CancellationToken cancellationToken,
-		bool playUavActivationVisual)
-	{
-		bool success = false;
-		try
-		{
-			success = await ExecuteSupportCore(packet, visualOnly: false, cancellationToken, playUavActivationVisual);
-		}
-		finally
-		{
-			MarkAuthorityRequestComplete(packet, success);
-		}
-	}
-
 	private static async UniTaskVoid ExecuteClientSupportVisual(
 		FireSupportRequestPacket packet,
 		CancellationToken cancellationToken,
 		bool playUavActivationVisual)
 	{
 		await ExecuteSupportCore(packet, visualOnly: true, cancellationToken, playUavActivationVisual);
+	}
+
+	private static async UniTaskVoid ExecuteAcceptedHeadlessA10PassAsync(
+		FireSupportRequestPacket packet,
+		AuthorityRequestEntry entry)
+	{
+		CancellationToken cancellationToken = entry.CancellationToken;
+		try
+		{
+			A10StrikeRequest request = CreateA10StrikeRequest(
+				packet,
+				visualOnly: false,
+				A10AuthorityRole.FikaHeadlessHost);
+			bool success = await A10HeadlessDamageExecutor.ExecuteAcceptedAsync(
+				request,
+				cancellationToken);
+			if (!success && !cancellationToken.IsCancellationRequested)
+			{
+				s_logSource?.LogWarning(
+					$"TSC Fika accepted headless A-10 pass ended without firing type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} pass={packet.PassIndex}.");
+			}
+		}
+		catch (OperationCanceledException)
+		{
+		}
+		catch (Exception ex)
+		{
+			s_logSource?.LogWarning(
+				$"TSC Fika accepted headless A-10 pass failed type={packet?.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet?.SupportRequestId)}. {ex}");
+		}
+		finally
+		{
+			entry.MarkAuthorityWorkFinished();
+		}
 	}
 
 	private static async UniTask<bool> ExecuteSupportCore(
@@ -892,19 +1767,10 @@ public static class FikaIntegration
 		if (IsA10Type(packet.SupportType))
 		{
 			A10AuthorityRole role = visualOnly ? A10AuthorityRole.FikaClient : GetA10AuthorityRole();
-			var request = new A10StrikeRequest
-			{
-				SupportRequestId = packet.SupportRequestId,
-				SupportType = packet.SupportType,
-				Position = packet.Position,
-				Direction = packet.Direction,
-				Rotation = packet.Rotation,
-				VisualSeed = packet.VisualSeed,
-				PassIndex = packet.PassIndex,
-				RequesterProfileId = packet.RequesterProfileId,
-				VisualOnly = visualOnly,
-				Role = role
-			};
+			A10StrikeRequest request = CreateA10StrikeRequest(
+				packet,
+				visualOnly,
+				role);
 
 			success = await A10StrikeExecutorSelector.ExecuteAsync(request, cancellationToken);
 		}
@@ -923,10 +1789,42 @@ public static class FikaIntegration
 
 		if (success && IsExtractionType(packet.SupportType) && !visualOnly)
 		{
-			FireSupportAudio.Instance.PlayVoiceover(EVoiceoverType.SupportHeliArrivingToPickup);
+			try
+			{
+				FireSupportAudio.Instance?.PlayVoiceover(
+					EVoiceoverType.SupportHeliArrivingToPickup);
+			}
+			catch (Exception ex)
+			{
+				// The helicopter runtime has already accepted the request. A
+				// presentation failure must not convert live extraction into a
+				// rejected/refunded authority outcome.
+				s_logSource?.LogWarning(
+					$"TSC Fika extraction arrival voiceover failed after executor acceptance. {ex}");
+			}
 		}
 
 		return success;
+	}
+
+	private static A10StrikeRequest CreateA10StrikeRequest(
+		FireSupportRequestPacket packet,
+		bool visualOnly,
+		A10AuthorityRole role)
+	{
+		return new A10StrikeRequest
+		{
+			SupportRequestId = packet.SupportRequestId,
+			SupportType = packet.SupportType,
+			Position = packet.Position,
+			Direction = packet.Direction,
+			Rotation = packet.Rotation,
+			VisualSeed = packet.VisualSeed,
+			PassIndex = packet.PassIndex,
+			RequesterProfileId = packet.RequesterProfileId,
+			VisualOnly = visualOnly,
+			Role = role
+		};
 	}
 
 	private static bool TrySendA10HeadlessDamageCommand(A10HeadlessDamageCommand command, out string reason)
@@ -991,83 +1889,361 @@ public static class FikaIntegration
 
 	private static void BroadcastSupportPacket(FireSupportRequestPacket packet, NetPeer peer, bool broadcastToAll, string reason)
 	{
-		FikaServer server = GetServer();
-		if (server == null)
+		try
 		{
-			s_logSource?.LogWarning($"TSC Fika support broadcast skipped; server unavailable type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} reason={reason}");
-			return;
-		}
+			FikaServer server = GetServer();
+			if (server == null)
+			{
+				s_logSource?.LogWarning($"TSC Fika support broadcast skipped; server unavailable type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} reason={reason}");
+				return;
+			}
 
-		if (broadcastToAll)
+			if (broadcastToAll)
+			{
+				TscDiagnostics.LogFika($"TSC Fika support broadcast to all clients type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} reason={reason}");
+				server.SendData(ref packet, DeliveryMethod.ReliableOrdered, broadcast: true);
+				return;
+			}
+
+			if (peer == null)
+			{
+				s_logSource?.LogWarning($"TSC Fika support requester send skipped; peer unavailable type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} reason={reason}");
+				return;
+			}
+
+			TscDiagnostics.LogFika($"TSC Fika support sent to requester type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} reason={reason}");
+			server.SendData(ref packet, DeliveryMethod.ReliableOrdered, peer);
+		}
+		catch (Exception ex)
 		{
-			TscDiagnostics.LogFika($"TSC Fika support broadcast to all clients type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} reason={reason}");
-			server.SendData(ref packet, DeliveryMethod.ReliableOrdered, broadcast: true);
-			return;
+			s_logSource?.LogWarning(
+				$"TSC Fika support broadcast failed type={packet?.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet?.SupportRequestId)} reason={reason}. {ex}");
 		}
-
-		if (peer == null)
-		{
-			s_logSource?.LogWarning($"TSC Fika support requester send skipped; peer unavailable type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} reason={reason}");
-			return;
-		}
-
-		TscDiagnostics.LogFika($"TSC Fika support sent to requester type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} reason={reason}");
-		server.SendData(ref packet, DeliveryMethod.ReliableOrdered, peer);
 	}
 
-	private static bool TryBeginAuthorityRequest(FireSupportRequestPacket packet, string source)
+	private static void CompleteClientRequestFromAcceptedEvent(FireSupportRequestPacket packet)
 	{
-		packet.EnsureRequestId();
-		lock (s_supportRequestGate)
+		ClientPendingRequest pending;
+		lock (s_networkRequestGate)
 		{
-			if (s_completedSupportRequests.Contains(packet.SupportRequestId) ||
-			    s_inFlightSupportRequests.Contains(packet.SupportRequestId))
+			if (!s_pendingClientRequests.TryGetValue(packet.SupportRequestId, out pending) ||
+			    !pending.Fingerprint.MatchesAcceptedRequest(packet))
 			{
-				TscDiagnostics.LogFika($"TSC Fika duplicate support request ignored type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} source={source}");
+				return;
+			}
+		}
+
+		pending.TrySetResult(
+			FireSupportNetworkRequestResult.Accept("AuthorityAcceptedBroadcast"));
+	}
+
+	private static bool TryRegisterClientSupportEvent(
+		FireSupportRequestPacket packet,
+		out bool shouldPlay,
+		out string rejectReason)
+	{
+		shouldPlay = false;
+		rejectReason = string.Empty;
+		if (!TryValidateSupportRequest(packet, out rejectReason))
+		{
+			return false;
+		}
+
+		var fingerprint = new SupportRequestFingerprint(packet);
+		lock (s_networkRequestGate)
+		{
+			if (s_pendingClientRequests.TryGetValue(
+				    packet.SupportRequestId,
+				    out ClientPendingRequest pending) &&
+			    !pending.Fingerprint.MatchesAcceptedRequest(packet))
+			{
+				rejectReason = "AcceptedEventPendingPayloadMismatch";
 				return false;
 			}
 
-			s_inFlightSupportRequests.Add(packet.SupportRequestId);
+			if (s_acceptedClientEvents.TryGetValue(
+				    packet.SupportRequestId,
+				    out SupportRequestFingerprint existing))
+			{
+				if (existing.Equals(fingerprint))
+				{
+					rejectReason = "DuplicateAcceptedEvent";
+					return true;
+				}
+
+				rejectReason = "AcceptedEventPayloadMismatch";
+				return false;
+			}
+
+			s_acceptedClientEvents.Add(packet.SupportRequestId, fingerprint);
+			shouldPlay = true;
 		}
 
-		TscDiagnostics.LogFika($"TSC Fika authority accepted support request type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} requester={packet.RequesterProfileId} source={source}");
 		return true;
 	}
 
-	private static void MarkAuthorityRequestComplete(FireSupportRequestPacket packet, bool success)
+	private static FireSupportNetworkRequestResult MapAuthorityRejection(
+		string reason)
 	{
-		if (packet == null || string.IsNullOrWhiteSpace(packet.SupportRequestId))
+		string normalized = string.IsNullOrWhiteSpace(reason)
+			? "AuthorityRejected"
+			: reason;
+		return normalized switch
 		{
+			"RequesterCancelled" => FireSupportNetworkRequestResult.Cancel(normalized),
+			"RaidCancelled" => FireSupportNetworkRequestResult.Cancel(normalized),
+			"AuthorityExecutionTimedOut" => FireSupportNetworkRequestResult.Timeout(normalized),
+			_ => FireSupportNetworkRequestResult.Reject(normalized)
+		};
+	}
+
+	private static bool TryValidateSupportRequest(
+		FireSupportRequestPacket packet,
+		out string reason)
+	{
+		reason = string.Empty;
+		if (packet == null)
+		{
+			reason = "RequestNull";
+			return false;
+		}
+
+		if (!IsSupportedNetworkType(packet.SupportType))
+		{
+			reason = "UnsupportedNetworkType";
+			return false;
+		}
+
+		string requestId = packet.SupportRequestId ?? string.Empty;
+		if (string.IsNullOrWhiteSpace(requestId))
+		{
+			reason = "MissingSupportRequestId";
+			return false;
+		}
+
+		if (requestId.Length > MaxSupportRequestIdLength ||
+		    !string.Equals(requestId, requestId.Trim(), StringComparison.Ordinal))
+		{
+			reason = "InvalidSupportRequestId";
+			return false;
+		}
+
+		for (int i = 0; i < requestId.Length; i++)
+		{
+			char value = requestId[i];
+			if (!char.IsLetterOrDigit(value) &&
+			    value != '-' &&
+			    value != '_' &&
+			    value != ':')
+			{
+				reason = "InvalidSupportRequestId";
+				return false;
+			}
+		}
+
+		string requesterProfileId = packet.RequesterProfileId ?? string.Empty;
+		if (string.IsNullOrWhiteSpace(requesterProfileId) ||
+		    requesterProfileId.Length > MaxRequesterProfileIdLength ||
+		    !string.Equals(requesterProfileId, requesterProfileId.Trim(), StringComparison.Ordinal))
+		{
+			reason = "InvalidRequesterProfileId";
+			return false;
+		}
+
+		if (!IsFinite(packet.Position) ||
+		    !IsFinite(packet.Direction) ||
+		    !IsFinite(packet.Rotation) ||
+		    float.IsNaN(packet.DurationSeconds) ||
+		    float.IsInfinity(packet.DurationSeconds))
+		{
+			reason = "InvalidRequestGeometry";
+			return false;
+		}
+
+		if (packet.PassIndex < 0 || packet.PassIndex > 1)
+		{
+			reason = "InvalidPassIndex";
+			return false;
+		}
+
+		if (!IsA10Type(packet.SupportType) && packet.PassIndex != 0)
+		{
+			reason = "InvalidPassIndex";
+			return false;
+		}
+
+		return true;
+	}
+
+	private static bool TryValidateRequesterPeer(
+		FireSupportRequestPacket packet,
+		NetPeer peer,
+		out string reason)
+	{
+		reason = string.Empty;
+		if (peer == null)
+		{
+			// Local human-host requests never traverse a remote peer.
+			return true;
+		}
+
+		string peerProfileId = peer.Player?.ProfileId ?? string.Empty;
+		if (string.IsNullOrWhiteSpace(peerProfileId))
+		{
+			reason = "RequesterPeerProfileUnavailable";
+			return false;
+		}
+
+		if (!string.Equals(
+			    packet.RequesterProfileId,
+			    peerProfileId,
+			    StringComparison.Ordinal))
+		{
+			reason = "RequesterProfilePeerMismatch";
+			return false;
+		}
+
+		return true;
+	}
+
+	private static bool IsFinite(Vector3 value)
+	{
+		return !float.IsNaN(value.x) &&
+		       !float.IsInfinity(value.x) &&
+		       !float.IsNaN(value.y) &&
+		       !float.IsInfinity(value.y) &&
+		       !float.IsNaN(value.z) &&
+		       !float.IsInfinity(value.z);
+	}
+
+	private static FireSupportRequestPacket CloneSupportRequest(
+		FireSupportRequestPacket packet)
+	{
+		return new FireSupportRequestPacket(
+			packet.SupportType,
+			packet.Position,
+			packet.Direction,
+			packet.Rotation,
+			packet.VisualSeed,
+			packet.DurationSeconds,
+			packet.PassIndex,
+			packet.RequesterProfileId,
+			packet.SupportRequestId);
+	}
+
+	private static FireSupportRequestPacket CreateRequestFromCancel(
+		FireSupportCancelPacket packet)
+	{
+		return new FireSupportRequestPacket
+		{
+			SupportType = packet.SupportType,
+			Position = Vector3.zero,
+			Direction = Vector3.zero,
+			Rotation = Vector3.zero,
+			VisualSeed = 0,
+			DurationSeconds = 0f,
+			PassIndex = packet.PassIndex,
+			RequesterProfileId = packet.RequesterProfileId ?? string.Empty,
+			SupportRequestId = packet.SupportRequestId ?? string.Empty
+		};
+	}
+
+	private static void ResetNetworkRequestState(
+		string reason,
+		FireSupportNetworkRequestResult pendingResult,
+		bool clearAuthorityOutcomes)
+	{
+		List<ClientPendingRequest> pendingClients;
+		List<AuthorityRequestEntry> authorityEntries = null;
+		lock (s_networkRequestGate)
+		{
+			pendingClients = new List<ClientPendingRequest>(s_pendingClientRequests.Values);
+			s_pendingClientRequests.Clear();
+			s_acceptedClientEvents.Clear();
+
+			if (clearAuthorityOutcomes)
+			{
+				authorityEntries = new List<AuthorityRequestEntry>(s_authorityRequests.Values);
+				s_authorityRequests.Clear();
+				s_inFlightAuthorityRequestCount = 0;
+			}
+		}
+
+		foreach (ClientPendingRequest pending in pendingClients)
+		{
+			pending.TrySetResult(pendingResult);
+		}
+
+		if (authorityEntries != null)
+		{
+			foreach (AuthorityRequestEntry entry in authorityEntries)
+			{
+				entry.Abandon(pendingResult);
+			}
+		}
+
+		TscDiagnostics.LogFika(
+			$"TSC Fika network request state cleared reason={reason} authority={clearAuthorityOutcomes}");
+	}
+
+	private static void OnFikaGameEnded(FikaGameEndedEvent @event)
+	{
+		ResetNetworkRequestState(
+			"Fika game ended",
+			FireSupportNetworkRequestResult.Cancel("RaidEnded"),
+			clearAuthorityOutcomes: true);
+		A10TracerNetworking.SetNetworkAuthorityActive(false, "Fika game ended");
+		ClearHostAuthority("Fika game ended");
+	}
+
+	private static void OnPeerDisconnected(PeerDisconnectedEvent @event)
+	{
+		try
+		{
+			if (FikaBackendUtils.IsClient)
+			{
+				ResetNetworkRequestState(
+					"Fika host peer disconnected",
+					FireSupportNetworkRequestResult.Cancel("FikaPeerDisconnected"),
+					clearAuthorityOutcomes: true);
+				return;
+			}
+		}
+		catch
+		{
+			ResetNetworkRequestState(
+				"Fika peer state unavailable",
+				FireSupportNetworkRequestResult.Cancel("FikaPeerDisconnected"),
+				clearAuthorityOutcomes: true);
 			return;
 		}
 
-		lock (s_supportRequestGate)
+		NetPeer disconnectedPeer = @event.Peer;
+		List<AuthorityRequestEntry> disconnectedEntries = new();
+		lock (s_networkRequestGate)
 		{
-			s_inFlightSupportRequests.Remove(packet.SupportRequestId);
-			if (s_completedSupportRequests.Add(packet.SupportRequestId))
+			foreach (AuthorityRequestEntry entry in s_authorityRequests.Values)
 			{
-				s_completedSupportRequestOrder.Enqueue(packet.SupportRequestId);
+				if (!entry.IsCompleted && entry.IsOwnedBy(disconnectedPeer))
+				{
+					disconnectedEntries.Add(entry);
+				}
 			}
 
-			while (s_completedSupportRequestOrder.Count > 256)
+			foreach (AuthorityRequestEntry entry in disconnectedEntries)
 			{
-				s_completedSupportRequests.Remove(s_completedSupportRequestOrder.Dequeue());
+				AuthorityOutcome outcome = AuthorityOutcome.FromResult(
+					entry.Request,
+					FireSupportNetworkRequestResult.Reject("RequesterDisconnected"));
+				if (entry.TryCancelAndComplete(
+					    outcome,
+					    "RequesterDisconnected"))
+				{
+					s_inFlightAuthorityRequestCount =
+						Math.Max(0, s_inFlightAuthorityRequestCount - 1);
+				}
 			}
 		}
-
-		TscDiagnostics.LogFika($"TSC Fika authority completed support request type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} success={success}");
-	}
-
-	private static void ClearSupportRequestGates(string reason)
-	{
-		lock (s_supportRequestGate)
-		{
-			s_inFlightSupportRequests.Clear();
-			s_completedSupportRequests.Clear();
-			s_completedSupportRequestOrder.Clear();
-		}
-
-		TscDiagnostics.LogFika($"TSC Fika support request gates cleared reason={reason}");
 	}
 
 	private static CancellationToken GetRaidCancellationToken()
@@ -1213,5 +2389,536 @@ public static class FikaIntegration
 	{
 		return supportType == ESupportType.Uav ||
 		       supportType == ESupportType.FocusedSweep;
+	}
+
+	private sealed class ClientPendingRequest
+	{
+		private readonly object _gate = new();
+		private bool _completed;
+		private FireSupportNetworkRequestResult _result;
+
+		public ClientPendingRequest(SupportRequestFingerprint fingerprint)
+		{
+			Fingerprint = fingerprint;
+		}
+
+		public SupportRequestFingerprint Fingerprint { get; }
+		public UniTaskCompletionSource<FireSupportNetworkRequestResult> Completion { get; } = new();
+
+		public bool IsCompleted
+		{
+			get
+			{
+				lock (_gate)
+				{
+					return _completed;
+				}
+			}
+		}
+
+		public bool TrySetResult(FireSupportNetworkRequestResult result)
+		{
+			lock (_gate)
+			{
+				if (_completed)
+				{
+					return false;
+				}
+
+				_completed = true;
+				_result = result;
+			}
+
+			Completion.TrySetResult(result);
+			return true;
+		}
+
+		public bool TryGetResult(out FireSupportNetworkRequestResult result)
+		{
+			lock (_gate)
+			{
+				result = _result;
+				return _completed;
+			}
+		}
+	}
+
+	private sealed class AuthorityRequestEntry : IDisposable
+	{
+		private readonly object _gate = new();
+		private readonly CancellationTokenSource _cancellationTokenSource;
+		private readonly CancellationToken _raidCancellationToken;
+		private readonly List<A10TracerBurst> _bufferedTracerBursts = new();
+		private AuthorityOutcome _outcome;
+		private string _explicitCancellationReason = string.Empty;
+		private bool _acceptedDeliveryPublished;
+		private int _activeAuthorityWorkCount;
+		private bool _disposeRequested;
+		private bool _disposed;
+
+		public AuthorityRequestEntry(
+			FireSupportRequestPacket request,
+			SupportRequestFingerprint fingerprint,
+			NetPeer originPeer,
+			CancellationToken cancellationToken)
+		{
+			Request = CloneSupportRequest(request);
+			Fingerprint = fingerprint;
+			OriginPeer = originPeer;
+			_raidCancellationToken = cancellationToken;
+			_cancellationTokenSource =
+				CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+			// Hold the CTS for the lifetime of the original authority handler.
+			// Reset/eviction can request disposal, but it is finalized only after
+			// this handler and any launched executor work have unwound.
+			_activeAuthorityWorkCount = 1;
+			_cancellationTokenSource.CancelAfter(
+				TimeSpan.FromSeconds(AuthorityRequestTimeoutSeconds));
+		}
+
+		public FireSupportRequestPacket Request { get; }
+		public SupportRequestFingerprint Fingerprint { get; }
+		public NetPeer OriginPeer { get; }
+		public CancellationToken CancellationToken => _cancellationTokenSource.Token;
+		public string CancellationReason
+		{
+			get
+			{
+				lock (_gate)
+				{
+					if (!string.IsNullOrEmpty(_explicitCancellationReason))
+					{
+						return _explicitCancellationReason;
+					}
+
+					return _raidCancellationToken.IsCancellationRequested
+						? "RaidCancelled"
+						: "AuthorityExecutionTimedOut";
+				}
+			}
+		}
+		public UniTaskCompletionSource<AuthorityOutcome> Completion { get; } = new();
+		public bool IsCompleted { get; private set; }
+		public bool IsAbandoned { get; private set; }
+		public bool ExecutionStarted { get; private set; }
+
+		public bool IsOwnedBy(NetPeer peer)
+		{
+			return ReferenceEquals(OriginPeer, peer);
+		}
+
+		public bool TryBeginExecution()
+		{
+			lock (_gate)
+			{
+				if (IsCompleted || IsAbandoned || ExecutionStarted)
+				{
+					return false;
+				}
+
+				ExecutionStarted = true;
+				_activeAuthorityWorkCount++;
+			}
+
+			// The 20-second authority deadline governs request admission. Once
+			// an irreversible runtime start is committed, a client cancel must
+			// wait for that executor's true result rather than interrupting it
+			// and refunding a partially-started effect.
+			try
+			{
+				_cancellationTokenSource.CancelAfter(Timeout.InfiniteTimeSpan);
+			}
+			catch
+			{
+			}
+
+			return true;
+		}
+
+		public bool TryReserveAcceptedBackgroundWork()
+		{
+			lock (_gate)
+			{
+				if (IsAbandoned ||
+				    _disposed ||
+				    !IsCompleted ||
+				    !_outcome.Result.Accepted)
+				{
+					return false;
+				}
+
+				_activeAuthorityWorkCount++;
+				return true;
+			}
+		}
+
+		public void MarkAuthorityWorkFinished()
+		{
+			bool disposeNow;
+			lock (_gate)
+			{
+				_activeAuthorityWorkCount =
+					Math.Max(0, _activeAuthorityWorkCount - 1);
+				disposeNow =
+					_disposeRequested &&
+					_activeAuthorityWorkCount == 0 &&
+					!_disposed;
+				if (disposeNow)
+				{
+					_disposed = true;
+				}
+			}
+
+			if (disposeNow)
+			{
+				_cancellationTokenSource.Dispose();
+			}
+		}
+
+		public bool TryComplete(AuthorityOutcome outcome)
+		{
+			lock (_gate)
+			{
+				if (IsCompleted || IsAbandoned)
+				{
+					return false;
+				}
+
+				IsCompleted = true;
+				_outcome = outcome;
+				if (!outcome.Result.Accepted)
+				{
+					_bufferedTracerBursts.Clear();
+				}
+			}
+
+			try
+			{
+				_cancellationTokenSource.CancelAfter(Timeout.InfiniteTimeSpan);
+			}
+			catch
+			{
+			}
+
+			Completion.TrySetResult(outcome);
+			return true;
+		}
+
+		public bool TryCancelAndComplete(
+			AuthorityOutcome outcome,
+			string cancellationReason)
+		{
+			lock (_gate)
+			{
+				if (IsCompleted || IsAbandoned || ExecutionStarted)
+				{
+					return false;
+				}
+
+				IsCompleted = true;
+				_outcome = outcome;
+				_explicitCancellationReason = cancellationReason ?? string.Empty;
+				_bufferedTracerBursts.Clear();
+			}
+
+			try
+			{
+				_cancellationTokenSource.Cancel();
+			}
+			catch
+			{
+			}
+
+			Completion.TrySetResult(outcome);
+			return true;
+		}
+
+		public bool TryBufferTracerBurst(
+			A10TracerBurst burst,
+			out string disposition)
+		{
+			disposition = string.Empty;
+			lock (_gate)
+			{
+				if (IsAbandoned)
+				{
+					disposition = "authority request abandoned";
+					return true;
+				}
+
+				if (IsCompleted && !_outcome.Result.Accepted)
+				{
+					disposition = "authority request rejected";
+					return true;
+				}
+
+				if (!IsCompleted ||
+				    (_outcome.Result.Accepted && !_acceptedDeliveryPublished))
+				{
+					if (_bufferedTracerBursts.Count <
+					    MaxBufferedTracerBurstsPerRequest)
+					{
+						_bufferedTracerBursts.Add(burst);
+						disposition = "buffered pending accepted delivery";
+					}
+					else
+					{
+						disposition = "buffer full; tracer dropped";
+					}
+
+					return true;
+				}
+
+				return false;
+			}
+		}
+
+		public List<A10TracerBurst> MarkAcceptedDeliveryPublishedAndDrainTracerBursts()
+		{
+			lock (_gate)
+			{
+				if (!IsCompleted || !_outcome.Result.Accepted)
+				{
+					_bufferedTracerBursts.Clear();
+					return new List<A10TracerBurst>();
+				}
+
+				_acceptedDeliveryPublished = true;
+				var buffered = new List<A10TracerBurst>(_bufferedTracerBursts);
+				_bufferedTracerBursts.Clear();
+				return buffered;
+			}
+		}
+
+		public void Abandon(FireSupportNetworkRequestResult result)
+		{
+			AuthorityOutcome outcome = default;
+			bool completeWaiters = false;
+			lock (_gate)
+			{
+				if (IsAbandoned)
+				{
+					return;
+				}
+
+				IsAbandoned = true;
+				_bufferedTracerBursts.Clear();
+				if (!IsCompleted)
+				{
+					IsCompleted = true;
+					outcome = AuthorityOutcome.FromResult(Request, result);
+					_outcome = outcome;
+					_explicitCancellationReason = result.Reason ?? string.Empty;
+					completeWaiters = true;
+				}
+			}
+
+			try
+			{
+				_cancellationTokenSource.Cancel();
+			}
+			catch
+			{
+			}
+
+			if (completeWaiters)
+			{
+				Completion.TrySetResult(outcome);
+			}
+
+			RequestDisposeWhenAuthorityWorkFinishes();
+		}
+
+		public bool TryGetOutcome(out AuthorityOutcome outcome)
+		{
+			lock (_gate)
+			{
+				outcome = _outcome;
+				return IsCompleted;
+			}
+		}
+
+		public void Dispose()
+		{
+			lock (_gate)
+			{
+				_bufferedTracerBursts.Clear();
+			}
+			RequestDisposeWhenAuthorityWorkFinishes();
+		}
+
+		private void RequestDisposeWhenAuthorityWorkFinishes()
+		{
+			bool disposeNow;
+			lock (_gate)
+			{
+				_disposeRequested = true;
+				disposeNow =
+					_activeAuthorityWorkCount == 0 &&
+					!_disposed;
+				if (disposeNow)
+				{
+					_disposed = true;
+				}
+			}
+
+			if (disposeNow)
+			{
+				_cancellationTokenSource.Dispose();
+			}
+		}
+	}
+
+	private readonly struct AuthorityOutcome
+	{
+		private AuthorityOutcome(
+			FireSupportNetworkRequestResult result,
+			FireSupportAuthorityResultPacket resultPacket,
+			FireSupportRequestPacket acceptedRequest)
+		{
+			Result = result;
+			ResultPacket = resultPacket;
+			AcceptedRequest = acceptedRequest;
+		}
+
+		public FireSupportNetworkRequestResult Result { get; }
+		public FireSupportAuthorityResultPacket ResultPacket { get; }
+		public FireSupportRequestPacket AcceptedRequest { get; }
+
+		public static AuthorityOutcome Accepted(FireSupportRequestPacket request)
+		{
+			FireSupportRequestPacket acceptedRequest = CloneSupportRequest(request);
+			var result = FireSupportNetworkRequestResult.Accept("AuthorityAccepted");
+			return new AuthorityOutcome(
+				result,
+				new FireSupportAuthorityResultPacket(
+					acceptedRequest,
+					accepted: true,
+					result.Reason),
+				acceptedRequest);
+		}
+
+		public static AuthorityOutcome Rejected(
+			FireSupportRequestPacket request,
+			string reason)
+		{
+			return FromResult(
+				request,
+				FireSupportNetworkRequestResult.Reject(reason));
+		}
+
+		public static AuthorityOutcome FromResult(
+			FireSupportRequestPacket request,
+			FireSupportNetworkRequestResult result)
+		{
+			FireSupportRequestPacket snapshot = CloneSupportRequest(request);
+			return new AuthorityOutcome(
+				result,
+				new FireSupportAuthorityResultPacket(
+					snapshot,
+					result.Accepted,
+					result.Reason),
+				result.Accepted ? snapshot : null);
+		}
+	}
+
+	private readonly struct SupportRequestFingerprint : IEquatable<SupportRequestFingerprint>
+	{
+		private readonly ESupportType _supportType;
+		private readonly Vector3 _position;
+		private readonly Vector3 _direction;
+		private readonly Vector3 _rotation;
+		private readonly int _visualSeed;
+		private readonly float _durationSeconds;
+		private readonly int _passIndex;
+		private readonly string _requesterProfileId;
+
+		public SupportRequestFingerprint(FireSupportRequestPacket packet)
+		{
+			_supportType = packet.SupportType;
+			_position = packet.Position;
+			_direction = packet.Direction;
+			_rotation = packet.Rotation;
+			_visualSeed = packet.VisualSeed;
+			_durationSeconds = packet.DurationSeconds;
+			_passIndex = packet.PassIndex;
+			_requesterProfileId = packet.RequesterProfileId ?? string.Empty;
+		}
+
+		public bool MatchesResult(FireSupportAuthorityResultPacket packet)
+		{
+			return packet != null &&
+			       _supportType == packet.SupportType &&
+			       _passIndex == packet.PassIndex &&
+			       string.Equals(
+				       _requesterProfileId,
+				       packet.RequesterProfileId,
+				       StringComparison.Ordinal);
+		}
+
+		public bool MatchesCancel(FireSupportCancelPacket packet)
+		{
+			return packet != null &&
+			       _supportType == packet.SupportType &&
+			       _passIndex == packet.PassIndex &&
+			       string.Equals(
+				       _requesterProfileId,
+				       packet.RequesterProfileId,
+				       StringComparison.Ordinal);
+		}
+
+		public bool MatchesAcceptedRequest(FireSupportRequestPacket packet)
+		{
+			return packet != null &&
+			       _supportType == packet.SupportType &&
+			       _position.Equals(packet.Position) &&
+			       _direction.Equals(packet.Direction) &&
+			       _rotation.Equals(packet.Rotation) &&
+			       _visualSeed == packet.VisualSeed &&
+			       (IsUavType(_supportType) ||
+			        _durationSeconds.Equals(packet.DurationSeconds)) &&
+			       _passIndex == packet.PassIndex &&
+			       string.Equals(
+				       _requesterProfileId,
+				       packet.RequesterProfileId,
+				       StringComparison.Ordinal);
+		}
+
+		public bool Equals(SupportRequestFingerprint other)
+		{
+			return _supportType == other._supportType &&
+			       _position.Equals(other._position) &&
+			       _direction.Equals(other._direction) &&
+			       _rotation.Equals(other._rotation) &&
+			       _visualSeed == other._visualSeed &&
+			       _durationSeconds.Equals(other._durationSeconds) &&
+			       _passIndex == other._passIndex &&
+			       string.Equals(
+				       _requesterProfileId,
+				       other._requesterProfileId,
+				       StringComparison.Ordinal);
+		}
+
+		public override bool Equals(object obj)
+		{
+			return obj is SupportRequestFingerprint other && Equals(other);
+		}
+
+		public override int GetHashCode()
+		{
+			unchecked
+			{
+				int hash = (int)_supportType;
+				hash = hash * 397 ^ _position.GetHashCode();
+				hash = hash * 397 ^ _direction.GetHashCode();
+				hash = hash * 397 ^ _rotation.GetHashCode();
+				hash = hash * 397 ^ _visualSeed;
+				hash = hash * 397 ^ _durationSeconds.GetHashCode();
+				hash = hash * 397 ^ _passIndex;
+				hash = hash * 397 ^ StringComparer.Ordinal.GetHashCode(
+					_requesterProfileId ?? string.Empty);
+				return hash;
+			}
+		}
 	}
 }

@@ -1,4 +1,5 @@
 using Comfort.Common;
+using Cysharp.Threading.Tasks;
 using EFT;
 using EFT.InventoryLogic;
 using System;
@@ -23,11 +24,17 @@ public sealed class UavDeviceActivationController : MonoBehaviour
 	private Player _player;
 	private Item _deviceItem;
 	private Item _previousHandsItem;
-	private Action _onActivated;
+	private Func<CancellationToken, UniTask<bool>> _onActivated;
+	private Action _onCancelled;
 	private CancellationToken _cancellationToken;
+	private CancellationTokenSource _activationCts;
 	private UavPhoneScreenRenderer _phoneScreen;
-	private bool _activated;
+	private bool _activationStarted;
+	private bool _activationCompleted;
+	private bool _activationSucceeded;
+	private bool _cancelCallbackInvoked;
 	private bool _restored;
+	private bool _destroyed;
 
 	private static float s_suppressUntil;
 
@@ -43,6 +50,38 @@ public sealed class UavDeviceActivationController : MonoBehaviour
 	}
 
 	public static bool TryPlay(Action onActivated, CancellationToken cancellationToken)
+	{
+		if (onActivated == null)
+		{
+			FireSupportPlugin.LogSource.LogWarning("UAV activation device animation skipped: activation callback was null.");
+			return false;
+		}
+
+		return TryPlay(
+			_ =>
+			{
+				onActivated();
+				return UniTask.FromResult(true);
+			},
+			onCancelled: null,
+			cancellationToken: cancellationToken);
+	}
+
+	public static bool TryPlay(
+		Func<UniTask<bool>> onActivated,
+		Action onCancelled,
+		CancellationToken cancellationToken)
+	{
+		return TryPlay(
+			onActivated == null ? null : _ => onActivated(),
+			onCancelled,
+			cancellationToken);
+	}
+
+	public static bool TryPlay(
+		Func<CancellationToken, UniTask<bool>> onActivated,
+		Action onCancelled,
+		CancellationToken cancellationToken)
 	{
 		if (Time.unscaledTime < s_suppressUntil)
 		{
@@ -88,7 +127,7 @@ public sealed class UavDeviceActivationController : MonoBehaviour
 
 			var runnerObject = new GameObject("TSCUplinkActivation");
 			var runner = runnerObject.AddComponent<UavDeviceActivationController>();
-			runner.Initialize(player, deviceItem, onActivated, cancellationToken);
+			runner.Initialize(player, deviceItem, onActivated, onCancelled, cancellationToken);
 			return true;
 		}
 		catch (Exception ex)
@@ -101,13 +140,16 @@ public sealed class UavDeviceActivationController : MonoBehaviour
 	private void Initialize(
 		Player player,
 		Item deviceItem,
-		Action onActivated,
+		Func<CancellationToken, UniTask<bool>> onActivated,
+		Action onCancelled,
 		CancellationToken cancellationToken)
 	{
 		_player = player;
 		_deviceItem = deviceItem;
 		_onActivated = onActivated;
+		_onCancelled = onCancelled;
 		_cancellationToken = cancellationToken;
+		_activationCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 		s_active = this;
 
 		TscDiagnostics.LogPhone(
@@ -119,7 +161,16 @@ public sealed class UavDeviceActivationController : MonoBehaviour
 	{
 		if (!EquipDevice())
 		{
-			ActivateRadarOnce();
+			BeginActivationOnce();
+			while (!_activationCompleted && !_cancellationToken.IsCancellationRequested)
+			{
+				yield return null;
+			}
+
+			if (!_activationSucceeded)
+			{
+				CancelActivationOnce();
+			}
 			Destroy(gameObject);
 			yield break;
 		}
@@ -139,6 +190,7 @@ public sealed class UavDeviceActivationController : MonoBehaviour
 
 		if (_cancellationToken.IsCancellationRequested)
 		{
+			CancelActivationOnce();
 			RestoreHands();
 			Destroy(gameObject);
 			yield break;
@@ -167,6 +219,7 @@ public sealed class UavDeviceActivationController : MonoBehaviour
 
 		if (_cancellationToken.IsCancellationRequested)
 		{
+			CancelActivationOnce();
 			RestoreHands();
 			Destroy(gameObject);
 			yield break;
@@ -175,13 +228,38 @@ public sealed class UavDeviceActivationController : MonoBehaviour
 		GetController()?.PlayTap(0.1f);
 		yield return new WaitForSecondsRealtime(TapImpactSeconds);
 		_phoneScreen?.ShowAuthorizing();
-		ActivateRadarOnce();
-		TscDiagnostics.LogPhone("TSC Uplink activation tap completed; radar starting.");
+		BeginActivationOnce();
+		TscDiagnostics.LogPhone("TSC Uplink activation tap completed; waiting for support authority.");
 
-		yield return new WaitForSecondsRealtime(TapHoldSeconds);
+		float holdStop = Time.unscaledTime + TapHoldSeconds;
+		while (!_cancellationToken.IsCancellationRequested &&
+		       (!_activationCompleted || Time.unscaledTime < holdStop))
+		{
+			yield return null;
+		}
+
+		if (_cancellationToken.IsCancellationRequested && !_activationSucceeded)
+		{
+			CancelActivationOnce();
+			RestoreHands();
+			Destroy(gameObject);
+			yield break;
+		}
+
 		UavDeviceController controller = GetController();
-		_phoneScreen?.ShowAuthorized();
-		controller?.PlayOutroSuccess();
+		if (_activationSucceeded)
+		{
+			_phoneScreen?.ShowAuthorized();
+			controller?.PlayOutroSuccess();
+			TscDiagnostics.LogPhone("TSC Uplink support authority accepted; radar starting.");
+		}
+		else
+		{
+			_phoneScreen?.ShowDenied();
+			controller?.PlayOutroFail();
+			CancelActivationOnce();
+			TscDiagnostics.LogPhone("TSC Uplink support authority rejected; radar activation cancelled.");
+		}
 
 		yield return WaitForOutro(controller?.PhoneAnimator);
 		RestoreHands();
@@ -216,7 +294,7 @@ public sealed class UavDeviceActivationController : MonoBehaviour
 				ex =>
 				{
 					FireSupportPlugin.LogSource.LogWarning($"UAV activation device controller spawn failed. {ex}");
-					ActivateRadarOnce();
+					BeginActivationOnce();
 					RestoreHands();
 				});
 			return true;
@@ -307,7 +385,8 @@ public sealed class UavDeviceActivationController : MonoBehaviour
 		{
 			AnimatorStateInfo info = phoneAnimator.GetCurrentAnimatorStateInfo(layer);
 			if (info.IsName("Spawn") ||
-			    (info.IsName("Outro Success") && info.normalizedTime >= 0.95f))
+			    ((info.IsName("Outro Success") || info.IsName("Outro Fail")) &&
+			     info.normalizedTime >= 0.95f))
 			{
 				break;
 			}
@@ -328,22 +407,92 @@ public sealed class UavDeviceActivationController : MonoBehaviour
 		}
 	}
 
-	private void ActivateRadarOnce()
+	private void BeginActivationOnce()
 	{
-		if (_activated)
+		if (_activationStarted || _cancelCallbackInvoked || _destroyed)
 		{
 			return;
 		}
 
-		_activated = true;
+		_activationStarted = true;
+		InvokeActivationAsync().Forget();
+	}
+
+	private async UniTaskVoid InvokeActivationAsync()
+	{
 		try
 		{
-			_onActivated?.Invoke();
+			CancellationToken activationToken =
+				_activationCts?.Token ?? _cancellationToken;
+			_activationSucceeded =
+				_onActivated != null &&
+				await _onActivated(activationToken);
+		}
+		catch (OperationCanceledException)
+		{
+			_activationSucceeded = false;
 		}
 		catch (Exception ex)
 		{
 			FireSupportPlugin.LogSource.LogWarning($"UAV activation callback failed. {ex}");
+			_activationSucceeded = false;
 		}
+		finally
+		{
+			_activationCompleted = true;
+			if (_destroyed)
+			{
+				DisposeActivationTokenSource();
+			}
+		}
+	}
+
+	private void CancelActivationOnce()
+	{
+		if (_activationSucceeded || _cancelCallbackInvoked)
+		{
+			return;
+		}
+
+		// Once activation begins, its awaited callback exclusively arbitrates
+		// Accepted versus Cancelled. Teardown only cancels that callback's token;
+		// it must not race it with a second refund mutation.
+		if (_activationStarted)
+		{
+			CancelActivationDispatch();
+			return;
+		}
+
+		CancelActivationDispatch();
+		_cancelCallbackInvoked = true;
+		try
+		{
+			_onCancelled?.Invoke();
+		}
+		catch (Exception ex)
+		{
+			FireSupportPlugin.LogSource.LogWarning($"UAV activation cancellation callback failed. {ex}");
+		}
+	}
+
+	private void CancelActivationDispatch()
+	{
+		try
+		{
+			_activationCts?.Cancel();
+		}
+		catch (ObjectDisposedException)
+		{
+			// Completion can dispose the linked token while a Unity teardown
+			// callback is still unwinding.
+		}
+	}
+
+	private void DisposeActivationTokenSource()
+	{
+		CancellationTokenSource activationCts = _activationCts;
+		_activationCts = null;
+		activationCts?.Dispose();
 	}
 
 	private void RestoreHands()
@@ -377,10 +526,21 @@ public sealed class UavDeviceActivationController : MonoBehaviour
 
 	private void OnDestroy()
 	{
+		_destroyed = true;
+		if (!_activationSucceeded)
+		{
+			CancelActivationOnce();
+		}
+
 		RestoreHands();
 		if (s_active == this)
 		{
 			s_active = null;
+		}
+
+		if (!_activationStarted || _activationCompleted)
+		{
+			DisposeActivationTokenSource();
 		}
 
 		TscDiagnostics.LogPhone("TSC Uplink activation animation destroyed.");

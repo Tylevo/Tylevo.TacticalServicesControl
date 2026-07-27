@@ -69,7 +69,6 @@ public class FireSupportRequestPacket : INetSerializable
 		PassIndex = reader.GetInt();
 		SupportRequestId = reader.GetString() ?? string.Empty;
 		RequesterProfileId = reader.GetString() ?? string.Empty;
-		EnsureRequestId();
 	}
 
 	public void EnsureRequestId()

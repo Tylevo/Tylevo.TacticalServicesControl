@@ -2,6 +2,7 @@ using Comfort.Common;
 using Cysharp.Threading.Tasks;
 using EFT;
 using EFT.Communications;
+using System;
 using System.Threading;
 using UnityEngine;
 
@@ -31,13 +32,22 @@ public sealed class UavReconService(
 		}
 
 		requestAvailable = false;
-		FireSupportController.Instance.CanCallSupport(false);
+		FireSupportController controller = FireSupportController.Instance;
+		if (controller == null)
+		{
+			requestAvailable = true;
+			FireSupportPlugin.LogSource.LogWarning(
+				"UAV request skipped: fire support controller was unavailable.");
+			return;
+		}
+
+		controller.CanCallSupport(false);
 
 		FireSupportAuthorizationUse authorizationUse =
 			await FireSupportPayment.TryPayForDeploymentAsync(SupportType);
 		if (!authorizationUse.Ok)
 		{
-			FireSupportController.Instance.CanCallSupport(true);
+			controller.CanCallSupport(true);
 			requestAvailable = true;
 			return;
 		}
@@ -56,125 +66,190 @@ public sealed class UavReconService(
 		float rangeMeters = UavReconSettings.GetRangeMeters(effectiveSupportType);
 		Vector3 uavCenter = GetUavCenter();
 		bool publishActivationPhoneVisual = authorizationUse.ConsumedAuthorization;
+		int terminalState = 0;
 
 		if (cancellationToken.IsCancellationRequested)
 		{
-			if (authorizationUse.ConsumedAuthorization)
-			{
-				FireSupportPayment.RefundConsumedAuthorization(authorizationUse);
-			}
-
-			FireSupportController.Instance.CanCallSupport(true);
-			requestAvailable = true;
-			if (consumedBaseRequest)
-			{
-				availableRequests++;
-			}
-
+			await FinalizeFailedDispatch(
+				authorizationUse,
+				consumedBaseRequest,
+				FireSupportNetworkRequestResult.Cancel());
 			return;
 		}
 
 		if (UavDeviceActivationController.TryPlay(
-			() => StartUavRecon(
-				    effectiveSupportType,
-				    durationSeconds,
-				    scanInterval,
-				    rangeMeters,
-				    uavCenter,
-				    publishActivationPhoneVisual,
-				    authorizationUse,
-				    cancellationToken),
+			    activationToken => StartUavReconAsync(
+				    playWristFallback: false,
+				    activationToken),
+			    () => CancelActivationAsync().Forget(),
 			    cancellationToken))
 		{
-			if (publishActivationPhoneVisual)
-			{
-				UavPhoneVisualNetworkService.PublishLocal(
-					effectiveSupportType,
-					UavPhoneVisualPhase.StartActivationPhone,
-					duration: 2.2f,
-					cancellationToken: cancellationToken);
-			}
-
 			return;
 		}
 
 		FireSupportPlugin.LogSource.LogInfo("UAV activation device animation did not start; using immediate radar fallback.");
-		UavWristPhoneController.Play(cancellationToken);
-		if (publishActivationPhoneVisual)
+		await StartUavReconAsync(
+			playWristFallback: true,
+			cancellationToken);
+		return;
+
+		async UniTask CancelActivationAsync()
 		{
-			UavPhoneVisualNetworkService.PublishLocal(
-				effectiveSupportType,
-				UavPhoneVisualPhase.StartActivationPhone,
-				duration: 1.1f,
-				cancellationToken: cancellationToken);
+			await FinalizeFailedDispatch(
+				authorizationUse,
+				consumedBaseRequest,
+				FireSupportNetworkRequestResult.Cancel());
 		}
 
-		StartUavRecon(
-			effectiveSupportType,
-			durationSeconds,
-			scanInterval,
-			rangeMeters,
-			uavCenter,
-			publishActivationPhoneVisual,
-			authorizationUse,
-			cancellationToken);
+		async UniTask<bool> StartUavReconAsync(
+			bool playWristFallback,
+			CancellationToken dispatchCancellationToken)
+		{
+			if (Volatile.Read(ref terminalState) != 0)
+			{
+				return false;
+			}
 
-		return;
+			try
+			{
+				dispatchCancellationToken.ThrowIfCancellationRequested();
+
+				FireSupportNetworkRequestResult dispatchResult =
+					await FireSupportNetworking.TryHandleSupportRequestAsync(
+						effectiveSupportType,
+						uavCenter,
+						Vector3.zero,
+						Vector3.zero,
+						dispatchCancellationToken,
+						durationSeconds,
+						supportRequestId: BuildDispatchRequestId(authorizationUse));
+				if (!dispatchResult.Handled)
+				{
+					if (dispatchCancellationToken.IsCancellationRequested)
+					{
+						dispatchResult = FireSupportNetworkRequestResult.Cancel();
+					}
+					else
+					{
+						UavReconOverlay.Activate(
+							durationSeconds,
+							cancellationToken,
+							playActivationVisual: false,
+							scanInterval,
+							rangeMeters);
+						dispatchResult = FireSupportNetworkRequestResult.Accept("LocalRuntimeStarted");
+					}
+				}
+
+				if (!dispatchResult.Accepted)
+				{
+					await FinalizeFailedDispatch(authorizationUse, consumedBaseRequest, dispatchResult);
+					return false;
+				}
+
+				if (Interlocked.CompareExchange(ref terminalState, 1, 0) != 0)
+				{
+					return false;
+				}
+
+				FireSupportPayment.CommitConsumedAuthorization(authorizationUse);
+
+				// Presentation and the cosmetic loiter are downstream of authority
+				// acceptance. The physical phone remains on its authorizing screen
+				// while the async authority request is pending.
+				if (playWristFallback)
+				{
+					UavWristPhoneController.Play(cancellationToken);
+				}
+
+				if (publishActivationPhoneVisual)
+				{
+					UavPhoneVisualNetworkService.PublishLocal(
+						effectiveSupportType,
+						UavPhoneVisualPhase.StartActivationPhone,
+						duration: playWristFallback ? 1.1f : 2.2f,
+						cancellationToken: cancellationToken);
+					UavPhoneVisualNetworkService.PublishLocal(
+						effectiveSupportType,
+						UavPhoneVisualPhase.Authorized,
+						duration: 0.9f,
+						success: true,
+						cancellationToken: cancellationToken);
+				}
+
+				UavAircraftLoiterController.StartConfigured(uavCenter, durationSeconds, cancellationToken);
+
+				NotificationManagerClass.DisplayMessageNotification(
+					$"{FireSupportPayment.GetSupportName(effectiveSupportType)} active for {durationSeconds}s.",
+					ENotificationDurationType.Default,
+					ENotificationIconType.Default,
+					null);
+
+				controller
+					.StartCooldown(FireSupportTuningSettings.GetRequestCooldown(), cancellationToken, OnCooldownOver)
+					.Forget();
+				return true;
+			}
+			catch (OperationCanceledException)
+			{
+				if (Volatile.Read(ref terminalState) == 1)
+				{
+					return true;
+				}
+
+				await FinalizeFailedDispatch(
+					authorizationUse,
+					consumedBaseRequest,
+					FireSupportNetworkRequestResult.Cancel());
+				return false;
+			}
+			catch (Exception ex)
+			{
+				FireSupportPlugin.LogSource.LogError(ex);
+				if (Volatile.Read(ref terminalState) == 1)
+				{
+					// Authority already accepted. A downstream presentation
+					// failure cannot turn that terminal commit into a refund.
+					return true;
+				}
+
+				await FinalizeFailedDispatch(
+					authorizationUse,
+					consumedBaseRequest,
+					FireSupportNetworkRequestResult.Reject("LocalDispatchException"));
+				return false;
+			}
+		}
+
+		async UniTask FinalizeFailedDispatch(
+			FireSupportAuthorizationUse use,
+			bool restoreBaseRequest,
+			FireSupportNetworkRequestResult result)
+		{
+			if (Interlocked.CompareExchange(ref terminalState, 2, 0) != 0)
+			{
+				return;
+			}
+
+			await FireSupportPayment.RefundConsumedAuthorizationAsync(use);
+			if (restoreBaseRequest)
+			{
+				availableRequests++;
+			}
+
+			requestAvailable = true;
+			FireSupportController.Instance?.CanCallSupport(true);
+			FireSupportPlugin.LogSource.LogWarning(
+				$"UAV dispatch did not start. state={result.State}, reason={result.Reason}, requestId={use.RequestId}.");
+		}
 	}
 
-	private void StartUavRecon(
-		ESupportType effectiveSupportType,
-		int durationSeconds,
-		float scanInterval,
-		float rangeMeters,
-		Vector3 uavCenter,
-		bool publishActivationPhoneVisual,
-		FireSupportAuthorizationUse authorizationUse,
-		CancellationToken cancellationToken)
+	private static string BuildDispatchRequestId(FireSupportAuthorizationUse authorizationUse)
 	{
-		if (cancellationToken.IsCancellationRequested)
-		{
-			return;
-		}
-
-		if (publishActivationPhoneVisual)
-		{
-			UavPhoneVisualNetworkService.PublishLocal(
-				effectiveSupportType,
-				UavPhoneVisualPhase.Authorized,
-				duration: 0.9f,
-				success: true,
-				cancellationToken: cancellationToken);
-		}
-
-		if (!FireSupportNetworking.TryHandleSupportRequest(
-			    effectiveSupportType,
-			    uavCenter,
-			    Vector3.zero,
-			    Vector3.zero,
-			    cancellationToken,
-			    durationSeconds))
-		{
-			UavReconOverlay.Activate(
-				durationSeconds,
-				cancellationToken,
-				playActivationVisual: false,
-				scanInterval,
-				rangeMeters);
-		}
-
-		UavAircraftLoiterController.StartConfigured(uavCenter, durationSeconds, cancellationToken);
-		FireSupportPayment.CommitConsumedAuthorization(authorizationUse);
-
-		NotificationManagerClass.DisplayMessageNotification(
-			$"{FireSupportPayment.GetSupportName(effectiveSupportType)} active for {durationSeconds}s.",
-			ENotificationDurationType.Default,
-			ENotificationIconType.Default,
-			null);
-
-		FireSupportController.Instance
-			.StartCooldown(FireSupportTuningSettings.GetRequestCooldown(), cancellationToken, OnCooldownOver)
-			.Forget();
+		string parentId = string.IsNullOrWhiteSpace(authorizationUse?.RequestId)
+			? Guid.NewGuid().ToString("N")
+			: authorizationUse.RequestId;
+		return $"{parentId}:pass:0";
 	}
 
 	private void OnCooldownOver()

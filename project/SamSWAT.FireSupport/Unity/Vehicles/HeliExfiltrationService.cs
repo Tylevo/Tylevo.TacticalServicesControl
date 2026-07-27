@@ -51,55 +51,136 @@ public sealed class HeliExfiltrationService(
 			availableRequests--;
 		}
 
-		FireSupportController.Instance.CanCallSupport(false);
-
-		FireSupportAudio.Instance.PlayVoiceover(EVoiceoverType.StationExtractionRequest);
-		await UniTask.WaitForSeconds(GetDispatchDelay(effectiveSupportType), cancellationToken: cancellationToken);
-
-		var randomEulerAngles = new Vector3(0, Random.Range(0, 360), 0);
-		if (!FireSupportNetworking.TryHandleSupportRequest(
-			    effectiveSupportType,
-			    position,
-			    Vector3.zero,
-			    randomEulerAngles,
-			    cancellationToken))
+		bool accepted = false;
+		bool failureFinalized = false;
+		try
 		{
-			bool success = await FireSupportRuntime.TryProcessRequest(
-				effectiveSupportType,
-				position,
-				Vector3.zero,
-				randomEulerAngles,
-				visualOnly: false,
-				visualSeed: 0,
-				cancellationToken: cancellationToken);
-			if (!success)
+			cancellationToken.ThrowIfCancellationRequested();
+			FireSupportController controller = FireSupportController.Instance;
+			if (controller == null)
 			{
-				if (authorizationUse.ConsumedAuthorization)
-				{
-					FireSupportPayment.RefundConsumedAuthorization(authorizationUse);
-				}
+				throw new InvalidOperationException(
+					"Fire support controller was unavailable after payment.");
+			}
 
-				if (consumedBaseRequest)
-				{
-					availableRequests++;
-				}
+			controller.CanCallSupport(false);
+			FireSupportAudio.Instance.PlayVoiceover(EVoiceoverType.StationExtractionRequest);
+			await UniTask.WaitForSeconds(GetDispatchDelay(effectiveSupportType), cancellationToken: cancellationToken);
 
-				requestAvailable = true;
-				FireSupportController.Instance.CanCallSupport(true);
+			var randomEulerAngles = new Vector3(0, Random.Range(0, 360), 0);
+			bool playLocalArrivalAudio = false;
+			FireSupportNetworkRequestResult dispatchResult =
+				await FireSupportNetworking.TryHandleSupportRequestAsync(
+					effectiveSupportType,
+					position,
+					Vector3.zero,
+					randomEulerAngles,
+					cancellationToken,
+					supportRequestId: BuildDispatchRequestId(authorizationUse));
+			if (!dispatchResult.Handled)
+			{
+				if (cancellationToken.IsCancellationRequested)
+				{
+					dispatchResult = FireSupportNetworkRequestResult.Cancel();
+				}
+				else
+				{
+					bool localSuccess = await FireSupportRuntime.TryProcessRequest(
+						effectiveSupportType,
+						position,
+						Vector3.zero,
+						randomEulerAngles,
+						visualOnly: false,
+						visualSeed: 0,
+						cancellationToken: cancellationToken);
+					dispatchResult = localSuccess
+						? FireSupportNetworkRequestResult.Accept("LocalRuntimeStarted")
+						: FireSupportNetworkRequestResult.Reject("LocalRuntimeStartFailed");
+					playLocalArrivalAudio = localSuccess;
+				}
+			}
+
+			if (!dispatchResult.Accepted)
+			{
+				failureFinalized = true;
+				await RestoreFailedDispatch(authorizationUse, consumedBaseRequest, dispatchResult);
 				return;
 			}
 
-			FireSupportAudio.Instance.PlayVoiceover(EVoiceoverType.SupportHeliArrivingToPickup);
+			accepted = true;
+			FireSupportPayment.CommitConsumedAuthorization(authorizationUse);
+			if (playLocalArrivalAudio)
+			{
+				TryPlayHeliArrivalAudio();
+			}
+
+			await UniTask.WaitForSeconds(
+				GetCompletionDelay(effectiveSupportType),
+				cancellationToken: cancellationToken);
+
+			controller
+				.StartCooldown(FireSupportTuningSettings.GetRequestCooldown(), cancellationToken, OnCooldownOver)
+				.Forget();
+		}
+		catch (OperationCanceledException)
+		{
+			if (!accepted && !failureFinalized)
+			{
+				await RestoreFailedDispatch(
+					authorizationUse,
+					consumedBaseRequest,
+					FireSupportNetworkRequestResult.Cancel());
+			}
+		}
+		catch (Exception ex)
+		{
+			FireSupportPlugin.LogSource.LogError(ex);
+			if (!accepted && !failureFinalized)
+			{
+				await RestoreFailedDispatch(
+					authorizationUse,
+					consumedBaseRequest,
+					FireSupportNetworkRequestResult.Reject("LocalDispatchException"));
+			}
+		}
+	}
+
+	private static void TryPlayHeliArrivalAudio()
+	{
+		try
+		{
+			FireSupportAudio.Instance?.PlayVoiceover(EVoiceoverType.SupportHeliArrivingToPickup);
+		}
+		catch (Exception ex)
+		{
+			FireSupportPlugin.LogSource?.LogWarning(
+				$"UH-60 arrival voiceover failed after dispatch acceptance. {ex}");
+		}
+	}
+
+	private async UniTask RestoreFailedDispatch(
+		FireSupportAuthorizationUse authorizationUse,
+		bool consumedBaseRequest,
+		FireSupportNetworkRequestResult result)
+	{
+		await FireSupportPayment.RefundConsumedAuthorizationAsync(authorizationUse);
+		if (consumedBaseRequest)
+		{
+			availableRequests++;
 		}
 
-		FireSupportPayment.CommitConsumedAuthorization(authorizationUse);
+		requestAvailable = true;
+		FireSupportController.Instance?.CanCallSupport(true);
+		FireSupportPlugin.LogSource.LogWarning(
+			$"UH-60 dispatch did not start. state={result.State}, reason={result.Reason}, requestId={authorizationUse.RequestId}.");
+	}
 
-		await UniTask.WaitForSeconds(GetCompletionDelay(effectiveSupportType),
-			cancellationToken: cancellationToken);
-
-		FireSupportController.Instance
-			.StartCooldown(FireSupportTuningSettings.GetRequestCooldown(), cancellationToken, OnCooldownOver)
-			.Forget();
+	private static string BuildDispatchRequestId(FireSupportAuthorizationUse authorizationUse)
+	{
+		string parentId = string.IsNullOrWhiteSpace(authorizationUse?.RequestId)
+			? Guid.NewGuid().ToString("N")
+			: authorizationUse.RequestId;
+		return $"{parentId}:pass:0";
 	}
 
 	private void OnCooldownOver()

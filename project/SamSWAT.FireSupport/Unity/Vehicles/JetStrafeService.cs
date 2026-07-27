@@ -45,98 +45,185 @@ public sealed class JetStrafeService(
 	{
 		requestAvailable = false;
 		bool consumedBaseRequest = !authorizationUse.ConsumedAuthorization;
+		ESupportType effectiveSupportType = authorizationUse.ConsumedAuthorization
+			? authorizationUse.ConsumedAuthorizationType
+			: SupportType;
 		if (consumedBaseRequest)
 		{
 			availableRequests--;
 		}
 
-		FireSupportController.Instance.CanCallSupport(false);
-
-		FireSupportController.Instance
-			.StartCooldown(FireSupportTuningSettings.GetRequestCooldown(), cancellationToken, OnCooldownOver)
-			.Forget();
-		FireSupportAudio.Instance.PlayVoiceover(EVoiceoverType.StationStrafeRequest);
-		bool doublePass = authorizationUse.ConsumedAuthorizationType == ESupportType.DoubleStrafe;
-		bool success = false;
+		bool doublePass = effectiveSupportType == ESupportType.DoubleStrafe;
+		bool firstPassAccepted = false;
+		bool failureFinalized = false;
 		try
 		{
+			cancellationToken.ThrowIfCancellationRequested();
+			FireSupportController controller = FireSupportController.Instance;
+			if (controller == null)
+			{
+				throw new InvalidOperationException(
+					"Fire support controller was unavailable after payment.");
+			}
+
+			controller.CanCallSupport(false);
+			FireSupportAudio.Instance.PlayVoiceover(EVoiceoverType.StationStrafeRequest);
 			await UniTask.WaitForSeconds(8f, cancellationToken: cancellationToken);
 
 			Vector3 pos = (strafeStartPos + strafeEndPos) / 2;
 			Vector3 dir = (strafeEndPos - strafeStartPos).normalized;
-			success = await ExecuteStrafePass(pos, dir, passIndex: 0, cancellationToken: cancellationToken);
-			if (success && doublePass)
+			FireSupportNetworkRequestResult firstPass = await ExecuteStrafePass(
+				effectiveSupportType,
+				pos,
+				dir,
+				passIndex: 0,
+				BuildDispatchRequestId(authorizationUse, 0),
+				cancellationToken);
+			if (!firstPass.Accepted)
 			{
-				if (cancellationToken.IsCancellationRequested)
+				failureFinalized = true;
+				await RestoreFailedDispatch(
+					authorizationUse,
+					consumedBaseRequest,
+					firstPass);
+				return;
+			}
+
+			firstPassAccepted = true;
+			FireSupportPayment.CommitConsumedAuthorization(authorizationUse);
+			TryPlayJetArrivalAudio();
+			controller
+				.StartCooldown(FireSupportTuningSettings.GetRequestCooldown(), cancellationToken, OnCooldownOver)
+				.Forget();
+
+			if (doublePass && !cancellationToken.IsCancellationRequested)
+			{
+				float delay = Mathf.Max(0f, FireSupportTuningSettings.GetDoubleStrafeSecondPassDelay());
+				FireSupportPlugin.LogSource.LogInfo($"A-10 double pass authorized; second pass in {delay:0.0}s.");
+				await UniTask.WaitForSeconds(delay, cancellationToken: cancellationToken);
+				FireSupportNetworkRequestResult secondPass = await ExecuteStrafePass(
+					effectiveSupportType,
+					pos,
+					-dir,
+					passIndex: 1,
+					BuildDispatchRequestId(authorizationUse, 1),
+					cancellationToken);
+				if (!secondPass.Accepted)
 				{
-					success = false;
+					// Pass zero has already been accepted and delivered, so the
+					// authorization is terminally committed. A failed second pass
+					// is observable but cannot refund an already-delivered strike.
+					FireSupportPlugin.LogSource.LogWarning(
+						$"A-10 double-pass second pass did not start. state={secondPass.State}, reason={secondPass.Reason}, requestId={authorizationUse.RequestId}.");
 				}
 				else
 				{
-					float delay = Mathf.Max(0f, FireSupportTuningSettings.GetDoubleStrafeSecondPassDelay());
-					FireSupportPlugin.LogSource.LogInfo($"A-10 double pass authorized; second pass in {delay:0.0}s.");
-					await UniTask.WaitForSeconds(delay, cancellationToken: cancellationToken);
-					success = await ExecuteStrafePass(pos, -dir, passIndex: 1, cancellationToken: cancellationToken);
+					TryPlayJetArrivalAudio();
 				}
 			}
 		}
 		catch (OperationCanceledException)
 		{
-			success = false;
-		}
-
-		if (success)
-		{
-			// A double-pass authorization remains pending until both requested
-			// passes complete successfully.
-			FireSupportPayment.CommitConsumedAuthorization(authorizationUse);
-		}
-
-		if (!success && authorizationUse.ConsumedAuthorization)
-		{
-			FireSupportPayment.RefundConsumedAuthorization(authorizationUse);
-		}
-
-		if (!success)
-		{
-			if (consumedBaseRequest)
+			if (!firstPassAccepted && !failureFinalized)
 			{
-				availableRequests++;
+				await RestoreFailedDispatch(
+					authorizationUse,
+					consumedBaseRequest,
+					FireSupportNetworkRequestResult.Cancel());
 			}
-
-			requestAvailable = true;
-			FireSupportController.Instance.CanCallSupport(true);
+		}
+		catch (Exception ex)
+		{
+			FireSupportPlugin.LogSource.LogError(ex);
+			if (!firstPassAccepted && !failureFinalized)
+			{
+				await RestoreFailedDispatch(
+					authorizationUse,
+					consumedBaseRequest,
+					FireSupportNetworkRequestResult.Reject("LocalDispatchException"));
+			}
 		}
 	}
 
-	private static async UniTask<bool> ExecuteStrafePass(
+	private static async UniTask<FireSupportNetworkRequestResult> ExecuteStrafePass(
+		ESupportType supportType,
 		Vector3 position,
 		Vector3 direction,
 		int passIndex,
+		string supportRequestId,
 		CancellationToken cancellationToken)
 	{
-		FireSupportAudio.Instance.PlayVoiceover(EVoiceoverType.JetArriving);
-		int visualSeed = Environment.TickCount;
-		if (FireSupportNetworking.TryHandleSupportRequest(
-			    ESupportType.Strafe,
-			    position,
-			    direction,
-			    Vector3.zero,
-			    cancellationToken,
-			    passIndex: passIndex))
+		FireSupportNetworkRequestResult networkResult =
+			await FireSupportNetworking.TryHandleSupportRequestAsync(
+				supportType,
+				position,
+				direction,
+				Vector3.zero,
+				cancellationToken,
+				passIndex: passIndex,
+				supportRequestId: supportRequestId);
+		if (networkResult.Handled)
 		{
-			return true;
+			return networkResult;
 		}
 
-		return await FireSupportRuntime.TryProcessRequest(
-			ESupportType.Strafe,
+		if (cancellationToken.IsCancellationRequested)
+		{
+			return FireSupportNetworkRequestResult.Cancel();
+		}
+
+		bool localSuccess = await FireSupportRuntime.TryProcessRequest(
+			supportType,
 			position,
 			direction,
 			Vector3.zero,
 			visualOnly: false,
-			visualSeed: visualSeed,
+			visualSeed: Environment.TickCount,
 			cancellationToken: cancellationToken,
 			passIndex: passIndex);
+		return localSuccess
+			? FireSupportNetworkRequestResult.Accept("LocalRuntimeStarted")
+			: FireSupportNetworkRequestResult.Reject("LocalRuntimeStartFailed");
+	}
+
+	private static void TryPlayJetArrivalAudio()
+	{
+		try
+		{
+			FireSupportAudio.Instance?.PlayVoiceover(EVoiceoverType.JetArriving);
+		}
+		catch (Exception ex)
+		{
+			// Dispatch has already been accepted. Presentation failures are
+			// observable, but can never roll back a delivered authorization.
+			FireSupportPlugin.LogSource?.LogWarning(
+				$"A-10 arrival voiceover failed after dispatch acceptance. {ex}");
+		}
+	}
+
+	private async UniTask RestoreFailedDispatch(
+		FireSupportAuthorizationUse authorizationUse,
+		bool consumedBaseRequest,
+		FireSupportNetworkRequestResult result)
+	{
+		await FireSupportPayment.RefundConsumedAuthorizationAsync(authorizationUse);
+		if (consumedBaseRequest)
+		{
+			availableRequests++;
+		}
+
+		requestAvailable = true;
+		FireSupportController.Instance?.CanCallSupport(true);
+		FireSupportPlugin.LogSource.LogWarning(
+			$"A-10 dispatch did not start. state={result.State}, reason={result.Reason}, requestId={authorizationUse.RequestId}.");
+	}
+
+	private static string BuildDispatchRequestId(FireSupportAuthorizationUse authorizationUse, int passIndex)
+	{
+		string parentId = string.IsNullOrWhiteSpace(authorizationUse?.RequestId)
+			? Guid.NewGuid().ToString("N")
+			: authorizationUse.RequestId;
+		return $"{parentId}:pass:{Mathf.Max(0, passIndex)}";
 	}
 
 	private void OnCooldownOver()

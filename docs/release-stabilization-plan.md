@@ -1,8 +1,8 @@
 # TSC Release Stabilization Execution Plan
 
-Last updated: 2026-07-24
+Last updated: 2026-07-27
 Target: the next public beta after the currently published 1.0.8 release
-Status: Phase 1 implementation complete; Phase 1 live validation pending
+Status: Phase 2 implementation checkpoint complete; Phase 1, 1A, and 2 live validation pending
 
 This plan converts the current TSC audit and community bug reports into an ordered implementation and validation sequence. Priority describes risk; phase order also accounts for dependencies. Do not advance to the next phase until the current phase's exit gate is satisfied.
 
@@ -138,7 +138,7 @@ Eliminate the empty-tablet and all-services-maxed soft-lock while ensuring that 
 - After explicit approval, the four Phase 1 DLLs built from commit `c98bb33` were installed into the live `D:\SPT` component paths. Every installed file was verified against its build-output SHA-256.
 - The replaced v1.0.8 DLLs were backed up to `C:\Users\tylev\Desktop\RaidOps\backups\TSC-live-pre-phase1-c98bb33-20260724-102545`; the backup manifest records original and installed hashes plus rollback instructions.
 - No player profile, configuration, authorization ledger, asset, release artifact, or published GitHub release was modified. The SPT server and game were not started as part of installation.
-- The Phase 1 exit gate remains open until the solo and Fika runtime validation matrix below is recorded. Phase 2 has not started.
+- The Phase 1 exit gate remains open until the solo and Fika runtime validation matrix below is recorded. Phase 2 implementation is recorded below, but it does not close this earlier runtime gate.
 
 ### Validation Matrix
 
@@ -230,7 +230,7 @@ remain unchanged.
 - The current live matched pair includes the purchase-confirmation contract: Core SHA-256 `F99E49CBDD5D66CEA9AD020C8E8F13A31BB360BF0EA4A853508E2E46AA1D8E56` and Server SHA-256 `CC422A533BC6500EAEF15AB180F735161BB0E96D8BD6EF374C3FFB27700B155A`. Fika and Fika Interop remain byte-identical to the Phase 1A install.
 - The replaced Core (`23FF2879559379CDBD70B420181CEF8C8BAC339C1665A123EE51A83C721A1D4D`), Server (`A53604DB2BC0A1F95CE2962B0A3A618FDEAAC3540423F015687FC34692D21D0E`), and rollback instructions are backed up at `C:\Users\tylev\Desktop\RaidOps\backups\TSC-live-pre-purchase-confirm-38166e1-20260727-101740`; preceding rollback backups remain available.
 - No player profile, TSC configuration, authorization ledger, release artifact, or published GitHub release was modified during installation. The SPT server and game were not started.
-- The Phase 1A exit gate remains open until the runtime matrix below is recorded; Phase 2 has not started.
+- The Phase 1A exit gate remains open until the runtime matrix below is recorded. Phase 2 implementation is recorded below, but it does not close this earlier runtime gate.
 
 ### Validation Matrix
 
@@ -264,18 +264,87 @@ remain unchanged.
 
 Make transport delivery, authority acceptance, execution start, authorization consumption, commit, and refund explicit and idempotent.
 
+Implementation proceeded as a reviewable checkpoint while the Phase 1 and 1A
+runtime gates remain open. This does not advance Phase 3 or claim headless/Fika
+live acceptance.
+
 ### Implementation Tasks
 
-- [ ] Document the current state machine for every networked support request.
-- [ ] Treat packet send success only as transport delivery, not gameplay acceptance.
-- [ ] Add or confirm an authority response keyed by `SupportRequestId` that communicates accepted or rejected state to the requester.
-- [ ] Start requester-side visuals and advance the payment lifecycle only after the authoritative transition required by the configured `ConsumeOn` policy.
-- [ ] Do not broadcast an accepted support event until the selected host/headless executor has accepted the request.
-- [ ] Return a deterministic rejection when no valid executor exists or the relevant headless feature is disabled.
-- [ ] Refund on rejection, timeout, cancellation, or executor-start failure when the authorization has already entered a pending/consumed state.
-- [ ] Make acceptance, commit, refund, replay, and duplicate packets idempotent.
-- [ ] Bound pending requests and clear them across death, disconnect, raid end, and repeated raids.
-- [ ] Preserve the original solo and human-host A-10 ballistic path.
+- [x] Document the current state machine for every networked support request.
+- [x] Treat packet send success only as transport delivery, not gameplay acceptance.
+- [x] Add or confirm an authority response keyed by `SupportRequestId` that communicates accepted or rejected state to the requester.
+- [x] Start requester-side visuals and advance the payment lifecycle only after the authoritative transition required by the configured `ConsumeOn` policy.
+- [x] Do not broadcast an accepted support event until the selected host/headless executor has accepted the request.
+- [x] Return a deterministic rejection when no valid executor exists or the relevant headless feature is disabled.
+- [x] Refund on rejection, timeout, cancellation, or executor-start failure when the authorization has already entered a pending/consumed state.
+- [x] Make acceptance, commit, refund, replay, and duplicate packets idempotent.
+- [ ] Bound pending requests and verify clearing across death, disconnect, raid end, and repeated raids. Disconnect, raid-end, manager-reset, and plugin teardown paths are implemented; death-specific cleanup remains live-unverified.
+- [x] Preserve the original solo and human-host A-10 ballistic path.
+
+### Implementation Evidence - 2026-07-27
+
+- Fika request send now reports transport only. A client waits for an explicit
+  `FireSupportAuthorityResultPacket` or the matching canonical accepted
+  broadcast before advancing the service/payment lifecycle.
+- Result packets carry the full accepted request payload. Direct results and
+  broadcasts use one fingerprinted client dedupe path, while authority replay
+  is keyed by the immutable request ID/type/pass/requester/geometry payload.
+- An explicit cancellation packet arbitrates with a guarded execution-start
+  transition. At the authority, cancellation can win before execution starts
+  but cannot overwrite an accepted executor. If both accepted paths and cancel
+  settlement are unavailable for more than 35 seconds, however, the requester
+  currently returns `AuthorityCancelUnsettled` and refunds without proving that
+  acceptance lost.
+- The client wait is bounded at 30 seconds plus a five-second cancel-settlement
+  window; authority admission is bounded at 20 seconds. Client pending requests
+  are capped at 8, authority in-flight requests at 128, and the authority table
+  at 512 unique IDs per raid. Every admitted accepted or rejected outcome
+  remains replayable until raid reset; unknown IDs are rejected once full.
+- Dedicated-headless A-10 now performs side-effect-free preflight, publishes
+  the terminal accepted result/broadcast, and only then begins damage. Tracer
+  bursts are held until accepted delivery and dropped on rejection.
+- The server ledger is schema 4 with durable `Pending`, `Committed`,
+  `Refunded`, and `ExpiredRefunded` authorization-use records. Terminal state
+  no longer depends on the capped audit history; same-ID commit/refund replays
+  are idempotent and conflicting replays are rejected.
+- Refunds restore the credit that was already reserved even if the storage
+  maximum was lowered while pending. New grants remain capped until an
+  over-limit restored balance is reduced.
+- Consume, commit, and refund bind to the backend session/profile captured at
+  reservation time and require exact request-ID and support-type correlation.
+  Transient finalization failures retry the same mutation ID.
+- A-10 Double Pass uses one parent authorization and deterministic child pass
+  IDs. Pass 0 acceptance commits the authorization once; pass 1 is deduplicated
+  best-effort and cannot refund an already delivered first pass.
+- Post-acceptance extraction presentation/audio failure cannot convert a live
+  helicopter into a rejection/refund.
+- Accepted dedicated-headless A-10 work observes teardown cancellation before
+  tracer publication, after its shot loop, and throughout direct-fallback
+  damage application, preventing an abandoned raid entry from emitting new
+  damage into teardown or the next session.
+- `git diff --check` passes. All four deploy-suppressed builds pass with 0
+  errors: Core has 28 existing warnings, Server has 9 existing warnings, and
+  Fika Interop plus Fika bootstrap have 0 warnings on the final rebuilds.
+- No live SPT installation, player profile, configuration, authorization
+  ledger, release artifact, or published GitHub release was modified. Because
+  schema 4 is written on server initialization, live testing requires a ledger
+  backup and matched four-DLL install; DLL-only downgrade is unsafe.
+- Known distributed limit: client commit/refund retries are in-memory. A crash,
+  permanent logout, or backend outage beyond pending expiry can make an already
+  accepted service `ExpiredRefunded` and therefore free. Closing that window
+  requires a durable client outbox or authority-to-ledger commit protocol.
+- Known result-path limit: losing both accepted paths and the cancel-settlement
+  replay beyond the client's 35-second bound can make an authority-executed
+  service refund immediately; a late accepted replay can then arrive after the
+  original waiter was removed.
+- Fresh remote Fika requests must match `NetPeer.Player.ProfileId`; missing
+  peer/player identity fails closed. Identity rejections are cached as terminal
+  outcomes for the request ID, so a later binding change cannot turn a refunded
+  retry into fresh execution. Local human-host requests retain their explicit
+  peerless path.
+- The executable runtime checklist is
+  [`validation/phase2-fika-transaction-matrix.md`](validation/phase2-fika-transaction-matrix.md).
+  All live rows remain open.
 
 ### Validation Matrix
 

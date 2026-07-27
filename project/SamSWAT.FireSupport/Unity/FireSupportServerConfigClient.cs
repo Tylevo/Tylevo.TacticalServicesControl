@@ -108,6 +108,11 @@ public static class FireSupportServerConfigClient
 			: $"{sessionId}|{profileId}";
 	}
 
+	public static string GetAuthenticatedProfileId()
+	{
+		return GetLocalProfileId()?.Trim() ?? string.Empty;
+	}
+
 	public static bool IsAuthenticatedProfile(string profileId)
 	{
 		return !string.IsNullOrWhiteSpace(profileId) &&
@@ -345,32 +350,58 @@ public static class FireSupportServerConfigClient
 	public static UniTask<FireSupportPurchaseResponse> ConsumeAuthorizationAsync(
 		ESupportType supportType,
 		string requestId,
-		int clientKnownRevision)
+		int clientKnownRevision,
+		string expectedSessionKey,
+		string expectedProfileId)
 	{
-		return SendAuthorizationActionAsync("ConsumeAuthorization", supportType, requestId, clientKnownRevision);
+		return SendAuthorizationActionAsync(
+			"ConsumeAuthorization",
+			supportType,
+			requestId,
+			clientKnownRevision,
+			expectedSessionKey,
+			expectedProfileId);
 	}
 
 	public static UniTask<FireSupportPurchaseResponse> RefundAuthorizationAsync(
 		ESupportType supportType,
 		string requestId,
-		int clientKnownRevision)
+		int clientKnownRevision,
+		string expectedSessionKey,
+		string expectedProfileId)
 	{
-		return SendAuthorizationActionAsync("RefundAuthorization", supportType, requestId, clientKnownRevision);
+		return SendAuthorizationActionAsync(
+			"RefundAuthorization",
+			supportType,
+			requestId,
+			clientKnownRevision,
+			expectedSessionKey,
+			expectedProfileId);
 	}
 
 	public static UniTask<FireSupportPurchaseResponse> CommitAuthorizationAsync(
 		ESupportType supportType,
 		string requestId,
-		int clientKnownRevision)
+		int clientKnownRevision,
+		string expectedSessionKey,
+		string expectedProfileId)
 	{
-		return SendAuthorizationActionAsync("CommitAuthorization", supportType, requestId, clientKnownRevision);
+		return SendAuthorizationActionAsync(
+			"CommitAuthorization",
+			supportType,
+			requestId,
+			clientKnownRevision,
+			expectedSessionKey,
+			expectedProfileId);
 	}
 
 	private static async UniTask<FireSupportPurchaseResponse> SendAuthorizationActionAsync(
 		string action,
 		ESupportType supportType,
 		string requestId,
-		int clientKnownRevision)
+		int clientKnownRevision,
+		string expectedSessionKey,
+		string expectedProfileId)
 	{
 		var fallback = new FireSupportPurchaseResponse
 		{
@@ -384,22 +415,54 @@ public static class FireSupportServerConfigClient
 		BeginProfileMutation();
 		try
 		{
+			if (string.IsNullOrWhiteSpace(expectedSessionKey) ||
+			    string.IsNullOrWhiteSpace(expectedProfileId) ||
+			    !string.Equals(
+				    expectedSessionKey,
+				    GetAuthenticatedSessionKey(),
+				    StringComparison.Ordinal) ||
+			    !IsAuthenticatedProfile(expectedProfileId))
+			{
+				fallback.Reason = "ProfileSessionChanged";
+				return fallback;
+			}
+
 			var body = new FireSupportPurchaseRequest
 			{
 				Action = action,
-				SessionId = GetLocalProfileId(),
-				ProfileId = GetLocalProfileId(),
+				SessionId = expectedProfileId,
+				ProfileId = expectedProfileId,
 				SupportType = supportType.ToString(),
 				RequestId = requestId,
 				ClientKnownRevision = clientKnownRevision,
 				Quantity = 1
 			};
+			if (!string.Equals(
+				    expectedSessionKey,
+				    GetAuthenticatedSessionKey(),
+				    StringComparison.Ordinal) ||
+			    !IsAuthenticatedProfile(expectedProfileId))
+			{
+				fallback.Reason = "ProfileSessionChanged";
+				return fallback;
+			}
+
 			string responseBody = await SendServerRequestAsync(
 				HttpMethod.Post, "purchase", JsonConvert.SerializeObject(body), CancellationToken.None);
 			FireSupportPurchaseResponse result = JsonConvert.DeserializeObject<FireSupportPurchaseResponse>(responseBody);
 			if (result == null)
 			{
 				fallback.Reason = "InvalidServerResponse";
+				return fallback;
+			}
+
+			if (!string.Equals(
+				    expectedSessionKey,
+				    GetAuthenticatedSessionKey(),
+				    StringComparison.Ordinal) ||
+			    !IsAuthenticatedProfile(expectedProfileId))
+			{
+				fallback.Reason = "ProfileSessionChanged";
 				return fallback;
 			}
 

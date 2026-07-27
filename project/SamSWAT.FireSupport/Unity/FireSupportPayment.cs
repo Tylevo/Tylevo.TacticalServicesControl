@@ -6,15 +6,29 @@ using EFT.InventoryLogic;
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace SamSWAT.FireSupport.ArysReloaded.Unity;
 
 public static class FireSupportPayment
 {
+	private const int MaxServerFinalizationAttempts = 65;
+	private const int MaxServerFinalizationRetryDelaySeconds = 30;
+
 	private readonly struct CostLogState(int cost, string source)
 	{
 		public readonly int Cost = cost;
 		public readonly string Source = source;
+	}
+
+	private readonly struct AuthorizationMutationAttempt(
+		bool success,
+		bool retryable,
+		string reason)
+	{
+		public readonly bool Success = success;
+		public readonly bool Retryable = retryable;
+		public readonly string Reason = reason;
 	}
 
 	private static int? _syncedStrafeCost;
@@ -575,6 +589,11 @@ public static class FireSupportPayment
 
 	public static async UniTask<FireSupportAuthorizationUse> TryPayForDeploymentAsync(ESupportType supportType)
 	{
+		string operationId = Guid.NewGuid().ToString("N");
+		string serverSessionKey =
+			FireSupportServerConfigClient.GetAuthenticatedSessionKey();
+		string serverProfileId =
+			FireSupportServerConfigClient.GetAuthenticatedProfileId();
 		if (!_serverPurchasePersistenceEnabled)
 		{
 			bool ok = TryPayForDeployment(supportType, out bool consumedAuthorization, out ESupportType localConsumedType);
@@ -582,7 +601,8 @@ public static class FireSupportPayment
 			{
 				Ok = ok,
 				ConsumedAuthorization = consumedAuthorization,
-				ConsumedAuthorizationType = localConsumedType
+				ConsumedAuthorizationType = localConsumedType,
+				RequestId = ok ? operationId : string.Empty
 			};
 		}
 
@@ -612,18 +632,30 @@ public static class FireSupportPayment
 					Ok = true,
 					ConsumedAuthorization = true,
 					ConsumedAuthorizationType = consumedType,
+					RequestId = operationId,
 					ServerBacked = false
 				};
 			}
 
-			string requestId = Guid.NewGuid().ToString("N");
 			await s_serverLedgerMutationGate.WaitAsync();
 			try
 			{
 				FireSupportPurchaseResponse response = await FireSupportServerConfigClient.ConsumeAuthorizationAsync(
 					consumedType,
-					requestId,
-					_serverConfigRevision);
+					operationId,
+					_serverConfigRevision,
+					serverSessionKey,
+					serverProfileId);
+				if (!IsMatchingAuthorizationMutationResponse(
+					    response,
+					    consumedType,
+					    operationId))
+				{
+					response = BuildInvalidAuthorizationMutationResponse(
+						consumedType,
+						operationId,
+						"ConsumeAuthorization");
+				}
 				bool authorizationsApplied = ApplyIncludedAuthorizations(response);
 
 				if (response.Ok)
@@ -638,8 +670,10 @@ public static class FireSupportPayment
 						Ok = true,
 						ConsumedAuthorization = true,
 						ConsumedAuthorizationType = consumedType,
-						RequestId = requestId,
-						ServerBacked = true
+						RequestId = operationId,
+						ServerBacked = true,
+						ServerSessionKey = serverSessionKey,
+						ServerProfileId = serverProfileId
 					};
 				}
 
@@ -678,46 +712,180 @@ public static class FireSupportPayment
 		{
 			Ok = charged,
 			ConsumedAuthorization = false,
-			ConsumedAuthorizationType = supportType
+			ConsumedAuthorizationType = supportType,
+			RequestId = charged ? operationId : string.Empty
 		};
 	}
 
 	public static void RefundConsumedAuthorization(FireSupportAuthorizationUse authorizationUse)
 	{
-		if (authorizationUse == null || !authorizationUse.ConsumedAuthorization)
-		{
-			return;
-		}
-
-		if (!authorizationUse.ServerBacked)
-		{
-			FireSupportAuthorizations.Refund(
-				authorizationUse.ConsumedAuthorizationType,
-				serverBacked: false);
-			return;
-		}
-
-		if (!_serverRefundFailedDispatch)
-		{
-			return;
-		}
-
-		RefundServerAuthorizationAsync(authorizationUse).Forget();
+		RefundConsumedAuthorizationAsync(authorizationUse).Forget();
 	}
 
 	public static void CommitConsumedAuthorization(FireSupportAuthorizationUse authorizationUse)
 	{
-		if (authorizationUse == null ||
-		    !authorizationUse.ConsumedAuthorization ||
-		    !authorizationUse.ServerBacked)
-		{
-			return;
-		}
-
-		CommitServerAuthorizationAsync(authorizationUse).Forget();
+		CommitConsumedAuthorizationAsync(authorizationUse).Forget();
 	}
 
-	private static async UniTaskVoid RefundServerAuthorizationAsync(
+	public static async UniTask<bool> RefundConsumedAuthorizationAsync(
+		FireSupportAuthorizationUse authorizationUse)
+	{
+		if (authorizationUse == null || !authorizationUse.Ok)
+		{
+			return false;
+		}
+
+		// When failed-dispatch refunds are disabled, a server-backed reservation
+		// still needs a deterministic terminal mutation. Explicitly commit it
+		// instead of leaving it pending until server timeout cleanup.
+		if (authorizationUse.ConsumedAuthorization &&
+		    authorizationUse.ServerBacked &&
+		    !_serverRefundFailedDispatch)
+		{
+			return await CommitConsumedAuthorizationAsync(authorizationUse);
+		}
+
+		bool selectedIntent = authorizationUse.TrySelectFinalization(
+			FireSupportAuthorizationUse.FinalizationIntent.Refund,
+			out bool ownsFinalization,
+			out Task<bool> completion);
+		if (!selectedIntent)
+		{
+			await completion;
+			return false;
+		}
+
+		if (ownsFinalization)
+		{
+			if (!authorizationUse.ConsumedAuthorization)
+			{
+				authorizationUse.CompleteFinalization(success: true);
+			}
+			else if (!authorizationUse.ServerBacked)
+			{
+				try
+				{
+					FireSupportAuthorizations.Refund(
+						authorizationUse.ConsumedAuthorizationType,
+						serverBacked: false);
+					authorizationUse.CompleteFinalization(success: true);
+				}
+				catch (Exception ex)
+				{
+					LogFinalizationFailure(
+						authorizationUse,
+						FireSupportAuthorizationUse.FinalizationIntent.Refund,
+						attempts: 1,
+						reason: ex.ToString());
+					authorizationUse.CompleteFinalization(success: false);
+				}
+			}
+			else
+			{
+				FinalizeServerAuthorizationAsync(
+					authorizationUse,
+					FireSupportAuthorizationUse.FinalizationIntent.Refund).Forget();
+			}
+		}
+
+		return await completion;
+	}
+
+	public static async UniTask<bool> CommitConsumedAuthorizationAsync(
+		FireSupportAuthorizationUse authorizationUse)
+	{
+		if (authorizationUse == null || !authorizationUse.Ok)
+		{
+			return false;
+		}
+
+		bool selectedIntent = authorizationUse.TrySelectFinalization(
+			FireSupportAuthorizationUse.FinalizationIntent.Commit,
+			out bool ownsFinalization,
+			out Task<bool> completion);
+		if (!selectedIntent)
+		{
+			await completion;
+			return false;
+		}
+
+		if (ownsFinalization)
+		{
+			if (!authorizationUse.ConsumedAuthorization ||
+			    !authorizationUse.ServerBacked)
+			{
+				authorizationUse.CompleteFinalization(success: true);
+			}
+			else
+			{
+				FinalizeServerAuthorizationAsync(
+					authorizationUse,
+					FireSupportAuthorizationUse.FinalizationIntent.Commit).Forget();
+			}
+		}
+
+		return await completion;
+	}
+
+	private static async UniTaskVoid FinalizeServerAuthorizationAsync(
+		FireSupportAuthorizationUse authorizationUse,
+		FireSupportAuthorizationUse.FinalizationIntent intent)
+	{
+		AuthorizationMutationAttempt result = default;
+		int attempt = 0;
+		bool completedSuccessfully = false;
+		try
+		{
+			for (attempt = 1; attempt <= MaxServerFinalizationAttempts; attempt++)
+			{
+				result = intent == FireSupportAuthorizationUse.FinalizationIntent.Commit
+					? await TryCommitServerAuthorizationAsync(authorizationUse)
+					: await TryRefundServerAuthorizationAsync(authorizationUse);
+
+				if (result.Success)
+				{
+					completedSuccessfully = true;
+					authorizationUse.CompleteFinalization(success: true);
+					return;
+				}
+
+				if (!result.Retryable || attempt == MaxServerFinalizationAttempts)
+				{
+					break;
+				}
+
+				int delaySeconds = GetServerFinalizationRetryDelaySeconds(attempt);
+				FireSupportPlugin.LogSource?.LogWarning(
+					$"TSC authorization {intent.ToString().ToLowerInvariant()} response was transient; " +
+					$"retrying requestId={authorizationUse.RequestId}, attempt={attempt + 1}/{MaxServerFinalizationAttempts}, " +
+					$"delaySeconds={delaySeconds}, reason={result.Reason}.");
+				await UniTask.Delay(
+					TimeSpan.FromSeconds(delaySeconds),
+					ignoreTimeScale: true);
+			}
+		}
+		catch (Exception ex)
+		{
+			result = new AuthorizationMutationAttempt(
+				success: false,
+				retryable: false,
+				reason: ex.ToString());
+		}
+		finally
+		{
+			if (!completedSuccessfully)
+			{
+				LogFinalizationFailure(
+					authorizationUse,
+					intent,
+					Math.Max(attempt, 1),
+					result.Reason);
+				authorizationUse.CompleteFinalization(success: false);
+			}
+		}
+	}
+
+	private static async UniTask<AuthorizationMutationAttempt> TryRefundServerAuthorizationAsync(
 		FireSupportAuthorizationUse authorizationUse)
 	{
 		await s_serverLedgerMutationGate.WaitAsync();
@@ -727,7 +895,19 @@ public static class FireSupportPayment
 				await FireSupportServerConfigClient.RefundAuthorizationAsync(
 					authorizationUse.ConsumedAuthorizationType,
 					authorizationUse.RequestId,
-					_serverConfigRevision);
+					_serverConfigRevision,
+					authorizationUse.ServerSessionKey,
+					authorizationUse.ServerProfileId);
+			if (!IsMatchingAuthorizationMutationResponse(
+				    response,
+				    authorizationUse.ConsumedAuthorizationType,
+				    authorizationUse.RequestId))
+			{
+				return new AuthorizationMutationAttempt(
+					success: false,
+					retryable: true,
+					reason: "InvalidServerResponse");
+			}
 			bool authorizationsApplied = ApplyIncludedAuthorizations(response);
 
 			// Older servers can acknowledge the refund without returning a ledger
@@ -739,6 +919,8 @@ public static class FireSupportPayment
 					authorizationUse.ConsumedAuthorizationType,
 					serverBacked: true);
 			}
+
+			return ToAuthorizationMutationAttempt(response);
 		}
 		finally
 		{
@@ -746,7 +928,7 @@ public static class FireSupportPayment
 		}
 	}
 
-	private static async UniTaskVoid CommitServerAuthorizationAsync(
+	private static async UniTask<AuthorizationMutationAttempt> TryCommitServerAuthorizationAsync(
 		FireSupportAuthorizationUse authorizationUse)
 	{
 		await s_serverLedgerMutationGate.WaitAsync();
@@ -756,13 +938,107 @@ public static class FireSupportPayment
 				await FireSupportServerConfigClient.CommitAuthorizationAsync(
 					authorizationUse.ConsumedAuthorizationType,
 					authorizationUse.RequestId,
-					_serverConfigRevision);
+					_serverConfigRevision,
+					authorizationUse.ServerSessionKey,
+					authorizationUse.ServerProfileId);
+			if (!IsMatchingAuthorizationMutationResponse(
+				    response,
+				    authorizationUse.ConsumedAuthorizationType,
+				    authorizationUse.RequestId))
+			{
+				return new AuthorizationMutationAttempt(
+					success: false,
+					retryable: true,
+					reason: "InvalidServerResponse");
+			}
 			ApplyIncludedAuthorizations(response);
+			return ToAuthorizationMutationAttempt(response);
 		}
 		finally
 		{
 			s_serverLedgerMutationGate.Release();
 		}
+	}
+
+	private static AuthorizationMutationAttempt ToAuthorizationMutationAttempt(
+		FireSupportPurchaseResponse response)
+	{
+		string reason = response?.Reason ?? "NoResponse";
+		bool retryable =
+			response == null ||
+			string.Equals(reason, "ServerConfigUnavailable", StringComparison.Ordinal) ||
+			string.Equals(reason, "RequestFailed", StringComparison.Ordinal) ||
+			string.Equals(reason, "InvalidServerResponse", StringComparison.Ordinal) ||
+			string.Equals(reason, "AuthorizationLedgerSaveFailed", StringComparison.Ordinal) ||
+			string.Equals(reason, "ProfileSessionChanged", StringComparison.Ordinal);
+		return new AuthorizationMutationAttempt(
+			response?.Ok == true,
+			retryable,
+			reason);
+	}
+
+	private static bool IsMatchingAuthorizationMutationResponse(
+		FireSupportPurchaseResponse response,
+		ESupportType expectedSupportType,
+		string expectedRequestId)
+	{
+		bool matches =
+			response != null &&
+			string.Equals(
+				response.RequestId,
+				expectedRequestId,
+				StringComparison.Ordinal) &&
+			Enum.TryParse(
+				response.SupportType,
+				ignoreCase: true,
+				out ESupportType responseSupportType) &&
+			responseSupportType == expectedSupportType;
+		if (!matches)
+		{
+			FireSupportPlugin.LogSource?.LogWarning(
+				$"TSC ignored an uncorrelated authorization mutation response. " +
+				$"expectedRequestId={expectedRequestId}, actualRequestId={response?.RequestId ?? "<null>"}, " +
+				$"expectedSupport={expectedSupportType}, actualSupport={response?.SupportType ?? "<null>"}.");
+		}
+
+		return matches;
+	}
+
+	private static FireSupportPurchaseResponse BuildInvalidAuthorizationMutationResponse(
+		ESupportType supportType,
+		string requestId,
+		string action)
+	{
+		return new FireSupportPurchaseResponse
+		{
+			Ok = false,
+			Reason = "InvalidServerResponse",
+			SupportType = supportType.ToString(),
+			RequestId = requestId ?? string.Empty,
+			ServerRevision = _serverConfigRevision,
+			AuthorizationConsumed = false,
+			AuthorizationGranted = false,
+			PaymentSource = action ?? string.Empty
+		};
+	}
+
+	private static int GetServerFinalizationRetryDelaySeconds(int completedAttempts)
+	{
+		return Math.Min(
+			1 << Math.Min(completedAttempts - 1, 5),
+			MaxServerFinalizationRetryDelaySeconds);
+	}
+
+	private static void LogFinalizationFailure(
+		FireSupportAuthorizationUse authorizationUse,
+		FireSupportAuthorizationUse.FinalizationIntent intent,
+		int attempts,
+		string reason)
+	{
+		FireSupportPlugin.LogSource?.LogError(
+			$"TSC terminal authorization finalization failure intent={intent}, " +
+			$"requestId={authorizationUse.RequestId}, support={authorizationUse.ConsumedAuthorizationType}, " +
+			$"attempts={attempts}, reason={reason ?? "Unknown"}.");
 	}
 
 	public static bool TryPurchaseAuthorization(ESupportType supportType)

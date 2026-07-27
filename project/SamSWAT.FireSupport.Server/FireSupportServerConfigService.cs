@@ -149,7 +149,8 @@ public sealed class FireSupportServerConfigService(
 			{
 				snapshot.Authorizations = authorizationLedger.GetCredits(
 					profileLedgerId,
-					snapshot.PurchasePersistence.PendingUseTimeoutSeconds);
+					snapshot.PurchasePersistence.PendingUseTimeoutSeconds,
+					snapshot.PurchasePersistence.MaxStoredAuthorizationsPerService);
 			}
 		}
 
@@ -407,7 +408,8 @@ public sealed class FireSupportServerConfigService(
 			{
 				Dictionary<string, int> credits = authorizationLedger.GetCredits(
 					profileLedgerId,
-					config.PurchasePersistence.PendingUseTimeoutSeconds);
+					config.PurchasePersistence.PendingUseTimeoutSeconds,
+					config.PurchasePersistence.MaxStoredAuthorizationsPerService);
 				string supportKey = GetSupportKey(supportType);
 				int currentCredits = credits.TryGetValue(supportKey, out int count) ? Math.Max(0, count) : 0;
 				if (currentCredits + requestedQuantity > config.PurchasePersistence.MaxStoredAuthorizationsPerService)
@@ -816,6 +818,7 @@ public sealed class FireSupportServerConfigService(
 				profileLedgerId,
 				supportType,
 				request.RequestId,
+				config.PurchasePersistence.MaxStoredAuthorizationsPerService,
 				config.PurchasePersistence.PendingUseTimeoutSeconds,
 				out authorizations,
 				out reason);
@@ -826,6 +829,7 @@ public sealed class FireSupportServerConfigService(
 				profileLedgerId,
 				supportType,
 				request.RequestId,
+				config.PurchasePersistence.MaxStoredAuthorizationsPerService,
 				config.PurchasePersistence.PendingUseTimeoutSeconds,
 				out authorizations,
 				out reason);
@@ -844,7 +848,9 @@ public sealed class FireSupportServerConfigService(
 		}
 
 		response.Ok = ok;
-		response.Reason = ok ? mutation.ToString() : reason;
+		response.Reason = ok && string.IsNullOrWhiteSpace(reason)
+			? mutation.ToString()
+			: reason;
 		response.AuthorizationConsumed = mutation != AuthorizationMutation.Refund && ok;
 		response.AuthorizationGranted = mutation == AuthorizationMutation.Refund && ok;
 		response.AuthorizationsIncluded = !string.Equals(

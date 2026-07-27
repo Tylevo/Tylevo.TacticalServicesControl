@@ -32,8 +32,84 @@ public static class A10DamageOnlyPass
 	private const float DirectFallbackArmorDamage = 150f;
 	private const float DirectFallbackStaminaBurnRate = 0.432f;
 
+	/// <summary>
+	/// Verifies that the headless pass can construct its ballistic weapon and
+	/// produce a non-empty shot plan without publishing tracers or applying
+	/// damage. Fika uses this to make Accepted the terminal authority decision
+	/// before launching the irreversible pass.
+	/// </summary>
+	public static bool TryPreflight(
+		A10StrikeRequest request,
+		out string reason)
+	{
+		reason = string.Empty;
+		if (request == null)
+		{
+			reason = "A10RequestNull";
+			return false;
+		}
+
+		GameWorld gameWorld = Singleton<GameWorld>.Instance;
+		if (gameWorld == null)
+		{
+			reason = "A10GameWorldUnavailable";
+			return false;
+		}
+
+		try
+		{
+			int seed = request.VisualSeed != 0
+				? request.VisualSeed
+				: Environment.TickCount;
+			OwnerResolution owner = ResolveOwner(
+				gameWorld,
+				request.RequesterProfileId);
+			A10ProjectileOwnerMode ownerMode =
+				FireSupportTuningSettings.GetA10HeadlessProjectileOwnerMode();
+			string shotOwnerProfileId = ResolveShotOwnerProfileId(
+				gameWorld,
+				request,
+				owner,
+				ownerMode);
+			var weapon = new VehicleWeapon(
+				shotOwnerProfileId,
+				ItemConstants.GAU8_WEAPON_TPL,
+				ItemConstants.GAU8_AMMO_TPL);
+			float timeBetweenShots = weapon?.timeBetweenShots > 0f
+				? weapon.timeBetweenShots
+				: FallbackTimeBetweenShots;
+			Vector3 damageOrigin = A10ShotPlanner.GetHeadlessDamageOrigin(
+				request.Position,
+				request.Direction);
+			List<A10TracerSegment> damageShotPlan = A10ShotPlanner.Build(
+				damageOrigin,
+				request.Position,
+				seed,
+				timeBetweenShots);
+			if (!damageShotPlan.Any(static segment => segment.IsValid))
+			{
+				reason = "A10ShotPlanEmpty";
+				return false;
+			}
+
+			return true;
+		}
+		catch (Exception ex)
+		{
+			reason = $"A10PreflightFailed:{ex.GetType().Name}";
+			A10AuthorityDiagnostics.LogWarning(
+				$"TSC A-10 headless preflight failed requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} pass={request.PassIndex}. {ex.Message}");
+			return false;
+		}
+	}
+
 	public static async UniTask<bool> ExecuteAsync(A10StrikeRequest request, CancellationToken cancellationToken)
 	{
+		if (cancellationToken.IsCancellationRequested)
+		{
+			return false;
+		}
+
 		int seed = request.VisualSeed != 0 ? request.VisualSeed : Environment.TickCount;
 		GameWorld gameWorld = Singleton<GameWorld>.Instance;
 		if (gameWorld == null)
@@ -84,6 +160,11 @@ public static class A10DamageOnlyPass
 		{
 			FireSupportPlugin.LogSource?.LogInfo(
 				$"TSC A-10 strike intersected requester only; self-damage is disabled. requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} ownerCandidates={hitAccounting.OwnerPlayerHitCount}");
+		}
+
+		if (cancellationToken.IsCancellationRequested)
+		{
+			return false;
 		}
 
 		if (publishTracerBurst)
@@ -150,7 +231,20 @@ public static class A10DamageOnlyPass
 		{
 		}
 
-		DirectDamageFallbackResult fallbackResult = ApplyDirectDamageFallback(request, seed, fired, hitAccounting, damageOrigin);
+		if (cancellationToken.IsCancellationRequested)
+		{
+			FireSupportPlugin.LogSource?.LogInfo(
+				$"TSC A-10 authoritative fire cancelled before direct fallback role={request.Role} requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} pass={request.PassIndex} seed={seed} fired={fired}/{damageShotPlan.Count}.");
+			return fired > 0;
+		}
+
+		DirectDamageFallbackResult fallbackResult = ApplyDirectDamageFallback(
+			request,
+			seed,
+			fired,
+			hitAccounting,
+			damageOrigin,
+			cancellationToken);
 		FireSupportPlugin.LogSource?.LogInfo(
 			$"TSC A-10 authoritative fire complete role={request.Role} requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} pass={request.PassIndex} seed={seed} fired={fired}/{damageShotPlan.Count} fireProjectileFailures={fireFailures} colliderHits={hitAccounting.ColliderHitCount} ownerCandidatePlayers={hitAccounting.OwnerPlayerHitCount} nonOwnerCandidatePlayers={hitAccounting.NonOwnerPlayerHitCount} aliveOwnerCandidatePlayers={hitAccounting.AliveOwnerPlayerHitCount} aliveNonOwnerCandidatePlayers={hitAccounting.AliveNonOwnerPlayerHitCount} colliderResolvedPlayers={hitAccounting.ColliderResolvedPlayerHitCount} geometricCandidatePlayers={hitAccounting.GeometricPlayerHitCount} unresolvedColliderHits={hitAccounting.UnresolvedColliderHitCount} directFallbackApplied={fallbackResult.AppliedCount} directFallbackCommanded={fallbackResult.CommandedCount} directFallbackFailures={fallbackResult.FailureCount} damageApplications={(fallbackResult.Attempted ? fallbackResult.AppliedCount + fallbackResult.CommandedCount : 0)} damageConfirmed=unavailable");
 		return fired > 0;
@@ -705,8 +799,14 @@ public static class A10DamageOnlyPass
 		int seed,
 		int fired,
 		HitAccounting hitAccounting,
-		Vector3 damageOrigin)
+		Vector3 damageOrigin,
+		CancellationToken cancellationToken)
 	{
+		if (cancellationToken.IsCancellationRequested)
+		{
+			return default;
+		}
+
 		bool fallbackEnabled = FireSupportTuningSettings.IsA10HeadlessDirectDamageFallbackEnabled();
 		if (!fallbackEnabled || request.Role != A10AuthorityRole.FikaHeadlessHost)
 		{
@@ -728,6 +828,13 @@ public static class A10DamageOnlyPass
 		IReadOnlyList<HitCandidateSnapshot> candidates = hitAccounting.Candidates ?? Array.Empty<HitCandidateSnapshot>();
 		foreach (HitCandidateSnapshot candidate in candidates)
 		{
+			if (cancellationToken.IsCancellationRequested)
+			{
+				FireSupportPlugin.LogSource?.LogInfo(
+					$"TSC A-10 headless direct damage fallback cancelled requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} applied={applied} commanded={commanded} skipped={skipped} failures={failures}.");
+				break;
+			}
+
 			if (candidate.Player == null)
 			{
 				skipped++;
@@ -757,12 +864,22 @@ public static class A10DamageOnlyPass
 				damage,
 				colliderType);
 
+			if (cancellationToken.IsCancellationRequested)
+			{
+				break;
+			}
+
 			if (TryApplyActiveHealthDamage(candidate.Player, damageInfo, bodyPart, out float appliedDamage, out string localReason))
 			{
 				applied++;
 				FireSupportPlugin.LogSource?.LogInfo(
 					$"TSC A-10 headless direct damage applied method=ActiveHealthController requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} target={A10AuthorityDiagnostics.ShortId(candidate.ProfileId)} netId={targetNetId} type={candidate.Player.GetType().Name} source={candidate.Source} distance={candidate.Distance:0.0}m bodyPart={bodyPart} collider={colliderType} damage={damage:0.0} applied={appliedDamage:0.0}");
 				continue;
+			}
+
+			if (cancellationToken.IsCancellationRequested)
+			{
+				break;
 			}
 
 			if (targetNetId > 0 &&
