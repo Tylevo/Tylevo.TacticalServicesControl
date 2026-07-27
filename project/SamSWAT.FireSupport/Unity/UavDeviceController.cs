@@ -21,8 +21,11 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 	private const string TapAudioClipName = "Blastgang_finger_tap_oneshot_FP";
 	private const float PhoneZoomTransitionSeconds = 0.2f;
 	private const float PhoneZoomRestoreSeconds = 0.15f;
-	private const float UprightRevealSeconds = 0.16f;
-	private const float UprightRevealLowerOffset = 0.10f;
+	private const float UprightRevealSeconds = 0.26f;
+	private const float UprightRevealLowerOffset = 0.16f;
+	private const float UprightHiddenEquipSpeedMultiplier = 2.5f;
+	private const float UprightDeferredRestoreTimeoutSeconds = 2.25f;
+	private const float UprightHiddenHandsCameraOffset = 1.5f;
 
 	private static UavDeviceController s_phoneZoomOwner;
 	private static float s_phoneZoomOriginalFov;
@@ -53,13 +56,26 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 	private System.Collections.Generic.List<ESupportType> _deployEntries;
 	private int _deploySelectionIndex;
 	private readonly System.Collections.Generic.List<(Transform upperArm, Transform forearm)> _tuckedRightArms = new();
-	private readonly System.Collections.Generic.List<(Renderer renderer, bool forceRenderingOff)> _uprightPresentationRenderers = new();
+	private readonly System.Collections.Generic.List<(Renderer renderer, bool forceRenderingOff)> _uprightPhoneRenderers = new();
+	private readonly System.Collections.Generic.List<(Renderer renderer, bool forceRenderingOff)> _uprightHandRenderers = new();
 	private bool _beforeRenderHooked;
 	private bool _rightArmHideActive;
 	private bool _deployPosePinned;
 	private float _deployInputArmedAt;
 	private bool _uprightEquipCompleted;
 	private float _uprightRevealStartedAt = -1f;
+	private bool _uprightPresentationRevealScheduled;
+	private bool _uprightRendererRestoreDeferred;
+	private float _uprightDeferredRestoreDeadline = -1f;
+	private int _uprightPhoneRestoreAfterFrame = -1;
+	private float _uprightPhoneRestoreDeadline = -1f;
+	private bool _uprightAnimatorCullingCaptured;
+	private AnimatorCullingMode _uprightAnimatorCullingMode;
+	private bool _uprightAnimatorSpeedCaptured;
+	private float _uprightAnimatorSpeed;
+	private float _uprightHiddenEquipSpeed;
+	private bool _uprightFallbackCameraOffsetActive;
+	private Vector3 _uprightFallbackCameraOffset;
 	private bool _phoneZoomApplied;
 	private bool _phoneFramingApplied;
 
@@ -322,6 +338,10 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 	private void Update()
 	{
 		MaintainPhoneFraming();
+		MaintainUprightFallbackCameraOffset();
+		MaintainHiddenUprightEquipSpeed();
+		RetryUprightHandRendererSuppression();
+		MaintainDeferredUprightPresentationRestore();
 
 		if (!_authorizationSessionActive)
 		{
@@ -654,7 +674,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 			}
 			else
 			{
-				NotifyAuthorizationFinished(success: false);
+				FinishDeploySession(success: false);
 			}
 			yield break;
 		}
@@ -672,11 +692,22 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 			yield break;
 		}
 
+		RetryUprightHandRendererSuppression();
+		if (_uprightHandRenderers.Count == 0)
+		{
+			FireSupportPlugin.LogSource.LogWarning(
+				"TSC upright phone reveal cancelled because first-person hand renderers were unavailable.");
+			FailUprightPhoneReveal("first-person hand renderers were unavailable");
+			yield break;
+		}
+
+		RestoreHiddenUprightEquipSpeed();
 		HideRightArmForDeployHold();
 
 		// Sample the existing outro directly at its portrait hold frame. The
-		// underlying horizontal equip was rendered off, so the first visible
-		// frame is the upright phone with the free right arm already tucked.
+		// underlying landscape equip remains alive for EFT's hand transaction,
+		// but the complete local first-person presentation stays concealed until
+		// this pose is latched at the render boundary.
 		int layer = GetHandsLayer(PhoneAnimator);
 		float holdTime = GetDeployPoseNormalizedTime();
 		PhoneAnimator.SetBool("Active", false);
@@ -694,9 +725,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 			ShowDeployScreen();
 		}
 
-		_uprightRevealStartedAt = Time.unscaledTime;
-		MaintainPhoneFraming();
-		RestoreUprightPresentationRenderers("vertical pose ready");
+		ScheduleUprightPresentationReveal();
 		// Arm the commit/cancel inputs slightly later so stray input right
 		// after the deploy key cannot instantly spend an authorization.
 		yield return null;
@@ -1023,48 +1052,530 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 
 	private void SuppressUprightPresentationUntilVertical(WeaponPrefab weaponPrefab)
 	{
-		if (weaponPrefab == null || _uprightPresentationRenderers.Count > 0)
+		if (weaponPrefab == null ||
+		    _uprightPhoneRenderers.Count > 0 ||
+		    _uprightHandRenderers.Count > 0)
 		{
 			return;
 		}
 
+		var captured = new System.Collections.Generic.HashSet<Renderer>();
+		int phoneRendererCount = 0;
+		int handsRendererCount = 0;
 		foreach (Renderer renderer in weaponPrefab.GetComponentsInChildren<Renderer>(true))
 		{
-			if (renderer == null)
+			if (!CaptureUprightPresentationRenderer(
+				    renderer,
+				    captured,
+				    _uprightPhoneRenderers))
 			{
 				continue;
 			}
 
-			_uprightPresentationRenderers.Add((renderer, renderer.forceRenderingOff));
-			renderer.forceRenderingOff = true;
+			phoneRendererCount++;
+		}
+
+		// The usable-item prefab and EFT's local first-person hands are separate
+		// renderer trees. Hiding only the prefab left the hands visibly miming
+		// the concealed landscape phone. PlayerBody's Hands skin is the exact
+		// first-person-only renderer set that EFT itself toggles with point of
+		// view, so this never reaches the third-person/Fika-visible body.
+		handsRendererCount = CaptureLocalFirstPersonHandRenderers(
+			captured,
+			logIfMissing: true);
+		if (handsRendererCount == 0)
+		{
+			BeginUprightFallbackCameraConcealment(logIfUnavailable: true);
+		}
+
+		if (PhoneAnimator != null && !_uprightAnimatorCullingCaptured)
+		{
+			_uprightAnimatorCullingMode = PhoneAnimator.cullingMode;
+			_uprightAnimatorCullingCaptured = true;
+			PhoneAnimator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+		}
+
+		if (PhoneAnimator != null && !_uprightAnimatorSpeedCaptured)
+		{
+			_uprightAnimatorSpeed = PhoneAnimator.speed;
+			_uprightHiddenEquipSpeed =
+				Mathf.Max(_uprightAnimatorSpeed, UprightHiddenEquipSpeedMultiplier);
+			_uprightAnimatorSpeedCaptured = true;
+			PhoneAnimator.speed = _uprightHiddenEquipSpeed;
 		}
 
 		TscDiagnostics.LogPhone(
-			$"TSC upright phone presentation concealed during EFT equip. renderers={_uprightPresentationRenderers.Count}.");
+			$"TSC upright phone presentation concealed during EFT equip. phoneRenderers={phoneRendererCount}, handsRenderers={handsRendererCount}, total={_uprightPhoneRenderers.Count + _uprightHandRenderers.Count}.");
+	}
+
+	private void MaintainHiddenUprightEquipSpeed()
+	{
+		if (!_uprightAnimatorSpeedCaptured ||
+		    _uprightEquipCompleted ||
+		    PhoneAnimator == null)
+		{
+			return;
+		}
+
+		// EFT can rewrite animator speed during the hand swap. Accelerate only
+		// the still-concealed native Spawn/Equip state; never seek or replace
+		// that state before SpawnController completes.
+		PhoneAnimator.speed = _uprightHiddenEquipSpeed;
+	}
+
+	private void RestoreHiddenUprightEquipSpeed()
+	{
+		if (!_uprightAnimatorSpeedCaptured)
+		{
+			return;
+		}
+
+		if (PhoneAnimator != null)
+		{
+			PhoneAnimator.speed = _uprightAnimatorSpeed;
+		}
+
+		_uprightAnimatorSpeedCaptured = false;
+		_uprightAnimatorSpeed = 0f;
+		_uprightHiddenEquipSpeed = 0f;
+	}
+
+	private bool CaptureUprightPresentationRenderer(
+		Renderer renderer,
+		System.Collections.Generic.HashSet<Renderer> captured,
+		System.Collections.Generic.List<(Renderer renderer, bool forceRenderingOff)> target)
+	{
+		if (renderer == null || !captured.Add(renderer))
+		{
+			return false;
+		}
+
+		target.Add((renderer, renderer.forceRenderingOff));
+		renderer.forceRenderingOff = true;
+		return true;
+	}
+
+	private int CaptureLocalFirstPersonHandRenderers(
+		System.Collections.Generic.HashSet<Renderer> captured,
+		bool logIfMissing)
+	{
+		if (_ownerPlayer?.IsYourPlayer != true ||
+		    _ownerPlayer.PlayerBody == null)
+		{
+			return 0;
+		}
+
+		int capturedCount = 0;
+		EFT.PlayerBody playerBody = _ownerPlayer.PlayerBody;
+		if (playerBody.BodySkins != null &&
+		    playerBody.BodySkins.TryGetValue(
+			    EBodyModelPart.Hands,
+			    out EFT.Visual.LoddedSkin handsSkin) &&
+		    handsSkin != null)
+		{
+			foreach (Renderer renderer in handsSkin.GetRenderers())
+			{
+				if (CaptureUprightPresentationRenderer(
+					    renderer,
+					    captured,
+					    _uprightHandRenderers))
+				{
+					capturedCount++;
+				}
+			}
+
+			if (capturedCount > 0)
+			{
+				return capturedCount;
+			}
+		}
+
+		if (logIfMissing)
+		{
+			FireSupportPlugin.LogSource.LogWarning(
+				"TSC upright phone could not capture PlayerBody's first-person Hands skin yet; it will retry until reveal.");
+		}
+
+		return capturedCount;
+	}
+
+	private void RetryUprightHandRendererSuppression()
+	{
+		if (_uprightPhoneRenderers.Count == 0 ||
+		    _finishNotified)
+		{
+			return;
+		}
+
+		var captured = new System.Collections.Generic.HashSet<Renderer>();
+		foreach ((Renderer renderer, _) in _uprightPhoneRenderers)
+		{
+			if (renderer != null)
+			{
+				captured.Add(renderer);
+			}
+		}
+		foreach ((Renderer renderer, _) in _uprightHandRenderers)
+		{
+			if (renderer != null)
+			{
+				captured.Add(renderer);
+			}
+		}
+
+		int handsRendererCount = CaptureLocalFirstPersonHandRenderers(
+			captured,
+			logIfMissing: false);
+		if (handsRendererCount > 0)
+		{
+			TscDiagnostics.LogPhone(
+				$"TSC upright phone captured delayed first-person hand renderers. handsRenderers={handsRendererCount}.");
+		}
+		else if (_uprightHandRenderers.Count == 0 &&
+		         !_uprightFallbackCameraOffsetActive)
+		{
+			BeginUprightFallbackCameraConcealment(logIfUnavailable: false);
+		}
+	}
+
+	private void BeginUprightFallbackCameraConcealment(bool logIfUnavailable)
+	{
+		if (_uprightFallbackCameraOffsetActive)
+		{
+			return;
+		}
+
+		var handsContainer = _ownerPlayer?.ProceduralWeaponAnimation?.HandsContainer;
+		if (handsContainer == null)
+		{
+			if (logIfUnavailable)
+			{
+				FireSupportPlugin.LogSource.LogWarning(
+					"TSC upright phone could not apply fallback hands concealment because HandsContainer was unavailable.");
+			}
+			return;
+		}
+
+		_uprightFallbackCameraOffset = handsContainer.CameraOffset;
+		_uprightFallbackCameraOffsetActive = true;
+		MaintainUprightFallbackCameraOffset();
+		TscDiagnostics.LogPhone(
+			"TSC upright phone moved the first-person rig below view while waiting for its Hands skin.");
+	}
+
+	private void MaintainUprightFallbackCameraOffset()
+	{
+		if (!_uprightFallbackCameraOffsetActive)
+		{
+			return;
+		}
+
+		var handsContainer = _ownerPlayer?.ProceduralWeaponAnimation?.HandsContainer;
+		if (handsContainer != null)
+		{
+			Vector3 hiddenOffset = _uprightFallbackCameraOffset;
+			hiddenOffset.y += UprightHiddenHandsCameraOffset;
+			handsContainer.CameraOffset = hiddenOffset;
+		}
+	}
+
+	private void RestoreUprightFallbackCameraOffset()
+	{
+		if (!_uprightFallbackCameraOffsetActive)
+		{
+			return;
+		}
+
+		var handsContainer = _ownerPlayer?.ProceduralWeaponAnimation?.HandsContainer;
+		if (handsContainer != null)
+		{
+			handsContainer.CameraOffset = _uprightFallbackCameraOffset;
+		}
+
+		_uprightFallbackCameraOffsetActive = false;
+		_uprightFallbackCameraOffset = Vector3.zero;
+	}
+
+	private void ScheduleUprightPresentationReveal()
+	{
+		if (_uprightPresentationRevealScheduled)
+		{
+			return;
+		}
+
+		_uprightPresentationRevealScheduled = true;
+		Application.onBeforeRender += RevealUprightPresentationBeforeRender;
+	}
+
+	private void RevealUprightPresentationBeforeRender()
+	{
+		if (!_uprightPresentationRevealScheduled)
+		{
+			return;
+		}
+
+		_uprightPresentationRevealScheduled = false;
+		Application.onBeforeRender -= RevealUprightPresentationBeforeRender;
+
+		bool ownsHands = _ownerPlayer != null &&
+		                 ReferenceEquals(_ownerPlayer.HandsController, this);
+		if (_finishNotified && ownsHands)
+		{
+			// Let a hidden outro keep evaluating so the external restore does
+			// not have to wait for its timeout. Only remove the temporary equip
+			// acceleration here; culling is restored with the renderers.
+			RestoreHiddenUprightEquipSpeed();
+			DeferUprightPresentationRestore();
+			TscDiagnostics.LogPhone(
+				"TSC upright phone reveal cancelled; presentation remains concealed until hands restore.");
+			return;
+		}
+
+		if (!ownsHands)
+		{
+			TscDiagnostics.LogPhone(
+				"TSC upright phone reveal skipped because hands ownership changed.");
+			RestoreUprightHandRenderersAfterOwnershipChange(
+				"reveal skipped after hands ownership changed");
+			return;
+		}
+
+		RetryUprightHandRendererSuppression();
+		if (!_uprightEquipCompleted ||
+		    !_deployPosePinned ||
+		    PhoneAnimator == null ||
+		    _uprightHandRenderers.Count == 0)
+		{
+			FireSupportPlugin.LogSource.LogWarning(
+				"TSC upright phone reveal aborted because its portrait pose was not ready.");
+			FailUprightPhoneReveal("portrait pose was not ready");
+			return;
+		}
+
+		// Animator/procedural passes can run after the coroutine. Re-latch the
+		// portrait frame here, immediately before rendering, so no landscape
+		// frame can leak through when the saved renderer states are restored.
+		try
+		{
+			int layer = GetHandsLayer(PhoneAnimator);
+			PhoneAnimator.SetBool("Active", false);
+			PhoneAnimator.Play(
+				"Outro Success",
+				layer,
+				GetDeployPoseNormalizedTime());
+			PhoneAnimator.Update(0f);
+			ApplyDeployHoldArmPose();
+			_uprightRevealStartedAt = Time.unscaledTime;
+			RestoreUprightFallbackCameraOffset();
+			MaintainPhoneFraming();
+			RestoreUprightPresentationRenderers(
+				"portrait pose render boundary completed");
+		}
+		catch (Exception ex)
+		{
+			_uprightRevealStartedAt = -1f;
+			FireSupportPlugin.LogSource.LogWarning(
+				$"TSC upright phone render-boundary pose latch failed. {ex}");
+			FailUprightPhoneReveal("render-boundary portrait pose latch failed");
+		}
+	}
+
+	private void FailUprightPhoneReveal(string reason)
+	{
+		if (_finishNotified)
+		{
+			return;
+		}
+
+		if (LaunchMode == UavPhoneLaunchMode.UavRadarMonitor)
+		{
+			FinishRadarMonitorSession(reason);
+		}
+		else
+		{
+			FinishDeploySession(success: false);
+		}
+	}
+
+	private void CancelScheduledUprightPresentationReveal()
+	{
+		if (_uprightPresentationRevealScheduled)
+		{
+			_uprightPresentationRevealScheduled = false;
+			Application.onBeforeRender -= RevealUprightPresentationBeforeRender;
+		}
+	}
+
+	private void RestoreUprightAnimatorOverrides()
+	{
+		if (_uprightAnimatorCullingCaptured)
+		{
+			if (PhoneAnimator != null)
+			{
+				PhoneAnimator.cullingMode = _uprightAnimatorCullingMode;
+			}
+
+			_uprightAnimatorCullingCaptured = false;
+		}
+
+		RestoreHiddenUprightEquipSpeed();
+	}
+
+	private void MaintainDeferredUprightPresentationRestore()
+	{
+		MaintainDeferredUprightPhoneRestore();
+
+		if (!_uprightRendererRestoreDeferred)
+		{
+			return;
+		}
+
+		if (_ownerPlayer == null ||
+		    !ReferenceEquals(_ownerPlayer.HandsController, this))
+		{
+			RestoreUprightHandRenderersAfterOwnershipChange(
+				"deferred cleanup after hands ownership changed");
+			return;
+		}
+
+		if (_uprightDeferredRestoreDeadline >= 0f &&
+		    Time.unscaledTime >= _uprightDeferredRestoreDeadline)
+		{
+			FireSupportPlugin.LogSource.LogWarning(
+				"TSC upright phone hands ownership did not change before the concealment safety timeout; restoring shared first-person state.");
+			CancelScheduledUprightPresentationReveal();
+			RestoreUprightAnimatorOverrides();
+			RestoreUprightFallbackCameraOffset();
+			RestorePhoneZoom();
+			RestoreRightArmAfterDeployHold();
+			_uprightRendererRestoreDeferred = false;
+			_uprightDeferredRestoreDeadline = -1f;
+			int restored = RestoreRendererList(_uprightHandRenderers);
+			ScheduleDeferredUprightPhoneRestore();
+			TscDiagnostics.LogPhone(
+				$"TSC upright phone shared hands released after ownership timeout. renderers={restored}; old phone remains concealed through the next frame.");
+		}
+	}
+
+	private void DeferUprightPresentationRestore()
+	{
+		if (_uprightPhoneRenderers.Count == 0 &&
+		    _uprightHandRenderers.Count == 0)
+		{
+			RestoreUprightAnimatorOverrides();
+			return;
+		}
+
+		_uprightRendererRestoreDeferred = true;
+		_uprightPhoneRestoreAfterFrame = -1;
+		_uprightPhoneRestoreDeadline = -1f;
+		if (_uprightDeferredRestoreDeadline < 0f)
+		{
+			_uprightDeferredRestoreDeadline =
+				Time.unscaledTime + UprightDeferredRestoreTimeoutSeconds;
+		}
+	}
+
+	private void RestoreUprightHandRenderersAfterOwnershipChange(string reason)
+	{
+		CancelScheduledUprightPresentationReveal();
+		RestoreUprightAnimatorOverrides();
+		RestoreUprightFallbackCameraOffset();
+		RestorePhoneZoom();
+		RestoreRightArmAfterDeployHold();
+		_uprightRendererRestoreDeferred = false;
+		_uprightDeferredRestoreDeadline = -1f;
+
+		int restored = RestoreRendererList(_uprightHandRenderers);
+		if (restored > 0)
+		{
+			TscDiagnostics.LogPhone(
+				$"TSC upright phone shared hands restored after ownership change. renderers={restored}, reason={reason}.");
+		}
+
+		// The old usable-item prefab can outlive HandsController ownership for
+		// the remainder of this frame. Keep only that phone concealed until
+		// the next frame so its horizontal/outro pose cannot flash during the
+		// swap, then release the scoped override for safe prefab pooling/reuse.
+		ScheduleDeferredUprightPhoneRestore();
+	}
+
+	private void ScheduleDeferredUprightPhoneRestore()
+	{
+		if (_uprightPhoneRenderers.Count == 0)
+		{
+			return;
+		}
+
+		_uprightPhoneRestoreAfterFrame = Time.frameCount + 1;
+		_uprightPhoneRestoreDeadline = Time.unscaledTime + 0.25f;
+	}
+
+	private void MaintainDeferredUprightPhoneRestore()
+	{
+		if (_uprightPhoneRestoreAfterFrame < 0)
+		{
+			return;
+		}
+
+		if (Time.frameCount < _uprightPhoneRestoreAfterFrame &&
+		    Time.unscaledTime < _uprightPhoneRestoreDeadline)
+		{
+			return;
+		}
+
+		int restored = RestoreRendererList(_uprightPhoneRenderers);
+		_uprightPhoneRestoreAfterFrame = -1;
+		_uprightPhoneRestoreDeadline = -1f;
+		if (restored > 0)
+		{
+			TscDiagnostics.LogPhone(
+				$"TSC upright phone prefab renderer state released after ownership-change frame. renderers={restored}.");
+		}
 	}
 
 	private void RestoreUprightPresentationRenderers(string reason)
 	{
-		if (_uprightPresentationRenderers.Count == 0)
+		CancelScheduledUprightPresentationReveal();
+		RestoreUprightAnimatorOverrides();
+		_uprightRendererRestoreDeferred = false;
+		_uprightDeferredRestoreDeadline = -1f;
+		_uprightPhoneRestoreAfterFrame = -1;
+		_uprightPhoneRestoreDeadline = -1f;
+
+		int phoneRestored = RestoreRendererList(_uprightPhoneRenderers);
+		int handsRestored = RestoreRendererList(_uprightHandRenderers);
+		if (phoneRestored == 0 && handsRestored == 0)
 		{
 			return;
 		}
 
+		TscDiagnostics.LogPhone(
+			$"TSC upright phone presentation revealed. phoneRenderers={phoneRestored}, handsRenderers={handsRestored}, reason={reason}.");
+	}
+
+	private static int RestoreRendererList(
+		System.Collections.Generic.List<(Renderer renderer, bool forceRenderingOff)> renderers)
+	{
 		int restored = 0;
-		foreach ((Renderer renderer, bool forceRenderingOff) in _uprightPresentationRenderers)
+		foreach ((Renderer renderer, bool forceRenderingOff) in renderers)
 		{
 			if (renderer == null)
 			{
 				continue;
 			}
 
-			renderer.forceRenderingOff = forceRenderingOff;
+			// forceRenderingOff is our scoped override. Other EFT visibility
+			// decisions use renderer enabled/skin state and remain intact.
+			if (renderer.forceRenderingOff)
+			{
+				renderer.forceRenderingOff = forceRenderingOff;
+			}
 			restored++;
 		}
 
-		_uprightPresentationRenderers.Clear();
-		TscDiagnostics.LogPhone(
-			$"TSC upright phone presentation revealed. renderers={restored}, reason={reason}.");
+		renderers.Clear();
+		return restored;
 	}
 
 	private static string GetBonePath(Transform bone)
@@ -1880,6 +2391,38 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 		_finishNotified = true;
 		_finishPending = true;
 		_finishSuccess = success;
+
+		if (LaunchMode == UavPhoneLaunchMode.DeployMenu ||
+		    LaunchMode == UavPhoneLaunchMode.UavRadarMonitor)
+		{
+			CancelScheduledUprightPresentationReveal();
+			RestoreHiddenUprightEquipSpeed();
+			if (_uprightPhoneRenderers.Count > 0 ||
+			    _uprightHandRenderers.Count > 0)
+			{
+				if (_ownerPlayer != null &&
+				    ReferenceEquals(_ownerPlayer.HandsController, this))
+				{
+					// A short J tap can finish immediately after EFT's equip
+					// callback but before the portrait pose is sampled. Keep
+					// that native landscape/outro presentation concealed until
+					// the controller no longer owns hands.
+					DeferUprightPresentationRestore();
+					TscDiagnostics.LogPhone(
+						"TSC upright phone cleanup deferred until hands ownership changes.");
+				}
+				else
+				{
+					RestoreUprightHandRenderersAfterOwnershipChange(
+						"upright phone finished after hands ownership changed");
+				}
+			}
+			else
+			{
+				RestoreUprightAnimatorOverrides();
+			}
+		}
+
 		InvokeHandsUseCallbackOnce("phone session finished");
 
 		try
@@ -2226,6 +2769,37 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 		}
 	}
 
+	private void OnDisable()
+	{
+		bool hasScopedPresentationState =
+			_uprightPhoneRenderers.Count > 0 ||
+			_uprightHandRenderers.Count > 0 ||
+			_uprightPresentationRevealScheduled ||
+			_uprightRendererRestoreDeferred ||
+			_uprightPhoneRestoreAfterFrame >= 0 ||
+			_uprightAnimatorCullingCaptured ||
+			_uprightAnimatorSpeedCaptured ||
+			_uprightFallbackCameraOffsetActive ||
+			_beforeRenderHooked ||
+			_rightArmHideActive ||
+			_phoneFramingApplied ||
+			_phoneZoomApplied ||
+			_phoneAnimatorSpeedCustomized;
+		if (!hasScopedPresentationState)
+		{
+			return;
+		}
+
+		// Pooled usable-item controllers may be disabled without receiving
+		// OnDestroy. Release every scoped override while the object is not
+		// renderable so a later pool reuse cannot inherit an invisible phone.
+		RestoreUprightPresentationRenderers("controller disabled during deferred cleanup");
+		RestoreUprightFallbackCameraOffset();
+		RestorePhoneZoom();
+		RestoreRightArmAfterDeployHold();
+		ResetPhoneAnimatorSpeed("controller disabled");
+	}
+
 	private void OnDestroy()
 	{
 		if (!_finishNotified &&
@@ -2238,6 +2812,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 		}
 
 		RestoreUprightPresentationRenderers("controller destroy");
+		RestoreUprightFallbackCameraOffset();
 		_uprightRevealStartedAt = -1f;
 		RestorePhoneZoom();
 		RestoreRightArmAfterDeployHold();
