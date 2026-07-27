@@ -8,6 +8,7 @@
 - Added visible F12 keybinds for opening the purchase phone (`U` by default), opening the deployment phone (`K` by default), and confirming spotter targets (`Mouse 2`/middle mouse by default).
 - Added optional automatic phone zoom with FOV, vertical framing, and horizontal framing controls. The previous camera FOV and viewmodel offset are restored when the phone is stowed.
 - Added local F12 UAV display controls. `Phone` remains the default held-J presentation; `HUD` displays the same phone radar continuously in any selected screen corner for the active requester-local recon session.
+- Added server-authoritative RUB, USD, and EUR purchase currencies. The dashboard selects one currency for all TSC prices; the phone, main-menu store, carried wallet, stash debit, persistent purchase journal, and Fika host sync all use that selection.
 - Added explicit A-10 authority roles and unique support request IDs for Fika. The raid authority tracks in-flight and completed requests so duplicate packets cannot fire the same strike twice.
 - Added an experimental dedicated-headless A-10 damage executor. It uses the headless raid authority and Fika damage packets while clients remain visual-only.
 
@@ -25,6 +26,7 @@
 - Fixed `PreferStashThenCarried` purchases failing when stash payment is unavailable even though the player has enough carried roubles.
 - Fixed compressed `/tsc/purchase` request bodies failing JSON parsing. The server now accepts plain JSON plus zlib/deflate request bodies and returns a controlled denial if purchase handling throws.
 - Made the authorization ledger durable with atomic file replacement, backup recovery, corrupt-file preservation, and rollback when a ledger write fails.
+- Hardened currency changes during purchases: quote mismatches fail closed, prepared and accepted retries retain their original currency, and malformed current-schema currency values cannot be silently reinterpreted as RUB.
 - Fixed Fika A-10 clients starting prediction before the host accepted a strike. Clients now wait for the authority broadcast, render the accepted visual pass, and never execute authoritative damage.
 - Synchronized Fika tracer and impact replay to the visible A-10 firing pass. Replay is keyed by support request, seed, and pass so double passes do not create early fake bursts or mismatched impacts.
 - Fixed UAV HUD ownership in Fika: only the requesting client creates the radar overlay, and a dedicated headless host does not create client HUD objects.

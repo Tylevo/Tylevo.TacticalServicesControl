@@ -35,6 +35,7 @@ public class FireSupportSettingsPacket : INetSerializable
 	public PaymentMode PaymentMode;
 	public PaymentSource PaymentSource;
 	public string ServerConfigUrl;
+	public PaymentCurrency PaymentCurrency;
 
 	public FireSupportSettingsPacket()
 	{
@@ -80,6 +81,7 @@ public class FireSupportSettingsPacket : INetSerializable
 		writer.Put((int)PaymentMode);
 		writer.Put((int)PaymentSource);
 		writer.Put(ServerConfigUrl ?? string.Empty);
+		writer.Put((int)PaymentCurrency);
 	}
 
 	public void Deserialize(NetDataReader reader)
@@ -114,5 +116,8 @@ public class FireSupportSettingsPacket : INetSerializable
 		PaymentMode = (PaymentMode)reader.GetInt();
 		PaymentSource = (PaymentSource)reader.GetInt();
 		ServerConfigUrl = reader.GetString();
+		PaymentCurrency = reader.AvailableBytes >= sizeof(int)
+			? PaymentCurrencyInfo.Normalize((PaymentCurrency)reader.GetInt())
+			: global::SamSWAT.FireSupport.ArysReloaded.Unity.PaymentCurrency.RUB;
 	}
 }

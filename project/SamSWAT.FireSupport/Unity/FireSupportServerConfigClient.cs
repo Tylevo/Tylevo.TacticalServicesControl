@@ -183,6 +183,11 @@ public static class FireSupportServerConfigClient
 		{
 			throw new InvalidOperationException("The TSC server returned an empty or invalid configuration snapshot.");
 		}
+		if (!HasValidSnapshotCurrency(snapshot))
+		{
+			throw new InvalidOperationException(
+				"The TSC server payment currency is invalid. Select RUB, USD, or EUR in the dashboard.");
+		}
 
 		cancellationToken.ThrowIfCancellationRequested();
 		if (!string.Equals(expectedSessionKey, GetAuthenticatedSessionKey(), StringComparison.Ordinal))
@@ -206,13 +211,16 @@ public static class FireSupportServerConfigClient
 		}
 
 		FireSupportPayment.NotifySettingsChanged(snapshot);
+		PaymentCurrency snapshotCurrency = GetSnapshotCurrency(snapshot);
+		int? snapshotBalance = GetSnapshotStashBalance(snapshot, snapshotCurrency);
 		TscDiagnostics.LogPayment(
-			$"TSC pre-raid snapshot loaded revision={Math.Max(0, snapshot.Revision)} authorizations={snapshot.Authorizations?.Count ?? 0} stashBalance={(snapshot.StashRoubleBalance.HasValue ? snapshot.StashRoubleBalance.Value.ToString() : "unknown")}.");
+			$"TSC pre-raid snapshot loaded revision={Math.Max(0, snapshot.Revision)} authorizations={snapshot.Authorizations?.Count ?? 0} currency={snapshotCurrency} stashBalance={(snapshotBalance.HasValue ? snapshotBalance.Value.ToString() : "unknown")}.");
 		return snapshot;
 	}
 
 	public static UniTask<FireSupportPurchaseResponse> PurchaseAuthorizationAsync(
 		ESupportType supportType,
+		PaymentCurrency expectedCurrency,
 		int clientKnownRevision)
 	{
 		return SendPurchaseRequestAsync(
@@ -222,6 +230,7 @@ public static class FireSupportServerConfigClient
 			expectedSessionKey: string.Empty,
 			expectedProfileId: string.Empty,
 			expectedCost: null,
+			expectedCurrency: expectedCurrency,
 			clientKnownRevision: clientKnownRevision);
 	}
 
@@ -231,6 +240,7 @@ public static class FireSupportServerConfigClient
 		string expectedSessionKey,
 		string expectedProfileId,
 		int expectedCost,
+		PaymentCurrency expectedCurrency,
 		int clientKnownRevision)
 	{
 		return SendPurchaseRequestAsync(
@@ -240,6 +250,7 @@ public static class FireSupportServerConfigClient
 			expectedSessionKey,
 			expectedProfileId,
 			expectedCost,
+			expectedCurrency,
 			clientKnownRevision);
 	}
 
@@ -250,8 +261,10 @@ public static class FireSupportServerConfigClient
 		string expectedSessionKey,
 		string expectedProfileId,
 		int? expectedCost,
+		PaymentCurrency expectedCurrency,
 		int clientKnownRevision)
 	{
+		expectedCurrency = PaymentCurrencyInfo.Normalize(expectedCurrency);
 		var fallback = new FireSupportPurchaseResponse
 		{
 			Ok = false,
@@ -259,6 +272,7 @@ public static class FireSupportServerConfigClient
 			SupportType = supportType.ToString(),
 			Cost = FireSupportPayment.GetActiveCost(supportType),
 			PaymentSource = nameof(PaymentSource.StashRoubles),
+			Currency = PaymentCurrencyInfo.GetCode(expectedCurrency),
 			NewBalance = FireSupportPayment.GetEffectiveBalance(),
 			AuthorizationGranted = false,
 			ServerRevision = Math.Max(clientKnownRevision, s_hostPurchaseRevision),
@@ -311,6 +325,7 @@ public static class FireSupportServerConfigClient
 				RequestId = requestId ?? string.Empty,
 				ClientKnownRevision = clientKnownRevision,
 				ExpectedCost = expectedCost,
+				ExpectedCurrency = PaymentCurrencyInfo.GetCode(expectedCurrency),
 				Quantity = 1
 			};
 			if (persistentPurchase &&
@@ -571,7 +586,10 @@ public static class FireSupportServerConfigClient
 		long mutationEpochAtRequest)
 	{
 		int revision = Math.Max(0, snapshot.Revision);
-		bool playerStateIncluded = snapshot.PlayerStateIncluded || snapshot.StashRoubleBalance.HasValue;
+		bool playerStateIncluded =
+			snapshot.PlayerStateIncluded ||
+			snapshot.StashCurrencyBalance.HasValue ||
+			snapshot.StashRoubleBalance.HasValue;
 		bool playerStateApplied = false;
 		if (playerStateIncluded)
 		{
@@ -600,14 +618,28 @@ public static class FireSupportServerConfigClient
 				"TSC config snapshot did not include authenticated player state; preserving the last known stash, persistence, and authorization state.");
 		}
 
+		if (!HasValidSnapshotCurrency(snapshot))
+		{
+			if (ShouldApplyLocalGlobalSettings())
+			{
+				ClearServerGlobalOverrides(notify: false);
+			}
+			FireSupportPayment.MarkServerPaymentCurrencyInvalid(
+				$"schema={snapshot.ConfigSchemaVersion}, value={snapshot.PaymentCurrency ?? "<missing>"}");
+			FireSupportPayment.NotifySettingsChanged(snapshot);
+			return;
+		}
+
 		if (ShouldApplyLocalGlobalSettings())
 		{
 			ApplyGlobalSettings(snapshot, revision);
 		}
 
 		FireSupportPayment.NotifySettingsChanged(snapshot);
+		PaymentCurrency snapshotCurrency = GetSnapshotCurrency(snapshot);
+		int? snapshotBalance = GetSnapshotStashBalance(snapshot, snapshotCurrency);
 		TscDiagnostics.LogPayment(
-			$"TSC server snapshot loaded revision={revision} playerStateIncluded={playerStateIncluded} playerStateApplied={playerStateApplied} authorizations={(playerStateIncluded ? snapshot.Authorizations?.Count ?? 0 : -1)} stashBalance={(playerStateIncluded && snapshot.StashRoubleBalance.HasValue ? snapshot.StashRoubleBalance.Value.ToString() : "unknown")} globalsApplied={ShouldApplyLocalGlobalSettings()}");
+			$"TSC server snapshot loaded revision={revision} playerStateIncluded={playerStateIncluded} playerStateApplied={playerStateApplied} authorizations={(playerStateIncluded ? snapshot.Authorizations?.Count ?? 0 : -1)} currency={snapshotCurrency} stashBalance={(playerStateIncluded && snapshotBalance.HasValue ? snapshotBalance.Value.ToString() : "unknown")} globalsApplied={ShouldApplyLocalGlobalSettings()}");
 	}
 
 	private static bool TryApplyPlayerState(
@@ -632,9 +664,10 @@ public static class FireSupportServerConfigClient
 
 	private static void ApplyPlayerState(RaidOpsFireSupportServerConfig snapshot, int revision)
 	{
+		PaymentCurrency currency = GetSnapshotCurrency(snapshot);
 		FireSupportPayment.SetServerProfileState(
 			revision,
-			snapshot.StashRoubleBalance,
+			GetSnapshotStashBalance(snapshot, currency),
 			snapshot.PurchasePersistence?.Enabled == true,
 			snapshot.PurchasePersistence?.RefundFailedDispatch != false,
 			snapshot.PurchasePersistence?.SpendCreditsBeforeCash != false,
@@ -656,7 +689,8 @@ public static class FireSupportServerConfigClient
 			GetPrice(snapshot, "Uav", ESupportType.Uav),
 			GetPrice(snapshot, "FocusedSweep", ESupportType.FocusedSweep),
 			ParseEnum(snapshot.PaymentMode, FireSupportPayment.GetConfiguredPaymentMode()),
-			ParseEnum(snapshot.PaymentSource, FireSupportPayment.GetConfiguredPaymentSource()));
+			ParseEnum(snapshot.PaymentSource, FireSupportPayment.GetConfiguredPaymentSource()),
+			GetSnapshotCurrency(snapshot));
 		FireSupportServiceAvailability.SetServerConfigAvailability(
 			GetEnabled(snapshot, "PriorityExfil", FireSupportServiceAvailability.GetConfiguredPriorityExfilEnabled()),
 			GetEnabled(snapshot, "DoublePass", FireSupportServiceAvailability.GetConfiguredDoublePassEnabled()),
@@ -738,6 +772,64 @@ public static class FireSupportServerConfigClient
 		}
 
 		return FireSupportPayment.GetConfiguredCost(supportType);
+	}
+
+	public static PaymentCurrency GetSnapshotCurrency(
+		RaidOpsFireSupportServerConfig snapshot)
+	{
+		return PaymentCurrencyInfo.Parse(
+			snapshot?.PaymentCurrency,
+			PaymentCurrency.RUB);
+	}
+
+	private static bool HasValidSnapshotCurrency(
+		RaidOpsFireSupportServerConfig snapshot)
+	{
+		if (snapshot == null)
+		{
+			return false;
+		}
+
+		if (PaymentCurrencyInfo.TryParse(snapshot.PaymentCurrency, out _))
+		{
+			return true;
+		}
+
+		// Servers predating config schema 3 had no currency field and were
+		// unambiguously RUB-only. Current-schema omissions are invalid.
+		return snapshot.ConfigSchemaVersion < 3 &&
+		       string.IsNullOrWhiteSpace(snapshot.PaymentCurrency);
+	}
+
+	public static int? GetSnapshotStashBalance(
+		RaidOpsFireSupportServerConfig snapshot,
+		PaymentCurrency currency)
+	{
+		if (snapshot == null)
+		{
+			return null;
+		}
+
+		PaymentCurrency normalizedCurrency =
+			PaymentCurrencyInfo.Normalize(currency);
+		if (normalizedCurrency != GetSnapshotCurrency(snapshot))
+		{
+			// The generic balance is denominated in the snapshot's one selected
+			// currency. Prepared retries can intentionally quote an older
+			// currency, but the current snapshot cannot supply that old balance.
+			return null;
+		}
+
+		if (snapshot.StashCurrencyBalance.HasValue)
+		{
+			return snapshot.StashCurrencyBalance;
+		}
+
+		// A legacy server's only balance field is explicitly RUB-denominated.
+		// Never reinterpret it as dollars or euros.
+		return normalizedCurrency == PaymentCurrency.RUB
+			? snapshot.StashRoubleBalance
+			: null;
 	}
 
 	private static bool GetEnabled(

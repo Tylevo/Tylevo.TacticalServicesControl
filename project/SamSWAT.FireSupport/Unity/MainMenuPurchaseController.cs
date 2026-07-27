@@ -86,9 +86,11 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 	private Button _purchaseConfirmationConfirmButton;
 	private ESupportType _confirmationType = ESupportType.None;
 	private int _confirmationPrice = -1;
+	private PaymentCurrency _confirmationCurrency = PaymentCurrency.RUB;
 	private int _confirmationRevision;
 	private string _confirmationSessionKey = string.Empty;
 	private string _confirmationProfileId = string.Empty;
+	private string _confirmationRequestId = string.Empty;
 	private RaidOpsFireSupportServerConfig _snapshot;
 	private CancellationTokenSource _refreshCts;
 	private string _profileId = string.Empty;
@@ -1113,13 +1115,28 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 			return;
 		}
 
-		int price = GetPrice(_snapshot, descriptor.ConfigKey);
-		int balance = _snapshot.StashRoubleBalance ?? 0;
+		if (!TryResolvePurchaseTerms(
+			    _snapshot,
+			    descriptor,
+			    retryAmbiguousPurchase ? _ambiguousRequestId : string.Empty,
+			    out int price,
+			    out PaymentCurrency currency,
+			    out bool recoveredPreparedQuote))
+		{
+			SetStatus("Server omitted valid purchase terms. REFRESH and try again.", false);
+			return;
+		}
+		int balance =
+			FireSupportServerConfigClient.GetSnapshotStashBalance(_snapshot, currency) ?? 0;
 		_confirmationType = supportType;
 		_confirmationPrice = price;
+		_confirmationCurrency = currency;
 		_confirmationRevision = _snapshot.Revision;
 		_confirmationSessionKey = _sessionKey;
 		_confirmationProfileId = _profileId;
+		_confirmationRequestId = retryAmbiguousPurchase
+			? _ambiguousRequestId
+			: string.Empty;
 
 		_purchaseConfirmationTitle.text = retryAmbiguousPurchase
 			? "CONFIRM PURCHASE RETRY"
@@ -1127,12 +1144,13 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 		_purchaseConfirmationBody.text = retryAmbiguousPurchase
 			? $"{descriptor.DisplayName}\n\n" +
 			  "This reuses the original request ID and cannot create a second completed charge.\n" +
-			  $"Current list price: \u20BD{price:N0}\n\n" +
+			  $"{(recoveredPreparedQuote ? "Original prepared price" : "Current list price")}: " +
+			  $"{PaymentCurrencyInfo.Format(price, currency)}\n\n" +
 			  "Continue purchase recovery?"
 			: $"{descriptor.DisplayName}\n\n" +
-			  $"UNIT PRICE: \u20BD{price:N0}\n" +
-			  $"STASH BEFORE: \u20BD{balance:N0}\n" +
-			  $"STASH AFTER: {FormatProjectedBalance(balance, price)}\n\n" +
+			  $"UNIT PRICE: {PaymentCurrencyInfo.Format(price, currency)}\n" +
+			  $"STASH BEFORE: {PaymentCurrencyInfo.Format(balance, currency)}\n" +
+			  $"STASH AFTER: {FormatProjectedBalance(balance, price, currency)}\n\n" +
 			  "Purchase one persistent pre-raid authorization?";
 		_purchaseConfirmationConfirmButton.GetComponentInChildren<Text>().text =
 			retryAmbiguousPurchase ? "CONFIRM RETRY" : "CONFIRM BUY";
@@ -1150,9 +1168,11 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 
 		ESupportType supportType = _confirmationType;
 		int expectedPrice = _confirmationPrice;
+		PaymentCurrency expectedCurrency = _confirmationCurrency;
 		int expectedRevision = _confirmationRevision;
 		string expectedSessionKey = _confirmationSessionKey;
 		string expectedProfileId = _confirmationProfileId;
+		string expectedRequestId = _confirmationRequestId;
 		HidePurchaseConfirmation(redraw: false);
 
 		string authenticatedSessionKey =
@@ -1169,10 +1189,29 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 		}
 
 		ServiceDescriptor descriptor = GetDescriptor(supportType);
+		bool retryPreparedPurchase = !string.IsNullOrWhiteSpace(expectedRequestId);
+		bool matchingRetry =
+			retryPreparedPurchase &&
+			_ambiguousType == supportType &&
+			string.Equals(
+				_ambiguousRequestId,
+				expectedRequestId,
+				StringComparison.Ordinal);
+		bool resolvedTerms =
+			TryResolvePurchaseTerms(
+				_snapshot,
+				descriptor,
+				retryPreparedPurchase ? expectedRequestId : string.Empty,
+				out int currentPrice,
+				out PaymentCurrency currentCurrency,
+				out _);
 		if (!_ready ||
 		    _snapshot == null ||
 		    _snapshot.Revision != expectedRevision ||
-		    GetPrice(_snapshot, descriptor.ConfigKey) != expectedPrice)
+		    (retryPreparedPurchase && !matchingRetry) ||
+		    !resolvedTerms ||
+		    currentPrice != expectedPrice ||
+		    currentCurrency != expectedCurrency)
 		{
 			SetStatus(
 				"Server revision or pricing changed. REFRESH, then confirm the purchase again.",
@@ -1181,7 +1220,7 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 			return;
 		}
 
-		BeginPurchase(supportType, expectedPrice);
+		BeginPurchase(supportType, expectedPrice, expectedCurrency);
 	}
 
 	private void HidePurchaseConfirmation()
@@ -1193,9 +1232,11 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 	{
 		_confirmationType = ESupportType.None;
 		_confirmationPrice = -1;
+		_confirmationCurrency = PaymentCurrency.RUB;
 		_confirmationRevision = 0;
 		_confirmationSessionKey = string.Empty;
 		_confirmationProfileId = string.Empty;
+		_confirmationRequestId = string.Empty;
 		if (_purchaseConfirmationRoot != null)
 		{
 			_purchaseConfirmationRoot.SetActive(false);
@@ -1206,15 +1247,69 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 		}
 	}
 
-	private static string FormatProjectedBalance(int balance, int price)
+	private static string FormatProjectedBalance(
+		int balance,
+		int price,
+		PaymentCurrency currency)
 	{
 		long projected = (long)balance - price;
 		return projected >= 0
-			? $"\u20BD{projected:N0}"
+			? PaymentCurrencyInfo.Format((int)Math.Min(int.MaxValue, projected), currency)
 			: "INSUFFICIENT FUNDS";
 	}
 
-	private void BeginPurchase(ESupportType supportType, int expectedCost)
+	private static bool TryResolvePurchaseTerms(
+		RaidOpsFireSupportServerConfig snapshot,
+		ServiceDescriptor descriptor,
+		string preparedRequestId,
+		out int price,
+		out PaymentCurrency currency,
+		out bool recoveredPreparedQuote)
+	{
+		price = snapshot == null
+			? -1
+			: GetPrice(snapshot, descriptor.ConfigKey);
+		currency = FireSupportServerConfigClient.GetSnapshotCurrency(snapshot);
+		recoveredPreparedQuote = false;
+
+		if (snapshot == null || string.IsNullOrWhiteSpace(preparedRequestId))
+		{
+			return price >= 0;
+		}
+
+		if (snapshot.PreparedPurchaseDetails == null ||
+		    !snapshot.PreparedPurchaseDetails.TryGetValue(
+			    descriptor.ConfigKey,
+			    out FireSupportPreparedPurchaseQuote preparedQuote))
+		{
+			// Legacy snapshots expose only the request ID. Preserve their
+			// recovery behavior by retrying against the current list terms.
+			return price >= 0;
+		}
+
+		if (preparedQuote == null ||
+		    !string.Equals(
+			    preparedQuote.RequestId?.Trim(),
+			    preparedRequestId,
+			    StringComparison.Ordinal) ||
+		    preparedQuote.Price < 0 ||
+		    !PaymentCurrencyInfo.TryParse(
+			    preparedQuote.Currency,
+			    out PaymentCurrency preparedCurrency))
+		{
+			return false;
+		}
+
+		price = preparedQuote.Price;
+		currency = preparedCurrency;
+		recoveredPreparedQuote = true;
+		return true;
+	}
+
+	private void BeginPurchase(
+		ESupportType supportType,
+		int expectedCost,
+		PaymentCurrency expectedCurrency)
 	{
 		if (!TryGetPurchaseContext(
 			    supportType,
@@ -1239,6 +1334,7 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 			supportType,
 			requestId,
 			expectedCost,
+			expectedCurrency,
 			_sessionKey,
 			_generation).Forget();
 	}
@@ -1285,6 +1381,7 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 		ESupportType supportType,
 		string requestId,
 		int expectedCost,
+		PaymentCurrency expectedCurrency,
 		string expectedSessionKey,
 		int generation)
 	{
@@ -1296,6 +1393,7 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 					supportType,
 					requestId,
 					expectedCost,
+					expectedCurrency,
 					expectedSessionKey,
 					_profileId);
 			if (_destroyed || generation != _generation)
@@ -1391,9 +1489,22 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 			return;
 		}
 
-		if (response.NewBalance >= 0)
+		PaymentCurrency snapshotCurrency =
+			FireSupportServerConfigClient.GetSnapshotCurrency(_snapshot);
+		bool responseCurrencyMatches =
+			string.IsNullOrWhiteSpace(response.Currency)
+				? snapshotCurrency == PaymentCurrency.RUB
+				: PaymentCurrencyInfo.TryParse(
+					  response.Currency,
+					  out PaymentCurrency responseCurrency) &&
+				  responseCurrency == snapshotCurrency;
+		if (responseCurrencyMatches && response.NewBalance >= 0)
 		{
-			_snapshot.StashRoubleBalance = response.NewBalance;
+			_snapshot.StashCurrencyBalance = response.NewBalance;
+			if (snapshotCurrency == PaymentCurrency.RUB)
+			{
+				_snapshot.StashRoubleBalance = response.NewBalance;
+			}
 		}
 		if (response.ServerRevision > 0)
 		{
@@ -1404,7 +1515,7 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 			_snapshot.Authorizations =
 				new Dictionary<string, int>(response.Authorizations, StringComparer.OrdinalIgnoreCase);
 		}
-		if (response.Cost >= 0 && _snapshot.Prices != null)
+		if (responseCurrencyMatches && response.Cost >= 0 && _snapshot.Prices != null)
 		{
 			_snapshot.Prices[GetDescriptor(supportType).ConfigKey] = response.Cost;
 		}
@@ -1417,8 +1528,12 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 			return;
 		}
 
-		_balanceText.text = _snapshot?.StashRoubleBalance is int balance
-			? $"STASH: ₽{balance:N0}"
+		PaymentCurrency currency =
+			FireSupportServerConfigClient.GetSnapshotCurrency(_snapshot);
+		int? stashBalance =
+			FireSupportServerConfigClient.GetSnapshotStashBalance(_snapshot, currency);
+		_balanceText.text = stashBalance is int balance
+			? $"STASH: {PaymentCurrencyInfo.Format(balance, currency)}"
 			: "STASH: --";
 		if (_refreshButton != null)
 		{
@@ -1454,7 +1569,9 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 				: enabled
 				? s_greenHigh
 				: s_red;
-			row.Price.text = price >= 0 ? $"₽{price:N0}" : "--";
+			row.Price.text = price >= 0
+				? PaymentCurrencyInfo.Format(price, currency)
+				: "--";
 			row.Price.color = price >= 0 ? s_amberHigh : s_muted;
 			row.Owned.text = hasSnapshot ? $"{owned} / {maximum}" : "-- / --";
 			row.Buy.interactable =
@@ -1499,7 +1616,15 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 			reason = "Pre-raid buying requires Purchase Persistence on the TSC server.";
 			return false;
 		}
-		if (!snapshot.StashRoubleBalance.HasValue || snapshot.Authorizations == null)
+		if (!PaymentCurrencyInfo.TryParse(
+			    snapshot.PaymentCurrency,
+			    out PaymentCurrency currency))
+		{
+			reason = "Server omitted a valid payment currency.";
+			return false;
+		}
+		if (!FireSupportServerConfigClient.GetSnapshotStashBalance(snapshot, currency).HasValue ||
+		    snapshot.Authorizations == null)
 		{
 			reason = "Server omitted the authoritative stash balance or authorization ledger.";
 			return false;
@@ -1736,12 +1861,14 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 		return reason switch
 		{
 			"AuthorizationLimitReached" => "Authorization limit reached for this service.",
-			"InsufficientRoubles" => "Insufficient stash roubles.",
+			"InsufficientRoubles" or "InsufficientFunds" => "Insufficient stash funds.",
 			"RateLimited" => "Purchase rate-limited. Wait briefly and refresh.",
 			"ServiceUnavailable" => "This service is disabled by the server.",
 			"PaymentSourceNotServerBacked" => "Server payment source is not stash-backed.",
 			"PurchasePersistenceDisabled" => "Server purchase persistence is disabled.",
 			"PurchaseQuoteChanged" => "Price changed on the server. Review the updated quote and confirm again.",
+			"PurchaseCurrencyMismatch" => "Currency changed on the server. Refresh and confirm again.",
+			"InvalidPaymentCurrency" => "Server currency is invalid. Select RUB, USD, or EUR in the dashboard.",
 			"ProfileSessionChanged" => "Backend profile changed; reopen the page.",
 			_ => $"Purchase denied: {reason}"
 		};

@@ -65,7 +65,7 @@ The dashboard is localhost-only by default. Do not port-forward it.
 - Phone-based support authorization flow.
 - Phone-based support deployment and camera-ray target designation without requiring the rangefinder.
 - PhoneAuthorizations and Hybrid payment modes.
-- Stash rouble payment and carried rouble payment.
+- Configurable RUB, USD, or EUR payment from the stash or carried wallet.
 - A-10 Strafe and A-10 Double Pass.
 - UH-60 Extraction and Priority Exfil.
 - UAV Recon and Focused Sweep.
@@ -80,7 +80,9 @@ Install the same TSC version on the host, any headless host, and every client. T
 
 ## Payment Modes
 
-TSC supports carried roubles, stash roubles, and hybrid payment behavior where configured. The phone displays the active price and balance source, and the server calculates authoritative stash prices. Client-sent prices are not trusted.
+TSC supports RUB, USD, or EUR from carried cash, stash cash, and hybrid payment behavior where configured. Select the server-authoritative currency in the dashboard. The phone displays the active price and balance source, and the server calculates authoritative stash prices. Client-sent prices and currency are not trusted.
+
+Changing the currency does not convert the numeric service prices. Review every service price before saving a different currency.
 
 Back up profiles before testing payment-source modes.
 

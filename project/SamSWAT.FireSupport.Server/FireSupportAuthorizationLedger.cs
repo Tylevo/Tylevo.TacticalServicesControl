@@ -10,11 +10,13 @@ public sealed class FireSupportAuthorizationLedger(
 	ISptLogger<FireSupportAuthorizationLedger> logger)
 {
 	public const int MaxPersistentPurchaseRequestIdLength = 128;
-	private const int CurrentSchemaVersion = 4;
+	private const int CurrentSchemaVersion = 5;
 	private const int MaxTransactionsPerProfile = 512;
+	private const string DefaultCurrency = "RUB";
 	private const string PersistentPurchaseIdentity = "BuyPersistentAuthorization";
 	private const string PersistentPurchasePreparedState = "Prepared";
 	private const string PersistentPurchaseAcceptedState = "Accepted";
+	private const string PersistentPurchaseInvalidCurrencyState = "InvalidCurrency";
 	private const string AuthorizationUsePendingState = "Pending";
 	private const string AuthorizationUseCommittedState = "Committed";
 	private const string AuthorizationUseRefundedState = "Refunded";
@@ -101,11 +103,54 @@ public sealed class FireSupportAuthorizationLedger(
 		return preparedByService;
 	}
 
+	public Dictionary<string, FireSupportPreparedPurchaseQuote>
+		GetPreparedPersistentPurchaseDetails(string profileId)
+	{
+		var preparedByService =
+			new Dictionary<string, FireSupportPreparedPurchaseQuote>(
+				StringComparer.OrdinalIgnoreCase);
+		if (string.IsNullOrWhiteSpace(profileId))
+		{
+			return preparedByService;
+		}
+
+		lock (_gate)
+		{
+			FireSupportPlayerAuthorizations profile = GetProfileLocked(profileId);
+			foreach (FireSupportPersistentPurchaseRecord purchase in
+			         profile.PersistentPurchases.Values
+				         .Where(purchase =>
+					         purchase != null &&
+					         IsPersistentPurchasePrepared(purchase) &&
+					         string.Equals(
+						         purchase.RequestIdentity,
+						         PersistentPurchaseIdentity,
+						         StringComparison.OrdinalIgnoreCase) &&
+					         !string.IsNullOrWhiteSpace(purchase.Service) &&
+					         purchase.Quantity > 0 &&
+					         !string.IsNullOrWhiteSpace(purchase.RequestId))
+				         .OrderBy(purchase => purchase.CreatedUtc))
+			{
+				preparedByService.TryAdd(
+					purchase.Service,
+					new FireSupportPreparedPurchaseQuote
+					{
+						RequestId = purchase.RequestId,
+						Price = Math.Max(0, purchase.Price),
+						Currency = NormalizePersistedCurrency(purchase.Currency)
+					});
+			}
+		}
+
+		return preparedByService;
+	}
+
 	public bool TryGrant(
 		string profileId,
 		ESupportType supportType,
 		int quantity,
 		int price,
+		string currency,
 		int maxStored,
 		int pendingTimeoutSeconds,
 		out Dictionary<string, int> credits,
@@ -114,8 +159,10 @@ public sealed class FireSupportAuthorizationLedger(
 		credits = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 		reason = string.Empty;
 		string service = ToLedgerKey(supportType);
+		bool validCurrency = TryNormalizeCurrency(currency, out string canonicalCurrency);
 		if (string.IsNullOrWhiteSpace(profileId) ||
 		    string.IsNullOrWhiteSpace(service) ||
+		    !validCurrency ||
 		    quantity <= 0)
 		{
 			reason = "InvalidAuthorizationRequest";
@@ -147,7 +194,15 @@ public sealed class FireSupportAuthorizationLedger(
 			}
 
 			profile.Credits[service] = current + quantity;
-			AddTransactionLocked(profile, "Purchase", service, quantity, price, requestId: string.Empty, reason: string.Empty);
+			AddTransactionLocked(
+				profile,
+				"Purchase",
+				service,
+				quantity,
+				price,
+				canonicalCurrency,
+				requestId: string.Empty,
+				reason: string.Empty);
 			if (!TrySaveMutationLocked(snapshot, out reason))
 			{
 				credits = GetCreditsFromStateLocked(profileId);
@@ -226,6 +281,7 @@ public sealed class FireSupportAuthorizationLedger(
 		ESupportType supportType,
 		int quantity,
 		int price,
+		string currency,
 		int preDebitBalance,
 		string preDebitFingerprint,
 		string expectedPostDebitFingerprint,
@@ -239,16 +295,18 @@ public sealed class FireSupportAuthorizationLedger(
 		purchase = null;
 		reason = string.Empty;
 		string service = ToLedgerKey(supportType);
+		bool validCurrency = TryNormalizeCurrency(currency, out string canonicalCurrency);
 		requestId = requestId?.Trim() ?? string.Empty;
 		preDebitFingerprint = preDebitFingerprint?.Trim() ?? string.Empty;
 		expectedPostDebitFingerprint = expectedPostDebitFingerprint?.Trim() ?? string.Empty;
 		if (string.IsNullOrWhiteSpace(profileId) ||
 		    string.IsNullOrWhiteSpace(service) ||
+		    !validCurrency ||
 		    quantity <= 0 ||
 		    price < 0 ||
 		    preDebitBalance < price ||
-		    !IsValidRoubleInventoryFingerprint(preDebitFingerprint) ||
-		    !IsValidRoubleInventoryFingerprint(expectedPostDebitFingerprint) ||
+		    !IsValidInventoryFingerprint(preDebitFingerprint) ||
+		    !IsValidInventoryFingerprint(expectedPostDebitFingerprint) ||
 		    string.IsNullOrWhiteSpace(requestId) ||
 		    requestId.Length > MaxPersistentPurchaseRequestIdLength)
 		{
@@ -306,6 +364,7 @@ public sealed class FireSupportAuthorizationLedger(
 				Service = service,
 				Quantity = quantity,
 				Price = price,
+				Currency = canonicalCurrency,
 				PreDebitBalance = preDebitBalance,
 				ExpectedPostDebitBalance = preDebitBalance - price,
 				PreDebitFingerprint = preDebitFingerprint,
@@ -401,6 +460,7 @@ public sealed class FireSupportAuthorizationLedger(
 				service,
 				quantity,
 				journalEntry.Price,
+				journalEntry.Currency,
 				requestId,
 				reason: string.Empty);
 			if (!TrySaveMutationLocked(snapshot, out reason))
@@ -566,7 +626,15 @@ public sealed class FireSupportAuthorizationLedger(
 				CreatedUtc = DateTimeOffset.UtcNow,
 				Reason = string.Empty
 			};
-			AddTransactionLocked(profile, "Consume", service, 1, 0, requestId, reason: string.Empty);
+			AddTransactionLocked(
+				profile,
+				"Consume",
+				service,
+				1,
+				0,
+				DefaultCurrency,
+				requestId,
+				reason: string.Empty);
 			if (!TrySaveMutationLocked(snapshot, out reason))
 			{
 				credits = GetCreditsFromStateLocked(profileId);
@@ -660,6 +728,7 @@ public sealed class FireSupportAuthorizationLedger(
 				authorizationUse.Service,
 				quantity,
 				0,
+				DefaultCurrency,
 				trimmedRequestId,
 				authorizationUse.Reason);
 			if (!TrySaveMutationLocked(snapshot, out reason))
@@ -756,6 +825,7 @@ public sealed class FireSupportAuthorizationLedger(
 				authorizationUse.Service,
 				Math.Max(1, authorizationUse.Quantity),
 				0,
+				DefaultCurrency,
 				requestId,
 				authorizationUse.Reason);
 			if (!TrySaveMutationLocked(snapshot, out reason))
@@ -884,6 +954,7 @@ public sealed class FireSupportAuthorizationLedger(
 
 	private void NormalizeStateLocked()
 	{
+		bool migrateMissingLegacyCurrency = _state.SchemaVersion < 5;
 		var normalizedProfiles =
 			new Dictionary<string, FireSupportPlayerAuthorizations>(StringComparer.OrdinalIgnoreCase);
 		foreach (KeyValuePair<string, FireSupportPlayerAuthorizations> pair in
@@ -907,6 +978,12 @@ public sealed class FireSupportAuthorizationLedger(
 			profile.Transactions = profile.Transactions?
 				.Where(transaction => transaction != null)
 				.ToList() ?? new List<FireSupportAuthorizationTransaction>();
+			foreach (FireSupportAuthorizationTransaction transaction in profile.Transactions)
+			{
+				transaction.Currency = NormalizePersistedCurrency(
+					transaction.Currency,
+					migrateMissingLegacyCurrency);
+			}
 
 			var normalizedAuthorizationUses =
 				new Dictionary<string, FireSupportAuthorizationUseRecord>(StringComparer.OrdinalIgnoreCase);
@@ -1091,6 +1168,16 @@ public sealed class FireSupportAuthorizationLedger(
 				}
 
 				purchase.RequestId = requestId;
+				purchase.Currency = NormalizePersistedCurrency(
+					purchase.Currency,
+					migrateMissingLegacyCurrency);
+				if (!TryNormalizeCurrency(purchase.Currency, out _))
+				{
+					// Keep the request ID as a non-replayable tombstone. Dropping
+					// it could permit a duplicate purchase; coercing it to RUB
+					// could debit or recover the wrong inventory.
+					purchase.State = PersistentPurchaseInvalidCurrencyState;
+				}
 				purchase.PreDebitFingerprint = purchase.PreDebitFingerprint?.Trim() ?? string.Empty;
 				purchase.ExpectedPostDebitFingerprint =
 					purchase.ExpectedPostDebitFingerprint?.Trim() ?? string.Empty;
@@ -1194,6 +1281,7 @@ public sealed class FireSupportAuthorizationLedger(
 						pending.Service,
 						quantity,
 						0,
+						DefaultCurrency,
 						requestId,
 						"PendingUseTimeout");
 				}
@@ -1397,7 +1485,7 @@ public sealed class FireSupportAuthorizationLedger(
 		long reserved = profile.PersistentPurchases.Values
 			.Where(purchase =>
 				purchase != null &&
-				!IsPersistentPurchaseAccepted(purchase) &&
+				IsPersistentPurchasePrepared(purchase) &&
 				string.Equals(purchase.Service, service, StringComparison.OrdinalIgnoreCase))
 			.Sum(purchase => (long)Math.Max(0, purchase.Quantity));
 		return reserved >= int.MaxValue ? int.MaxValue : (int)reserved;
@@ -1420,6 +1508,10 @@ public sealed class FireSupportAuthorizationLedger(
 		FireSupportAuthorizationTransaction transaction,
 		string requestId)
 	{
+		bool validCurrency =
+			TryNormalizeCurrency(
+				transaction.Currency,
+				out string canonicalCurrency);
 		return new FireSupportPersistentPurchaseRecord
 		{
 			RequestId = requestId,
@@ -1427,7 +1519,12 @@ public sealed class FireSupportAuthorizationLedger(
 			Service = transaction.Service,
 			Quantity = transaction.Quantity,
 			Price = transaction.Price,
-			State = PersistentPurchaseAcceptedState,
+			Currency = validCurrency
+				? canonicalCurrency
+				: NormalizePersistedCurrency(transaction.Currency),
+			State = validCurrency
+				? PersistentPurchaseAcceptedState
+				: PersistentPurchaseInvalidCurrencyState,
 			CreatedUtc = transaction.CreatedUtc,
 			AcceptedUtc = transaction.CreatedUtc
 		};
@@ -1443,6 +1540,7 @@ public sealed class FireSupportAuthorizationLedger(
 			Service = purchase.Service,
 			Quantity = purchase.Quantity,
 			Price = purchase.Price,
+			Currency = NormalizePersistedCurrency(purchase.Currency),
 			PreDebitBalance = purchase.PreDebitBalance,
 			ExpectedPostDebitBalance = purchase.ExpectedPostDebitBalance,
 			PreDebitFingerprint = purchase.PreDebitFingerprint,
@@ -1453,7 +1551,7 @@ public sealed class FireSupportAuthorizationLedger(
 		};
 	}
 
-	private static bool IsValidRoubleInventoryFingerprint(string fingerprint)
+	private static bool IsValidInventoryFingerprint(string fingerprint)
 	{
 		return fingerprint.Length == 64 && fingerprint.All(Uri.IsHexDigit);
 	}
@@ -1464,6 +1562,7 @@ public sealed class FireSupportAuthorizationLedger(
 		string service,
 		int quantity,
 		int price,
+		string currency,
 		string requestId,
 		string reason)
 	{
@@ -1474,6 +1573,7 @@ public sealed class FireSupportAuthorizationLedger(
 			Service = service,
 			Quantity = quantity,
 			Price = price,
+			Currency = NormalizePersistedCurrency(currency),
 			RequestId = requestId,
 			Reason = reason,
 			CreatedUtc = DateTimeOffset.UtcNow
@@ -1482,6 +1582,36 @@ public sealed class FireSupportAuthorizationLedger(
 		{
 			profile.Transactions.RemoveRange(0, profile.Transactions.Count - MaxTransactionsPerProfile);
 		}
+	}
+
+	private static bool TryNormalizeCurrency(string? currency, out string canonicalCurrency)
+	{
+		canonicalCurrency = currency?.Trim().ToUpperInvariant() ?? string.Empty;
+		if (canonicalCurrency is "RUB" or "USD" or "EUR")
+		{
+			return true;
+		}
+
+		canonicalCurrency = string.Empty;
+		return false;
+	}
+
+	private static string NormalizePersistedCurrency(
+		string? currency,
+		bool migrateMissingLegacyCurrency = false)
+	{
+		if (TryNormalizeCurrency(currency, out string canonicalCurrency))
+		{
+			return canonicalCurrency;
+		}
+
+		if (migrateMissingLegacyCurrency &&
+		    string.IsNullOrWhiteSpace(currency))
+		{
+			return DefaultCurrency;
+		}
+
+		return currency?.Trim().ToUpperInvariant() ?? string.Empty;
 	}
 
 	private static string ToLedgerKey(ESupportType supportType)
@@ -1509,7 +1639,7 @@ public enum PersistentPurchaseReplayStatus
 
 public sealed class FireSupportAuthorizationLedgerState
 {
-	public int SchemaVersion { get; set; } = 4;
+	public int SchemaVersion { get; set; } = 5;
 	public Dictionary<string, FireSupportPlayerAuthorizations> Profiles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
@@ -1532,6 +1662,7 @@ public sealed class FireSupportPersistentPurchaseRecord
 	public string Service { get; set; } = string.Empty;
 	public int Quantity { get; set; }
 	public int Price { get; set; }
+	public string Currency { get; set; } = string.Empty;
 	public int PreDebitBalance { get; set; }
 	public int ExpectedPostDebitBalance { get; set; }
 	public string PreDebitFingerprint { get; set; } = string.Empty;
@@ -1567,6 +1698,7 @@ public sealed class FireSupportAuthorizationTransaction
 	public string Service { get; set; } = string.Empty;
 	public int Quantity { get; set; }
 	public int Price { get; set; }
+	public string Currency { get; set; } = string.Empty;
 	public string RequestId { get; set; } = string.Empty;
 	public string Reason { get; set; } = string.Empty;
 	public DateTimeOffset CreatedUtc { get; set; }

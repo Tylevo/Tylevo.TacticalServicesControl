@@ -8,6 +8,7 @@ public sealed class RaidOpsFireSupportServerConfig
 	public int Revision { get; set; }
 	public string PaymentMode { get; set; } = nameof(global::SamSWAT.FireSupport.ArysReloaded.Unity.PaymentMode.PhoneAuthorizations);
 	public string PaymentSource { get; set; } = nameof(global::SamSWAT.FireSupport.ArysReloaded.Unity.PaymentSource.CarriedRoubles);
+	public string PaymentCurrency { get; set; } = string.Empty;
 	public int RequestCooldownSeconds { get; set; } = 300;
 	/// <summary>
 	/// True when the snapshot contains state for the resolved player profile.
@@ -15,6 +16,13 @@ public sealed class RaidOpsFireSupportServerConfig
 	/// authorizations were omitted and must not clear previously synced state.
 	/// </summary>
 	public bool PlayerStateIncluded { get; set; }
+	/// <summary>
+	/// Balance of the selected payment currency in the authenticated PMC stash.
+	/// </summary>
+	public int? StashCurrencyBalance { get; set; }
+	/// <summary>
+	/// Legacy RUB-only balance returned by pre-currency TSC servers.
+	/// </summary>
 	public int? StashRoubleBalance { get; set; }
 	public Dictionary<string, int> Prices { get; set; } = new();
 	public Dictionary<string, bool> Enabled { get; set; } = new();
@@ -34,6 +42,12 @@ public sealed class RaidOpsFireSupportServerConfig
 	/// an empty dictionary means no purchase is pending.
 	/// </summary>
 	public Dictionary<string, string>? PreparedPurchases { get; set; }
+	/// <summary>
+	/// Optional quote details for prepared purchases. Keys mirror
+	/// <see cref="PreparedPurchases"/> service keys. Legacy servers may omit
+	/// this field, in which case recovery retries use the current snapshot terms.
+	/// </summary>
+	public Dictionary<string, FireSupportPreparedPurchaseQuote>? PreparedPurchaseDetails { get; set; }
 	#nullable restore
 
 	public sealed class UavSettings
@@ -75,6 +89,13 @@ public sealed class RaidOpsFireSupportServerConfig
 	}
 }
 
+public sealed class FireSupportPreparedPurchaseQuote
+{
+	public string RequestId { get; set; } = string.Empty;
+	public int Price { get; set; } = -1;
+	public string Currency { get; set; } = string.Empty;
+}
+
 public sealed class FireSupportPurchaseRequest
 {
 	public string Action { get; set; } = string.Empty;
@@ -88,6 +109,11 @@ public sealed class FireSupportPurchaseRequest
 	/// debit a different amount; omitted for legacy and in-raid purchase flows.
 	/// </summary>
 	public int? ExpectedCost { get; set; }
+	/// <summary>
+	/// Currency code accepted by the player with <see cref="ExpectedCost"/>.
+	/// Empty is accepted only by legacy request flows.
+	/// </summary>
+	public string ExpectedCurrency { get; set; } = string.Empty;
 	public int Quantity { get; set; } = 1;
 }
 
@@ -98,6 +124,7 @@ public sealed class FireSupportPurchaseResponse
 	public string SupportType { get; set; } = string.Empty;
 	public int Cost { get; set; } = -1;
 	public string PaymentSource { get; set; } = string.Empty;
+	public string Currency { get; set; } = string.Empty;
 	/// <summary>
 	/// Authoritative post-mutation stash balance, or -1 when the server omitted
 	/// balance state (for example, an early validation denial).

@@ -46,6 +46,7 @@ internal static class PluginSettings
 	internal static ConfigEntry<bool> RequireServerConfigInFika { get; private set; }
 	internal static ConfigEntry<int> ServerConfigRefreshSeconds { get; private set; }
 	internal static ConfigEntry<PaymentSource> PaymentSource { get; private set; }
+	internal static ConfigEntry<PaymentCurrency> PaymentCurrency { get; private set; }
 	internal static ConfigEntry<int> StrafeRequestCostRoubles { get; private set; }
 	internal static ConfigEntry<int> DoubleStrafeRequestCostRoubles { get; private set; }
 	internal static ConfigEntry<int> ExtractionRequestCostRoubles { get; private set; }
@@ -191,7 +192,12 @@ internal static class PluginSettings
 			"TerraGroup Payment",
 			"Payment source",
 			global::SamSWAT.FireSupport.ArysReloaded.Unity.PaymentSource.CarriedRoubles,
-			new ConfigDescription("Rouble wallet used for TerraGroup phone purchases."));
+			new ConfigDescription("Wallet location used for TerraGroup phone purchases."));
+		PaymentCurrency = config.Bind(
+			"TerraGroup Payment",
+			"Payment currency",
+			global::SamSWAT.FireSupport.ArysReloaded.Unity.PaymentCurrency.RUB,
+			new ConfigDescription("Local fallback currency used only when no server or Fika host currency is available."));
 		RequestCooldown = config.Bind(
 			"Main Settings",
 			"Cooldown between support requests",
@@ -202,37 +208,37 @@ internal static class PluginSettings
 			"Main Settings",
 			"Autocannon strafe cost",
 			250000,
-			new ConfigDescription("Carried roubles required to request an A-10 autocannon strafe",
+			new ConfigDescription("Selected currency units required to request an A-10 autocannon strafe",
 				new AcceptableValueRange<int>(0, 10000000)));
 		DoubleStrafeRequestCostRoubles = config.Bind(
 			"Main Settings",
 			"A-10 double pass cost",
 			450000,
-			new ConfigDescription("Carried roubles required to request two A-10 autocannon passes on the same target",
+			new ConfigDescription("Selected currency units required to request two A-10 autocannon passes on the same target",
 				new AcceptableValueRange<int>(0, 10000000)));
 		ExtractionRequestCostRoubles = config.Bind(
 			"Main Settings",
 			"Helicopter extraction cost",
 			300000,
-			new ConfigDescription("Carried roubles required to request a UH-60 extraction",
+			new ConfigDescription("Selected currency units required to request a UH-60 extraction",
 				new AcceptableValueRange<int>(0, 10000000)));
 		PriorityExfilRequestCostRoubles = config.Bind(
 			"Main Settings",
 			"Priority exfil cost",
 			450000,
-			new ConfigDescription("Carried roubles required to request an expedited UH-60 extraction authorization",
+			new ConfigDescription("Selected currency units required to request an expedited UH-60 extraction authorization",
 				new AcceptableValueRange<int>(0, 10000000)));
 		UavRequestCostRoubles = config.Bind(
 			"Main Settings",
 			"UAV recon cost",
 			125000,
-			new ConfigDescription("Carried roubles required to request a timed UAV recon scan",
+			new ConfigDescription("Selected currency units required to request a timed UAV recon scan",
 				new AcceptableValueRange<int>(0, 10000000)));
 		FocusedSweepRequestCostRoubles = config.Bind(
 			"Main Settings",
 			"Focused sweep cost",
 			90000,
-			new ConfigDescription("Carried roubles required to request a shorter, narrower, faster-refresh UAV sweep",
+			new ConfigDescription("Selected currency units required to request a shorter, narrower, faster-refresh UAV sweep",
 				new AcceptableValueRange<int>(0, 10000000)));
 		EnablePriorityExfil = config.Bind(
 			"Main Settings",
@@ -695,6 +701,7 @@ internal static class PluginSettings
 		RemoveFromConfigManager(config, RequireServerConfigInFika);
 		RemoveFromConfigManager(config, ServerConfigRefreshSeconds);
 		RemoveFromConfigManager(config, PaymentSource);
+		RemoveFromConfigManager(config, PaymentCurrency);
 		RemoveFromConfigManager(config, RequestCooldown);
 		RemoveFromConfigManager(config, StrafeRequestCostRoubles);
 		RemoveFromConfigManager(config, DoubleStrafeRequestCostRoubles);
@@ -909,6 +916,7 @@ internal static class PluginSettings
 		TrackEffectiveSetting(RequireServerConfigInFika);
 		TrackEffectiveSetting(ServerConfigRefreshSeconds);
 		TrackEffectiveSetting(PaymentSource);
+		TrackEffectiveSetting(PaymentCurrency);
 		TrackEffectiveSetting(StrafeRequestCostRoubles);
 		TrackEffectiveSetting(DoubleStrafeRequestCostRoubles);
 		TrackEffectiveSetting(ExtractionRequestCostRoubles);

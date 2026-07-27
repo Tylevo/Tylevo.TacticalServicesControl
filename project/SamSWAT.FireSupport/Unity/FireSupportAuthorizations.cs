@@ -8,7 +8,7 @@ public static class FireSupportAuthorizations
 	// Two stores with different owners:
 	// - server credits mirror the server ledger and are replaced wholesale by
 	//   SetFromServer on every config sync;
-	// - local credits are purchases the server never saw (carried roubles,
+	// - local credits are purchases the server never saw (carried currency,
 	//   zero-cost grants). They must survive SetFromServer, and consuming them
 	//   must not round-trip the server ledger, or the server rejects the
 	//   consume and the credit becomes unusable.

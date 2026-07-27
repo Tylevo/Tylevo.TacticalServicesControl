@@ -1672,6 +1672,7 @@ public static class FikaIntegration
 	{
 		s_hasHostSettingsOverride = true;
 		s_currentHostSettingsRevision = packet.Revision;
+		FireSupportPayment.SetSyncedPaymentCurrency(packet.PaymentCurrency);
 		FireSupportPayment.SetSyncedCosts(
 			packet.StrafeCostRoubles,
 			packet.DoubleStrafeCostRoubles,
@@ -1835,7 +1836,8 @@ public static class FikaIntegration
 			RequestCooldownSeconds = FireSupportTuningSettings.GetRequestCooldown(),
 			PaymentMode = FireSupportPayment.GetActivePaymentMode(),
 			PaymentSource = FireSupportPayment.GetActivePaymentSource(),
-			ServerConfigUrl = FireSupportServerConfigClient.GetConfiguredServerConfigUrl()
+			ServerConfigUrl = FireSupportServerConfigClient.GetConfiguredServerConfigUrl(),
+			PaymentCurrency = FireSupportPayment.GetActivePaymentCurrency()
 		};
 
 		TscDiagnostics.LogFika($"TSC Fika settings: host snapshot built revision={packet.Revision}");

@@ -31,6 +31,7 @@
   <ItemGroup>
     <Compile Include="..\SamSWAT.FireSupport\Unity\PaymentMode.cs" Link="Unity\PaymentMode.cs" />
     <Compile Include="..\SamSWAT.FireSupport\Unity\PaymentSource.cs" Link="Unity\PaymentSource.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\PaymentCurrency.cs" Link="Unity\PaymentCurrency.cs" />
     <Compile Include="..\SamSWAT.FireSupport\Unity\ESupportType.cs" Link="Unity\ESupportType.cs" />
     <Compile Include="..\SamSWAT.FireSupport\Unity\RaidOpsFireSupportServerConfig.cs" Link="Unity\RaidOpsFireSupportServerConfig.cs" />
   </ItemGroup>

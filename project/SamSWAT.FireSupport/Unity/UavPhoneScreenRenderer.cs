@@ -20,17 +20,36 @@ public readonly struct UavPhoneScreenContext
 	}
 
 	public UavPhoneScreenContext(ESupportType supportType, int costRoubles, int balanceRoubles, int durationSeconds)
+		: this(
+			supportType,
+			costRoubles,
+			balanceRoubles,
+			durationSeconds,
+			FireSupportPayment.GetActivePaymentCurrency())
+	{
+	}
+
+	public UavPhoneScreenContext(
+		ESupportType supportType,
+		int cost,
+		int balance,
+		int durationSeconds,
+		PaymentCurrency currency)
 	{
 		SupportType = supportType;
-		CostRoubles = costRoubles;
-		BalanceRoubles = balanceRoubles;
+		Cost = cost;
+		Balance = balance;
 		DurationSeconds = durationSeconds;
+		Currency = PaymentCurrencyInfo.Normalize(currency);
 	}
 
 	public ESupportType SupportType { get; }
-	public int CostRoubles { get; }
-	public int BalanceRoubles { get; }
+	public int Cost { get; }
+	public int Balance { get; }
 	public int DurationSeconds { get; }
+	public PaymentCurrency Currency { get; }
+	public int CostRoubles => Cost;
+	public int BalanceRoubles => Balance;
 }
 
 public sealed class UavPhoneScreenRenderer : MonoBehaviour
@@ -1406,7 +1425,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		RectTransform card = AddPanel(root, new Rect(82, 196, 604, 142), new Color(0.06f, 0.078f, 0.078f, 0.94f));
 		AddText(card, GetServiceTitle(_context.SupportType), 34, FontStyle.Bold, Color.white, new Rect(28, 20, 360, 44), TextAnchor.MiddleLeft);
 		AddText(card, GetServiceDescription(_context.SupportType), 18, FontStyle.Normal, Muted(), new Rect(30, 66, 390, 48), TextAnchor.MiddleLeft);
-		AddText(card, FormatRoubles(_context.CostRoubles), 32, FontStyle.Bold, Amber(), new Rect(400, 44, 172, 42), TextAnchor.MiddleRight);
+		AddText(card, FormatCurrency(_context.Cost), 32, FontStyle.Bold, Amber(), new Rect(400, 44, 172, 42), TextAnchor.MiddleRight);
 		AddText(card, $"AUTH {FireSupportAuthorizations.Get(_context.SupportType)}", 18, FontStyle.Bold, Teal(), new Rect(400, 86, 172, 30), TextAnchor.MiddleRight);
 
 		RectTransform footer = AddPanel(root, new Rect(150, 366, 468, 42), new Color(0.09f, 0.28f, 0.26f, 0.58f));
@@ -1445,11 +1464,11 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 
 		RectTransform rightPanel = AddPanel(root, new Rect(396, 188, 330, 152), new Color(0.07f, 0.085f, 0.085f, 0.92f));
 		AddText(rightPanel, "COST BREAKDOWN", 18, FontStyle.Normal, Muted(), new Rect(18, 10, 250, 28), TextAnchor.MiddleLeft);
-		AddDetailRow(rightPanel, "SERVICE FEE", FormatRoubles(_context.CostRoubles), 44);
-		AddDetailRow(rightPanel, "BALANCE", FormatRoubles(_context.BalanceRoubles), 78);
+		AddDetailRow(rightPanel, "SERVICE FEE", FormatCurrency(_context.Cost), 44);
+		AddDetailRow(rightPanel, "BALANCE", FormatCurrency(_context.Balance), 78);
 		AddLine(rightPanel, new Rect(18, 108, rightPanel.sizeDelta.x - 36, 1), new Color(0.45f, 0.53f, 0.5f, 0.18f));
 		AddText(rightPanel, "TOTAL", 18, FontStyle.Bold, Muted(), new Rect(18, 114, 100, 28), TextAnchor.MiddleLeft);
-		AddText(rightPanel, FormatRoubles(_context.CostRoubles), 25, FontStyle.Bold, Amber(), new Rect(124, 108, 188, 38), TextAnchor.MiddleRight);
+		AddText(rightPanel, FormatCurrency(_context.Cost), 25, FontStyle.Bold, Amber(), new Rect(124, 108, 188, 38), TextAnchor.MiddleRight);
 
 		RectTransform footer = AddPanel(root, new Rect(42, 356, 684, 52), new Color(0.045f, 0.06f, 0.06f, 0.92f));
 		AddText(footer, "TAP DEVICE TO AUTHORIZE", 28, FontStyle.Bold, new Color(0.9f, 0.93f, 0.9f), new Rect(0, 5, 684, 34), TextAnchor.MiddleCenter);
@@ -1481,7 +1500,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 
 		RectTransform card = AddPanel(root, new Rect(146, 246, 476, 86), new Color(0.055f, 0.07f, 0.075f, 0.94f));
 		AddText(card, GetServiceTitle(_context.SupportType), 24, FontStyle.Bold, Color.white, new Rect(22, 16, 260, 32), TextAnchor.MiddleLeft);
-		AddText(card, FormatRoubles(_context.CostRoubles), 28, FontStyle.Bold, Amber(), new Rect(260, 14, 190, 36), TextAnchor.MiddleRight);
+		AddText(card, FormatCurrency(_context.Cost), 28, FontStyle.Bold, Amber(), new Rect(260, 14, 190, 36), TextAnchor.MiddleRight);
 		AddText(card, "PRESS ENTER TO CONTINUE", 17, FontStyle.Bold, Muted(), new Rect(22, 48, 428, 28), TextAnchor.MiddleCenter);
 
 		BuildScanlineOverlay(root);
@@ -1511,7 +1530,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		AddText(card, "CONFIRM TRANSFER", 28, FontStyle.Bold, Color.white, new Rect(0, 20, 400, 38), TextAnchor.MiddleCenter);
 		AddText(card, GetServiceTitle(_context.SupportType), 25, FontStyle.Bold, new Color(0.9f, 0.95f, 0.93f), new Rect(30, 78, 220, 36), TextAnchor.MiddleLeft);
 		AddText(card, GetServiceDescription(_context.SupportType), 16, FontStyle.Normal, Muted(), new Rect(32, 114, 220, 54), TextAnchor.MiddleLeft);
-		AddText(card, FormatRoubles(_context.CostRoubles), 31, FontStyle.Bold, Amber(), new Rect(226, 184, 140, 42), TextAnchor.MiddleRight);
+		AddText(card, FormatCurrency(_context.Cost), 31, FontStyle.Bold, Amber(), new Rect(226, 184, 140, 42), TextAnchor.MiddleRight);
 		AddLine(card, new Rect(28, 174, 344, 1), new Color(0.45f, 0.53f, 0.5f, 0.22f));
 		AddText(card, "TOTAL PAYMENT", 17, FontStyle.Bold, Muted(), new Rect(32, 188, 160, 28), TextAnchor.MiddleLeft);
 		AddText(card, "SWIPE UP", 30, FontStyle.Bold, Teal(), new Rect(0, 232, 400, 38), TextAnchor.MiddleCenter);
@@ -1542,7 +1561,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		AddText(card, "SERVICE", 18, FontStyle.Normal, Muted(), new Rect(22, 18, 180, 28), TextAnchor.MiddleLeft);
 		AddText(card, GetServiceTitle(_context.SupportType), 30, FontStyle.Bold, Color.white, new Rect(22, 54, 260, 38), TextAnchor.MiddleLeft);
 		AddText(card, GetServiceDescription(_context.SupportType), 18, FontStyle.Normal, new Color(0.76f, 0.8f, 0.78f), new Rect(22, 90, 310, 30), TextAnchor.MiddleLeft);
-		AddText(card, FormatRoubles(_context.CostRoubles), 34, FontStyle.Bold, Amber(), new Rect(318, 54, 210, 44), TextAnchor.MiddleRight);
+		AddText(card, FormatCurrency(_context.Cost), 34, FontStyle.Bold, Amber(), new Rect(318, 54, 210, 44), TextAnchor.MiddleRight);
 		AddText(card, "TRANSFER PENDING", 18, FontStyle.Bold, Amber(), new Rect(318, 96, 210, 28), TextAnchor.MiddleRight);
 
 		RectTransform progress = AddPanel(root, new Rect(116, 372, 536, 46), new Color(0.09f, 0.28f, 0.26f, 0.58f));
@@ -1605,7 +1624,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		RectTransform card = AddPanel(root, new Rect(118, 236, 532, 120), new Color(0.08f, 0.045f, 0.04f, 0.94f));
 		AddText(card, "SERVICE", 18, FontStyle.Normal, Muted(), new Rect(24, 16, 180, 28), TextAnchor.MiddleLeft);
 		AddText(card, GetServiceTitle(_context.SupportType), 30, FontStyle.Bold, Color.white, new Rect(24, 52, 300, 38), TextAnchor.MiddleLeft);
-		AddText(card, FormatRoubles(_context.BalanceRoubles), 24, FontStyle.Bold, Amber(), new Rect(286, 52, 214, 38), TextAnchor.MiddleRight);
+		AddText(card, FormatCurrency(_context.Balance), 24, FontStyle.Bold, Amber(), new Rect(286, 52, 214, 38), TextAnchor.MiddleRight);
 		_deniedDetailText = AddText(card, string.Empty, 16, FontStyle.Bold, Muted(), new Rect(24, 88, 476, 26), TextAnchor.MiddleCenter);
 		UpdateDeniedReasonText();
 
@@ -2336,9 +2355,11 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 			"priority_exfil" => FormatServicePrice(ESupportType.PriorityExfil),
 			"uav" => FormatServicePrice(ESupportType.Uav),
 			"focused_sweep" => FormatServicePrice(ESupportType.FocusedSweep),
-			"carried_roubles" => FormatLayoutRoubles(FireSupportPayment.GetEffectiveBalance()),
-			"effective_roubles" => FormatLayoutRoubles(FireSupportPayment.GetEffectiveBalance()),
-			"effective_balance" => FormatLayoutRoubles(FireSupportPayment.GetEffectiveBalance()),
+			"carried_roubles" => FormatLayoutCurrency(FireSupportPayment.GetEffectiveBalance()),
+			"carried_currency" => FormatLayoutCurrency(FireSupportPayment.GetEffectiveBalance()),
+			"effective_roubles" => FormatLayoutCurrency(FireSupportPayment.GetEffectiveBalance()),
+			"effective_currency" => FormatLayoutCurrency(FireSupportPayment.GetEffectiveBalance()),
+			"effective_balance" => FormatLayoutCurrency(FireSupportPayment.GetEffectiveBalance()),
 			"duration" => FormatDynamicDuration(field.Format),
 			"coverage_radius" => FormatCoverageRadius(),
 			_ => string.Empty
@@ -2364,7 +2385,9 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 	private static string FormatServicePrice(ESupportType supportType)
 	{
 		return FireSupportServiceAvailability.IsServiceEnabled(supportType)
-			? FormatLayoutRoubles(FireSupportPayment.GetActiveCost(supportType))
+			? FormatLayoutCurrency(
+				FireSupportPayment.GetActiveCost(supportType),
+				FireSupportPayment.GetActivePaymentCurrency())
 			: "LOCKED";
 	}
 
@@ -2375,14 +2398,23 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 			: ESupportType.Uav;
 	}
 
-	private static string FormatLayoutRoubles(int amount)
+	private string FormatLayoutCurrency(int amount)
+	{
+		return FormatLayoutCurrency(amount, _context.Currency);
+	}
+
+	private static string FormatLayoutCurrency(
+		int amount,
+		PaymentCurrency currency)
 	{
 		if (amount < 0)
 		{
 			return "SYNC";
 		}
 
-		return "\u20BD " + Mathf.Max(0, amount).ToString("N0", CultureInfo.InvariantCulture).Replace(',', ' ');
+		return PaymentCurrencyInfo.GetSymbol(currency) +
+		       " " +
+		       Mathf.Max(0, amount).ToString("N0", CultureInfo.InvariantCulture).Replace(',', ' ');
 	}
 
 	private static TextAlignmentOptions ToTmpAlignment(string alignment)
@@ -2606,7 +2638,8 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 				_context.SupportType,
 				FireSupportPayment.GetActiveCost(_context.SupportType),
 				FireSupportPayment.GetEffectiveBalance(),
-			UavReconSettings.GetDurationSeconds(_context.SupportType)),
+				UavReconSettings.GetDurationSeconds(_context.SupportType),
+				FireSupportPayment.GetActivePaymentCurrency()),
 			_currentState);
 	}
 
@@ -2888,7 +2921,9 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		AddText(card, GetCategoryName(supportType), 19, FontStyle.Bold, selected ? Teal() : Color.white, new Rect(0, 20, rect.width, 30), TextAnchor.MiddleCenter);
 		AddText(card, GetServiceTitle(supportType), 18, FontStyle.Bold, Color.white, new Rect(12, 60, rect.width - 24, 30), TextAnchor.MiddleCenter);
 		AddText(card, FireSupportServiceAvailability.IsServiceEnabled(supportType)
-				? FormatRoubles(FireSupportPayment.GetActiveCost(supportType))
+				? FormatCurrency(
+					FireSupportPayment.GetActiveCost(supportType),
+					FireSupportPayment.GetActivePaymentCurrency())
 				: "LOCKED",
 			18,
 			FontStyle.Bold,
@@ -3436,14 +3471,19 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		};
 	}
 
-	private static string FormatRoubles(int amount)
+	private string FormatCurrency(int amount)
+	{
+		return FormatCurrency(amount, _context.Currency);
+	}
+
+	private static string FormatCurrency(int amount, PaymentCurrency currency)
 	{
 		if (amount < 0)
 		{
 			return "SYNC";
 		}
 
-		return $"{amount:N0} \u20BD";
+		return PaymentCurrencyInfo.Format(amount, currency);
 	}
 
 	private static Color Teal()

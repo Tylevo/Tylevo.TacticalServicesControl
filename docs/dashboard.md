@@ -17,7 +17,9 @@ The TSC Dashboard is a local server configuration UI.
 
 ## Data Access
 
-The dashboard reads and writes TSC server config. Stash payment routes can debit stash roubles through server-side SPT profile APIs. The server calculates prices from authoritative config and validates support type before granting authorization.
+The dashboard reads and writes TSC server config. Payment currency is server-authoritative and can be set to roubles (RUB), US dollars (USD), or euros (EUR). Stash payment routes debit the selected currency through server-side SPT profile APIs. The server calculates prices from authoritative config and validates support type before granting authorization.
+
+Changing currency does not convert saved service prices. Review all prices in the same dashboard session before saving a different currency.
 
 ## Safe Defaults
 

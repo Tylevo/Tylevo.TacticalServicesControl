@@ -1,8 +1,9 @@
 {
-  "configSchemaVersion": 2,
+  "configSchemaVersion": 3,
   "revision": 1,
   "paymentMode": "PhoneAuthorizations",
   "paymentSource": "CarriedRoubles",
+  "paymentCurrency": "RUB",
   "requestCooldownSeconds": 300,
   "prices": {
     "A10": 250000,
