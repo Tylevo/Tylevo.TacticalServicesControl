@@ -114,7 +114,10 @@ function Resolve-NewExternalEvidencePath {
 }
 
 function New-OrdinalIgnoreCaseSet {
-    return [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $set = [Collections.Generic.HashSet[string]]::new(
+        [StringComparer]::OrdinalIgnoreCase
+    )
+    return ,$set
 }
 
 function Get-BinaryEvidence {
