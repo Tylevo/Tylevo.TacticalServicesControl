@@ -216,6 +216,7 @@ public static class FireSupportServerConfigClient
 			requestId: string.Empty,
 			expectedSessionKey: string.Empty,
 			expectedProfileId: string.Empty,
+			expectedCost: null,
 			clientKnownRevision: clientKnownRevision);
 	}
 
@@ -224,6 +225,7 @@ public static class FireSupportServerConfigClient
 		string requestId,
 		string expectedSessionKey,
 		string expectedProfileId,
+		int expectedCost,
 		int clientKnownRevision)
 	{
 		return SendPurchaseRequestAsync(
@@ -232,6 +234,7 @@ public static class FireSupportServerConfigClient
 			requestId,
 			expectedSessionKey,
 			expectedProfileId,
+			expectedCost,
 			clientKnownRevision);
 	}
 
@@ -241,6 +244,7 @@ public static class FireSupportServerConfigClient
 		string requestId,
 		string expectedSessionKey,
 		string expectedProfileId,
+		int? expectedCost,
 		int clientKnownRevision)
 	{
 		var fallback = new FireSupportPurchaseResponse
@@ -301,6 +305,7 @@ public static class FireSupportServerConfigClient
 				SupportType = supportType.ToString(),
 				RequestId = requestId ?? string.Empty,
 				ClientKnownRevision = clientKnownRevision,
+				ExpectedCost = expectedCost,
 				Quantity = 1
 			};
 			if (persistentPurchase &&

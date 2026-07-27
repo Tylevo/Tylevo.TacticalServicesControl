@@ -80,6 +80,15 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 	private Text _statusText;
 	private Text _balanceText;
 	private Button _refreshButton;
+	private GameObject _purchaseConfirmationRoot;
+	private Text _purchaseConfirmationTitle;
+	private Text _purchaseConfirmationBody;
+	private Button _purchaseConfirmationConfirmButton;
+	private ESupportType _confirmationType = ESupportType.None;
+	private int _confirmationPrice = -1;
+	private int _confirmationRevision;
+	private string _confirmationSessionKey = string.Empty;
+	private string _confirmationProfileId = string.Empty;
 	private RaidOpsFireSupportServerConfig _snapshot;
 	private CancellationTokenSource _refreshCts;
 	private string _profileId = string.Empty;
@@ -843,17 +852,94 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 				s_text, TextAnchor.MiddleCenter, new Vector2(0f, 0.5f),
 				new Vector2(150f, 54f), new Vector2(790f, 0f));
 			Button buy = CreateButton(row.transform, "Buy", "BUY", new Vector2(1f, 0.5f),
-				new Vector2(140f, 42f), new Vector2(-88f, 0f), () => BeginPurchase(service.Type));
+				new Vector2(140f, 42f), new Vector2(-88f, 0f), () => ShowPurchaseConfirmation(service.Type));
 			_rows[service.Type] = new RowView(name, state, price, owned, buy);
 		}
 
 		CreateText(panel.transform, "Footer",
 			"Purchases debit the authenticated PMC stash and must be returned by the persistent server ledger.",
 			14, FontStyle.Normal, s_muted, TextAnchor.MiddleLeft,
-			new Vector2(0.5f, 0f), new Vector2(1090f, 32f), new Vector2(0f, 26f));
+			new Vector2(0.5f, 0f), new Vector2(850f, 32f), new Vector2(-120f, 26f));
+		CreateButton(
+			panel.transform,
+			"Dashboard",
+			"DASHBOARD",
+			new Vector2(1f, 0f),
+			new Vector2(160f, 38f),
+			new Vector2(-100f, 28f),
+			OpenDashboard,
+			ButtonVisual.Neutral);
 
+		BuildPurchaseConfirmation();
 		_pageRoot.SetActive(false);
 		Redraw();
+	}
+
+	private void BuildPurchaseConfirmation()
+	{
+		_purchaseConfirmationRoot = CreatePanel(
+			_pageRoot.transform,
+			"PurchaseConfirmation",
+			new Color32(0, 0, 0, 210));
+		Stretch(_purchaseConfirmationRoot.GetComponent<RectTransform>());
+		_purchaseConfirmationRoot.GetComponent<Image>().raycastTarget = true;
+
+		GameObject dialog = CreateBorderedPanel(
+			_purchaseConfirmationRoot.transform,
+			"Dialog",
+			s_panel,
+			s_lineStrong);
+		SetRect(
+			dialog.GetComponent<RectTransform>(),
+			new Vector2(0.5f, 0.5f),
+			new Vector2(660f, 360f),
+			Vector2.zero);
+
+		_purchaseConfirmationTitle = CreateText(
+			dialog.transform,
+			"Title",
+			"CONFIRM PURCHASE",
+			26,
+			FontStyle.Bold,
+			s_amberHigh,
+			TextAnchor.MiddleLeft,
+			new Vector2(0.5f, 1f),
+			new Vector2(580f, 48f),
+			new Vector2(0f, -42f));
+		_purchaseConfirmationBody = CreateText(
+			dialog.transform,
+			"Body",
+			string.Empty,
+			17,
+			FontStyle.Normal,
+			s_text,
+			TextAnchor.UpperLeft,
+			new Vector2(0.5f, 0.5f),
+			new Vector2(580f, 190f),
+			new Vector2(0f, 12f));
+		_purchaseConfirmationBody.horizontalOverflow = HorizontalWrapMode.Wrap;
+		_purchaseConfirmationBody.verticalOverflow = VerticalWrapMode.Overflow;
+		_purchaseConfirmationBody.lineSpacing = 1.05f;
+
+		CreateButton(
+			dialog.transform,
+			"Cancel",
+			"CANCEL",
+			new Vector2(0.5f, 0f),
+			new Vector2(190f, 46f),
+			new Vector2(-110f, 42f),
+			HidePurchaseConfirmation,
+			ButtonVisual.Neutral);
+		_purchaseConfirmationConfirmButton = CreateButton(
+			dialog.transform,
+			"Confirm",
+			"CONFIRM BUY",
+			new Vector2(0.5f, 0f),
+			new Vector2(190f, 46f),
+			new Vector2(110f, 42f),
+			ConfirmPurchase);
+
+		_purchaseConfirmationRoot.SetActive(false);
 	}
 
 	private void StartRefresh()
@@ -863,7 +949,7 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 
 	private void StartRefresh(bool afterMutation)
 	{
-		if (_refreshPending || _purchasePending)
+		if (_refreshPending || _purchasePending || IsPurchaseConfirmationOpen)
 		{
 			return;
 		}
@@ -988,16 +1074,92 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 		}
 	}
 
-	private void BeginPurchase(ESupportType supportType)
+	private void OpenDashboard()
 	{
-		if (!_ready || _snapshot == null || _refreshPending || _purchasePending)
+		string host = SPT.Common.Http.RequestHandler.Host;
+		if (string.IsNullOrWhiteSpace(host) ||
+		    !Uri.TryCreate(host, UriKind.Absolute, out Uri hostUri) ||
+		    (hostUri.Scheme != Uri.UriSchemeHttp &&
+		     hostUri.Scheme != Uri.UriSchemeHttps))
+		{
+			SetStatus(
+				"The active SPT server address is unavailable. Start the server and refresh TSC UPLINK.",
+				false);
+			return;
+		}
+
+		UriBuilder dashboardUri = new(hostUri)
+		{
+			Path = "/tsc/admin",
+			Query = string.Empty,
+			Fragment = string.Empty
+		};
+		Application.OpenURL(dashboardUri.Uri.AbsoluteUri);
+		SetStatus("Opening the TSC dashboard in your default browser...", true);
+	}
+
+	private bool IsPurchaseConfirmationOpen =>
+		_purchaseConfirmationRoot != null &&
+		_purchaseConfirmationRoot.activeSelf;
+
+	private void ShowPurchaseConfirmation(ESupportType supportType)
+	{
+		if (IsPurchaseConfirmationOpen ||
+		    !TryGetPurchaseContext(
+			    supportType,
+			    out ServiceDescriptor descriptor,
+			    out bool retryAmbiguousPurchase))
 		{
 			return;
 		}
+
+		int price = GetPrice(_snapshot, descriptor.ConfigKey);
+		int balance = _snapshot.StashRoubleBalance ?? 0;
+		_confirmationType = supportType;
+		_confirmationPrice = price;
+		_confirmationRevision = _snapshot.Revision;
+		_confirmationSessionKey = _sessionKey;
+		_confirmationProfileId = _profileId;
+
+		_purchaseConfirmationTitle.text = retryAmbiguousPurchase
+			? "CONFIRM PURCHASE RETRY"
+			: "CONFIRM PURCHASE";
+		_purchaseConfirmationBody.text = retryAmbiguousPurchase
+			? $"{descriptor.DisplayName}\n\n" +
+			  "This reuses the original request ID and cannot create a second completed charge.\n" +
+			  $"Current list price: \u20BD{price:N0}\n\n" +
+			  "Continue purchase recovery?"
+			: $"{descriptor.DisplayName}\n\n" +
+			  $"UNIT PRICE: \u20BD{price:N0}\n" +
+			  $"STASH BEFORE: \u20BD{balance:N0}\n" +
+			  $"STASH AFTER: {FormatProjectedBalance(balance, price)}\n\n" +
+			  "Purchase one persistent pre-raid authorization?";
+		_purchaseConfirmationConfirmButton.GetComponentInChildren<Text>().text =
+			retryAmbiguousPurchase ? "CONFIRM RETRY" : "CONFIRM BUY";
+		_purchaseConfirmationRoot.SetActive(true);
+		_purchaseConfirmationRoot.transform.SetAsLastSibling();
+		Redraw();
+	}
+
+	private void ConfirmPurchase()
+	{
+		if (!IsPurchaseConfirmationOpen || _confirmationType == ESupportType.None)
+		{
+			return;
+		}
+
+		ESupportType supportType = _confirmationType;
+		int expectedPrice = _confirmationPrice;
+		int expectedRevision = _confirmationRevision;
+		string expectedSessionKey = _confirmationSessionKey;
+		string expectedProfileId = _confirmationProfileId;
+		HidePurchaseConfirmation(redraw: false);
+
 		string authenticatedSessionKey =
 			FireSupportServerConfigClient.GetAuthenticatedSessionKey();
 		if (string.IsNullOrWhiteSpace(authenticatedSessionKey) ||
-		    !string.Equals(_sessionKey, authenticatedSessionKey, StringComparison.Ordinal) ||
+		    !string.Equals(expectedSessionKey, authenticatedSessionKey, StringComparison.Ordinal) ||
+		    !string.Equals(expectedProfileId, _profileId, StringComparison.Ordinal) ||
 		    !FireSupportServerConfigClient.IsAuthenticatedProfile(_profileId))
 		{
 			FailClosedForSessionChange(
@@ -1007,14 +1169,57 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 		}
 
 		ServiceDescriptor descriptor = GetDescriptor(supportType);
-		bool hasAmbiguousPurchase = !string.IsNullOrWhiteSpace(_ambiguousRequestId);
-		bool retryAmbiguousPurchase =
-			hasAmbiguousPurchase && _ambiguousType == supportType;
-		if ((hasAmbiguousPurchase && !retryAmbiguousPurchase) ||
-		    (!retryAmbiguousPurchase &&
-		     (!GetEnabled(_snapshot, descriptor.ConfigKey) ||
-		      GetPrice(_snapshot, descriptor.ConfigKey) < 0 ||
-		      GetOwned(_snapshot, descriptor.ConfigKey) >= GetMaximum(_snapshot))))
+		if (!_ready ||
+		    _snapshot == null ||
+		    _snapshot.Revision != expectedRevision ||
+		    GetPrice(_snapshot, descriptor.ConfigKey) != expectedPrice)
+		{
+			SetStatus(
+				"Server revision or pricing changed. REFRESH, then confirm the purchase again.",
+				false);
+			Redraw();
+			return;
+		}
+
+		BeginPurchase(supportType, expectedPrice);
+	}
+
+	private void HidePurchaseConfirmation()
+	{
+		HidePurchaseConfirmation(redraw: true);
+	}
+
+	private void HidePurchaseConfirmation(bool redraw)
+	{
+		_confirmationType = ESupportType.None;
+		_confirmationPrice = -1;
+		_confirmationRevision = 0;
+		_confirmationSessionKey = string.Empty;
+		_confirmationProfileId = string.Empty;
+		if (_purchaseConfirmationRoot != null)
+		{
+			_purchaseConfirmationRoot.SetActive(false);
+		}
+		if (redraw)
+		{
+			Redraw();
+		}
+	}
+
+	private static string FormatProjectedBalance(int balance, int price)
+	{
+		long projected = (long)balance - price;
+		return projected >= 0
+			? $"\u20BD{projected:N0}"
+			: "INSUFFICIENT FUNDS";
+	}
+
+	private void BeginPurchase(ESupportType supportType, int expectedCost)
+	{
+		if (!TryGetPurchaseContext(
+			    supportType,
+			    out ServiceDescriptor descriptor,
+			    out bool retryAmbiguousPurchase))
 		{
 			return;
 		}
@@ -1030,12 +1235,56 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 				: $"Submitting {descriptor.DisplayName} purchase...",
 			true);
 		Redraw();
-		PurchaseAsync(supportType, requestId, _sessionKey, _generation).Forget();
+		PurchaseAsync(
+			supportType,
+			requestId,
+			expectedCost,
+			_sessionKey,
+			_generation).Forget();
+	}
+
+	private bool TryGetPurchaseContext(
+		ESupportType supportType,
+		out ServiceDescriptor descriptor,
+		out bool retryAmbiguousPurchase)
+	{
+		descriptor = GetDescriptor(supportType);
+		retryAmbiguousPurchase = false;
+		if (!_ready || _snapshot == null || _refreshPending || _purchasePending)
+		{
+			return false;
+		}
+
+		string authenticatedSessionKey =
+			FireSupportServerConfigClient.GetAuthenticatedSessionKey();
+		if (string.IsNullOrWhiteSpace(authenticatedSessionKey) ||
+		    !string.Equals(_sessionKey, authenticatedSessionKey, StringComparison.Ordinal) ||
+		    !FireSupportServerConfigClient.IsAuthenticatedProfile(_profileId))
+		{
+			FailClosedForSessionChange(
+				authenticatedSessionKey,
+				"Authenticated PMC session changed. Reopen TSC UPLINK from the current main menu.");
+			return false;
+		}
+
+		bool hasAmbiguousPurchase = !string.IsNullOrWhiteSpace(_ambiguousRequestId);
+		retryAmbiguousPurchase = hasAmbiguousPurchase && _ambiguousType == supportType;
+		if ((hasAmbiguousPurchase && !retryAmbiguousPurchase) ||
+		    (!retryAmbiguousPurchase &&
+		     (!GetEnabled(_snapshot, descriptor.ConfigKey) ||
+		      GetPrice(_snapshot, descriptor.ConfigKey) < 0 ||
+		      GetOwned(_snapshot, descriptor.ConfigKey) >= GetMaximum(_snapshot))))
+		{
+			return false;
+		}
+
+		return true;
 	}
 
 	private async UniTaskVoid PurchaseAsync(
 		ESupportType supportType,
 		string requestId,
+		int expectedCost,
 		string expectedSessionKey,
 		int generation)
 	{
@@ -1046,6 +1295,7 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 				await FireSupportPayment.PurchasePersistentAuthorizationAsync(
 					supportType,
 					requestId,
+					expectedCost,
 					expectedSessionKey,
 					_profileId);
 			if (_destroyed || generation != _generation)
@@ -1172,7 +1422,10 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 			: "STASH: --";
 		if (_refreshButton != null)
 		{
-			_refreshButton.interactable = !_refreshPending && !_purchasePending;
+			_refreshButton.interactable =
+				!_refreshPending &&
+				!_purchasePending &&
+				!IsPurchaseConfirmationOpen;
 		}
 
 		int maximum = GetMaximum(_snapshot);
@@ -1205,7 +1458,10 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 			row.Price.color = price >= 0 ? s_amberHigh : s_muted;
 			row.Owned.text = hasSnapshot ? $"{owned} / {maximum}" : "-- / --";
 			row.Buy.interactable =
-				_ready && !_refreshPending && !_purchasePending &&
+				_ready &&
+				!_refreshPending &&
+				!_purchasePending &&
+				!IsPurchaseConfirmationOpen &&
 				(retryAmbiguousPurchase ||
 				 (!hasAmbiguousPurchase && enabled && !atLimit));
 			row.Buy.GetComponentInChildren<Text>().text =
@@ -1337,6 +1593,7 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 	private void ClosePage()
 	{
 		_refreshCts?.Cancel();
+		HidePurchaseConfirmation(redraw: false);
 		if (_pageRoot != null)
 		{
 			_pageRoot.SetActive(false);
@@ -1408,6 +1665,7 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 		_pendingType = ESupportType.None;
 		_ambiguousRequestId = string.Empty;
 		_ambiguousType = ESupportType.None;
+		HidePurchaseConfirmation(redraw: false);
 		if (_pageRoot != null)
 		{
 			_pageRoot.SetActive(false);
@@ -1483,6 +1741,7 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 			"ServiceUnavailable" => "This service is disabled by the server.",
 			"PaymentSourceNotServerBacked" => "Server payment source is not stash-backed.",
 			"PurchasePersistenceDisabled" => "Server purchase persistence is disabled.",
+			"PurchaseQuoteChanged" => "Price changed on the server. Review the updated quote and confirm again.",
 			"ProfileSessionChanged" => "Backend profile changed; reopen the page.",
 			_ => $"Purchase denied: {reason}"
 		};

@@ -822,6 +822,7 @@ public static class FireSupportPayment
 	public static async UniTask<FireSupportPurchaseResponse> PurchasePersistentAuthorizationAsync(
 		ESupportType supportType,
 		string requestId,
+		int expectedCost,
 		string expectedSessionKey,
 		string expectedProfileId)
 	{
@@ -830,7 +831,7 @@ public static class FireSupportPayment
 			Ok = false,
 			Reason = "ServerConfigUnavailable",
 			SupportType = supportType.ToString(),
-			Cost = GetCost(supportType),
+			Cost = expectedCost >= 0 ? expectedCost : GetCost(supportType),
 			PaymentSource = nameof(PaymentSource.StashRoubles),
 			NewBalance = _serverStashRoubleBalance ?? -1,
 			AuthorizationGranted = false,
@@ -875,6 +876,7 @@ public static class FireSupportPayment
 					requestId,
 					expectedSessionKey,
 					expectedProfileId,
+					expectedCost,
 					_serverConfigRevision);
 			serverResult ??= fallback;
 			serverResult.SupportType = string.IsNullOrWhiteSpace(serverResult.SupportType)

@@ -82,6 +82,11 @@ public sealed class FireSupportPurchaseRequest
 	public string SupportType { get; set; } = string.Empty;
 	public string RequestId { get; set; } = string.Empty;
 	public int ClientKnownRevision { get; set; }
+	/// <summary>
+	/// Optional quote accepted by the player. Persistent menu purchases must not
+	/// debit a different amount; omitted for legacy and in-raid purchase flows.
+	/// </summary>
+	public int? ExpectedCost { get; set; }
 	public int Quantity { get; set; } = 1;
 }
 

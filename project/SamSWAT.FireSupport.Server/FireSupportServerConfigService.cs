@@ -371,6 +371,18 @@ public sealed class FireSupportServerConfigService(
 				}
 			}
 
+			if (requiresPersistentPurchase &&
+			    !preparedRecovery &&
+			    request.ExpectedCost.HasValue &&
+			    request.ExpectedCost.Value != response.Cost)
+			{
+				response.Reason = "PurchaseQuoteChanged";
+				response.NewBalance = CountStashRoubles(pmc);
+				logger.Warning(
+					$"TSC persistent purchase quote changed sessionId={FormatLogId(saveSessionId)} supportType={supportType} requestId={FormatRequestId(purchaseRequestId)} expectedCost={request.ExpectedCost.Value} currentCost={response.Cost}");
+				return response;
+			}
+
 			if (!preparedRecovery && !IsServiceEnabled(config, supportType))
 			{
 				response.Reason = "ServiceUnavailable";
