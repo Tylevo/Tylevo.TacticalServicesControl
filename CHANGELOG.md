@@ -30,6 +30,7 @@
 - Fixed Fika A-10 clients starting prediction before the host accepted a strike. Clients now wait for the authority broadcast, render the accepted visual pass, and never execute authoritative damage.
 - Synchronized Fika tracer and impact replay to the visible A-10 firing pass. Replay is keyed by support request, seed, and pass so double passes do not create early fake bursts or mismatched impacts.
 - Fixed UAV HUD ownership in Fika: only the requesting client creates the radar overlay, and a dedicated headless host does not create client HUD objects.
+- Reduced HUD mode to the square live scanner only. The phone header, status bands, telemetry, and footer remain exclusive to the physical-phone view.
 - Fixed concurrent or repeated AssetBundle loads, including the UAV radar HUD double-load failure. A per-bundle load gate now reuses a load that won the race.
 - Added HackerMod phone-bundle compatibility. When Manimal's complete HackerMod phone bundle set is installed, TSC reuses it instead of loading a conflicting duplicate phone asset.
 - Fixed `SimpleSpinBlur`, fire-support pools, UI controllers, and phone zoom teardown paths that could throw null-reference errors during raid shutdown or repeated initialization.

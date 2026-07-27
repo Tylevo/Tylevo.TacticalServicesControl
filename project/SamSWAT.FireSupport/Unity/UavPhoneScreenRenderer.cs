@@ -65,6 +65,9 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 	private const int PortraitLayoutHeight = 1024;
 	private const int RadarHudTextureWidth = 432;
 	private const int RadarHudTextureHeight = 768;
+	private const float RadarHudPlotX = 28f;
+	private const float RadarHudPlotTop = 170f;
+	private const float RadarHudPlotSize = 376f;
 	private const float RadarHudDisplayScale = 0.5f;
 	private const float RadarHudMargin = 24f;
 	private const float OpaqueScreenPlaneScale = 1.01f;
@@ -225,7 +228,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		SubscribeRadarHudPosition();
 		ShowState(TerraGroupPhoneState.UavRadarLive);
 		FireSupportPlugin.LogSource.LogInfo(
-			$"TSC phone-style UAV radar HUD started. position={position}.");
+			$"TSC scanner-only UAV radar HUD started. position={position}.");
 	}
 
 	public void Rebuild(UavPhoneScreenContext context, TerraGroupPhoneState state)
@@ -656,12 +659,17 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		imageObject.transform.SetParent(outputObject.transform, false);
 		imageObject.layer = 0;
 		RectTransform imageTransform = imageObject.AddComponent<RectTransform>();
-		imageTransform.sizeDelta = new Vector2(
-			RadarHudTextureWidth * RadarHudDisplayScale,
-			RadarHudTextureHeight * RadarHudDisplayScale);
+		imageTransform.sizeDelta =
+			Vector2.one * (RadarHudPlotSize * RadarHudDisplayScale);
 
 		_hudOutputImage = imageObject.AddComponent<RawImage>();
 		_hudOutputImage.texture = _renderTexture;
+		_hudOutputImage.uvRect = new Rect(
+			RadarHudPlotX / RadarHudTextureWidth,
+			(RadarHudTextureHeight - RadarHudPlotTop - RadarHudPlotSize) /
+			RadarHudTextureHeight,
+			RadarHudPlotSize / RadarHudTextureWidth,
+			RadarHudPlotSize / RadarHudTextureHeight);
 		_hudOutputImage.color = Color.white;
 		_hudOutputImage.raycastTarget = false;
 		ApplyRadarHudPosition(position);
@@ -743,7 +751,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 			UavRadarHudPosition.BottomRight;
 		ApplyRadarHudPosition(position);
 		TscDiagnostics.LogPhone(
-			$"TSC phone-style UAV radar HUD moved. position={position}.");
+			$"TSC scanner-only UAV radar HUD moved. position={position}.");
 	}
 
 	private IEnumerator LogRenderTextureAlpha(RenderTexture target)
@@ -1784,8 +1792,15 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		_uavRadarStatusText = AddText(statusPanel, "ACTIVE", F(14), FontStyle.Bold, greenHigh, L(12, 0, 112, 32), TextAnchor.MiddleLeft);
 		AddText(statusPanel, "ENCRYPTED // LIVE FEED", F(11), FontStyle.Bold, muted, L(128, 0, 236, 32), TextAnchor.MiddleRight);
 
-		float radarSize = 376f * scale;
-		_uavRadarPlot = AddPanel(root, R(28, 170, 376, 376), radarBackground);
+		float radarSize = RadarHudPlotSize * scale;
+		_uavRadarPlot = AddPanel(
+			root,
+			R(
+				RadarHudPlotX,
+				RadarHudPlotTop,
+				RadarHudPlotSize,
+				RadarHudPlotSize),
+			radarBackground);
 		_uavRadarPlotRadius = radarSize * 0.5f - 14f * scale;
 
 		AddLine(_uavRadarPlot, new Rect(radarSize * 0.5f, 10f * scale, 1f, radarSize - 20f * scale), grid);

@@ -47,7 +47,7 @@ Do not place the ZIP contents inside an extra nested folder.
 5. When you are ready to use an authorization, press `K` to open the Uplink in deployment mode. Only services you currently own are listed.
 6. Press `1`-`6` to select a service, then press `LMB` or `Enter` to deploy it. `RMB`, `Backspace`, or `Escape` stows the phone without spending the authorization.
 7. A-10 and UH-60 services use camera-based target designation. Confirm each targeting step with `Mouse 2` (middle mouse) or `Enter`; cancel with `Alt + RMB` or `Backspace`.
-8. UAV Recon and Focused Sweep begin directly after deployment. The default `Phone` display mode uses `J`: hold it to raise the Uplink and view the live radar, then release it to return to your weapon. Walking and sprint keys do not lower it while the radar key remains held, and the recon timer keeps running while the phone is stowed. The optional `HUD` display mode keeps that same radar visible in a selected screen corner for the active recon session.
+8. UAV Recon and Focused Sweep begin directly after deployment. The default `Phone` display mode uses `J`: hold it to raise the Uplink and view the live radar, then release it to return to your weapon. Walking and sprint keys do not lower it while the radar key remains held, and the recon timer keeps running while the phone is stowed. The optional `HUD` display mode keeps only the square live scanner visible in a selected screen corner for the active recon session.
 
 The `U`, `K`, `J`, and spotter-confirm controls are configurable in the BepInEx configuration manager opened with `F12`. `UAV Radar Display` also provides the `Phone`/`HUD` choice and four HUD positions. Phone framing and optional authorization-screen zoom are available there as well; the `K` deploy view and held `J` radar preserve the current raid FOV and reveal directly in the upright presentation after EFT finishes the concealed equip transaction.
 
@@ -69,7 +69,7 @@ The dashboard is localhost-only by default. Do not port-forward it.
 - A-10 Strafe and A-10 Double Pass.
 - UH-60 Extraction and Priority Exfil.
 - UAV Recon and Focused Sweep.
-- Requester-only UAV radar rendered on the physical Uplink phone or as the same phone-style corner HUD, plus the UAV A-10 loiter visual.
+- Requester-only UAV radar rendered on the physical Uplink phone or as a scanner-only square corner HUD, plus the UAV A-10 loiter visual.
 - Fika support request sync.
 - Fika host-authoritative settings sync.
 - Local TSC Dashboard configuration.
