@@ -2,7 +2,7 @@
 
 Last updated: 2026-07-27
 Target: the next public beta after the currently published 1.0.8 release
-Status: Phase 3 live candidate installed; Phase 1, 1A, 2, and 3 runtime validation pending
+Status: Phase 4 live candidate installed; Phase 1, 1A, 2, 3, and 4 runtime validation pending
 
 This plan converts the current TSC audit and community bug reports into an ordered implementation and validation sequence. Priority describes risk; phase order also accounts for dependencies. Do not advance to the next phase until the current phase's exit gate is satisfied.
 
@@ -496,16 +496,82 @@ The current dashboard promises separate extraction-zone countdowns. Unless the p
 
 ### Implementation Tasks
 
-- [ ] Make extraction-zone countdown tuning support-type-aware.
-- [ ] Pass both `extraction.extractTimeSeconds` and `priorityExfil.extractTimeSeconds` through the server-config client.
-- [ ] Carry both countdowns through the Fika settings packet and its serialization.
-- [ ] Account for packet compatibility or require a matched client set for the new protocol.
-- [ ] Initialize `HeliExfiltrationPoint` with `Extract` or `PriorityExfil`.
-- [ ] Use the matching countdown when the player enters or re-enters the zone.
-- [ ] Wire `extraction.dispatchDelaySeconds`, currently represented in the dashboard but hardcoded to eight seconds at runtime, or remove the misleading field.
-- [ ] Preserve the already-correct per-service helicopter wait windows and animation-speed multipliers.
-- [ ] Validate `waitTimeSeconds >= extractTimeSeconds` and return an actionable dashboard/config error for invalid combinations.
-- [ ] Replace fixed completion estimates with lifecycle/event-driven completion, or make the estimate account for configured animation speed.
+- [x] Make extraction-zone countdown tuning support-type-aware.
+- [x] Pass both `extraction.extractTimeSeconds` and `priorityExfil.extractTimeSeconds` through the server-config client.
+- [x] Carry both countdowns through the Fika settings packet and its serialization.
+- [x] Account for packet compatibility or require a matched client set for the new protocol.
+- [x] Initialize `HeliExfiltrationPoint` with `Extract` or `PriorityExfil`.
+- [x] Use the matching countdown when the player enters or re-enters the zone.
+- [x] Wire `extraction.dispatchDelaySeconds`, currently represented in the dashboard but hardcoded to eight seconds at runtime, or remove the misleading field.
+- [x] Preserve the already-correct per-service helicopter wait windows and animation-speed multipliers.
+- [x] Validate `waitTimeSeconds >= ceil(extractTimeSeconds + 1)` and return an actionable dashboard/config error for invalid combinations.
+- [x] Replace fixed completion estimates with lifecycle/event-driven completion, or make the estimate account for configured animation speed.
+
+### Implementation Evidence - 2026-07-27
+
+- Standard Extraction and Priority Exfil now capture separate immutable
+  dispatch, wait, extraction-countdown, and animation-speed values in one
+  `HelicopterTimingSnapshot`. The server-config client, local fallback, Fika
+  settings packet, support request, authority result, accepted broadcast, and
+  UH-60 runtime all preserve that service identity.
+- Solo waits the captured dispatch delay before starting the local runtime.
+  Fika submits immediately to the authority; the host rejects a stale timing
+  contract, owns the dispatch wait, stamps the canonical timing revision, and
+  publishes acceptance only after the execution-start guard succeeds.
+- Dedicated headless authority validates and times extraction without loading
+  client audio, camera, helicopter pools, or a functional extraction point.
+  Each non-headless peer renders one local visual, while only the requesting
+  profile creates a functional point/countdown.
+- Zone occupancy is local-player and collider-ref-counted. Boundary jitter or
+  multi-collider entry cannot restart the timer, leaving all colliders resets
+  it, and destroyed colliders, cancellation, death, disconnect, raid teardown,
+  or pool reuse cannot complete a stale extraction.
+- Active and pooled helicopter state is generation-guarded and idempotent.
+  Canceled arrival continuations cannot affect a reused object; leased objects
+  are returned once; teardown invalidates in-progress asset loading and removes
+  active helicopters, triggers, audio, and late bundle state.
+- Config schema 2 makes the formerly dead standard dispatch field active.
+  Every schema-less standard value migrates to the historical effective
+  eight-second delay; a schema-2 explicit zero remains an intentional immediate
+  dispatch. Fresh defaults are standard `8` and priority `3`.
+- Dashboard/API/reload updates reject invalid or non-finite timing instead of
+  silently normalizing it. Startup repairs an unsafe existing file while
+  preserving valid dispatch/speed values. The safe relationship is
+  `wait >= ceil(extract + 1)`.
+- Persistent authorization timeout is at least `155` seconds: the supported
+  `120`-second dispatch maximum plus the existing `35`-second authority/client
+  settlement window. This also protects local BepInEx timing fallback.
+- The post-dispatch completion estimate now accounts for animation speed as
+  `35 / speedMultiplier + waitTimeSeconds`.
+- Three independent final reviews found no remaining P0-P2 issue in the timing
+  contract, config/migration, Fika authority, runtime lifecycle, or validation
+  matrix. `git diff --check` passes.
+- Deploy-suppressed final rebuilds pass with 0 errors: Core has 28 existing
+  warnings, Server has 9 existing warnings, and Fika Interop plus Fika
+  bootstrap have 0 warnings.
+- The reviewed implementation and executable matrix are recorded in commit
+  `ae02516` (`feat: enforce extraction timing contracts`).
+- Build-output and installed SHA-256 values are Core
+  `904C09978ADFD456B87FAE1EC6B43750E351A65F9D503CE8BBB901446A40EF08`,
+  Fika bootstrap
+  `B6049B9E12D27E4366119EA1154F910E7C9FA7B222B1188E1A0DEBA21721052A`,
+  Fika Interop
+  `3D3FBBCEA0BEB48F8E545D6C00BD11B0C8125F49BE19A6E08C767B9183573B3B`,
+  and Server
+  `3C27753AE1C478F0427DD58FDEEDC56ADBA80D5E124727353C9BD95510801A63`.
+- After confirming SPT, EFT, the launcher, and Fika/headless were stopped, the
+  four DLLs were installed into live `D:\SPT` as one matched set and verified
+  byte-for-byte. The replaced Phase 3 DLLs and exact pre-start config are
+  backed up at
+  `C:\Users\tylev\Desktop\RaidOps\backups\TSC-live-pre-phase4-ae02516-20260727-135504`.
+- Installation changed no profile, authorization ledger, stored purchase,
+  config, asset, or release artifact. On the next server start, the schema-less
+  live config will gain `configSchemaVersion: 2` and its previously dead
+  standard dispatch value will migrate from `0` to the historical effective
+  `8`; its existing `180`-second pending timeout is already safe.
+- The executable checklist is
+  [`validation/phase4-extraction-timing-matrix.md`](validation/phase4-extraction-timing-matrix.md).
+  Every live row remains open. Phase 2 and Phase 3 remain separately open.
 
 ### Validation Matrix
 

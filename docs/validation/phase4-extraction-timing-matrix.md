@@ -2,8 +2,8 @@
 
 Status:
 
-- Phase 4 implementation/static review: **candidate implemented; final
-  checkpoint evidence pending**.
+- Phase 4 implementation/static review: **checkpoint `ae02516` reviewed,
+  built, and installed as a matched four-DLL candidate**.
 - Phase 4 live acceptance: **OPEN - not yet run**.
 - Every test row below starts `OPEN`; this document records expected evidence,
   not a test result.
