@@ -185,6 +185,7 @@ remain unchanged.
 - [x] Require a unique purchase `RequestId` and make repeated delivery of the same authenticated purchase return the original result without a second debit or grant.
 - [x] Preserve the existing serialized debit, profile-save, ledger-grant, and rollback transaction.
 - [x] Return an authoritative purchase catalog containing server prices, service availability, stash balance, stored counts, persistence state, and maximum stored count.
+- [x] Accept an optional player-confirmed quote and reject a changed price before creating a persistent journal record or debiting the stash; preserve accepted and prepared request replay at the original journaled price.
 
 ### Client UI and State
 
@@ -195,6 +196,8 @@ remain unchanged.
 - [x] Enable **Buy** only after an authoritative profile snapshot arrives and confirms persistent authorizations plus a server-backed stash payment source.
 - [x] Display server-authoritative service prices, enabled/disabled state, stash balance, owned counts, and maximum stored count.
 - [x] Disable duplicate clicks while a purchase is pending, submit a stable `RequestId`, and apply the authoritative response before redrawing.
+- [x] Require an explicit modal confirmation showing the selected service, authoritative price, and projected stash balance; cancellation creates no request ID and sends no mutation.
+- [x] Provide a dashboard link that derives `/tsc/admin` from the active SPT launcher-selected HTTP(S) host instead of the legacy hard-coded TSC config URL.
 - [x] Clear menu state when the backend profile/session changes or signs out.
 - [x] Preserve raid-start reset followed by authenticated rehydration so a pre-raid purchase appears in the deployment tablet without another purchase.
 
@@ -219,10 +222,13 @@ remain unchanged.
 - Commit `444e089` (`fix: fall back TSC Uplink to Character`) keeps **Records** as the preferred anchor and uses **Character** whenever the Records mod/button is unavailable. It fills an inactive Records vacancy without double-shifting, handles late Records activation, restores cached positions on disable/teardown, and delegates reflow to an active Unity layout group. Two independent reviews found no remaining P0-P2 issue; the deploy-suppressed Core build passes with 0 errors and the same 28 baseline warnings.
 - Commit `fae8281` (`fix: align TSC menu entry with Character`) keeps **Records** as the vertical/order anchor but uses **Character** for horizontal RectTransform geometry, preventing Career Log/Menu Overhaul relayouts from pushing the Character-derived clone off-stack. A one-second drift guard repairs only real late relayouts and tracks manual/LayoutGroup transitions without leaving gaps. Two independent reviews found no remaining P0-P2 issue; the deploy-suppressed Core build passes with 0 errors and the same 28 baseline warnings.
 - Commit `1de0ce7` (`fix: reserve a unique TSC menu slot`) replaces the transient-vacancy heuristic with a deterministic stack invariant derived from the native signed Play-to-Character spacing. The final order is **Character -> Records -> TSC -> Trading -> Hideout -> Exit**, or **Character -> TSC -> Trading -> Hideout -> Exit** when Records is unavailable. It repairs repeated Career Log/Menu Overhaul rebuilds, selects the preferred duplicate Records row, restores Squad/Pit placement across late Records activation, closes and reopens the slot without accumulating offsets, and retires duplicate/stale TSC controllers and buttons safely. Independent layout, timing, and lifecycle reviews found no remaining P0/P1 issue in the installed Menu Overhaul path; the deploy-suppressed Core build passes with 0 errors and the same 28 baseline warnings.
+- Commit `38166e1` (`feat: confirm pre-raid purchases`) adds the footer **DASHBOARD** link and a raycast-blocking confirmation modal with separate cancel/confirm paths. Confirm revalidates the authenticated profile/session and local snapshot, while the matched server rejects a changed `ExpectedCost` before journal preparation or debit. Accepted and prepared retries bypass the quote check and retain their original idempotent request and journaled price.
+- Independent UI, transaction-boundary, replay-compatibility, and final whole-diff reviews found no remaining P0-P2 issue. Deploy-suppressed Core and Server builds pass with 0 errors and their existing 28 and 9 baseline warnings; `git diff --check` passes.
 - After explicit approval, all four reviewed DLLs were installed into the live `D:\SPT` component paths and verified byte-for-byte by SHA-256 against the build outputs.
 - The replaced DLLs plus exact pre-first-start ledger/config copies are backed up at `C:\Users\tylev\Desktop\RaidOps\backups\TSC-live-pre-phase1a-dcf1894-20260724-114230`; `INSTALL-MANIFEST.md` records hashes and rollback instructions.
 - The superseded dashboard-shell Core and its rollback instructions remain backed up at `C:\Users\tylev\Desktop\RaidOps\backups\TSC-live-pre-dashboard-style-0f3663c-20260724-120948`.
-- The current live Core/client DLL includes the unique-slot repair and has SHA-256 `23FF2879559379CDBD70B420181CEF8C8BAC339C1665A123EE51A83C721A1D4D`; Fika, Fika Interop, and Server remain byte-identical to the Phase 1A install. The replaced Core (`50E274176E9B3BD1CA0C1F64DB994E681F64C2AFB813CD0AD75F613356030EAD`) and rollback instructions are backed up at `C:\Users\tylev\Desktop\RaidOps\backups\TSC-live-pre-menu-slot-1de0ce7-20260724-172550`; preceding rollback backups remain available.
+- The current live matched pair includes the purchase-confirmation contract: Core SHA-256 `F99E49CBDD5D66CEA9AD020C8E8F13A31BB360BF0EA4A853508E2E46AA1D8E56` and Server SHA-256 `CC422A533BC6500EAEF15AB180F735161BB0E96D8BD6EF374C3FFB27700B155A`. Fika and Fika Interop remain byte-identical to the Phase 1A install.
+- The replaced Core (`23FF2879559379CDBD70B420181CEF8C8BAC339C1665A123EE51A83C721A1D4D`), Server (`A53604DB2BC0A1F95CE2962B0A3A618FDEAAC3540423F015687FC34692D21D0E`), and rollback instructions are backed up at `C:\Users\tylev\Desktop\RaidOps\backups\TSC-live-pre-purchase-confirm-38166e1-20260727-101740`; preceding rollback backups remain available.
 - No player profile, TSC configuration, authorization ledger, release artifact, or published GitHub release was modified during installation. The SPT server and game were not started.
 - The Phase 1A exit gate remains open until the runtime matrix below is recorded; Phase 2 has not started.
 
@@ -230,6 +236,9 @@ remain unchanged.
 
 - [ ] An authenticated solo player buys one authorization in the main menu; the stash is debited once, the profile is saved, and the ledger increments once.
 - [ ] Closing and reopening the page preserves the authoritative balance and counts.
+- [ ] **CANCEL** closes the confirmation without allocating a request ID, debiting the stash, or changing the ledger.
+- [ ] **CONFIRM BUY** charges exactly the displayed quote; if the dashboard price changes first, the server returns `PurchaseQuoteChanged` without a journal record or debit and the page shows the updated price.
+- [ ] **DASHBOARD** opens `/tsc/admin` on the active SPT launcher-selected HTTP(S) host.
 - [ ] Entering a raid rehydrates the pre-purchased authorization before deployment and does not require another purchase.
 - [ ] A player at the per-service limit is denied without a debit and sees the authoritative owned count.
 - [ ] Insufficient funds, a disabled service, persistence disabled, or an unavailable profile cannot debit the stash.
