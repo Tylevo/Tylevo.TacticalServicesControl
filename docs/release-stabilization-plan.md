@@ -2,7 +2,7 @@
 
 Last updated: 2026-07-27
 Target: the next public beta after the currently published 1.0.8 release
-Status: Phase 3 implementation candidate build-verified; Phase 1, 1A, 2, and 3 runtime validation pending
+Status: Phase 3 live candidate installed; Phase 1, 1A, 2, and 3 runtime validation pending
 
 This plan converts the current TSC audit and community bug reports into an ordered implementation and validation sequence. Priority describes risk; phase order also accounts for dependencies. Do not advance to the next phase until the current phase's exit gate is satisfied.
 
@@ -443,7 +443,15 @@ not mark any live Phase 2 or Phase 3 row complete.
   `E732405482C7F258295CA3B4355913A3DD07A90890690C6E5D78AC93B943DC33`.
 - The packet layout changed, so Core, Server, Fika Interop, and Fika bootstrap
   must be installed as one matched set on the server and every participant.
-  This candidate has not yet been installed live.
+- After confirming that SPT, EFT, the launcher, and Fika/headless processes
+  were stopped, the four Phase 3 DLLs were installed into the live `D:\SPT`
+  component paths as one matched set. Every live SHA-256 value matches the
+  reviewed build-output value recorded above.
+- The replaced Phase 2 DLLs and rollback manifest are backed up at
+  `C:\Users\tylev\Desktop\RaidOps\backups\TSC-live-pre-phase3-a37d5c2-20260727-130057`.
+  No profile, ledger, server configuration, asset bundle, release artifact, or
+  published GitHub release was changed, and SPT was not started by the
+  installation.
 - The executable checklist is
   [`validation/phase3-physical-phone-uav-matrix.md`](validation/phase3-physical-phone-uav-matrix.md).
   Every live row remains open, and Phase 2 remains separately open.
