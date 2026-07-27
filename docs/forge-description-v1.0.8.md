@@ -51,7 +51,7 @@ The deploy phone only lists authorizations you currently own. Closing it with `R
 
 A-10 and UH-60 targeting uses the player camera. **A rangefinder is not required.** UAV Recon and Focused Sweep start immediately after deployment.
 
-The purchase, deploy, UAV-radar hold, and spotter-confirm keys can all be changed in `F12`. Phone framing and optional authorization-screen zoom can also be adjusted there; deploy and held radar views preserve the current raid FOV.
+The purchase, deploy, UAV-radar hold, and spotter-confirm keys can all be changed in `F12`. The UAV feed can use either the default held physical phone or a persistent phone-style corner HUD, with all four HUD positions available. Phone framing and optional authorization-screen zoom can also be adjusted there; deploy and held radar views preserve the current raid FOV.
 
 ### Configuration
 

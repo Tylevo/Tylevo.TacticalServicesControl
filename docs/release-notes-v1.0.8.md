@@ -8,6 +8,7 @@ This update follows the published v1.0.7 build and contains the changes below.
 
 - Support deployment now happens from the TSC Uplink phone. Buy an authorization, press the configurable deploy key, select the exact service you purchased, and designate the target without carrying the rangefinder.
 - The phone can automatically zoom and reframe itself while raised. Its default zoom FOV is now 45 for a slightly wider view; FOV and horizontal/vertical framing remain configurable in F12 and restore cleanly when the phone is stowed. Existing custom FOV values are preserved.
+- UAV radar presentation is configurable in F12. `Phone` preserves the held-J physical Uplink, while `HUD` keeps the same phone radar visible in a configurable screen corner for the active recon session.
 - Purchase, deploy, and spotter-confirm keybinds are now visible in F12.
 - A-10 single and double passes stay separate from purchase through deployment, so selecting one no longer spends or launches the other.
 
@@ -18,6 +19,7 @@ This update follows the published v1.0.7 build and contains the changes below.
 - `K` (configurable in F12 as **Open deploy key**) opens the Uplink in deployment mode after you own an authorization. Only services you currently own are listed. Press `1`-`6` to select one, then LMB or Enter to deploy it. RMB, Backspace, or Escape stows the phone without spending anything.
 - A-10 and UH-60 use camera-based target designation after deployment; the rangefinder is no longer required. Press `Mouse 2`/middle mouse (configurable in F12 as **Spotter confirm key**) or Enter to confirm each targeting step. Alt+RMB or Backspace cancels targeting.
 - UAV Recon and Focused Sweep start directly after deployment and display the radar overlay only for the requesting player.
+- In F12, use **UAV Radar Display > Display mode** to choose `Phone` or `HUD`, and **HUD position** to choose any screen corner. `Phone` remains the default.
 
 ## Payment And Authorizations
 

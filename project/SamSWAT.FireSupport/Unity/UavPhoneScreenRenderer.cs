@@ -44,6 +44,10 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 	private const int LandscapeLayoutHeight = 512;
 	private const int PortraitLayoutWidth = 512;
 	private const int PortraitLayoutHeight = 1024;
+	private const int RadarHudTextureWidth = 432;
+	private const int RadarHudTextureHeight = 768;
+	private const float RadarHudDisplayScale = 0.5f;
+	private const float RadarHudMargin = 24f;
 	private const float OpaqueScreenPlaneScale = 1.01f;
 	private const float SwipeArrowAnimationSeconds = 1.05f;
 	private const string SwipeArrowRelativePath = "animations/swipe_up/swipe_arrow_sprite.png";
@@ -66,6 +70,8 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 
 	private Camera _camera;
 	private Canvas _canvas;
+	private Canvas _hudOutputCanvas;
+	private RawImage _hudOutputImage;
 	private RenderTexture _renderTexture;
 	private Renderer _screenRenderer;
 	private Transform _rendererRoot;
@@ -84,6 +90,8 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 	private UnityEngine.Rendering.ReflectionProbeUsage _previousReflectionProbeUsage;
 	private bool _rendererPresentationCaptured;
 	private bool _shutdown;
+	private bool _radarHudMode;
+	private bool _radarHudPositionSubscribed;
 	private Coroutine _stateFadeCoroutine;
 	private GameObject _opaqueScreenObject;
 	private Mesh _opaqueScreenMesh;
@@ -176,6 +184,29 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 
 		ShowState(TerraGroupPhoneState.Home);
 		FireSupportPlugin.LogSource.LogInfo("TSC Uplink UI started.");
+	}
+
+	internal void InitializeRadarHud(UavRadarHudPosition position)
+	{
+		if (_canvas != null || _renderTexture != null)
+		{
+			throw new InvalidOperationException("TSC radar HUD renderer was already initialized.");
+		}
+
+		_radarHudMode = true;
+		_texWidth = RadarHudTextureWidth;
+		_texHeight = RadarHudTextureHeight;
+		_canvasRotation = 0f;
+		_font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+
+		BuildRenderTextureCamera();
+		BuildCanvas();
+		BuildUavRadarLiveScreen();
+		BuildRadarHudOutput(position);
+		SubscribeRadarHudPosition();
+		ShowState(TerraGroupPhoneState.UavRadarLive);
+		FireSupportPlugin.LogSource.LogInfo(
+			$"TSC phone-style UAV radar HUD started. position={position}.");
 	}
 
 	public void Rebuild(UavPhoneScreenContext context, TerraGroupPhoneState state)
@@ -273,6 +304,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 
 		_shutdown = true;
 		UnsubscribeSettingChanges();
+		UnsubscribeRadarHudPosition();
 		StopSwipeAnimation();
 		if (_stateFadeCoroutine != null)
 		{
@@ -328,6 +360,18 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		{
 			Destroy(_screenMaterial);
 			_screenMaterial = null;
+		}
+
+		if (_hudOutputImage != null)
+		{
+			_hudOutputImage.texture = null;
+			_hudOutputImage = null;
+		}
+
+		if (_hudOutputCanvas != null)
+		{
+			Destroy(_hudOutputCanvas.gameObject);
+			_hudOutputCanvas = null;
 		}
 
 		if (_canvas != null)
@@ -572,6 +616,115 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		CanvasScaler scaler = canvasObject.AddComponent<CanvasScaler>();
 		scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
 		scaler.referencePixelsPerUnit = 100f;
+	}
+
+	private void BuildRadarHudOutput(UavRadarHudPosition position)
+	{
+		GameObject outputObject = new("TSC UAV Radar HUD Canvas");
+		outputObject.transform.SetParent(transform, false);
+		outputObject.layer = 0;
+
+		_hudOutputCanvas = outputObject.AddComponent<Canvas>();
+		_hudOutputCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+		_hudOutputCanvas.sortingOrder = 3000;
+
+		CanvasScaler scaler = outputObject.AddComponent<CanvasScaler>();
+		scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+		scaler.referenceResolution = new Vector2(1920f, 1080f);
+		scaler.matchWidthOrHeight = 0.5f;
+
+		GameObject imageObject = new("TSC UAV Radar HUD Image");
+		imageObject.transform.SetParent(outputObject.transform, false);
+		imageObject.layer = 0;
+		RectTransform imageTransform = imageObject.AddComponent<RectTransform>();
+		imageTransform.sizeDelta = new Vector2(
+			RadarHudTextureWidth * RadarHudDisplayScale,
+			RadarHudTextureHeight * RadarHudDisplayScale);
+
+		_hudOutputImage = imageObject.AddComponent<RawImage>();
+		_hudOutputImage.texture = _renderTexture;
+		_hudOutputImage.color = Color.white;
+		_hudOutputImage.raycastTarget = false;
+		ApplyRadarHudPosition(position);
+	}
+
+	private void ApplyRadarHudPosition(UavRadarHudPosition position)
+	{
+		RectTransform imageTransform = _hudOutputImage?.rectTransform;
+		if (imageTransform == null)
+		{
+			return;
+		}
+
+		Vector2 anchor;
+		Vector2 pivot;
+		Vector2 offset;
+		switch (position)
+		{
+			case UavRadarHudPosition.TopLeft:
+				anchor = new Vector2(0f, 1f);
+				pivot = new Vector2(0f, 1f);
+				offset = new Vector2(RadarHudMargin, -RadarHudMargin);
+				break;
+			case UavRadarHudPosition.TopRight:
+				anchor = new Vector2(1f, 1f);
+				pivot = new Vector2(1f, 1f);
+				offset = new Vector2(-RadarHudMargin, -RadarHudMargin);
+				break;
+			case UavRadarHudPosition.BottomLeft:
+				anchor = new Vector2(0f, 0f);
+				pivot = new Vector2(0f, 0f);
+				offset = new Vector2(RadarHudMargin, RadarHudMargin);
+				break;
+			case UavRadarHudPosition.BottomRight:
+			default:
+				anchor = new Vector2(1f, 0f);
+				pivot = new Vector2(1f, 0f);
+				offset = new Vector2(-RadarHudMargin, RadarHudMargin);
+				break;
+		}
+
+		imageTransform.anchorMin = anchor;
+		imageTransform.anchorMax = anchor;
+		imageTransform.pivot = pivot;
+		imageTransform.anchoredPosition = offset;
+	}
+
+	private void SubscribeRadarHudPosition()
+	{
+		if (_radarHudPositionSubscribed ||
+		    PluginSettings.RadarHudPosition == null)
+		{
+			return;
+		}
+
+		PluginSettings.RadarHudPosition.SettingChanged += OnRadarHudPositionChanged;
+		_radarHudPositionSubscribed = true;
+	}
+
+	private void UnsubscribeRadarHudPosition()
+	{
+		if (!_radarHudPositionSubscribed)
+		{
+			return;
+		}
+
+		if (PluginSettings.RadarHudPosition != null)
+		{
+			PluginSettings.RadarHudPosition.SettingChanged -= OnRadarHudPositionChanged;
+		}
+
+		_radarHudPositionSubscribed = false;
+	}
+
+	private void OnRadarHudPositionChanged(object sender, EventArgs args)
+	{
+		UavRadarHudPosition position =
+			PluginSettings.RadarHudPosition?.Value ??
+			UavRadarHudPosition.BottomRight;
+		ApplyRadarHudPosition(position);
+		TscDiagnostics.LogPhone(
+			$"TSC phone-style UAV radar HUD moved. position={position}.");
 	}
 
 	private IEnumerator LogRenderTextureAlpha(RenderTexture target)
@@ -1686,7 +1839,10 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 			? PluginSettings.OpenUavRadarKey.Value.ToString().ToUpperInvariant()
 			: "J";
 		RectTransform footer = AddPanel(root, new Rect(left + 28f * scale, h - 74f * scale, 376f * scale, 50f * scale), panel);
-		AddText(footer, $"RELEASE [{radarKey}] TO RESTORE WEAPON", F(12), FontStyle.Bold, greenHigh, new Rect(0, 0, 376f * scale, 50f * scale), TextAnchor.MiddleCenter);
+		string footerText = _radarHudMode
+			? "REQUESTER-LOCAL // LIVE HUD"
+			: $"RELEASE [{radarKey}] TO RESTORE WEAPON";
+		AddText(footer, footerText, F(12), FontStyle.Bold, greenHigh, new Rect(0, 0, 376f * scale, 50f * scale), TextAnchor.MiddleCenter);
 
 		_uavRadarNextTextRefreshAt = 0f;
 	}

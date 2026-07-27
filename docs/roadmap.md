@@ -2,7 +2,7 @@
 
 ## In Development
 
-- Physical-phone UAV radar: hold the configurable key while moving to view the feed, release to restore the weapon, and reveal the already-upright phone after a concealed EFT equip.
+- Configurable UAV radar presentation: use the default held physical phone or keep the exact phone feed as a persistent HUD in any screen corner.
 - Longer recon contracts: 8-minute standard UAV and 90-second Focused Sweep with distinct scan cadences.
 - Requester-owned Fika recon links, including human-host and dedicated-headless isolation.
 - Shared authority timing so the requester phone link and visible loiter aircraft expire together.

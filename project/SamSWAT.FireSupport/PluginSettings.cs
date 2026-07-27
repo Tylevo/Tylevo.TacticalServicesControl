@@ -14,6 +14,20 @@ internal enum UavRadarPalette
 	IceBlue
 }
 
+internal enum UavRadarDisplayMode
+{
+	Phone = 0,
+	HUD = 1
+}
+
+internal enum UavRadarHudPosition
+{
+	TopLeft = 0,
+	TopRight = 1,
+	BottomLeft = 2,
+	BottomRight = 3
+}
+
 internal static class PluginSettings
 {
 	private static ConfigDescription HiddenDescription(string description, AcceptableValueBase acceptableValues = null)
@@ -57,6 +71,8 @@ internal static class PluginSettings
 	internal static ConfigEntry<float> FocusedSweepScanInterval { get; private set; }
 	internal static ConfigEntry<float> FocusedSweepRangeMeters { get; private set; }
 	internal static ConfigEntry<UavRadarPalette> UavRadarPalette { get; private set; }
+	internal static ConfigEntry<UavRadarDisplayMode> RadarDisplayMode { get; private set; }
+	internal static ConfigEntry<UavRadarHudPosition> RadarHudPosition { get; private set; }
 	private static ConfigEntry<bool> UavPhoneReconDefaultsMigrated { get; set; }
 	internal static ConfigEntry<KeyboardShortcut> OpenUplinkKey { get; private set; }
 	internal static ConfigEntry<KeyboardShortcut> OpenDeployKey { get; private set; }
@@ -330,6 +346,18 @@ internal static class PluginSettings
 			"UAV radar palette",
 			global::SamSWAT.FireSupport.ArysReloaded.UavRadarPalette.MintGlass,
 			new ConfigDescription("Color palette used by the UAV radar overlay"));
+		RadarDisplayMode = config.Bind(
+			"UAV Radar Display",
+			"Display mode",
+			global::SamSWAT.FireSupport.ArysReloaded.UavRadarDisplayMode.Phone,
+			new ConfigDescription(
+				"Choose whether an active UAV recon feed is viewed on the physical TSC Uplink phone or displayed continuously as a screen HUD."));
+		RadarHudPosition = config.Bind(
+			"UAV Radar Display",
+			"HUD position",
+			global::SamSWAT.FireSupport.ArysReloaded.UavRadarHudPosition.BottomRight,
+			new ConfigDescription(
+				"Screen corner used in HUD mode. This setting has no effect in Phone mode."));
 
 		OpenUplinkKey = config.Bind(
 			"TerraGroup Phone",
@@ -345,7 +373,7 @@ internal static class PluginSettings
 			"TerraGroup Phone",
 			"Hold UAV radar key",
 			new KeyboardShortcut(KeyCode.J),
-			HiddenDescription("Hold to raise the TerraGroup TSC Uplink and view an active UAV recon link; release to restore your weapon"));
+			HiddenDescription("In Phone display mode, hold to raise the TerraGroup TSC Uplink and view an active UAV recon link; release to restore your weapon"));
 		SpotterConfirmKey = config.Bind(
 			"TerraGroup Phone",
 			"Spotter confirm key",

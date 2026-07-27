@@ -37,7 +37,7 @@ Uncommitted work at this checkpoint:
 - `docs/forge-description-v1.0.8.md` is a new paste-ready Forge main-description draft.
 - `docs/HANDOFF.md` is this new checkpoint.
 - `docs/roadmap.md` now separates shipped 1.0.8 work from possible future features.
-- UAV Recon now uses a hold-to-view physical-phone radar instead of the permanent corner HUD.
+- UAV Recon now offers two local F12 presentation modes: the default hold-to-view physical phone, or a persistent corner HUD that renders the exact phone radar texture. HUD position is independently configurable.
 - The configurable radar hold key defaults to `J`; unrelated movement/sprint keys no longer count as a release, and releasing the configured chord safely restores the weapon even during asynchronous phone equip.
 - Deploy and radar sessions conceal EFT's landscape equip transaction, then reveal the existing phone directly in its upright pose with the free right arm tucked. The animator is not frozen before EFT's completion callback.
 - Standard UAV defaults are 480 seconds / 200 m / 5-second sweeps. Focused Sweep defaults are 90 seconds / 100 m / 0.75-second sweeps.
@@ -148,8 +148,8 @@ Dedicated-headless A-10 remains experimental. Its fallback can use the active EF
 
 ### UAV, Audio, Stability, And Compatibility
 
-- UAV radar is rendered on the physical Uplink phone. Hold the configurable radar key (`J` by default) to raise it while walking or sprinting, and release it to restore the previous weapon; the recon timer continues while the phone is stowed.
-- The old corner HUD and its AssetBundle loading are disabled. The scan/timer backend remains active and supplies pooled contact snapshots to the phone renderer.
+- UAV radar defaults to the physical Uplink phone. Hold the configurable radar key (`J` by default) to raise it while walking or sprinting, and release it to restore the previous weapon; the recon timer continues while the phone is stowed. F12 can instead select a persistent requester-local HUD and one of four screen corners.
+- The old mismatched corner HUD and its AssetBundle loading remain disabled. HUD mode displays the exact phone radar render texture, while the shared scan/timer backend continues supplying pooled contact snapshots.
 - Standard UAV defaults are 480 seconds, 200 m, and 5-second sweeps. Focused Sweep defaults are 90 seconds, 100 m, and 0.75-second sweeps.
 - Fika host authority reads the server/dashboard duration before legacy local config, so the requester recon link and loiter aircraft use one lifetime.
 - Only one local recon link can be active at a time; overlapping or duplicate activation does not extend or mutate the current link.

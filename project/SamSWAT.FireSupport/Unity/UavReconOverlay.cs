@@ -91,6 +91,9 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 
 	private GameObject _radarHud;
 	private GameObject _blipPrefab;
+	private GameObject _phoneStyleHudObject;
+	private UavPhoneScreenRenderer _phoneStyleHudRenderer;
+	private bool _phoneStyleHudInitializationFailed;
 	private RectTransform _radarBaseTransform;
 	private RectTransform _radarBackgroundTransform;
 	private RectTransform _radarBorderTransform;
@@ -265,6 +268,8 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 			return;
 		}
 
+		UpdateConfiguredRadarHud();
+
 		if (_isClosing)
 		{
 			UpdateOutroVisuals();
@@ -349,6 +354,7 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 	protected override void OnDisable()
 	{
 		base.OnDisable();
+		DestroyConfiguredRadarHud();
 		if (ReferenceEquals(Instance, this))
 		{
 			Instance = null;
@@ -371,10 +377,85 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 			? rangeMeters
 			: UavReconSettings.GetRangeMeters(ESupportType.Uav);
 		_nextScanTime = 0f;
+		_phoneStyleHudInitializationFailed = false;
 		FireSupportPlugin.LogSource?.LogInfo(
 			$"TSC UAV recon link started. duration={_activeDuration:0.#}s, scan={_activeScanInterval:0.##}s, range={_activeRangeMeters:0.#}m.");
 		RestartIntroAnimation();
 		gameObject.SetActive(true);
+		UpdateConfiguredRadarHud();
+	}
+
+	private void UpdateConfiguredRadarHud()
+	{
+		bool shouldShow =
+			HasActiveSession &&
+			PluginSettings.Enabled?.Value != false &&
+			PluginSettings.RadarDisplayMode?.Value ==
+				UavRadarDisplayMode.HUD &&
+			_player?.IsYourPlayer == true &&
+			!_player.IsInventoryOpened &&
+			!UavPhoneHotkeyController.IsAnyPhonePresentationActive;
+
+		if (!shouldShow || _phoneStyleHudInitializationFailed)
+		{
+			if (_phoneStyleHudObject != null &&
+			    _phoneStyleHudObject.activeSelf)
+			{
+				_phoneStyleHudObject.SetActive(false);
+				TscDiagnostics.LogPhone(
+					"TSC phone-style UAV radar HUD hidden.");
+			}
+
+			return;
+		}
+
+		if (_phoneStyleHudObject == null ||
+		    _phoneStyleHudRenderer == null)
+		{
+			try
+			{
+				var hudObject = new GameObject(
+					"TSC Phone-Style UAV Radar HUD");
+				hudObject.transform.SetParent(transform, false);
+				var renderer =
+					hudObject.AddComponent<UavPhoneScreenRenderer>();
+				_phoneStyleHudObject = hudObject;
+				_phoneStyleHudRenderer = renderer;
+				renderer.InitializeRadarHud(
+					PluginSettings.RadarHudPosition?.Value ??
+					UavRadarHudPosition.BottomRight);
+			}
+			catch (Exception ex)
+			{
+				_phoneStyleHudInitializationFailed = true;
+				FireSupportPlugin.LogSource.LogError(
+					$"TSC phone-style UAV radar HUD failed to initialize. {ex}");
+				DestroyConfiguredRadarHud();
+				return;
+			}
+		}
+
+		if (!_phoneStyleHudObject.activeSelf)
+		{
+			_phoneStyleHudObject.SetActive(true);
+			TscDiagnostics.LogPhone(
+				"TSC phone-style UAV radar HUD shown.");
+		}
+	}
+
+	private void DestroyConfiguredRadarHud()
+	{
+		if (_phoneStyleHudRenderer != null)
+		{
+			_phoneStyleHudRenderer.Shutdown();
+			_phoneStyleHudRenderer = null;
+		}
+
+		if (_phoneStyleHudObject != null)
+		{
+			Destroy(_phoneStyleHudObject);
+			_phoneStyleHudObject = null;
+		}
 	}
 
 	private async UniTaskVoid CreateUi()

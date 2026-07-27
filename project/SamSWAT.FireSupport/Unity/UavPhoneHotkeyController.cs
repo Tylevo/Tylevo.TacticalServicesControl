@@ -37,6 +37,24 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 		}
 	}
 
+	public static bool IsAnyPhonePresentationActive
+	{
+		get
+		{
+			if (s_instance?._equipInProgress == true ||
+			    s_instance?._restoreCoroutine != null ||
+			    s_instance?._currentController != null)
+			{
+				return true;
+			}
+
+			Player player =
+				s_instance?._manualPlayer ??
+				Singleton<GameWorld>.Instance?.MainPlayer;
+			return player?.HandsController is UavDeviceController;
+		}
+	}
+
 	public override void ManualUpdate()
 	{
 		bool pluginEnabled = PluginSettings.Enabled.Value;
@@ -70,7 +88,13 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 		// modifier. Tracking the transition ourselves also treats releasing a
 		// modifier as a release, which keeps custom bindings from leaving the
 		// monitor stuck in the player's hands.
-		bool isPressed = allowOpen && IsRadarShortcutPressed();
+		bool phoneDisplayMode =
+			PluginSettings.RadarDisplayMode?.Value !=
+			UavRadarDisplayMode.HUD;
+		bool isPressed =
+			allowOpen &&
+			phoneDisplayMode &&
+			IsRadarShortcutPressed();
 		bool pressedThisFrame = isPressed && !_radarHoldWasPressed;
 		bool releasedThisFrame = !isPressed && _radarHoldWasPressed;
 		_radarHoldWasPressed = isPressed;
@@ -403,11 +427,13 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 
 		if (controller.LaunchMode == UavPhoneLaunchMode.UavRadarMonitor &&
 		    (_radarReleaseQueued ||
+		     PluginSettings.RadarDisplayMode?.Value ==
+			     UavRadarDisplayMode.HUD ||
 		     !PluginSettings.Enabled.Value ||
 		     !IsRadarShortcutPressed() ||
 		     !UavReconOverlay.IsReconActive))
 		{
-			TscDiagnostics.LogPhone("TSC UAV radar phone spawned after its hold ended; closing immediately.");
+			TscDiagnostics.LogPhone("TSC UAV radar phone spawned after monitor eligibility ended; closing immediately.");
 			_radarReleaseQueued = false;
 			controller.CancelAuthorizationSession();
 		}
