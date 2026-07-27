@@ -2,7 +2,7 @@
 
 Last updated: 2026-07-27
 Target: the next public beta after the currently published 1.0.8 release
-Status: Phase 2 live candidate installed; Phase 1, 1A, and 2 runtime validation pending
+Status: Phase 3 implementation candidate build-verified; Phase 1, 1A, 2, and 3 runtime validation pending
 
 This plan converts the current TSC audit and community bug reports into an ordered implementation and validation sequence. Priority describes risk; phase order also accounts for dependencies. Do not advance to the next phase until the current phase's exit gate is satisfied.
 
@@ -378,7 +378,75 @@ live acceptance.
 
 ### Goal
 
-Validate the existing uncommitted physical-phone UAV work in live raids and correct only observed failures.
+Validate the preserved physical-phone UAV work in live raids and correct only
+observed failures.
+
+The implementation and static-audit checkpoint advanced at the user's
+direction while the earlier multiplayer/headless gates remain open. This does
+not mark any live Phase 2 or Phase 3 row complete.
+
+### Implementation and Static-Audit Tasks
+
+- [x] Carry one host-authoritative UAV duration, scan cadence, and range
+  snapshot through request acceptance and requester presentation.
+- [x] Make loiter presentation authority-originated, request-bound,
+  request-ID-deduplicated, and locally timed on each process.
+- [x] Reject overlapping fresh UAV links from one requester while allowing
+  independent links for different requesters.
+- [x] Keep requester radar UI off non-requesters and dedicated headless hosts.
+- [x] Make async phone equip, release, failure, death/raid invalidation, and
+  weapon restoration generation- and ownership-safe.
+- [x] Reset recon, loiter, phone input, render texture, screen renderer, and
+  Fika request state at their lifecycle boundaries.
+- [x] Publish an executable solo/Fika/headless validation matrix without
+  claiming live acceptance.
+
+### Implementation Evidence - 2026-07-27
+
+- Accepted UAV request/result packets now carry duration, scan interval, and
+  range as one canonical authority snapshot. Client-local defaults cannot
+  partially replace an accepted host contract.
+- Fika clients can no longer originate a loiter command. The authority
+  publishes one accepted-request-bound loiter event, and every receiver
+  validates it against the canonical accepted event before request-ID
+  deduplication.
+- Loiter controllers are keyed by request ID rather than one global instance.
+  Different requesters can have staggered world presentations, while one
+  requester's fresh overlap is authority-rejected until its accepted link
+  expires or is torn down.
+- Human hosts render one world aircraft, dedicated headless hosts render none,
+  and only the requesting player creates the private recon feed. Disconnect,
+  manager reset, plugin teardown, and raid boundaries clear requester UI,
+  accepted-event replay state, reservations, and loiter objects.
+- Phone equip/restore operations now carry a boundary generation and explicit
+  ownership. Cancellation and EFT's post-drop callback make one atomic
+  deferred-restore decision, synchronous failures receive the actual operation
+  handle, and one claim gate prevents duplicate weapon restoration.
+- Fire-support controller, spotter, and UI async creation is generation-checked.
+  A stale controller tears down only its captured UI/spotter and cannot dispose
+  the replacement's shared runtime. Phone-screen shutdown is idempotent and
+  restores captured renderer state only after successful capture.
+- Three independent reviews found no remaining P0-P2 actionable blocker in the
+  lifecycle, packet serialization/authority, or final whole diff.
+- `git diff --check` passes. Deploy-suppressed rebuilds pass with 0 errors:
+  Core has 28 existing warnings, Server has 9 existing warnings, and Fika
+  Interop plus Fika bootstrap have 0 warnings.
+- The reviewable implementation and matrix are recorded in commit `a37d5c2`
+  (`feat: harden physical UAV lifecycle and authority`).
+- Build-output SHA-256 values are Core
+  `572CDBC7EF85AD91787B281A5C8B6EFC12E04A2EC908DBF6043A69DA7352DE87`,
+  Fika bootstrap
+  `51BBEF5D4D7F31B693491902EF13F1A439916DD538978889C0A36F9E600F95CF`,
+  Fika Interop
+  `5C215B0FB1A58B3011C26D6C629186C977DF94DC286AAEFA194FA13C725B3629`,
+  and Server
+  `E732405482C7F258295CA3B4355913A3DD07A90890690C6E5D78AC93B943DC33`.
+- The packet layout changed, so Core, Server, Fika Interop, and Fika bootstrap
+  must be installed as one matched set on the server and every participant.
+  This candidate has not yet been installed live.
+- The executable checklist is
+  [`validation/phase3-physical-phone-uav-matrix.md`](validation/phase3-physical-phone-uav-matrix.md).
+  Every live row remains open, and Phase 2 remains separately open.
 
 ### Solo Tests
 
