@@ -4,6 +4,7 @@ namespace SamSWAT.FireSupport.ArysReloaded.Unity;
 
 public sealed class RaidOpsFireSupportServerConfig
 {
+	public int ConfigSchemaVersion { get; set; }
 	public int Revision { get; set; }
 	public string PaymentMode { get; set; } = nameof(global::SamSWAT.FireSupport.ArysReloaded.Unity.PaymentMode.PhoneAuthorizations);
 	public string PaymentSource { get; set; } = nameof(global::SamSWAT.FireSupport.ArysReloaded.Unity.PaymentSource.CarriedRoubles);

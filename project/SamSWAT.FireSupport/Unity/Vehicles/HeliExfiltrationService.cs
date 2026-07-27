@@ -46,6 +46,8 @@ public sealed class HeliExfiltrationService(
 		ESupportType effectiveSupportType = authorizationUse.ConsumedAuthorization
 			? authorizationUse.ConsumedAuthorizationType
 			: SupportType;
+		HelicopterTimingSnapshot timingSnapshot =
+			FireSupportTuningSettings.CaptureHelicopterTiming(effectiveSupportType);
 		if (consumedBaseRequest)
 		{
 			availableRequests--;
@@ -65,7 +67,6 @@ public sealed class HeliExfiltrationService(
 
 			controller.CanCallSupport(false);
 			FireSupportAudio.Instance.PlayVoiceover(EVoiceoverType.StationExtractionRequest);
-			await UniTask.WaitForSeconds(GetDispatchDelay(effectiveSupportType), cancellationToken: cancellationToken);
 
 			var randomEulerAngles = new Vector3(0, Random.Range(0, 360), 0);
 			bool playLocalArrivalAudio = false;
@@ -76,7 +77,8 @@ public sealed class HeliExfiltrationService(
 					Vector3.zero,
 					randomEulerAngles,
 					cancellationToken,
-					supportRequestId: BuildDispatchRequestId(authorizationUse));
+					supportRequestId: BuildDispatchRequestId(authorizationUse),
+					helicopterTimingSnapshot: timingSnapshot);
 			if (!dispatchResult.Handled)
 			{
 				if (cancellationToken.IsCancellationRequested)
@@ -85,6 +87,9 @@ public sealed class HeliExfiltrationService(
 				}
 				else
 				{
+					await UniTask.WaitForSeconds(
+						timingSnapshot.DispatchDelaySeconds,
+						cancellationToken: cancellationToken);
 					bool localSuccess = await FireSupportRuntime.TryProcessRequest(
 						effectiveSupportType,
 						position,
@@ -92,7 +97,8 @@ public sealed class HeliExfiltrationService(
 						randomEulerAngles,
 						visualOnly: false,
 						visualSeed: 0,
-						cancellationToken: cancellationToken);
+						cancellationToken: cancellationToken,
+						helicopterTimingSnapshot: timingSnapshot);
 					dispatchResult = localSuccess
 						? FireSupportNetworkRequestResult.Accept("LocalRuntimeStarted")
 						: FireSupportNetworkRequestResult.Reject("LocalRuntimeStartFailed");
@@ -115,7 +121,7 @@ public sealed class HeliExfiltrationService(
 			}
 
 			await UniTask.WaitForSeconds(
-				GetCompletionDelay(effectiveSupportType),
+				GetCompletionDelay(timingSnapshot),
 				cancellationToken: cancellationToken);
 
 			controller
@@ -188,17 +194,11 @@ public sealed class HeliExfiltrationService(
 		requestAvailable = true;
 	}
 
-	private static float GetDispatchDelay(ESupportType supportType)
+	private static float GetCompletionDelay(HelicopterTimingSnapshot timingSnapshot)
 	{
-		return supportType == ESupportType.PriorityExfil
-			? FireSupportTuningSettings.GetPriorityExfilDispatchDelay()
-			: 8f;
-	}
-
-	private static float GetCompletionDelay(ESupportType supportType)
-	{
-		return supportType == ESupportType.PriorityExfil
-			? 25f + FireSupportTuningSettings.GetHelicopterWaitTime(ESupportType.PriorityExfil)
-			: 35f + FireSupportTuningSettings.GetHelicopterWaitTime(ESupportType.Extract);
+		const float baseArrivalAnimationSeconds = 35f;
+		float speedMultiplier = Mathf.Max(0.01f, timingSnapshot.SpeedMultiplier);
+		return baseArrivalAnimationSeconds / speedMultiplier +
+		       timingSnapshot.WaitTimeSeconds;
 	}
 }

@@ -664,11 +664,13 @@ public static class FireSupportServerConfigClient
 			revision);
 		FireSupportTuningSettings.SetServerConfigTuning(
 			(snapshot.DoublePass ?? new RaidOpsFireSupportServerConfig.A10Settings()).SecondPassDelaySeconds,
+			(snapshot.Extraction ?? new RaidOpsFireSupportServerConfig.ExtractionSettings()).DispatchDelaySeconds,
 			(snapshot.Extraction ?? new RaidOpsFireSupportServerConfig.ExtractionSettings()).WaitTimeSeconds,
-			(snapshot.PriorityExfil ?? new RaidOpsFireSupportServerConfig.ExtractionSettings()).WaitTimeSeconds,
-			(snapshot.PriorityExfil ?? new RaidOpsFireSupportServerConfig.ExtractionSettings()).DispatchDelaySeconds,
 			(snapshot.Extraction ?? new RaidOpsFireSupportServerConfig.ExtractionSettings()).ExtractTimeSeconds,
 			(snapshot.Extraction ?? new RaidOpsFireSupportServerConfig.ExtractionSettings()).SpeedMultiplier,
+			(snapshot.PriorityExfil ?? new RaidOpsFireSupportServerConfig.ExtractionSettings()).DispatchDelaySeconds,
+			(snapshot.PriorityExfil ?? new RaidOpsFireSupportServerConfig.ExtractionSettings()).WaitTimeSeconds,
+			(snapshot.PriorityExfil ?? new RaidOpsFireSupportServerConfig.ExtractionSettings()).ExtractTimeSeconds,
 			(snapshot.PriorityExfil ?? new RaidOpsFireSupportServerConfig.ExtractionSettings()).SpeedMultiplier,
 			snapshot.RequestCooldownSeconds,
 			revision);

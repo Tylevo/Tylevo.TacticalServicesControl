@@ -31,6 +31,17 @@ public sealed class FireSupportServerConfigService(
 	private const string AdminTokenEnvironmentVariable = "TSC_ADMIN_TOKEN";
 	private const string LegacyAdminTokenEnvironmentVariable = "RAIDOPS_FIRESUPPORT_ADMIN_TOKEN";
 	private const string RoubleTemplateId = "5449016a4bdc2d6f028b456f";
+	private const int CurrentConfigSchemaVersion = 2;
+	private const float LegacyStandardExtractionDispatchDelaySeconds = 8f;
+	private const float MinimumExtractionWindowMarginSeconds = 1f;
+	private const float MinimumAuthorizationSettlementMarginSeconds = 35f;
+	private const float MaxHelicopterDispatchDelaySeconds = 120f;
+	private const int MinHelicopterWaitTimeSeconds = 5;
+	private const int MaxHelicopterWaitTimeSeconds = 300;
+	private const float MinHelicopterExtractTimeSeconds = 1f;
+	private const float MaxHelicopterExtractTimeSeconds = 60f;
+	private const float MinHelicopterSpeedMultiplier = 0.5f;
+	private const float MaxHelicopterSpeedMultiplier = 3f;
 	private static readonly TimeSpan s_purchaseRateLimitWindow = TimeSpan.FromSeconds(2);
 
 	private static readonly JsonSerializerOptions s_jsonOptions = new()
@@ -68,6 +79,14 @@ public sealed class FireSupportServerConfigService(
 		{
 			_config = LoadConfig();
 			NormalizeConfig(_config);
+			if (!TryValidateConfig(_config, out string validationError))
+			{
+				logger.Error(
+					$"TSC config contains unsafe extraction timing: {validationError} " +
+					"Invalid timing values were repaired without changing valid dispatch or speed values.");
+				RepairInvalidExtractionTimings(_config);
+			}
+
 			if (_config.Revision <= 0)
 			{
 				_config.Revision = 1;
@@ -978,7 +997,7 @@ public sealed class FireSupportServerConfigService(
 				Section("persistence", "Purchase Persistence",
 					Field("purchasePersistence.enabled", "Persistent Authorizations", "toggle"),
 					Field("purchasePersistence.maxStoredAuthorizationsPerService", "Max Stored Per Service", "number", min: 1, max: 25, step: 1),
-					Field("purchasePersistence.pendingUseTimeoutSeconds", "Pending Use Timeout", "number", min: 10, max: 1800, step: 10),
+					Field("purchasePersistence.pendingUseTimeoutSeconds", "Pending Use Timeout", "number", min: GetRequiredPendingUseTimeoutSeconds(), max: 1800, step: 5),
 					Field("purchasePersistence.spendCreditsBeforeCash", "Spend Credits First", "toggle"),
 					Field("purchasePersistence.allowAutoPurchaseOnUse", "Allow Auto Purchase On Use", "toggle")),
 				Section("payment", "Payment",
@@ -1026,6 +1045,11 @@ public sealed class FireSupportServerConfigService(
 		try
 		{
 			NormalizeConfig(incoming);
+			if (!TryValidateConfig(incoming, out error))
+			{
+				return false;
+			}
+
 			lock (_gate)
 			{
 				incoming.Revision = Math.Max(incoming.Revision, _config.Revision + 1);
@@ -1050,15 +1074,21 @@ public sealed class FireSupportServerConfigService(
 		snapshot = CreateDefaultConfig();
 		try
 		{
+			RaidOpsFireSupportServerConfig candidate = LoadConfig();
+			NormalizeConfig(candidate);
+			if (!TryValidateConfig(candidate, out error))
+			{
+				return false;
+			}
+
 			lock (_gate)
 			{
-				_config = LoadConfig();
-				NormalizeConfig(_config);
-				if (_config.Revision <= 0)
+				if (candidate.Revision <= 0)
 				{
-					_config.Revision = 1;
+					candidate.Revision = 1;
 				}
 
+				_config = candidate;
 				SaveConfig(_config);
 				snapshot = CloneConfig(_config);
 			}
@@ -1690,6 +1720,7 @@ public sealed class FireSupportServerConfigService(
 	private static void NormalizeConfig(RaidOpsFireSupportServerConfig config)
 	{
 		RaidOpsFireSupportServerConfig defaults = CreateDefaultConfig();
+		MigrateConfig(config);
 		config.PaymentMode = Enum.TryParse(config.PaymentMode, ignoreCase: true, out PaymentMode paymentMode)
 			? paymentMode.ToString()
 			: defaults.PaymentMode;
@@ -1780,13 +1811,219 @@ public sealed class FireSupportServerConfigService(
 		RaidOpsFireSupportServerConfig.ExtractionSettings? settings,
 		RaidOpsFireSupportServerConfig.ExtractionSettings defaults)
 	{
-		settings ??= new RaidOpsFireSupportServerConfig.ExtractionSettings();
-		settings.WaitTimeSeconds = settings.WaitTimeSeconds <= 0 ? defaults.WaitTimeSeconds : settings.WaitTimeSeconds;
-		settings.ExtractTimeSeconds = settings.ExtractTimeSeconds <= 0f
-			? defaults.ExtractTimeSeconds
-			: settings.ExtractTimeSeconds;
-		settings.SpeedMultiplier = settings.SpeedMultiplier <= 0f ? defaults.SpeedMultiplier : settings.SpeedMultiplier;
-		return settings;
+		return settings ?? defaults;
+	}
+
+	private static void MigrateConfig(RaidOpsFireSupportServerConfig config)
+	{
+		if (config.ConfigSchemaVersion >= CurrentConfigSchemaVersion)
+		{
+			return;
+		}
+
+		// Before schema 2 this dashboard field was dead and runtime always used
+		// eight seconds. Preserve that effective behavior during the one-time
+		// migration; schema-2 users can explicitly save zero afterward.
+		RaidOpsFireSupportServerConfig defaults = CreateDefaultConfig();
+		config.Extraction ??= defaults.Extraction;
+		config.PriorityExfil ??= defaults.PriorityExfil;
+
+		// Every pre-schema-2 standard value was informational only: runtime
+		// always waited eight seconds. Preserve that effective behavior even
+		// when an administrator had saved a different dead dashboard value.
+		config.Extraction.DispatchDelaySeconds =
+			LegacyStandardExtractionDispatchDelaySeconds;
+		config.Extraction.WaitTimeSeconds =
+			config.Extraction.WaitTimeSeconds <= 0
+				? defaults.Extraction.WaitTimeSeconds
+				: config.Extraction.WaitTimeSeconds;
+		config.Extraction.ExtractTimeSeconds =
+			config.Extraction.ExtractTimeSeconds <= 0f
+				? defaults.Extraction.ExtractTimeSeconds
+				: config.Extraction.ExtractTimeSeconds;
+		config.Extraction.SpeedMultiplier =
+			config.Extraction.SpeedMultiplier <= 0f
+				? defaults.Extraction.SpeedMultiplier
+				: config.Extraction.SpeedMultiplier;
+		config.PriorityExfil.WaitTimeSeconds =
+			config.PriorityExfil.WaitTimeSeconds <= 0
+				? defaults.PriorityExfil.WaitTimeSeconds
+				: config.PriorityExfil.WaitTimeSeconds;
+		config.PriorityExfil.ExtractTimeSeconds =
+			config.PriorityExfil.ExtractTimeSeconds <= 0f
+				? defaults.PriorityExfil.ExtractTimeSeconds
+				: config.PriorityExfil.ExtractTimeSeconds;
+		config.PriorityExfil.SpeedMultiplier =
+			config.PriorityExfil.SpeedMultiplier <= 0f
+				? defaults.PriorityExfil.SpeedMultiplier
+				: config.PriorityExfil.SpeedMultiplier;
+
+		config.ConfigSchemaVersion = CurrentConfigSchemaVersion;
+	}
+
+	private static bool TryValidateConfig(
+		RaidOpsFireSupportServerConfig config,
+		out string error)
+	{
+		if (!TryValidateExtractionTiming(config.Extraction, "extraction", out error))
+		{
+			return false;
+		}
+
+		if (!TryValidateExtractionTiming(
+			    config.PriorityExfil,
+			    "priorityExfil",
+			    out error))
+		{
+			return false;
+		}
+
+		int requiredPendingTimeout = GetRequiredPendingUseTimeoutSeconds();
+		if (config.PurchasePersistence?.Enabled == true &&
+		    config.PurchasePersistence.PendingUseTimeoutSeconds <
+		    requiredPendingTimeout)
+		{
+			error =
+				$"purchasePersistence.pendingUseTimeoutSeconds " +
+				$"({config.PurchasePersistence.PendingUseTimeoutSeconds}) must be >= " +
+				$"{requiredPendingTimeout} seconds for the supported extraction dispatch " +
+				$"maximum ({MaxHelicopterDispatchDelaySeconds:0.##}) plus authority settlement margin.";
+			return false;
+		}
+
+		error = string.Empty;
+		return true;
+	}
+
+	private static bool TryValidateExtractionTiming(
+		RaidOpsFireSupportServerConfig.ExtractionSettings settings,
+		string path,
+		out string error)
+	{
+		if (!IsFinite(settings.DispatchDelaySeconds) ||
+		    settings.DispatchDelaySeconds < 0f ||
+		    settings.DispatchDelaySeconds > MaxHelicopterDispatchDelaySeconds)
+		{
+			error =
+				$"{path}.dispatchDelaySeconds ({settings.DispatchDelaySeconds}) must be between 0 and " +
+				$"{MaxHelicopterDispatchDelaySeconds:0.##}.";
+			return false;
+		}
+
+		if (settings.WaitTimeSeconds < MinHelicopterWaitTimeSeconds ||
+		    settings.WaitTimeSeconds > MaxHelicopterWaitTimeSeconds)
+		{
+			error =
+				$"{path}.waitTimeSeconds ({settings.WaitTimeSeconds}) must be between " +
+				$"{MinHelicopterWaitTimeSeconds} and {MaxHelicopterWaitTimeSeconds}.";
+			return false;
+		}
+
+		if (!IsFinite(settings.ExtractTimeSeconds) ||
+		    settings.ExtractTimeSeconds < MinHelicopterExtractTimeSeconds ||
+		    settings.ExtractTimeSeconds > MaxHelicopterExtractTimeSeconds)
+		{
+			error =
+				$"{path}.extractTimeSeconds ({settings.ExtractTimeSeconds}) must be between " +
+				$"{MinHelicopterExtractTimeSeconds:0.##} and " +
+				$"{MaxHelicopterExtractTimeSeconds:0.##}.";
+			return false;
+		}
+
+		if (!IsFinite(settings.SpeedMultiplier) ||
+		    settings.SpeedMultiplier < MinHelicopterSpeedMultiplier ||
+		    settings.SpeedMultiplier > MaxHelicopterSpeedMultiplier)
+		{
+			error =
+				$"{path}.speedMultiplier ({settings.SpeedMultiplier}) must be between " +
+				$"{MinHelicopterSpeedMultiplier:0.##} and " +
+				$"{MaxHelicopterSpeedMultiplier:0.##}.";
+			return false;
+		}
+
+		float requiredWaitTime =
+			settings.ExtractTimeSeconds + MinimumExtractionWindowMarginSeconds;
+		if (settings.WaitTimeSeconds >= requiredWaitTime)
+		{
+			error = string.Empty;
+			return true;
+		}
+
+		error =
+			$"{path}.waitTimeSeconds ({settings.WaitTimeSeconds}) must be >= " +
+			$"{path}.extractTimeSeconds ({settings.ExtractTimeSeconds:0.##}) + " +
+			$"{MinimumExtractionWindowMarginSeconds:0.##} second so the extraction zone remains usable.";
+		return false;
+	}
+
+	private static void RepairInvalidExtractionTimings(
+		RaidOpsFireSupportServerConfig config)
+	{
+		RaidOpsFireSupportServerConfig defaults = CreateDefaultConfig();
+		RepairExtractionTiming(config.Extraction, defaults.Extraction);
+		RepairExtractionTiming(config.PriorityExfil, defaults.PriorityExfil);
+		int requiredPendingTimeout = GetRequiredPendingUseTimeoutSeconds();
+		if (config.PurchasePersistence?.Enabled == true &&
+		    config.PurchasePersistence.PendingUseTimeoutSeconds <
+		    requiredPendingTimeout)
+		{
+			config.PurchasePersistence.PendingUseTimeoutSeconds =
+				requiredPendingTimeout;
+		}
+	}
+
+	private static int GetRequiredPendingUseTimeoutSeconds()
+	{
+		// Local BepInEx timing remains a supported fallback when shared server
+		// tuning is unavailable or disabled. Size the ledger reservation for the
+		// full supported dispatch range, not only the current dashboard values.
+		return (int)Math.Ceiling(
+			MaxHelicopterDispatchDelaySeconds +
+			MinimumAuthorizationSettlementMarginSeconds);
+	}
+
+	private static void RepairExtractionTiming(
+		RaidOpsFireSupportServerConfig.ExtractionSettings settings,
+		RaidOpsFireSupportServerConfig.ExtractionSettings defaults)
+	{
+		if (!IsFinite(settings.DispatchDelaySeconds) ||
+		    settings.DispatchDelaySeconds < 0f ||
+		    settings.DispatchDelaySeconds > MaxHelicopterDispatchDelaySeconds)
+		{
+			settings.DispatchDelaySeconds = defaults.DispatchDelaySeconds;
+		}
+
+		if (settings.WaitTimeSeconds < MinHelicopterWaitTimeSeconds ||
+		    settings.WaitTimeSeconds > MaxHelicopterWaitTimeSeconds)
+		{
+			settings.WaitTimeSeconds = defaults.WaitTimeSeconds;
+		}
+
+		if (!IsFinite(settings.ExtractTimeSeconds) ||
+		    settings.ExtractTimeSeconds < MinHelicopterExtractTimeSeconds ||
+		    settings.ExtractTimeSeconds > MaxHelicopterExtractTimeSeconds)
+		{
+			settings.ExtractTimeSeconds = defaults.ExtractTimeSeconds;
+		}
+
+		if (!IsFinite(settings.SpeedMultiplier) ||
+		    settings.SpeedMultiplier < MinHelicopterSpeedMultiplier ||
+		    settings.SpeedMultiplier > MaxHelicopterSpeedMultiplier)
+		{
+			settings.SpeedMultiplier = defaults.SpeedMultiplier;
+		}
+
+		int minimumSafeWaitTime = (int)Math.Ceiling(
+			settings.ExtractTimeSeconds + MinimumExtractionWindowMarginSeconds);
+		if (settings.WaitTimeSeconds < minimumSafeWaitTime)
+		{
+			settings.WaitTimeSeconds = minimumSafeWaitTime;
+		}
+	}
+
+	private static bool IsFinite(float value)
+	{
+		return !float.IsNaN(value) && !float.IsInfinity(value);
 	}
 
 	private static RaidOpsFireSupportServerConfig.A10Settings NormalizeA10Settings(
@@ -1934,6 +2171,7 @@ public sealed class FireSupportServerConfigService(
 	{
 		return new RaidOpsFireSupportServerConfig
 		{
+			ConfigSchemaVersion = CurrentConfigSchemaVersion,
 			Revision = 1,
 			PaymentMode = nameof(PaymentMode.PhoneAuthorizations),
 			PaymentSource = nameof(PaymentSource.CarriedRoubles),
@@ -1987,7 +2225,7 @@ public sealed class FireSupportServerConfigService(
 			},
 			Extraction = new RaidOpsFireSupportServerConfig.ExtractionSettings
 			{
-				DispatchDelaySeconds = 0f,
+				DispatchDelaySeconds = LegacyStandardExtractionDispatchDelaySeconds,
 				WaitTimeSeconds = 30,
 				ExtractTimeSeconds = 10f,
 				SpeedMultiplier = 1f

@@ -84,6 +84,7 @@ public static class FireSupportNetworking
 		float durationSeconds,
 		int passIndex,
 		string supportRequestId,
+		HelicopterTimingSnapshot? helicopterTimingSnapshot,
 		CancellationToken cancellationToken);
 
 	public static event SupportRequestHandler SupportRequested;
@@ -96,7 +97,8 @@ public static class FireSupportNetworking
 		CancellationToken cancellationToken,
 		float durationSeconds = 0f,
 		int passIndex = 0,
-		string supportRequestId = "")
+		string supportRequestId = "",
+		HelicopterTimingSnapshot? helicopterTimingSnapshot = null)
 	{
 		SupportRequestHandler handler = SupportRequested;
 		if (handler == null)
@@ -115,6 +117,7 @@ public static class FireSupportNetworking
 				durationSeconds,
 				passIndex,
 				supportRequestId ?? string.Empty,
+				helicopterTimingSnapshot,
 				cancellationToken);
 		}
 		catch (OperationCanceledException)

@@ -99,8 +99,10 @@ internal static class PluginSettings
 	internal static ConfigEntry<float> UavA10LoiterModelRollOffset { get; private set; }
 	internal static ConfigEntry<int> HelicopterWaitTime { get; private set; }
 	internal static ConfigEntry<int> PriorityExfilHelicopterWaitTime { get; private set; }
+	internal static ConfigEntry<float> HelicopterDispatchDelay { get; private set; }
 	internal static ConfigEntry<float> PriorityExfilDispatchDelay { get; private set; }
 	internal static ConfigEntry<float> HelicopterExtractTime { get; private set; }
+	internal static ConfigEntry<float> PriorityExfilHelicopterExtractTime { get; private set; }
 	internal static ConfigEntry<float> HelicopterSpeedMultiplier { get; private set; }
 	internal static ConfigEntry<float> PriorityExfilHelicopterSpeedMultiplier { get; private set; }
 	internal static ConfigEntry<int> RequestCooldown { get; private set; }
@@ -572,6 +574,12 @@ internal static class PluginSettings
 			20,
 			HiddenDescription("Priority exfil helicopter wait time on extraction location (seconds)",
 				new AcceptableValueRange<int>(5, 300)));
+		HelicopterDispatchDelay = config.Bind(
+			"Helicopter Extraction Settings",
+			"Helicopter dispatch delay",
+			8f,
+			HiddenDescription("Seconds before the standard extraction helicopter is dispatched after target confirmation",
+				new AcceptableValueRange<float>(0f, 120f)));
 		PriorityExfilDispatchDelay = config.Bind(
 			"Helicopter Extraction Settings",
 			"Priority exfil dispatch delay",
@@ -582,7 +590,13 @@ internal static class PluginSettings
 			"Helicopter Extraction Settings",
 			"Extraction time",
 			10f,
-			HiddenDescription("How long you will need to stay in the exfil zone before extraction (seconds)",
+			HiddenDescription("How long you will need to stay in the standard exfil zone before extraction (seconds)",
+				new AcceptableValueRange<float>(1f, 30f)));
+		PriorityExfilHelicopterExtractTime = config.Bind(
+			"Helicopter Extraction Settings",
+			"Priority exfil extraction time",
+			10f,
+			HiddenDescription("How long you will need to stay in the priority exfil zone before extraction (seconds)",
 				new AcceptableValueRange<float>(1f, 30f)));
 		HelicopterSpeedMultiplier = config.Bind(
 			"Helicopter Extraction Settings",
@@ -711,8 +725,10 @@ internal static class PluginSettings
 		RemoveFromConfigManager(config, UavA10LoiterModelRollOffset);
 		RemoveFromConfigManager(config, HelicopterWaitTime);
 		RemoveFromConfigManager(config, PriorityExfilHelicopterWaitTime);
+		RemoveFromConfigManager(config, HelicopterDispatchDelay);
 		RemoveFromConfigManager(config, PriorityExfilDispatchDelay);
 		RemoveFromConfigManager(config, HelicopterExtractTime);
+		RemoveFromConfigManager(config, PriorityExfilHelicopterExtractTime);
 		RemoveFromConfigManager(config, HelicopterSpeedMultiplier);
 		RemoveFromConfigManager(config, PriorityExfilHelicopterSpeedMultiplier);
 		RemoveFromConfigManager(config, VoiceoverVolume);
@@ -890,8 +906,10 @@ internal static class PluginSettings
 		TrackEffectiveSetting(FocusedSweepRangeMeters);
 		TrackEffectiveSetting(HelicopterWaitTime);
 		TrackEffectiveSetting(PriorityExfilHelicopterWaitTime);
+		TrackEffectiveSetting(HelicopterDispatchDelay);
 		TrackEffectiveSetting(PriorityExfilDispatchDelay);
 		TrackEffectiveSetting(HelicopterExtractTime);
+		TrackEffectiveSetting(PriorityExfilHelicopterExtractTime);
 		TrackEffectiveSetting(HelicopterSpeedMultiplier);
 		TrackEffectiveSetting(PriorityExfilHelicopterSpeedMultiplier);
 		TrackEffectiveSetting(RequestCooldown);

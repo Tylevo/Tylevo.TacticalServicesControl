@@ -9,26 +9,60 @@ namespace SamSWAT.FireSupport.ArysReloaded.Unity;
 public static class FireSupportRuntime
 {
 	private static readonly SemaphoreSlim s_initializeLock = new(1, 1);
+	private static int s_lifecycleGeneration;
 
-	public static async UniTask EnsureInitialized()
+	public static async UniTask EnsureInitialized(
+		CancellationToken cancellationToken = default)
 	{
+		int lifecycleGeneration = Volatile.Read(ref s_lifecycleGeneration);
+		ThrowIfInitializationInvalid(lifecycleGeneration, cancellationToken);
 		if (IsInitialized())
 		{
 			return;
 		}
 
-		await s_initializeLock.WaitAsync();
+		await s_initializeLock.WaitAsync(cancellationToken);
+		bool createdAudio = false;
+		bool createdPool = false;
 		try
 		{
+			ThrowIfInitializationInvalid(lifecycleGeneration, cancellationToken);
 			if (FireSupportAudio.Instance == null)
 			{
+				createdAudio = true;
 				await FireSupportAudio.Create();
+				ThrowIfInitializationInvalid(lifecycleGeneration, cancellationToken);
 			}
 
 			if (FireSupportPoolManager.Instance == null)
 			{
-				await FireSupportPoolManager.Initialize(10);
+				createdPool = true;
+				await FireSupportPoolManager.Initialize(
+					10,
+					() => ThrowIfInitializationInvalid(
+						lifecycleGeneration,
+						cancellationToken));
+				ThrowIfInitializationInvalid(lifecycleGeneration, cancellationToken);
 			}
+		}
+		catch
+		{
+			if (createdPool)
+			{
+				FireSupportPoolManager.Instance?.Dispose();
+			}
+
+			if (createdAudio)
+			{
+				FireSupportAudio.Instance?.Dispose();
+			}
+
+			if (lifecycleGeneration != Volatile.Read(ref s_lifecycleGeneration))
+			{
+				AssetLoader.UnloadAllBundles();
+			}
+
+			throw;
 		}
 		finally
 		{
@@ -44,16 +78,37 @@ public static class FireSupportRuntime
 		bool visualOnly,
 		int visualSeed,
 		CancellationToken cancellationToken,
-		int passIndex = 0)
+		int passIndex = 0,
+		HelicopterTimingSnapshot? helicopterTimingSnapshot = null,
+		bool allowLocalHelicopterExtraction = true)
 	{
+		FireSupportBehaviour leasedBehaviour = null;
+		bool requestStarted = false;
 		try
 		{
-			await EnsureInitialized();
+			cancellationToken.ThrowIfCancellationRequested();
+			await EnsureInitialized(cancellationToken);
+			cancellationToken.ThrowIfCancellationRequested();
 
 			ESupportType pooledSupportType = GetPooledSupportType(supportType);
-			IFireSupportBehaviour behaviour = FireSupportPoolManager.Instance.TakeFromPool(pooledSupportType);
-			ApplyVariantSettings(behaviour, supportType);
-			behaviour.ProcessRequest(position, direction, rotation, cancellationToken, visualOnly, visualSeed, passIndex);
+			leasedBehaviour =
+				(FireSupportBehaviour)FireSupportPoolManager.Instance.TakeFromPool(
+					pooledSupportType);
+			ApplyVariantSettings(
+				leasedBehaviour,
+				supportType,
+				helicopterTimingSnapshot,
+				allowLocalHelicopterExtraction);
+			cancellationToken.ThrowIfCancellationRequested();
+			leasedBehaviour.ProcessRequest(
+				position,
+				direction,
+				rotation,
+				cancellationToken,
+				visualOnly,
+				visualSeed,
+				passIndex);
+			requestStarted = true;
 			return true;
 		}
 		catch (OperationCanceledException)
@@ -64,6 +119,13 @@ public static class FireSupportRuntime
 		{
 			FireSupportPlugin.LogSource.LogError(ex);
 			return false;
+		}
+		finally
+		{
+			if (!requestStarted && leasedBehaviour != null)
+			{
+				leasedBehaviour.ReturnToPool();
+			}
 		}
 	}
 
@@ -82,16 +144,24 @@ public static class FireSupportRuntime
 		};
 	}
 
-	private static void ApplyVariantSettings(IFireSupportBehaviour behaviour, ESupportType requestedSupportType)
+	private static void ApplyVariantSettings(
+		IFireSupportBehaviour behaviour,
+		ESupportType requestedSupportType,
+		HelicopterTimingSnapshot? helicopterTimingSnapshot,
+		bool allowLocalHelicopterExtraction)
 	{
 		if (behaviour is UH60Behaviour uh60Behaviour)
 		{
-			uh60Behaviour.SetPriorityExfil(requestedSupportType == ESupportType.PriorityExfil);
+			uh60Behaviour.SetRequestTiming(
+				requestedSupportType,
+				helicopterTimingSnapshot,
+				allowLocalHelicopterExtraction);
 		}
 	}
 
 	public static void Dispose()
 	{
+		Interlocked.Increment(ref s_lifecycleGeneration);
 		try
 		{
 			FireSupportPoolManager.Instance?.Dispose();
@@ -101,6 +171,18 @@ public static class FireSupportRuntime
 		catch (Exception ex)
 		{
 			FireSupportPlugin.LogSource.LogError(ex);
+		}
+	}
+
+	private static void ThrowIfInitializationInvalid(
+		int lifecycleGeneration,
+		CancellationToken cancellationToken)
+	{
+		cancellationToken.ThrowIfCancellationRequested();
+		if (lifecycleGeneration != Volatile.Read(ref s_lifecycleGeneration))
+		{
+			throw new OperationCanceledException(
+				"Fire-support runtime lifecycle changed during initialization.");
 		}
 	}
 }

@@ -24,6 +24,11 @@ public sealed class FireSupportAuthorityResultPacket : INetSerializable
 	public float DurationSeconds;
 	public float ScanIntervalSeconds;
 	public float RangeMeters;
+	public int HelicopterTimingRevision;
+	public float HelicopterDispatchDelaySeconds;
+	public int HelicopterWaitTimeSeconds;
+	public float HelicopterExtractTimeSeconds;
+	public float HelicopterSpeedMultiplier;
 
 	public FireSupportAuthorityResultPacket()
 	{
@@ -47,11 +52,16 @@ public sealed class FireSupportAuthorityResultPacket : INetSerializable
 		DurationSeconds = request?.DurationSeconds ?? 0f;
 		ScanIntervalSeconds = request?.ScanIntervalSeconds ?? 0f;
 		RangeMeters = request?.RangeMeters ?? 0f;
+		HelicopterTimingRevision = request?.HelicopterTimingRevision ?? 0;
+		HelicopterDispatchDelaySeconds = request?.HelicopterDispatchDelaySeconds ?? 0f;
+		HelicopterWaitTimeSeconds = request?.HelicopterWaitTimeSeconds ?? 0;
+		HelicopterExtractTimeSeconds = request?.HelicopterExtractTimeSeconds ?? 0f;
+		HelicopterSpeedMultiplier = request?.HelicopterSpeedMultiplier ?? 0f;
 	}
 
 	public FireSupportRequestPacket ToSupportRequest()
 	{
-		return new FireSupportRequestPacket(
+		var request = new FireSupportRequestPacket(
 			SupportType,
 			Position,
 			Direction,
@@ -63,6 +73,12 @@ public sealed class FireSupportAuthorityResultPacket : INetSerializable
 			SupportRequestId,
 			ScanIntervalSeconds,
 			RangeMeters);
+		request.HelicopterTimingRevision = HelicopterTimingRevision;
+		request.HelicopterDispatchDelaySeconds = HelicopterDispatchDelaySeconds;
+		request.HelicopterWaitTimeSeconds = HelicopterWaitTimeSeconds;
+		request.HelicopterExtractTimeSeconds = HelicopterExtractTimeSeconds;
+		request.HelicopterSpeedMultiplier = HelicopterSpeedMultiplier;
+		return request;
 	}
 
 	public void Serialize(NetDataWriter writer)
@@ -80,6 +96,11 @@ public sealed class FireSupportAuthorityResultPacket : INetSerializable
 		writer.Put(DurationSeconds);
 		writer.Put(ScanIntervalSeconds);
 		writer.Put(RangeMeters);
+		writer.Put(HelicopterTimingRevision);
+		writer.Put(HelicopterDispatchDelaySeconds);
+		writer.Put(HelicopterWaitTimeSeconds);
+		writer.Put(HelicopterExtractTimeSeconds);
+		writer.Put(HelicopterSpeedMultiplier);
 	}
 
 	public void Deserialize(NetDataReader reader)
@@ -97,5 +118,10 @@ public sealed class FireSupportAuthorityResultPacket : INetSerializable
 		DurationSeconds = reader.GetFloat();
 		ScanIntervalSeconds = reader.GetFloat();
 		RangeMeters = reader.GetFloat();
+		HelicopterTimingRevision = reader.GetInt();
+		HelicopterDispatchDelaySeconds = reader.GetFloat();
+		HelicopterWaitTimeSeconds = reader.GetInt();
+		HelicopterExtractTimeSeconds = reader.GetFloat();
+		HelicopterSpeedMultiplier = reader.GetFloat();
 	}
 }

@@ -1,77 +1,120 @@
+using System;
+
 namespace SamSWAT.FireSupport.ArysReloaded.Unity;
+
+public readonly struct HelicopterTimingSnapshot
+{
+	public HelicopterTimingSnapshot(
+		ESupportType supportType,
+		float dispatchDelaySeconds,
+		int waitTimeSeconds,
+		float extractTimeSeconds,
+		float speedMultiplier)
+	{
+		SupportType = supportType;
+		DispatchDelaySeconds = dispatchDelaySeconds;
+		WaitTimeSeconds = waitTimeSeconds;
+		ExtractTimeSeconds = extractTimeSeconds;
+		SpeedMultiplier = speedMultiplier;
+	}
+
+	public ESupportType SupportType { get; }
+	public float DispatchDelaySeconds { get; }
+	public int WaitTimeSeconds { get; }
+	public float ExtractTimeSeconds { get; }
+	public float SpeedMultiplier { get; }
+}
 
 public static class FireSupportTuningSettings
 {
 	private const float DefaultA10HeadlessDamageOriginDistance = 425f;
 	private const float DefaultA10HeadlessDamageOriginAltitude = 150f;
+	private const float MinimumExtractionWindowMarginSeconds = 1f;
 	private static float? _syncedDoubleStrafeSecondPassDelay;
+	private static float? _syncedHelicopterDispatchDelay;
 	private static int? _syncedHelicopterWaitTime;
-	private static int? _syncedPriorityExfilHelicopterWaitTime;
-	private static float? _syncedPriorityExfilDispatchDelay;
 	private static float? _syncedHelicopterExtractTime;
 	private static float? _syncedHelicopterSpeedMultiplier;
+	private static float? _syncedPriorityExfilDispatchDelay;
+	private static int? _syncedPriorityExfilHelicopterWaitTime;
+	private static float? _syncedPriorityExfilHelicopterExtractTime;
 	private static float? _syncedPriorityExfilHelicopterSpeedMultiplier;
 	private static int? _syncedRequestCooldown;
 	private static float? _serverDoubleStrafeSecondPassDelay;
+	private static float? _serverHelicopterDispatchDelay;
 	private static int? _serverHelicopterWaitTime;
-	private static int? _serverPriorityExfilHelicopterWaitTime;
-	private static float? _serverPriorityExfilDispatchDelay;
 	private static float? _serverHelicopterExtractTime;
 	private static float? _serverHelicopterSpeedMultiplier;
+	private static float? _serverPriorityExfilDispatchDelay;
+	private static int? _serverPriorityExfilHelicopterWaitTime;
+	private static float? _serverPriorityExfilHelicopterExtractTime;
 	private static float? _serverPriorityExfilHelicopterSpeedMultiplier;
 	private static int? _serverRequestCooldown;
 
 	public static bool HasSyncedTuning =>
 		_syncedDoubleStrafeSecondPassDelay.HasValue ||
+		_syncedHelicopterDispatchDelay.HasValue ||
 		_syncedHelicopterWaitTime.HasValue ||
-		_syncedPriorityExfilHelicopterWaitTime.HasValue ||
-		_syncedPriorityExfilDispatchDelay.HasValue ||
 		_syncedHelicopterExtractTime.HasValue ||
 		_syncedHelicopterSpeedMultiplier.HasValue ||
+		_syncedPriorityExfilDispatchDelay.HasValue ||
+		_syncedPriorityExfilHelicopterWaitTime.HasValue ||
+		_syncedPriorityExfilHelicopterExtractTime.HasValue ||
 		_syncedPriorityExfilHelicopterSpeedMultiplier.HasValue ||
 		_syncedRequestCooldown.HasValue;
 
 	public static bool HasServerConfigTuning =>
 		_serverDoubleStrafeSecondPassDelay.HasValue ||
+		_serverHelicopterDispatchDelay.HasValue ||
 		_serverHelicopterWaitTime.HasValue ||
-		_serverPriorityExfilHelicopterWaitTime.HasValue ||
-		_serverPriorityExfilDispatchDelay.HasValue ||
 		_serverHelicopterExtractTime.HasValue ||
 		_serverHelicopterSpeedMultiplier.HasValue ||
+		_serverPriorityExfilDispatchDelay.HasValue ||
+		_serverPriorityExfilHelicopterWaitTime.HasValue ||
+		_serverPriorityExfilHelicopterExtractTime.HasValue ||
 		_serverPriorityExfilHelicopterSpeedMultiplier.HasValue ||
 		_serverRequestCooldown.HasValue;
 
 	public static void SetSyncedTuning(
 		float doubleStrafeSecondPassDelay,
+		float helicopterDispatchDelay,
 		int helicopterWaitTime,
-		int priorityExfilHelicopterWaitTime,
-		float priorityExfilDispatchDelay,
 		float helicopterExtractTime,
 		float helicopterSpeedMultiplier,
+		float priorityExfilDispatchDelay,
+		int priorityExfilHelicopterWaitTime,
+		float priorityExfilHelicopterExtractTime,
 		float priorityExfilHelicopterSpeedMultiplier,
 		int requestCooldown)
 	{
 		_syncedDoubleStrafeSecondPassDelay = doubleStrafeSecondPassDelay;
+		_syncedHelicopterDispatchDelay = helicopterDispatchDelay;
 		_syncedHelicopterWaitTime = helicopterWaitTime;
-		_syncedPriorityExfilHelicopterWaitTime = priorityExfilHelicopterWaitTime;
-		_syncedPriorityExfilDispatchDelay = priorityExfilDispatchDelay;
 		_syncedHelicopterExtractTime = helicopterExtractTime;
 		_syncedHelicopterSpeedMultiplier = helicopterSpeedMultiplier;
+		_syncedPriorityExfilDispatchDelay = priorityExfilDispatchDelay;
+		_syncedPriorityExfilHelicopterWaitTime = priorityExfilHelicopterWaitTime;
+		_syncedPriorityExfilHelicopterExtractTime = priorityExfilHelicopterExtractTime;
 		_syncedPriorityExfilHelicopterSpeedMultiplier = priorityExfilHelicopterSpeedMultiplier;
 		_syncedRequestCooldown = requestCooldown;
 		TscDiagnostics.LogFika(
-			$"Using host TSC tuning: doublePassDelay={doubleStrafeSecondPassDelay:0.##}s, helicopterWait={helicopterWaitTime}s, priorityWait={priorityExfilHelicopterWaitTime}s, priorityDispatch={priorityExfilDispatchDelay:0.##}s, extractTime={helicopterExtractTime:0.##}s, cooldown={requestCooldown}s");
+			$"Using host TSC tuning: doublePassDelay={doubleStrafeSecondPassDelay:0.##}s, " +
+			$"extraction=dispatch:{helicopterDispatchDelay:0.##}/wait:{helicopterWaitTime}/extract:{helicopterExtractTime:0.##}s, " +
+			$"priority=dispatch:{priorityExfilDispatchDelay:0.##}/wait:{priorityExfilHelicopterWaitTime}/extract:{priorityExfilHelicopterExtractTime:0.##}s, " +
+			$"cooldown={requestCooldown}s");
 	}
 
 	public static void ClearSyncedTuning()
 	{
 		bool hadSyncedTuning = HasSyncedTuning;
 		_syncedDoubleStrafeSecondPassDelay = null;
+		_syncedHelicopterDispatchDelay = null;
 		_syncedHelicopterWaitTime = null;
-		_syncedPriorityExfilHelicopterWaitTime = null;
-		_syncedPriorityExfilDispatchDelay = null;
 		_syncedHelicopterExtractTime = null;
 		_syncedHelicopterSpeedMultiplier = null;
+		_syncedPriorityExfilDispatchDelay = null;
+		_syncedPriorityExfilHelicopterWaitTime = null;
+		_syncedPriorityExfilHelicopterExtractTime = null;
 		_syncedPriorityExfilHelicopterSpeedMultiplier = null;
 		_syncedRequestCooldown = null;
 		if (hadSyncedTuning)
@@ -82,36 +125,45 @@ public static class FireSupportTuningSettings
 
 	public static void SetServerConfigTuning(
 		float doubleStrafeSecondPassDelay,
+		float helicopterDispatchDelay,
 		int helicopterWaitTime,
-		int priorityExfilHelicopterWaitTime,
-		float priorityExfilDispatchDelay,
 		float helicopterExtractTime,
 		float helicopterSpeedMultiplier,
+		float priorityExfilDispatchDelay,
+		int priorityExfilHelicopterWaitTime,
+		float priorityExfilHelicopterExtractTime,
 		float priorityExfilHelicopterSpeedMultiplier,
 		int requestCooldown,
 		int revision)
 	{
 		_serverDoubleStrafeSecondPassDelay = doubleStrafeSecondPassDelay;
+		_serverHelicopterDispatchDelay = helicopterDispatchDelay;
 		_serverHelicopterWaitTime = helicopterWaitTime;
-		_serverPriorityExfilHelicopterWaitTime = priorityExfilHelicopterWaitTime;
-		_serverPriorityExfilDispatchDelay = priorityExfilDispatchDelay;
 		_serverHelicopterExtractTime = helicopterExtractTime;
 		_serverHelicopterSpeedMultiplier = helicopterSpeedMultiplier;
+		_serverPriorityExfilDispatchDelay = priorityExfilDispatchDelay;
+		_serverPriorityExfilHelicopterWaitTime = priorityExfilHelicopterWaitTime;
+		_serverPriorityExfilHelicopterExtractTime = priorityExfilHelicopterExtractTime;
 		_serverPriorityExfilHelicopterSpeedMultiplier = priorityExfilHelicopterSpeedMultiplier;
 		_serverRequestCooldown = requestCooldown;
 		TscDiagnostics.LogDashboard(
-			$"Using server URL TSC tuning revision={revision}: doublePassDelay={doubleStrafeSecondPassDelay:0.##}s, helicopterWait={helicopterWaitTime}s, priorityWait={priorityExfilHelicopterWaitTime}s, priorityDispatch={priorityExfilDispatchDelay:0.##}s, extractTime={helicopterExtractTime:0.##}s, cooldown={requestCooldown}s");
+			$"Using server URL TSC tuning revision={revision}: doublePassDelay={doubleStrafeSecondPassDelay:0.##}s, " +
+			$"extraction=dispatch:{helicopterDispatchDelay:0.##}/wait:{helicopterWaitTime}/extract:{helicopterExtractTime:0.##}s, " +
+			$"priority=dispatch:{priorityExfilDispatchDelay:0.##}/wait:{priorityExfilHelicopterWaitTime}/extract:{priorityExfilHelicopterExtractTime:0.##}s, " +
+			$"cooldown={requestCooldown}s");
 	}
 
 	public static void ClearServerConfigTuning()
 	{
 		bool hadServerTuning = HasServerConfigTuning;
 		_serverDoubleStrafeSecondPassDelay = null;
+		_serverHelicopterDispatchDelay = null;
 		_serverHelicopterWaitTime = null;
-		_serverPriorityExfilHelicopterWaitTime = null;
-		_serverPriorityExfilDispatchDelay = null;
 		_serverHelicopterExtractTime = null;
 		_serverHelicopterSpeedMultiplier = null;
+		_serverPriorityExfilDispatchDelay = null;
+		_serverPriorityExfilHelicopterWaitTime = null;
+		_serverPriorityExfilHelicopterExtractTime = null;
 		_serverPriorityExfilHelicopterSpeedMultiplier = null;
 		_serverRequestCooldown = null;
 		if (hadServerTuning)
@@ -182,9 +234,21 @@ public static class FireSupportTuningSettings
 		return PluginSettings.PriorityExfilHelicopterWaitTime.Value;
 	}
 
+	public static float GetHelicopterDispatchDelay(ESupportType supportType)
+	{
+		return supportType == ESupportType.PriorityExfil
+			? _syncedPriorityExfilDispatchDelay ?? _serverPriorityExfilDispatchDelay ?? GetConfiguredPriorityExfilDispatchDelay()
+			: _syncedHelicopterDispatchDelay ?? _serverHelicopterDispatchDelay ?? GetConfiguredHelicopterDispatchDelay();
+	}
+
+	public static float GetConfiguredHelicopterDispatchDelay()
+	{
+		return PluginSettings.HelicopterDispatchDelay.Value;
+	}
+
 	public static float GetPriorityExfilDispatchDelay()
 	{
-		return _syncedPriorityExfilDispatchDelay ?? _serverPriorityExfilDispatchDelay ?? GetConfiguredPriorityExfilDispatchDelay();
+		return GetHelicopterDispatchDelay(ESupportType.PriorityExfil);
 	}
 
 	public static float GetConfiguredPriorityExfilDispatchDelay()
@@ -194,12 +258,24 @@ public static class FireSupportTuningSettings
 
 	public static float GetHelicopterExtractTime()
 	{
-		return _syncedHelicopterExtractTime ?? _serverHelicopterExtractTime ?? GetConfiguredHelicopterExtractTime();
+		return GetHelicopterExtractTime(ESupportType.Extract);
+	}
+
+	public static float GetHelicopterExtractTime(ESupportType supportType)
+	{
+		return supportType == ESupportType.PriorityExfil
+			? _syncedPriorityExfilHelicopterExtractTime ?? _serverPriorityExfilHelicopterExtractTime ?? GetConfiguredPriorityExfilHelicopterExtractTime()
+			: _syncedHelicopterExtractTime ?? _serverHelicopterExtractTime ?? GetConfiguredHelicopterExtractTime();
 	}
 
 	public static float GetConfiguredHelicopterExtractTime()
 	{
 		return PluginSettings.HelicopterExtractTime.Value;
+	}
+
+	public static float GetConfiguredPriorityExfilHelicopterExtractTime()
+	{
+		return PluginSettings.PriorityExfilHelicopterExtractTime.Value;
 	}
 
 	public static float GetHelicopterSpeedMultiplier(ESupportType supportType)
@@ -217,6 +293,42 @@ public static class FireSupportTuningSettings
 	public static float GetConfiguredPriorityExfilHelicopterSpeedMultiplier()
 	{
 		return PluginSettings.PriorityExfilHelicopterSpeedMultiplier.Value;
+	}
+
+	public static HelicopterTimingSnapshot CaptureHelicopterTiming(ESupportType supportType)
+	{
+		ESupportType effectiveSupportType = supportType == ESupportType.PriorityExfil
+			? ESupportType.PriorityExfil
+			: ESupportType.Extract;
+		float dispatchDelaySeconds = Math.Max(
+			0f,
+			GetHelicopterDispatchDelay(effectiveSupportType));
+		int waitTimeSeconds = Math.Max(
+			1,
+			GetHelicopterWaitTime(effectiveSupportType));
+		float extractTimeSeconds = Math.Max(
+			0.1f,
+			GetHelicopterExtractTime(effectiveSupportType));
+		float speedMultiplier = Math.Max(
+			0.01f,
+			GetHelicopterSpeedMultiplier(effectiveSupportType));
+		int minimumSafeWaitTime = (int)Math.Ceiling(
+			extractTimeSeconds + MinimumExtractionWindowMarginSeconds);
+		if (waitTimeSeconds < minimumSafeWaitTime)
+		{
+			FireSupportPlugin.LogSource?.LogWarning(
+				$"Unsafe {effectiveSupportType} helicopter timing: wait={waitTimeSeconds}s, " +
+				$"extract={extractTimeSeconds:0.##}s. Using safe wait={minimumSafeWaitTime}s; " +
+				"set waitTimeSeconds to at least extractTimeSeconds + 1 second.");
+			waitTimeSeconds = minimumSafeWaitTime;
+		}
+
+		return new HelicopterTimingSnapshot(
+			effectiveSupportType,
+			dispatchDelaySeconds,
+			waitTimeSeconds,
+			extractTimeSeconds,
+			speedMultiplier);
 	}
 
 	public static int GetRequestCooldown()

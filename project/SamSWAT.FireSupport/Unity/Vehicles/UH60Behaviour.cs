@@ -23,8 +23,15 @@ public sealed class UH60Behaviour : FireSupportBehaviour
 	public AudioSource rotorsDistantSource;
 
 	private CancellationToken _cancellationToken;
+	private CancellationTokenSource _requestCts;
 	private GameWorld _gameWorld;
-	private bool _priorityExfil;
+	private ESupportType _requestSupportType = ESupportType.Extract;
+	private HelicopterTimingSnapshot _timingSnapshot;
+	private bool _hasTimingSnapshot;
+	private bool _allowLocalExtraction = true;
+	private GameObject _extractionPoint;
+	private bool _returningToPool;
+	private int _requestGeneration;
 
 	public override ESupportType SupportType => ESupportType.Extract;
 
@@ -37,24 +44,54 @@ public sealed class UH60Behaviour : FireSupportBehaviour
 		int visualSeed = 0,
 		int passIndex = 0)
 	{
-		_cancellationToken = cancellationToken;
+		_requestGeneration++;
+		CancelRequestLifetime();
+		_requestCts =
+			CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+		_cancellationToken = _requestCts.Token;
+		_returningToPool = false;
+		if (!_hasTimingSnapshot)
+		{
+			SetRequestTiming(
+				_requestSupportType,
+				null,
+				allowLocalExtraction: true);
+		}
 
 		Transform heliTransform = transform;
 		heliTransform.position = position;
 		heliTransform.eulerAngles = rotation;
-		helicopterAnimator.SetFloat(s_flySpeedMultiplier, GetSpeedMultiplier());
+		helicopterAnimator.SetFloat(s_flySpeedMultiplier, _timingSnapshot.SpeedMultiplier);
 	}
 
 	public void SetPriorityExfil(bool priorityExfil)
 	{
-		_priorityExfil = priorityExfil;
+		SetRequestTiming(
+			priorityExfil ? ESupportType.PriorityExfil : ESupportType.Extract,
+			null,
+			allowLocalExtraction: true);
+	}
+
+	public void SetRequestTiming(
+		ESupportType supportType,
+		HelicopterTimingSnapshot? timingSnapshot,
+		bool allowLocalExtraction)
+	{
+		_requestSupportType = supportType == ESupportType.PriorityExfil
+			? ESupportType.PriorityExfil
+			: ESupportType.Extract;
+		_timingSnapshot = timingSnapshot ??
+			FireSupportTuningSettings.CaptureHelicopterTiming(_requestSupportType);
+		_allowLocalExtraction = allowLocalExtraction;
+		_hasTimingSnapshot = true;
 	}
 
 	public override void ManualUpdate()
 	{
-		if (!_gameWorld.IsMainPlayerAlive())
+		if (_cancellationToken.IsCancellationRequested ||
+		    !_gameWorld.IsMainPlayerAlive())
 		{
-			MarkForRemoval();
+			ReturnToPoolSafely();
 			return;
 		}
 
@@ -94,47 +131,82 @@ public sealed class UH60Behaviour : FireSupportBehaviour
 	[UsedImplicitly]
 	private async UniTaskVoid OnHelicopterArrive()
 	{
-		FireSupportAudio.Instance.PlayVoiceover(EVoiceoverType.SupportHeliPickingUp);
+		int requestGeneration = _requestGeneration;
+		CancellationToken requestCancellationToken = _cancellationToken;
+		HelicopterTimingSnapshot timingSnapshot = _timingSnapshot;
+		ESupportType requestSupportType = _requestSupportType;
+		bool allowLocalExtraction = _allowLocalExtraction;
+		GameObject requestExtractionPoint = null;
+		try
+		{
+			FireSupportAudio.Instance.PlayVoiceover(EVoiceoverType.SupportHeliPickingUp);
+			DestroyExtractionPoint();
+			if (allowLocalExtraction)
+			{
+				requestExtractionPoint = CreateExfilPoint(
+					requestSupportType,
+					timingSnapshot,
+					requestCancellationToken);
+				_extractionPoint = requestExtractionPoint;
+			}
 
-		GameObject extractionPoint = CreateExfilPoint();
+			int configWaitTime = timingSnapshot.WaitTimeSeconds;
+			float waitTime = configWaitTime * 0.75f;
 
-		int configWaitTime = GetHelicopterWaitTime();
-		float waitTime = configWaitTime * 0.75f;
+			await UniTask.WaitForSeconds(
+				waitTime,
+				cancellationToken: requestCancellationToken);
+			if (requestGeneration != _requestGeneration)
+			{
+				return;
+			}
 
-		await UniTask.WaitForSeconds(waitTime, cancellationToken: _cancellationToken);
+			FireSupportAudio.Instance.PlayVoiceover(EVoiceoverType.SupportHeliHurry);
 
-		FireSupportAudio.Instance.PlayVoiceover(EVoiceoverType.SupportHeliHurry);
+			await UniTask.WaitForSeconds(
+				duration: configWaitTime - waitTime,
+				cancellationToken: requestCancellationToken);
+			if (requestGeneration != _requestGeneration)
+			{
+				return;
+			}
 
-		await UniTask.WaitForSeconds(
-			duration: configWaitTime - waitTime,
-			cancellationToken: _cancellationToken);
-
-		helicopterAnimator.SetTrigger(s_flyAway);
-		Destroy(extractionPoint);
-		FireSupportAudio.Instance.PlayVoiceover(EVoiceoverType.SupportHeliLeavingNoPickup);
+			helicopterAnimator.SetTrigger(s_flyAway);
+			FireSupportAudio.Instance.PlayVoiceover(EVoiceoverType.SupportHeliLeavingNoPickup);
+		}
+		catch (OperationCanceledException)
+		{
+			ReturnToPoolSafely(requestGeneration);
+		}
+		finally
+		{
+			DestroyExtractionPoint(requestExtractionPoint);
+		}
 	}
 
 	[UsedImplicitly]
 	private void OnHelicopterLeft()
 	{
-		_cancellationToken = CancellationToken.None;
-		_priorityExfil = false;
-		ReturnToPool();
+		ReturnToPoolSafely();
 	}
 
-	private float GetSpeedMultiplier()
+	protected override void OnDisable()
 	{
-		return FireSupportTuningSettings.GetHelicopterSpeedMultiplier(
-			_priorityExfil ? ESupportType.PriorityExfil : ESupportType.Extract);
+		CancelRequestLifetime();
+		DestroyExtractionPoint();
+		base.OnDisable();
 	}
 
-	private int GetHelicopterWaitTime()
+	private void OnDestroy()
 	{
-		return FireSupportTuningSettings.GetHelicopterWaitTime(
-			_priorityExfil ? ESupportType.PriorityExfil : ESupportType.Extract);
+		CancelRequestLifetime();
+		DestroyExtractionPoint();
 	}
 
-	private GameObject CreateExfilPoint()
+	private GameObject CreateExfilPoint(
+		ESupportType requestSupportType,
+		HelicopterTimingSnapshot timingSnapshot,
+		CancellationToken cancellationToken)
 	{
 		var extractionPoint = new GameObject
 		{
@@ -149,8 +221,64 @@ public sealed class UH60Behaviour : FireSupportBehaviour
 		var extractionCollider = extractionPoint.AddComponent<BoxCollider>();
 		extractionCollider.size = new Vector3(16.5f, 20f, 15);
 		extractionCollider.isTrigger = true;
-		extractionPoint.AddComponent<HeliExfiltrationPoint>();
+		HeliExfiltrationPoint exfiltrationPoint =
+			extractionPoint.AddComponent<HeliExfiltrationPoint>();
+		exfiltrationPoint.Initialize(
+			requestSupportType,
+			timingSnapshot.ExtractTimeSeconds,
+			cancellationToken);
 
 		return extractionPoint;
+	}
+
+	private void ReturnToPoolSafely(int expectedRequestGeneration = -1)
+	{
+		if (expectedRequestGeneration >= 0 &&
+		    expectedRequestGeneration != _requestGeneration)
+		{
+			return;
+		}
+
+		if (_returningToPool)
+		{
+			return;
+		}
+
+		_returningToPool = true;
+		_requestGeneration++;
+		CancelRequestLifetime();
+		DestroyExtractionPoint();
+		_cancellationToken = CancellationToken.None;
+		_requestSupportType = ESupportType.Extract;
+		_timingSnapshot = default;
+		_hasTimingSnapshot = false;
+		_allowLocalExtraction = true;
+		ReturnToPool();
+	}
+
+	private void DestroyExtractionPoint()
+	{
+		DestroyExtractionPoint(_extractionPoint);
+	}
+
+	private void DestroyExtractionPoint(GameObject extractionPoint)
+	{
+		if (extractionPoint == null)
+		{
+			return;
+		}
+
+		Destroy(extractionPoint);
+		if (_extractionPoint == extractionPoint)
+		{
+			_extractionPoint = null;
+		}
+	}
+
+	private void CancelRequestLifetime()
+	{
+		_requestCts?.Cancel();
+		_requestCts?.Dispose();
+		_requestCts = null;
 	}
 }

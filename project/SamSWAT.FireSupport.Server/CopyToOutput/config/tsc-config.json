@@ -1,4 +1,5 @@
 {
+  "configSchemaVersion": 2,
   "revision": 1,
   "paymentMode": "PhoneAuthorizations",
   "paymentSource": "CarriedRoubles",
@@ -45,7 +46,7 @@
     "scanIntervalSeconds": 0.75
   },
   "extraction": {
-    "dispatchDelaySeconds": 0,
+    "dispatchDelaySeconds": 8,
     "waitTimeSeconds": 30,
     "extractTimeSeconds": 10,
     "speedMultiplier": 1
