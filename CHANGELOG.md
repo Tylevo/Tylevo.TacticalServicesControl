@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.1.0 - Public Beta (unreleased)
+
+### Added
+
+- Added an authenticated pre-raid authorization store to the main menu. **TSC UPLINK** is placed below **Records**, with a fallback below **Character**, and shows the active PMC stash balance, server prices, service availability, and persistent authorization counts.
+- Added an explicit pre-raid purchase confirmation showing the selected service, authoritative price, and projected balance. Cancelling creates no request, while duplicate delivery of a confirmed request cannot charge or grant twice.
+- Added a dashboard shortcut derived from the active SPT backend connection instead of a hard-coded host.
+- Added configurable UAV presentation in F12. `Phone` raises the physical Uplink while the radar key is held; `HUD` renders only the live scanner square in any selected corner.
+- Added server-authoritative RUB, USD, and EUR purchasing across carried cash, stash debit, the pre-raid store, persistent journal replay, and Fika settings sync.
+- Added focused proprietary-free regression coverage and CI verification for authorization hydration, ledger lifecycle, Fika request state, extraction timing, package layout, source wiring, and tracked-file hygiene.
+
+### Fixed
+
+- Persistent authorization hydration now distinguishes omitted state from an authoritative empty ledger, updates an already-open deploy menu, and does not depend on the retired server-URL toggle.
+- Persistent use now follows one server-backed begin, accept, commit, or refund lifecycle instead of decrementing only the client mirror.
+- Networked support requests now wait for raid-authority acceptance. Rejections, timeouts, cancellation, and executor-start failures converge on one idempotent refund/settlement result.
+- Duplicate Fika request, acceptance, commit, refund, tracer, and replay packets are keyed by `SupportRequestId` and cannot execute or settle the same request twice.
+- UAV contracts now carry authoritative requester identity, duration, range, and scan cadence. Requester phone/HUD state and the visible loiter aircraft share one lifetime, while headless hosts create no presentation objects.
+- Hardened physical-phone equip, release-during-equip, death, raid teardown, render-texture, input, and previous-weapon restoration paths.
+- Restored the direct upright presentation for the `K` deployment phone and held `J` radar phone without exposing a ghost landscape phone first.
+- Standard and priority UH-60 services now retain distinct dispatch, wait, extraction-countdown, and speed settings through server config, Fika sync, and runtime use. Unsafe wait/countdown combinations are rejected or repaired.
+- Hardened currency changes during in-flight purchases so quotes, retries, prepared transactions, and accepted replay remain bound to their original currency.
+
+### Changed
+
+- The release candidate aligns its public display, intended Git tag, package, plugin, server, assembly, and file versions on one `1.1.0` identity. All four DLLs must be installed as one matched set.
+- The release archive contract is exactly two top-level roots, `BepInEx/` and `SPT/`, extracted directly into the SPT installation root.
+- The redundant legacy `raidops-firesupport.json` template is no longer shipped. Existing installs using that filename still migrate to `tsc-config.json`.
+
+### Validation Status
+
+- The 35-test regression runner passed 20 consecutive repetitions (700/700 test executions), and the full deploy-suppressed solution build passed for Core, Server, Fika Interop, Fika bootstrap, and the regression project.
+- Solo SPT and the main-menu purchase flow have user-reported smoke coverage.
+- Matched-version human-host, Fika-client, and dedicated-headless live acceptance remains open. Dedicated-headless A-10 damage is separately gated and experimental.
+
 ## 0.9.8 - Public Beta (released as v1.0.8)
 
 ### Added
@@ -7,8 +42,6 @@
 - Added a complete phone-based deployment workflow. Purchased authorizations are now selected and deployed from the vertical TSC Uplink interface instead of requiring the YY gesture wheel.
 - Added visible F12 keybinds for opening the purchase phone (`U` by default), opening the deployment phone (`K` by default), and confirming spotter targets (`Mouse 2`/middle mouse by default).
 - Added optional automatic phone zoom with FOV, vertical framing, and horizontal framing controls. The previous camera FOV and viewmodel offset are restored when the phone is stowed.
-- Added local F12 UAV display controls. `Phone` remains the default held-J presentation; `HUD` displays the same phone radar continuously in any selected screen corner for the active requester-local recon session.
-- Added server-authoritative RUB, USD, and EUR purchase currencies. The dashboard selects one currency for all TSC prices; the phone, main-menu store, carried wallet, stash debit, persistent purchase journal, and Fika host sync all use that selection.
 - Added explicit A-10 authority roles and unique support request IDs for Fika. The raid authority tracks in-flight and completed requests so duplicate packets cannot fire the same strike twice.
 - Added an experimental dedicated-headless A-10 damage executor. It uses the headless raid authority and Fika damage packets while clients remain visual-only.
 
@@ -17,7 +50,7 @@
 - Press `U` to open the TSC Uplink in purchase mode. Number keys `1`-`3` open Extraction, Fire Support, or UAV Recon; then `1` selects the standard service and `2` selects its upgraded variant when enabled. Press Enter on the confirmation screen to authorize payment. RMB goes back one screen and Escape closes the phone.
 - Press `K` after purchasing to open the Uplink in deployment mode. It lists only authorizations you currently own. Number keys `1`-`6` select an entry; LMB or Enter deploys it. RMB, Backspace, or Escape stows the phone without consuming an authorization.
 - A-10 and UH-60 deployment then enters camera-based target designation, so the rangefinder is no longer required. Press the configurable spotter-confirm key (`Mouse 2`/middle mouse by default) or Enter to confirm targeting steps. Use Alt+RMB or Backspace to cancel. LMB target confirmation remains available only while the rangefinder is actually in your hands so a held weapon is not fired accidentally.
-- UAV Recon and Focused Sweep begin directly after deployment. In the default `Phone` mode, hold `J` to view the radar and release it to restore the weapon. In `HUD` mode, the requester receives the same radar continuously in the configured corner without equipping the phone.
+- UAV Recon and Focused Sweep begin directly after deployment; the requester receives the radar overlay without replaying the purchase-phone animation.
 
 ### Fixed
 
@@ -26,11 +59,9 @@
 - Fixed `PreferStashThenCarried` purchases failing when stash payment is unavailable even though the player has enough carried roubles.
 - Fixed compressed `/tsc/purchase` request bodies failing JSON parsing. The server now accepts plain JSON plus zlib/deflate request bodies and returns a controlled denial if purchase handling throws.
 - Made the authorization ledger durable with atomic file replacement, backup recovery, corrupt-file preservation, and rollback when a ledger write fails.
-- Hardened currency changes during purchases: quote mismatches fail closed, prepared and accepted retries retain their original currency, and malformed current-schema currency values cannot be silently reinterpreted as RUB.
 - Fixed Fika A-10 clients starting prediction before the host accepted a strike. Clients now wait for the authority broadcast, render the accepted visual pass, and never execute authoritative damage.
 - Synchronized Fika tracer and impact replay to the visible A-10 firing pass. Replay is keyed by support request, seed, and pass so double passes do not create early fake bursts or mismatched impacts.
 - Fixed UAV HUD ownership in Fika: only the requesting client creates the radar overlay, and a dedicated headless host does not create client HUD objects.
-- Reduced HUD mode to the square live scanner only. The phone header, status bands, telemetry, and footer remain exclusive to the physical-phone view.
 - Fixed concurrent or repeated AssetBundle loads, including the UAV radar HUD double-load failure. A per-bundle load gate now reuses a load that won the race.
 - Added HackerMod phone-bundle compatibility. When Manimal's complete HackerMod phone bundle set is installed, TSC reuses it instead of loading a conflicting duplicate phone asset.
 - Fixed `SimpleSpinBlur`, fire-support pools, UI controllers, and phone zoom teardown paths that could throw null-reference errors during raid shutdown or repeated initialization.

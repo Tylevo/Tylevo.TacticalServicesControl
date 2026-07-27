@@ -1,263 +1,294 @@
 # Tylevo Tactical Services Control Development Handoff
 
-Last updated: 2026-07-13
+Last updated: 2026-07-27
 
 ## Start Here
 
-This is the active local development checkout:
+GitHub Releases, the matching tag, and the attached archive are authoritative
+for published TSC builds. The active development branch is
+`codex/tsc-stabilization-20260724`; its last pre-Phase-6 checkpoint is
+`29d0543`. The Phase 6 checkpoint is the commit containing this handoff.
 
-`C:\Users\tylev\Desktop\RaidOps\build_source\Tylevo.TacticalServicesControl-github-1.0.7`
-
-[GitHub Releases](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases), the matching release tag, and the attached artifact are authoritative for what was publicly shipped. GitHub's default branch is authoritative for committed unreleased work after it is fetched. Uncommitted files in this checkout are development candidates only.
-
-Read these files before making changes:
+Read these files before changing release behavior:
 
 1. `docs/HANDOFF.md`
-2. `README.md`
-3. `docs/release-notes-v1.0.8.md`
+2. `docs/release-stabilization-plan.md`
+3. `README.md`
 4. `CHANGELOG.md`
-5. `docs/fika.md`
-6. `docs/dashboard.md`
-7. `docs/known-issues.md`
+5. `docs/release-notes-v1.1.0.md`
+6. `docs/fika.md`
+7. `docs/dashboard.md`
+8. `docs/known-issues.md`
 
-Do not work from the older experimental branches, `.codex` snapshots, `tmp` package stages, or previous patch-kit folders.
+Do not publish, tag, upload, replace a release asset, or modify a live SPT
+installation without explicit user approval.
 
-## Repository State
+## Release Identity
 
-- Branch: `main`
-- Current committed tip: `b7835ea` (`Document v1.0.8 controls and release history (#4)`)
-- `main`, `origin/main`, and tag `v0.9.8` point to that commit.
-- Product display version: **1.0.8 Public Beta**
-- Internal assembly/tag version: **0.9.8 / 0.9.8.0**
-- Target: **SPT 4.0.13**
+Published source of truth:
 
-Uncommitted work at this checkpoint:
+- Display release: **Tylevo's Tactical Services Control v1.0.8 Public Beta**
+- Git tag and internal version: `v0.9.8` / `0.9.8.0`
+- Release commit: `b7835ea7995fef08ab7c95cfe8c9bf8af2be6c0c`
+- Archive: `Tylevo.TacticalServicesControl-v1.0.8-SPT4.0.13.zip`
+- SHA-256: `C3C0390CC6641E5F82C99C3E57D8AEDA358FD0278E667E6616E53963EB2FCB8D`
+- Size: `41,236,560` bytes
+- Archive roots: `BepInEx/` and `SPT/`
+- Release status: published, non-draft, non-prerelease
 
-- `README.md` is modified to replace the obsolete YY/rangefinder instructions with the current phone deploy workflow.
-- `docs/forge-description-v1.0.8.md` is a new paste-ready Forge main-description draft.
-- `docs/HANDOFF.md` is this new checkpoint.
-- `docs/roadmap.md` now separates shipped 1.0.8 work from possible future features.
-- UAV Recon now offers two local F12 presentation modes: the default hold-to-view physical phone, or a persistent corner HUD that renders the exact phone radar texture. HUD position is independently configurable.
-- The configurable radar hold key defaults to `J`; unrelated movement/sprint keys no longer count as a release, and releasing the configured chord safely restores the weapon even during asynchronous phone equip.
-- Deploy and radar sessions conceal EFT's landscape equip transaction, then reveal the existing phone directly in its upright pose with the free right arm tucked. The animator is not frozen before EFT's completion callback.
-- Standard UAV defaults are 480 seconds / 200 m / 5-second sweeps. Focused Sweep defaults are 90 seconds / 100 m / 0.75-second sweeps.
-- The requester phone link and loiter aircraft now use the same host/server-authoritative duration. A one-time migration updates untouched legacy local timing defaults (`45/1` and `30/0.5`) without replacing custom values.
-- Fika recon sessions are requester-owned: a human host cannot view a client's feed and a dedicated headless host creates no feed.
-- Matching server defaults, dashboard ranges, and packaged config templates are updated.
+The anonymous GitHub releases HTML can omit the newer entries. An authenticated
+GitHub release query on 2026-07-27 confirmed v1.0.8 and its matching asset.
 
-The current code and documentation changes are build-verified and installed as one matched local test set in `D:\SPT`, but they have not been live-raid tested, packaged, committed, or published.
+Next-release identity:
 
-## Published Release
+- Display: **Tylevo's Tactical Services Control v1.1.0 Public Beta**
+- MSBuild, plugin, server, assembly, and file version: `1.1.0` / `1.1.0.0`
+- Intended tag: `v1.1.0`
+- Intended archive: `Tylevo.TacticalServicesControl-v1.1.0-SPT4.0.13.zip`
+- Target: SPT `4.0.13`
 
-GitHub release:
+No v1.1.0 tag, release, Forge update, or public archive exists yet. All four
+runtime DLLs must be rebuilt and distributed together because the Fika
+assemblies reference the Core/Interop assembly versions.
 
-`https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases/tag/v0.9.8`
+## Stabilization Work Completed
 
-Installer:
+### Phase 1 - Persistent Authorization State
 
-`https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases/download/v0.9.8/Tylevo.TacticalServicesControl-v1.0.8-SPT4.0.13.zip`
+- Authenticated snapshots distinguish omitted player state from an
+  authoritative empty ledger.
+- Stored counts hydrate at raid start and can refresh an already-open deploy
+  phone.
+- A limit-denied purchase can still return the authoritative ledger state.
+- Persistent use goes through server-backed begin, commit, and refund rather
+  than decrementing only a client mirror.
+- Player authorization counts remain per-profile and are not broadcast in
+  host-global Fika settings.
 
-Local matching installer:
+### Phase 1A - Pre-Raid Store
 
-`C:\Users\tylev\Desktop\RaidOps\dist\Tylevo.TacticalServicesControl-v1.0.8-SPT4.0.13.zip`
+- **TSC UPLINK** appears under **Records**, or under **Character** when Records
+  is unavailable, without overlapping or displacing menu entries incorrectly.
+- The standalone store uses the authenticated SPT session and does not create
+  raid hands, cameras, or phone objects.
+- It displays server prices, availability, stash balance, stored counts, and
+  the configured storage limit.
+- Purchases require an explicit confirmation with service, price, and
+  projected balance.
+- Request IDs make retries idempotent; quote changes fail before debit.
+- The Dashboard button derives `/tsc/admin` from the active SPT backend host.
 
-Verified release facts:
+### Phase 2 - Transactional Fika Requests
 
-- SHA256: `C3C0390CC6641E5F82C99C3E57D8AEDA358FD0278E667E6616E53963EB2FCB8D`
-- Size: `41,236,560` bytes, about 39.33 MiB.
-- Archive roots: `BepInEx` and `SPT` only.
-- File entries: 172.
-- Asset bundles: 8.
-- GitHub release is published, not a draft, and not marked prerelease.
+- Transport delivery is no longer treated as gameplay acceptance.
+- Requests, acceptance, rejection, commit, refund, tracer, and replay state are
+  keyed by `SupportRequestId`.
+- Requester visuals and payment settlement wait for the raid authority's
+  accepted transition.
+- Rejection, timeout, cancellation, and executor-start failure converge on one
+  idempotent settlement path.
+- Solo and human-host A-10 retain the original Arys runtime/ballistic executor.
 
-The Forge page was still serving the 1.0.7 release when this handoff was written. The new 1.0.8 main-description draft has not been pasted into Forge yet.
+### Phase 3 - UAV Phone And Requester Ownership
 
-## What Is Implemented
+- UAV duration, range, scan cadence, requester identity, and parent request
+  identity are authority-originated.
+- The requester phone link and loiter aircraft use one contract lifetime.
+- Phone equip/release, release during asynchronous equip, death, raid end,
+  render textures, input state, and weapon restoration have explicit cleanup.
+- `Phone` mode raises the physical Uplink while the configurable radar key is
+  held. `HUD` mode renders only the scanner square in a selected corner.
+- Dedicated headless hosts and non-requesters create no local recon UI.
+- `K` and `J` reveal the phone directly in its upright presentation after the
+  concealed EFT equip transaction.
 
-### Uplink Purchase And Deployment
+### Phase 4 - Extraction Timing
 
-- The TerraGroup TSC Uplink is the primary interface for both purchasing and deploying support.
-- `U` opens purchase mode.
-- `K` opens deployment mode.
-- Purchase categories use `1`-`3`; standard/upgraded variants use `1` and `2` inside the category.
-- Deploy mode lists only authorizations the player currently owns.
-- Deploy selection uses `1`-`6`, then `LMB` or `Enter`.
-- Closing deploy mode with `RMB`, `Backspace`, or `Escape` does not consume an authorization.
-- A-10 and UH-60 target designation is camera-based. The rangefinder is no longer required.
-- `Mouse 2`/middle mouse or `Enter` confirms targeting steps. `Alt + RMB` or `Backspace` cancels.
-- The old YY radial and rangefinder flow remains behind the hidden legacy setting and is disabled by default.
+- Standard Extraction and Priority Exfil carry separate dispatch, wait,
+  extraction-countdown, and animation-speed values.
+- Both countdowns and dispatch values cross the server and Fika settings
+  contracts.
+- The extraction point keeps the selected service type when initialized and
+  when a player leaves/re-enters the zone.
+- The dashboard/config path rejects unsafe wait/countdown combinations.
+- Completion timing is derived from the configured service snapshot instead of
+  one fixed estimate.
 
-### Phone Presentation
+### Additional Candidate Features
 
-- Phone auto zoom remains available for authorization purchase screens and defaults to FOV 45.
-- Deploy-menu and held UAV-radar phone views preserve the current raid FOV with no deliberate zoom.
-- Their landscape equip animation remains active but concealed until EFT completes the hand transaction; the first visible frame is the upright phone, with the free right arm tucked below view.
-- Default horizontal framing is `-0.004`.
-- Default vertical framing is `0.09`.
-- Authorization-screen FOV and phone framing are adjustable in F12. Deploy/radar views keep raid FOV unchanged, and any changed presentation state is restored when the phone is stowed.
-- One-time migration flags update untouched old defaults while preserving custom user values.
-- Purchase, deploy, and spotter-confirm keybinds are configurable in F12.
+- Server-authoritative RUB, USD, and EUR payment across carried cash, stash
+  debit, pre-raid purchase, journal retry/replay, and Fika synchronization.
+- Currency changes do not convert numeric prices; accepted/prepared requests
+  retain the currency in which they were quoted.
+- A scanner-only corner HUD alternative to the physical radar phone.
+- Main-menu styling, layout, confirmation, and stash/control alignment approved
+  through iterative user screenshots.
 
-### Available Services
+### Phase 5 - Regression And Build Integration
 
-- A-10 Strafe.
-- A-10 Double Pass.
-- UH-60 Black Hawk Extraction.
-- Priority Exfil.
-- UAV Recon.
-- Focused Sweep.
+- A proprietary-free regression runner covers authorization presence, ledger
+  lifecycle, two-profile isolation, request acceptance/rejection/timeout,
+  duplicate packets, teardown, settings round trips, tuning precedence, and
+  extraction timing.
+- Core, Server, Fika Interop, Fika bootstrap, and regression projects are all
+  in the normal solution path.
+- CI checks JSON and JavaScript syntax, runtime source wiring, solution
+  mappings, package layout, tracked-file hygiene, whitespace, and tests without
+  redistributing EFT/SPT/Fika/WTT assemblies.
+- Local verification builds the full solution with deployment disabled.
 
-Single and upgraded service variants remain distinct through purchase, storage, selection, consumption, commit, and refund.
+### Phase 6 - Release Reconciliation
 
-### Payments And Authorization Ledger
+- One v1.1.0 identity now drives public naming and all binary metadata.
+- Published v1.0.8 release notes are preserved; v1.1.0 release/Forge drafts are
+  separate and explicitly unpublished.
+- The release archive contract is exactly two top-level roots:
+  `BepInEx/` and `SPT/`.
+- The obsolete legacy config template is no longer shipped, while migration of
+  an existing legacy filename remains supported.
+- The canonical config template, server defaults, and dashboard ranges have
+  been reconciled.
+- User docs distinguish implemented/automated behavior from open live
+  acceptance work.
 
-- Carried roubles, stash roubles, and hybrid/preferred payment modes are implemented.
-- `PreferStashThenCarried` falls back to carried roubles when stash payment cannot complete.
-- Stash purchases are serialized and transactional.
-- Failed profile saves or authorization persistence restore the inventory state.
-- Purchase requests accept plain, zlib, and deflate bodies and reject malformed payloads cleanly.
-- Server-calculated prices are authoritative; client prices are not trusted.
-- The authorization ledger uses atomic saves, backups, corrupt-file preservation, and mutation rollback.
-- Duplicate grants, wrong-variant consumption, authorization count drift, and authorizations not disappearing after use were addressed.
+## Authority Boundaries
 
-### Dashboard And Settings
+The SPT HTTP server owns configuration, authenticated profile payment, and the
+persistent authorization ledger. It must not simulate raid damage.
 
-- The SPT server owns configuration, payment, and authorization-ledger operations.
-- The local dashboard is at `https://127.0.0.1:6969/tsc/admin`.
-- Remote access is disabled by default and should never be publicly port-forwarded.
-- In Fika, host/headless settings are authoritative during the connected raid and sync to clients.
-- Dashboard/payment/config work is available in solo SPT; Project Fika is not required for base mod loading.
+The active Unity/Fika raid-world authority owns gameplay:
 
-### Fika Authority Model
+- Solo: original Arys visual/runtime A-10 executor and authoritative ballistics.
+- Human Fika host: the same original authoritative path.
+- Fika client: accepted visuals only; never authoritative support damage.
+- Dedicated Fika headless: separately gated experimental damage executor.
+- No valid executor: deterministic rejection and refund; never elect a random
+  client.
 
-Do not move raid damage simulation into the SPT HTTP server. The server handles config, payment, and the ledger; the active Unity/Fika raid-world authority handles gameplay damage.
+Keep requester attribution separate from projectile/damage ownership. Preserve
+`RequesterProfileId` and `SupportRequestId` across every relevant packet.
 
-A-10 executor selection is explicit:
+Dedicated-headless A-10 remains **experimental**. Do not describe it as
+equivalent to the human-host ballistic path, and do not remove the gate until
+matched-version live testing proves execution, duplicate protection,
+authorization settlement, damage attribution, and teardown.
 
-- Single-player: `A10VisualRuntimeExecutor`, original Arys-style authoritative runtime/ballistic path.
-- Human Fika host: `A10VisualRuntimeExecutor`, authoritative runtime/ballistic path.
-- Fika client: visual-only after authority acceptance; never authoritative damage.
-- Dedicated Fika headless: `A10HeadlessDamageExecutor` only while headless mode is `ExperimentalDamageOnly`.
-- If no raid authority exists, the request is rejected/refunded. A random client is not elected.
+## Configuration And Upgrade Contract
 
-Every networked support request has a `SupportRequestId`. Host/headless in-flight and completed request gates prevent duplicate packets from firing or consuming twice. The ID is carried through A-10 request, accepted support, tracer, and replay context.
+- Product version: `1.1.0`; config schema: `3`; ledger schema: `5`.
+- Product-version changes do not force data-schema changes.
+- `config/tsc-config.json` is the only new-install template.
+- Existing `config/raidops-firesupport.json` files migrate when the canonical
+  file is absent.
+- Existing schema-less/schema-1 extraction settings migrate to the historical
+  effective standard dispatch delay.
+- Pre-currency configs migrate to RUB without converting their saved numeric
+  prices.
+- Current-schema invalid currency values fail closed.
+- Back up profiles and custom `tsc-config.json` before acceptance testing.
 
-Fika clients wait for authority acceptance before starting the A-10 visual pass. Tracer and impact playback is keyed by request ID, seed, and pass and is scheduled against the client-visible firing pass.
+Upgrade behavior from the published v1.0.8 config and ledger is still a Phase 7
+test gate.
 
-Dedicated-headless A-10 remains experimental. Its fallback can use the active EFT health controller locally or Fika damage packets for remote human targets. This is intentionally gated and must not be described as identical to the original human-host ballistic path.
+## Verification Evidence
 
-### UAV, Audio, Stability, And Compatibility
+Completed:
 
-- UAV radar defaults to the physical Uplink phone. Hold the configurable radar key (`J` by default) to raise it while walking or sprinting, and release it to restore the previous weapon; the recon timer continues while the phone is stowed. F12 can instead select a persistent requester-local HUD and one of four screen corners.
-- The old mismatched corner HUD and its AssetBundle loading remain disabled. HUD mode displays the exact phone radar render texture, while the shared scan/timer backend continues supplying pooled contact snapshots.
-- Standard UAV defaults are 480 seconds, 200 m, and 5-second sweeps. Focused Sweep defaults are 90 seconds, 100 m, and 0.75-second sweeps.
-- Fika host authority reads the server/dashboard duration before legacy local config, so the requester recon link and loiter aircraft use one lifetime.
-- Only one local recon link can be active at a time; overlapping or duplicate activation does not extend or mutate the current link.
-- Fika recon links are requester-only. Human hosts do not receive a client's feed, nonrequester clients do not receive it, and dedicated headless hosts create none.
-- Phone release is latched until EFT's asynchronous `SpawnController` callback completes, preventing a release-during-equip hand-swap race.
-- The horizontal equip remains fully animated for EFT but its renderers are temporarily forced off; they are restored only after the safe upright pose is sampled, or during teardown if the session ends early.
-- The UAV radar AssetBundle double/concurrent-load race was fixed.
-- The loud A-10 strike flyover was restored in `A10Behaviour.PlayStrikeFlyoverAudio()`.
-- UAV loiter audio remains quiet and non-looping; keep these audio paths separate.
-- A-10 tracer and marker-anchored impact replay were added for Fika clients.
-- `SimpleSpinBlur`, pool, UI/controller, and phone camera teardown null paths were hardened.
-- UH-60 extraction trigger cleanup and Fika extraction routing were hardened against stuck black-screen exits.
-- Manimal HackerMod phone-bundle coexistence was added by reusing the complete compatible phone bundle set when present.
-- Fika integration startup/shutdown and retained duplicate-request state are bounded across repeated raids.
+- 35 regression tests passed.
+- 20 consecutive test-suite repetitions passed: 700/700 executions.
+- The deploy-suppressed `SPT-4.0 Release` solution build passed for all five
+  projects with zero errors.
+- Remaining warnings are known obsolete InventoryController usage and SPT 4.1
+  migration/constructor-capture warnings.
+- Phase-specific validation matrices exist under `docs/validation/`.
 
-## Important Boundaries
+User-reported smoke coverage:
 
-- Preserve the original Arys A-10 path for solo and non-headless human hosts.
-- Keep dedicated-headless A-10 separately gated and labeled experimental.
-- Never let a Fika client execute authoritative support damage.
-- Never make the SPT HTTP/config server simulate raid damage.
-- Preserve `RequesterProfileId` and `SupportRequestId` in network contracts.
-- Keep requester attribution separate from projectile/damage ownership.
-- Do not remove tracer/impact replay while changing damage logic.
-- Do not create HUD or phone presentation objects on dedicated headless.
-- Do not install old SamSWAT Fire Support or Arys Reloaded alongside TSC; TSC is the derivative replacement.
-- Do not touch `D:\SPT` unless the user explicitly asks for a live install.
-- Do not publish, tag, upload, or replace release assets unless the user explicitly asks.
+- Solo SPT is generally working.
+- The pre-raid store and confirmation flow work in the tested solo profile.
+- Main-menu placement and styling were visually approved.
+- The direct upright `K`/`J` phone draw fix was confirmed.
 
-## Live SPT Installation
+Still open:
 
-On July 13, 2026, the current UAV phone-radar work was built and installed into `D:\SPT` as one matched local test set:
+- Human-host and Fika-client persistent-authorization matrices.
+- Two-client per-profile isolation.
+- Duplicate/lost/late Fika acceptance and settlement in live raids.
+- Full requester-owned UAV Phone/HUD lifecycle and teardown matrix.
+- Distinct standard/priority extraction timing in solo and Fika.
+- RUB/USD/EUR live carried/stash boundary cases.
+- Dedicated-headless duplication, authorization, damage, and teardown testing.
+- Clean-install and v1.0.8-upgrade smoke tests from the final v1.1.0 archive.
+- A closed per-file release inventory. The current schema-2 package manifest
+  still discovers both `CopyToOutput` trees recursively.
 
-- Core client DLL: `0.9.8.0`
-- Fika Interop DLL: `0.9.8.0`
-- Fika DLL: `0.9.8.0`
-- Server DLL: `0.9.8.0`
-- All four live DLL SHA-256 hashes match their fresh build outputs.
-- No duplicate internal-name Core or Fika DLLs are present in the TSC plugin folder.
-- The `K` deploy and held `J` radar paths preserve the current raid FOV; their phone framing is still applied and restored independently.
-- Held `J` now ignores unrelated movement/sprint keys, and the deploy/radar landscape equip is concealed before the upright reveal.
-- The Fika authority duration path now matches the requester link to the loiter aircraft lifetime.
-- The customized primary config was preserved with only the UAV values changed to 480 seconds / 200 m / 5 seconds and Focused Sweep to 90 seconds / 100 m / 0.75 seconds.
-- The legacy config and admin token were left unchanged.
+Do not convert an automated pass into a claim of live multiplayer acceptance.
 
-The complete pre-install client/server copy is at `C:\Users\tylev\Desktop\RaidOps\install_backups\TSC-before-uav-phone-20260713-091746`. The prior zooming Core DLL is at `C:\Users\tylev\Desktop\RaidOps\install_backups\TSC-core-before-nozoom-20260713-093459`. The immediately previous Core, Fika Interop, and client config from before the lifetime/movement/upright refinement are at `C:\Users\tylev\Desktop\RaidOps\install_backups\TSC-before-uav-sync-walk-vertical-20260713-095746`. This is a local test installation, not a packaged or published release, and it still requires live-raid validation.
+## Package Contract
 
-## Build And Verification
+The v1.1.0 archive must:
 
-Run builds sequentially because parallel builds can lock shared Core `obj` outputs:
+- Be created from a clean source state and a new empty staging directory.
+- Contain only top-level `BepInEx/` and `SPT/`.
+- Install into:
+  - `BepInEx/plugins/Tylevo.TacticalServicesControl/`
+  - `SPT/user/mods/Tylevo.TacticalServicesControl/`
+- Contain exactly four matched TSC DLLs and eight expected asset bundles.
+- Exclude `.gitkeep`, symbols, logs, profiles, storage, caches, build outputs,
+  source prompts, old archives, and dependency assemblies.
+- Keep WTT Common Lib, Fika, EFT/SPT, UnityToolkit, and other proprietary or
+  separately distributed dependencies out of the archive.
+- Be validated both as a stage directory and again after ZIP extraction.
+
+Root-level README, changelog, license, and release-note files are not part of
+the installer. Publish those through the repository, GitHub release, and Forge.
+
+The Phase 6 checker enforces roots, destinations, required files, exact
+DLL/bundle counts, and forbidden content. Its recursive `mirrors` are not the
+final release inventory because a new file below a mirrored source tree is
+automatically included in the resolved set. Phase 7 must replace that discovery
+with a reviewed flat per-file inventory and reject unreviewed or untracked
+source extras before staging.
+
+## Verification Commands
+
+CI-safe:
 
 ```powershell
-dotnet build .\SamSWAT.FireSupport.ArysReloaded.sln -c "SPT-4.0 Release"
-dotnet build .\project\SamSWAT.FireSupport.Fika.Interop\SamSWAT.FireSupport.Fika.Interop.csproj -c "SPT-4.0 Release"
-dotnet build .\project\SamSWAT.FireSupport.Fika\SamSWAT.FireSupport.Fika.csproj -c "SPT-4.0 Release"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\verify-ci.ps1
 ```
 
-All three passed for the published 1.0.8 source. The remaining warnings were existing obsolete InventoryController calls and SPT 4.1 ConfigServer migration/constructor-capture warnings; there were no errors.
-
-The normal build targets contain post-build hooks that deploy into `$(SptDir)` and create a release ZIP. The current project files support `SkipTscDeploy=true` so full builds can run without modifying the live install:
+Full local, deploy-suppressed:
 
 ```powershell
-dotnet build .\project\SamSWAT.FireSupport\SamSWAT.FireSupport.Core.csproj -c "SPT-4.0 Release" -p:SptDir=D:\SPT\ -p:SkipTscDeploy=true
-dotnet build .\project\SamSWAT.FireSupport.Server\SamSWAT.FireSupport.Server.csproj -c "SPT-4.0 Release" -p:SptDir=D:\SPT\ -p:SkipTscDeploy=true
-dotnet build .\project\SamSWAT.FireSupport.Fika.Interop\SamSWAT.FireSupport.Fika.Interop.csproj -c "SPT-4.0 Release" -p:SptDir=D:\SPT\ -p:SkipTscDeploy=true -p:BuildProjectReferences=false
-dotnet build .\project\SamSWAT.FireSupport.Fika\SamSWAT.FireSupport.Fika.csproj -c "SPT-4.0 Release" -p:SptDir=D:\SPT\ -p:SkipTscDeploy=true -p:BuildProjectReferences=false
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\verify-local.ps1 `
+  -SptDir "C:\Path\To\SPT" `
+  -SptSharedAssembliesDir "C:\Path\To\SPT Assemblies"
 ```
 
-All four deploy-suppressed builds pass for the current UAV phone-radar work, and their matched 0.9.8.0 outputs are installed locally in `D:\SPT`. Source/output hashes match all four live DLLs. Live validation is still required for walking/sprinting while held, concealed upright reveal timing, rapid hold/release, prior-weapon/FOV restoration, repeated opens, matching phone/aircraft expiry, inventory/death/raid teardown, radar orientation/cadence, and the full Fika requester matrix. `git diff --check` passes.
+Package source/layout:
 
-For any new support feature, test at minimum:
-
-1. Solo purchase, deploy, target, consume, and refund behavior.
-2. Human-hosted Fika with one client.
-3. Duplicate packet/request ID behavior.
-4. Dedicated-headless request rejection when disabled.
-5. Dedicated-headless behavior when experimental mode is enabled.
-6. Requester-only HUD/UI behavior.
-7. Raid end, phone stow, disconnect, and repeated-raid teardown.
-8. Full tester ZIP contents, required DLL hashes, two top-level roots, and all eight existing bundles.
-
-## Good Next Feature Areas
-
-These are not implemented yet and should remain separate from shipped behavior:
-
-- Mortar or artillery support using a proven EFT/Fika projectile or shelling API.
-- Remote third-person phone/uplink visuals for other Fika players.
-- Purpose-built Unity phone animations and improved deploy poses.
-- Phone inventory-inspect model/presentation polish.
-- Additional aircraft, helicopter, recon, or extraction service types.
-- Broader service balancing after the next feature is selected.
-
-Start a new feature by defining its solo authority, human-host authority, headless behavior, client visuals, packet identity/deduplication, payment/authorization behavior, cancellation/refund behavior, and teardown before editing code.
-
-## Ready-To-Paste Next Chat Prompt
-
-```text
-Continue development of Tylevo's Tactical Services Control from the current source-of-truth repo:
-
-C:\Users\tylev\Desktop\RaidOps\build_source\Tylevo.TacticalServicesControl-github-1.0.7
-
-Read docs/HANDOFF.md first, then README.md, docs/release-notes-v1.0.8.md, CHANGELOG.md, docs/fika.md, docs/dashboard.md, and docs/known-issues.md.
-
-The published release is v1.0.8 Public Beta, tag/internal version v0.9.8, at commit b7835ea. There is newer uncommitted, compile-verified UAV work: hold J (configurable) raises a live physical-phone radar while movement keys remain usable, release restores the weapon, the landscape equip is concealed before an upright/no-right-arm reveal, the old corner HUD is disabled, the phone and loiter aircraft share the authority duration, and the recon timer keeps running while stowed. Preserve the phone purchase/deploy workflow, transactional payments and authorization ledger, explicit Fika A-10 authority model, SupportRequestId duplicate protection, requester-owned UAV feed, tracer/impact replay, UH-60 extraction fixes, HackerMod compatibility, and teardown safety.
-
-Important architecture boundary: the SPT HTTP server handles config/payment/ledger only. Unity/Fika raid authority handles gameplay damage. Solo and human Fika hosts keep the original Arys A-10 path, clients are visual-only, and dedicated-headless A-10 remains gated and experimental. Do not elect random clients or move raid damage into the HTTP server.
-
-There are uncommitted code and documentation changes for the UAV phone radar plus the prior README.md, docs/forge-description-v1.0.8.md, docs/HANDOFF.md, and docs/roadmap.md work. Do not discard them. A matched 0.9.8.0 local test build is installed in D:\SPT with the latest focused backup at C:\Users\tylev\Desktop\RaidOps\install_backups\TSC-before-uav-sync-walk-vertical-20260713-095746 and the earlier full backup at C:\Users\tylev\Desktop\RaidOps\install_backups\TSC-before-uav-phone-20260713-091746. Do not replace or otherwise modify the live install unless I explicitly ask.
-
-I want to implement more features next. First inspect the handoff and current code around the feature I name, explain the smallest compatible design, then implement it end to end with focused tests and all three required release builds. Do not publish, tag, package, or touch D:\SPT unless I explicitly ask.
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\Test-PackageLayout.ps1 -ValidateSourceInputs
 ```
+
+Release identity:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\Test-ReleaseMetadata.ps1
+```
+
+## Phase 7 Next Steps
+
+1. Start from a clean worktree at the reviewed Phase 6 checkpoint.
+2. Run CI-safe and full local deploy-suppressed verification.
+3. Replace recursive mirror discovery with a reviewed flat per-file inventory
+   that rejects source extras, then stage all four freshly built `1.1.0.0` DLLs
+   and required assets into a new empty directory.
+4. Validate the stage, create a new archive, extract it into another empty
+   directory, and validate again.
+5. Record component versions/hashes, archive hash/size/counts, and clean logs.
+6. Run the published-v1.0.8 upgrade and clean-install smoke tests only with
+   explicit approval to modify a test SPT installation.
+7. Complete the critical solo/Fika/headless matrices or clearly mark remaining
+   blockers before requesting approval to publish.

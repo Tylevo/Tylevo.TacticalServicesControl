@@ -1,6 +1,10 @@
 {
-  "schemaVersion": 1,
-  "packageRoots": [
+  "schemaVersion": 2,
+  "archiveRoots": [
+    "BepInEx",
+    "SPT"
+  ],
+  "installRoots": [
     "BepInEx/plugins/Tylevo.TacticalServicesControl",
     "SPT/user/mods/Tylevo.TacticalServicesControl"
   ],
@@ -49,7 +53,6 @@
     "SPT/user/mods/Tylevo.TacticalServicesControl/Tylevo.TacticalServicesControl.Server.dll",
     "SPT/user/mods/Tylevo.TacticalServicesControl/bundles/raidops/uav_uplink_container.bundle",
     "SPT/user/mods/Tylevo.TacticalServicesControl/bundles/raidops/uav_uplink_loot.bundle",
-    "SPT/user/mods/Tylevo.TacticalServicesControl/config/raidops-firesupport.json",
     "SPT/user/mods/Tylevo.TacticalServicesControl/config/tsc-config.json",
     "SPT/user/mods/Tylevo.TacticalServicesControl/web/app.mjs",
     "SPT/user/mods/Tylevo.TacticalServicesControl/web/index.html",

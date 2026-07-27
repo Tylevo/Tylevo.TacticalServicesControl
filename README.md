@@ -40,10 +40,21 @@ Do not place the ZIP contents inside an extra nested folder.
 
 ## How To Use
 
+### Pre-Raid Store
+
+1. From the main menu, open **TSC UPLINK** directly below **Records**. If the Records entry is unavailable, TSC places itself below **Character** instead.
+2. Wait for the authenticated PMC stash and authorization ledger to load.
+3. Select **Buy** for a service, review the service, price, and projected balance in the confirmation dialog, then choose **Confirm Buy**. Cancelling sends no purchase request.
+4. Use **Dashboard** to open the active SPT server's local TSC Dashboard.
+
+Pre-raid purchases require persistent authorizations and a server-backed stash payment source. They remain available when the same PMC enters a raid.
+
+### In Raid
+
 1. Bring the **TerraGroup TSC Uplink** into raid.
 2. Press `U` to open the Uplink in purchase mode.
 3. Press `1`, `2`, or `3` to open Extraction, Fire Support, or UAV Recon. Inside a category, press `1` for the standard service or `2` for its upgraded variant when available.
-4. Press `Enter` on the confirmation screen to pay with the configured carried/stash rouble source. `RMB` returns to the previous screen and `Escape` closes the phone.
+4. Press `Enter` on the confirmation screen to pay with the configured currency and wallet source. `RMB` returns to the previous screen and `Escape` closes the phone.
 5. When you are ready to use an authorization, press `K` to open the Uplink in deployment mode. Only services you currently own are listed.
 6. Press `1`-`6` to select a service, then press `LMB` or `Enter` to deploy it. `RMB`, `Backspace`, or `Escape` stows the phone without spending the authorization.
 7. A-10 and UH-60 services use camera-based target designation. Confirm each targeting step with `Mouse 2` (middle mouse) or `Enter`; cancel with `Alt + RMB` or `Backspace`.
@@ -62,6 +73,7 @@ The dashboard is localhost-only by default. Do not port-forward it.
 ## Features
 
 - TerraGroup TSC Uplink item.
+- Authenticated pre-raid authorization store with an explicit purchase confirmation.
 - Phone-based support authorization flow.
 - Phone-based support deployment and camera-ray target designation without requiring the rangefinder.
 - PhoneAuthorizations and Hybrid payment modes.
@@ -105,10 +117,15 @@ See `docs/dashboard.md`, `PRIVACY.md`, and `SECURITY.md`.
 - Phone inventory inspect model may still need polish.
 - Mortar/artillery support is planned but not included.
 - Dedicated-headless Fika A-10 damage is experimental and remains separately gated from the original single-player/human-host path.
+- The full human-host, Fika-client, and dedicated-headless live acceptance matrices for the new transactional request flow are not yet complete.
+- If both authority-acceptance result paths and cancellation settlement are lost beyond their bounded waits, an authority-executed service can still be refunded and become free.
+- Commit/refund retries are held in memory. A client crash, permanent logout, or backend outage that outlasts pending expiry can refund an already delivered service.
 - Remote third-person phone animation sync is planned but not included.
 - Public beta: back up profiles before testing payment modes.
 
-Stash rouble payment and non-host A-10 tracer visibility are not listed as known issues; both are considered implemented and must be regression-tested before public upload.
+Stash payment and non-host A-10 tracer visibility are implemented, but the
+current automated suite does not exercise either path end to end. Keep both in
+the live multiplayer acceptance matrix before public upload.
 
 ## Credits
 

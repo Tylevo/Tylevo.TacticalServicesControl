@@ -145,10 +145,11 @@ local human-host path is explicitly peerless and does not use this remote
 identity check.
 
 Commit and refund retry the same mutation ID for transient HTTP, invalid
-response, ledger-save, and session-transition failures. The ledger's schema-4
-authorization-use records make terminal state independent of the capped audit
-history. Restoring an older Server DLL requires restoring the ledger copy that
-predates schema 4; a DLL-only downgrade is unsupported.
+response, ledger-save, and session-transition failures. The current schema-5
+ledger retains the authorization-use records introduced in schema 4, making
+terminal state independent of the capped audit history. Restoring an older
+Server DLL requires restoring a ledger backup compatible with that DLL; a
+DLL-only downgrade is unsupported.
 
 ## Deliberate Boundaries
 
@@ -162,9 +163,10 @@ predates schema 4; a DLL-only downgrade is unsupported.
   `AuthorityCancelUnsettled` currently causes a refund even when the authority
   already accepted/executed. A late accepted replay can then register after the
   original waiter was removed.
-- `StartUavLoiterPacket` remains a presentation side channel without the parent
-  request identity. The paid UAV request and requester overlay are
-  identity-bound; extending identity to the aircraft-loiter packet is deferred.
+- `StartUavLoiterPacket` now carries the parent `SupportRequestId` and
+  `RequesterProfileId`, so aircraft presentation, the paid UAV request, and the
+  requester overlay share one identity. Live duplicate/replay and teardown
+  validation is still required across human-host and dedicated-headless raids.
 - Dedicated-headless A-10 preflights before acceptance and executes immediately
   after accepted delivery. A live test must still prove that no world-state
   transition between those points suppresses an accepted pass and that the

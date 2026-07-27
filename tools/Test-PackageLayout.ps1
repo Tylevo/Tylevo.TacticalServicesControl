@@ -114,18 +114,50 @@ if (-not (Test-Path -LiteralPath $ManifestPath -PathType Leaf)) {
 
 $resolvedSourceRoot = (Resolve-Path -LiteralPath $SourceRoot).Path
 $manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
-if ($manifest.schemaVersion -ne 1) {
+if ($manifest.schemaVersion -ne 2) {
     throw "Unsupported package allowlist schema '$($manifest.schemaVersion)'."
 }
 
-$roots = @(
-    $manifest.packageRoots |
-        ForEach-Object { Normalize-PackagePath -Value ([string] $_) -Description "Package root" }
+$archiveRoots = @(
+    $manifest.archiveRoots |
+        ForEach-Object { Normalize-PackagePath -Value ([string] $_) -Description "Archive root" }
 )
 
-$rootSet = New-OrdinalIgnoreCaseSet
-foreach ($root in $roots) {
-    Assert-AddUnique -Set $rootSet -Value $root -Description "Package roots"
+$archiveRootSet = New-OrdinalIgnoreCaseSet
+foreach ($root in $archiveRoots) {
+    if ($root.IndexOf("/", [StringComparison]::Ordinal) -ge 0) {
+        throw "Archive root must be one top-level path segment: '$root'."
+    }
+
+    Assert-AddUnique -Set $archiveRootSet -Value $root -Description "Archive roots"
+}
+
+$installRoots = @(
+    $manifest.installRoots |
+        ForEach-Object { Normalize-PackagePath -Value ([string] $_) -Description "Install root" }
+)
+
+$installRootSet = New-OrdinalIgnoreCaseSet
+foreach ($root in $installRoots) {
+    if (-not (Test-IsUnderPackageRoot -Entry $root -Roots $archiveRoots)) {
+        throw "Install root '$root' is outside the declared archive roots."
+    }
+
+    Assert-AddUnique -Set $installRootSet -Value $root -Description "Install roots"
+}
+
+foreach ($archiveRoot in $archiveRoots) {
+    $hasInstallRoot = $false
+    foreach ($installRoot in $installRoots) {
+        if (Test-IsUnderPackageRoot -Entry $installRoot -Roots @($archiveRoot)) {
+            $hasInstallRoot = $true
+            break
+        }
+    }
+
+    if (-not $hasInstallRoot) {
+        throw "Archive root '$archiveRoot' has no declared install root."
+    }
 }
 
 $allowed = New-OrdinalIgnoreCaseSet
@@ -133,8 +165,8 @@ $mirrorEntries = New-OrdinalIgnoreCaseSet
 foreach ($mirror in $manifest.mirrors) {
     $sourceRelative = Normalize-PackagePath -Value ([string] $mirror.source) -Description "Mirror source"
     $destination = Normalize-PackagePath -Value ([string] $mirror.destination) -Description "Mirror destination"
-    if (-not (Test-IsUnderPackageRoot -Entry $destination -Roots $roots)) {
-        throw "Mirror destination '$destination' is outside the declared package roots."
+    if (-not (Test-IsUnderPackageRoot -Entry $destination -Roots $installRoots)) {
+        throw "Mirror destination '$destination' is outside the declared install roots."
     }
 
     $sourceDirectory = Join-Path $resolvedSourceRoot $sourceRelative.Replace("/", [IO.Path]::DirectorySeparatorChar)
@@ -161,8 +193,8 @@ foreach ($mirror in $manifest.mirrors) {
 
 foreach ($generatedFile in $manifest.generatedFiles) {
     $entry = Normalize-PackagePath -Value ([string] $generatedFile) -Description "Generated package path"
-    if (-not (Test-IsUnderPackageRoot -Entry $entry -Roots $roots)) {
-        throw "Generated file '$entry' is outside the declared package roots."
+    if (-not (Test-IsUnderPackageRoot -Entry $entry -Roots $installRoots)) {
+        throw "Generated file '$entry' is outside the declared install roots."
     }
 
     Assert-AddUnique -Set $allowed -Value $entry -Description "Allowlist"
@@ -191,8 +223,8 @@ function Assert-EntryPassesSecurityRules {
         [string] $Entry
     )
 
-    if (-not (Test-IsUnderPackageRoot -Entry $Entry -Roots $roots)) {
-        throw "Entry '$Entry' is outside the declared package roots."
+    if (-not (Test-IsUnderPackageRoot -Entry $Entry -Roots $archiveRoots)) {
+        throw "Entry '$Entry' is outside the declared archive roots."
     }
 
     $lowerEntry = $Entry.ToLowerInvariant()
@@ -278,6 +310,21 @@ elseif ([IO.Path]::GetExtension($resolvedPackagePath).Equals(".zip", [StringComp
 }
 else {
     throw "Package path must be a directory or .zip archive: '$resolvedPackagePath'."
+}
+
+$actualArchiveRoots = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+foreach ($entry in $actual) {
+    [void] $actualArchiveRoots.Add($entry.Split("/")[0])
+}
+
+if ($actualArchiveRoots.Count -ne $archiveRoots.Count) {
+    throw "Package top-level roots are '$([string]::Join(", ", @($actualArchiveRoots | Sort-Object)))'; expected exactly '$([string]::Join(", ", $archiveRoots))'."
+}
+
+foreach ($archiveRoot in $archiveRoots) {
+    if (-not $actualArchiveRoots.Contains($archiveRoot)) {
+        throw "Package is missing required top-level root '$archiveRoot'."
+    }
 }
 
 foreach ($entry in $actual) {

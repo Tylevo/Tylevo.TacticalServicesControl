@@ -45,10 +45,10 @@ const serviceMetaRules = [
 const sectionIntros = {
 	main: "Host identity, revisioning, and request pacing.",
 	payment: "Select which wallet supplies the configured payment currency.",
-	"service-toggles": "Enable or lock service packages before players can purchase them.",
-	"recon-services": "UAV and focused sweep scan timing, range, and refresh behavior.",
-	"extraction-services": "UH-60 dispatch, wait, arrival, and priority exfil tuning.",
-	"fire-support": "A-10, double-pass, and fire support behavior.",
+	services: "Enable or lock service packages before players can purchase them.",
+	recon: "UAV and focused sweep scan timing, range, and refresh behavior.",
+	extraction: "UH-60 dispatch, wait, arrival, and priority exfil tuning.",
+	fire: "A-10, double-pass, and fire support behavior.",
 	diagnostics: "Live route and server state."
 };
 
@@ -288,16 +288,16 @@ function renderSections() {
 }
 
 function shouldUseServiceDeck(section) {
-	return section.id === "service-pricing" ||
-		section.id === "service-toggles" ||
-		section.id === "recon-services" ||
-		section.id === "extraction-services" ||
-		section.id === "fire-support";
+	return section.id === "pricing" ||
+		section.id === "services" ||
+		section.id === "recon" ||
+		section.id === "extraction" ||
+		section.id === "fire";
 }
 
 function getSectionKicker(section) {
 	if (section.id?.includes("pricing")) return getPaymentCurrency();
-	if (section.id?.includes("toggle")) return "Availability";
+	if (section.id === "services") return "Availability";
 	if (section.id?.includes("recon")) return "Recon";
 	if (section.id?.includes("extraction")) return "Extraction";
 	if (section.id?.includes("fire")) return "Fire Support";

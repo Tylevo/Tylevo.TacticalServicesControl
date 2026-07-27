@@ -37,9 +37,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\verify-ci.ps1
 
 It runs the zero-dependency regression runner, checks changed-line whitespace,
 validates the solution and deploy guards, parses shipped JSON, checks dashboard
-JavaScript syntax, checks tracked-file hygiene, and validates the declarative
-package inputs. GitHub Actions runs this same command. CI must never download,
-cache, upload, or redistribute proprietary reference assemblies.
+JavaScript syntax, verifies release/version metadata, checks tracked-file
+hygiene, and validates the declarative package inputs. GitHub Actions runs this
+same command. CI must never download, cache, upload, or redistribute
+proprietary reference assemblies.
 
 When called by CI, `-BaseSha` and `-HeadSha` make the whitespace check cover the
 entire pushed or pull-request range. A local invocation checks both unstaged and
@@ -74,7 +75,9 @@ assembly names.
 
 ## Package Layout Verification
 
-`tools/package-layout.allowlist.json` is the exact release-content allowlist.
+`tools/package-layout.allowlist.json` is the current package layout and source
+mapping contract. Its `archiveRoots` declare the only permitted top-level ZIP
+folders, while `installRoots` declare the exact TSC destinations below them.
 Validate the source mappings without building:
 
 ```powershell
@@ -90,21 +93,39 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\Test-PackageLayout.p
 
 The checker normalizes and de-duplicates paths, rejects every file not present
 in the two mirrored `CopyToOutput` trees or explicit generated-file list,
-requires exactly four TSC DLLs and eight named asset bundles, and rejects
-proprietary dependencies, profiles, storage, logs, build artifacts, archives,
-and `.gitkeep` files.
+requires exactly four TSC DLLs and eight named asset bundles, asserts the exact
+archive-root set, and rejects proprietary dependencies, profiles, storage,
+logs, build artifacts, archives, and `.gitkeep` files.
 
-For Phase 5 the checker follows the verified public package shape and permits
-only these extraction roots:
+The schema-2 `mirrors` entries currently discover files below both
+`CopyToOutput` trees recursively. This verifies the resolved package and catches
+extra staged or archived files, but it is not yet a closed, reviewed per-file
+source inventory: a newly added source-tree file becomes part of the resolved
+set. Before release staging, Phase 7 must freeze the intended files into an
+explicit flat inventory and fail if an unreviewed or untracked source extra is
+present.
 
-- `BepInEx/plugins/Tylevo.TacticalServicesControl/`
-- `SPT/user/mods/Tylevo.TacticalServicesControl/`
+The v1.1.0 package contract follows the verified public v1.0.8 artifact:
 
-The documentation/package-root contradiction is intentionally deferred to
-Phase 6. Until that decision is made, root-level release documents are not
-allowlisted. The checker validates a package but does not stage or create one;
-clean allowlisted staging replaces the legacy live-tree/update-in-place ZIP
-path in Phase 7.
+- Extract the ZIP directly into the SPT installation root.
+- The archive contains exactly `BepInEx/` and `SPT/` at top level.
+- TSC files install only into
+  `BepInEx/plugins/Tylevo.TacticalServicesControl/` and
+  `SPT/user/mods/Tylevo.TacticalServicesControl/`.
+- Root-level README, changelog, license, and release-note files are not part of
+  the installer.
+
+The checker validates a package but does not stage or create one. Phase 7 must
+first replace recursive mirror discovery with the reviewed per-file inventory,
+populate a new empty staging directory from those inputs, validate it, create a
+new ZIP rather than updating an old archive, extract that ZIP into another
+empty directory, and validate the extracted result again.
+
+Verify the release identity independently:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\Test-ReleaseMetadata.ps1
+```
 
 Never include EFT/SPT/Fika/WTT/UnityToolkit assemblies, local profiles, logs,
 build caches, source-only prompt files, or local machine paths in a release.

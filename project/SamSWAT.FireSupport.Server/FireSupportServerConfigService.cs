@@ -32,6 +32,8 @@ public sealed class FireSupportServerConfigService(
 	private const string LegacyAdminTokenEnvironmentVariable = "RAIDOPS_FIRESUPPORT_ADMIN_TOKEN";
 	private const int CurrentConfigSchemaVersion = 3;
 	private const float LegacyStandardExtractionDispatchDelaySeconds = 8f;
+	private const float MinDoublePassSecondPassDelaySeconds = 6f;
+	private const float MaxDoublePassSecondPassDelaySeconds = 45f;
 	private static readonly TimeSpan s_purchaseRateLimitWindow = TimeSpan.FromSeconds(2);
 
 	private static readonly JsonSerializerOptions s_jsonOptions = new()
@@ -1096,14 +1098,13 @@ public sealed class FireSupportServerConfigService(
 					Field("extraction.dispatchDelaySeconds", "Extraction Dispatch Delay", "number", min: 0, max: ExtractionTimingPolicy.MaxDispatchDelaySeconds, step: 1),
 					Field("extraction.waitTimeSeconds", "Extraction Wait Time", "number", min: ExtractionTimingPolicy.MinWaitTimeSeconds, max: ExtractionTimingPolicy.MaxWaitTimeSeconds, step: 5, slider: true),
 					Field("extraction.extractTimeSeconds", "Extraction Time", "number", min: ExtractionTimingPolicy.MinExtractTimeSeconds, max: ExtractionTimingPolicy.MaxExtractTimeSeconds, step: 1),
-					Field("extraction.speedMultiplier", "Extraction Speed", "number", min: ExtractionTimingPolicy.MinSpeedMultiplier, max: ExtractionTimingPolicy.MaxSpeedMultiplier, step: 0.05, slider: true),
+					Field("extraction.speedMultiplier", "Extraction Speed Multiplier", "number", min: ExtractionTimingPolicy.MinSpeedMultiplier, max: ExtractionTimingPolicy.MaxSpeedMultiplier, step: 0.05, slider: true),
 					Field("priorityExfil.dispatchDelaySeconds", "Priority Dispatch Delay", "number", min: 0, max: ExtractionTimingPolicy.MaxDispatchDelaySeconds, step: 1),
 					Field("priorityExfil.waitTimeSeconds", "Priority Wait Time", "number", min: ExtractionTimingPolicy.MinWaitTimeSeconds, max: ExtractionTimingPolicy.MaxWaitTimeSeconds, step: 5, slider: true),
 					Field("priorityExfil.extractTimeSeconds", "Priority Extraction Time", "number", min: ExtractionTimingPolicy.MinExtractTimeSeconds, max: ExtractionTimingPolicy.MaxExtractTimeSeconds, step: 1),
-					Field("priorityExfil.speedMultiplier", "Priority Speed", "number", min: ExtractionTimingPolicy.MinSpeedMultiplier, max: ExtractionTimingPolicy.MaxSpeedMultiplier, step: 0.05, slider: true)),
+					Field("priorityExfil.speedMultiplier", "Priority Speed Multiplier", "number", min: ExtractionTimingPolicy.MinSpeedMultiplier, max: ExtractionTimingPolicy.MaxSpeedMultiplier, step: 0.05, slider: true)),
 				Section("fire", "Fire Support",
-					Field("a10.secondPassDelaySeconds", "A-10 Second Pass Delay", "number", min: 0, max: 60, step: 1),
-					Field("doublePass.secondPassDelaySeconds", "Double Pass Delay", "number", min: 0, max: 60, step: 1))
+					Field("doublePass.secondPassDelaySeconds", "Double Pass Delay", "number", min: MinDoublePassSecondPassDelaySeconds, max: MaxDoublePassSecondPassDelaySeconds, step: 1))
 			}
 		};
 	}
@@ -2072,10 +2073,16 @@ public sealed class FireSupportServerConfigService(
 		RaidOpsFireSupportServerConfig.A10Settings? settings,
 		RaidOpsFireSupportServerConfig.A10Settings defaults)
 	{
-		settings ??= new RaidOpsFireSupportServerConfig.A10Settings();
-		settings.SecondPassDelaySeconds = settings.SecondPassDelaySeconds <= 0f
-			? defaults.SecondPassDelaySeconds
-			: settings.SecondPassDelaySeconds;
+		settings ??= defaults;
+		settings.SecondPassDelaySeconds =
+			float.IsNaN(settings.SecondPassDelaySeconds) ||
+			float.IsInfinity(settings.SecondPassDelaySeconds) ||
+			settings.SecondPassDelaySeconds <= 0f
+				? defaults.SecondPassDelaySeconds
+				: Math.Clamp(
+					settings.SecondPassDelaySeconds,
+					MinDoublePassSecondPassDelaySeconds,
+					MaxDoublePassSecondPassDelaySeconds);
 		return settings;
 	}
 	private static RaidOpsFireSupportServerConfig CloneConfig(RaidOpsFireSupportServerConfig config)

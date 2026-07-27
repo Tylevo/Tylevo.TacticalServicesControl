@@ -2,9 +2,9 @@
 
 Last updated: 2026-07-27
 Target: the next public beta after the currently published 1.0.8 release
-Status: Phase 4 live candidate installed; Phase 1, 1A, 2, 3, and 4 runtime validation pending
+Status: Phase 6 complete; Phase 7 pending; live Phase 1-4 acceptance matrices remain open
 
-This plan converts the current TSC audit and community bug reports into an ordered implementation and validation sequence. Priority describes risk; phase order also accounts for dependencies. Do not advance to the next phase until the current phase's exit gate is satisfied.
+This plan converts the current TSC audit and community bug reports into an ordered implementation and validation sequence. Priority describes risk; phase order also accounts for dependencies. Implementation may advance at user direction while earlier live-validation rows remain open, but those rows remain cumulative release gates. Advancing implementation does not count as live acceptance or authorize publication.
 
 ## Sources of Truth
 
@@ -13,7 +13,7 @@ Use these authorities in this order:
 1. [GitHub Releases](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases) is the source of truth for what is publicly shipped. Verify the latest release through GitHub release metadata, its tag, and its attached artifact rather than relying only on a cached rendered page.
 2. The release tag and attached ZIP are the source of truth for the exact code/artifact represented by a published version.
 3. The GitHub default branch is the source of truth for committed unreleased development after it has been fetched and compared locally.
-4. `C:\Users\tylev\Desktop\RaidOps\build_source\Tylevo.TacticalServicesControl-github-1.0.7` is the active local working checkout. Its uncommitted files are development candidates, not evidence of what has shipped.
+4. The active feature branch is the local working checkout. Its uncommitted files are development candidates, not evidence of what has shipped.
 
 At the time this plan was written, GitHub's release API reported:
 
@@ -34,7 +34,7 @@ Re-query GitHub at the start of Phase 0 and Phase 7. If local documentation or t
 - Treat Fika host-global settings and per-profile authorization state as different authority domains.
 - Preserve `SupportRequestId`, `RequesterProfileId`, duplicate protection, and the original solo/human-host A-10 execution path.
 - Never give a Fika client authoritative raid damage.
-- Run deploy-suppressed builds while developing. Do not modify `D:\SPT`, create a release, tag, upload, or publish without explicit approval.
+- Run deploy-suppressed builds while developing. Do not modify a live SPT installation, create a release, tag, upload, or publish without explicit approval.
 - Record live-test evidence for every supported topology: solo, human Fika host, Fika client, and dedicated headless where applicable.
 
 ## Execution Order
@@ -96,7 +96,7 @@ Protect the current physical-phone UAV changes and prove that the starting point
 - Server build: succeeded with 9 warnings and 0 errors.
 - Fika Interop build: succeeded with 0 warnings and 0 errors.
 - Fika bootstrap build: succeeded with 0 warnings and 0 errors.
-- The live `D:\SPT` DLL timestamps remain dated 2026-07-13, confirming that the verification builds did not deploy.
+- The approved live test installation's DLL timestamps remained dated 2026-07-13, confirming that the verification builds did not deploy.
 - The published artifact and current ZIP target establish `BepInEx/` plus `SPT/` as the package-root contract. The root-document requirement in `BUILDING.md` is stale and must be corrected in Phase 6.
 - Packaging still reads from live `SptDir` folders and updates an existing archive in place. Phase 7 must replace that with a clean, allowlisted stage to prevent live-state or stale-entry leakage.
 
@@ -135,8 +135,8 @@ Eliminate the empty-tablet and all-services-maxed soft-lock while ensuring that 
 - Runtime-only player fields are scrubbed from shared server configuration before it is saved or returned without a resolved profile.
 - `git diff --check` passes.
 - Deploy-suppressed clean rebuilds pass: Core with 28 baseline warnings, Server with 9 baseline warnings, Fika Interop with 0 warnings, and Fika bootstrap with 0 warnings; all have 0 errors.
-- After explicit approval, the four Phase 1 DLLs built from commit `c98bb33` were installed into the live `D:\SPT` component paths. Every installed file was verified against its build-output SHA-256.
-- The replaced v1.0.8 DLLs were backed up to `C:\Users\tylev\Desktop\RaidOps\backups\TSC-live-pre-phase1-c98bb33-20260724-102545`; the backup manifest records original and installed hashes plus rollback instructions.
+- After explicit approval, the four Phase 1 DLLs built from commit `c98bb33` were installed into the live test component paths. Every installed file was verified against its build-output SHA-256.
+- The replaced v1.0.8 DLLs were saved under `<workspace>/backups/TSC-live-pre-phase1-c98bb33-20260724-102545`; the backup manifest records original and installed hashes plus rollback instructions.
 - No player profile, configuration, authorization ledger, asset, release artifact, or published GitHub release was modified. The SPT server and game were not started as part of installation.
 - The Phase 1 exit gate remains open until the solo and Fika runtime validation matrix below is recorded. Phase 2 implementation is recorded below, but it does not close this earlier runtime gate.
 
@@ -224,11 +224,11 @@ remain unchanged.
 - Commit `1de0ce7` (`fix: reserve a unique TSC menu slot`) replaces the transient-vacancy heuristic with a deterministic stack invariant derived from the native signed Play-to-Character spacing. The final order is **Character -> Records -> TSC -> Trading -> Hideout -> Exit**, or **Character -> TSC -> Trading -> Hideout -> Exit** when Records is unavailable. It repairs repeated Career Log/Menu Overhaul rebuilds, selects the preferred duplicate Records row, restores Squad/Pit placement across late Records activation, closes and reopens the slot without accumulating offsets, and retires duplicate/stale TSC controllers and buttons safely. Independent layout, timing, and lifecycle reviews found no remaining P0/P1 issue in the installed Menu Overhaul path; the deploy-suppressed Core build passes with 0 errors and the same 28 baseline warnings.
 - Commit `38166e1` (`feat: confirm pre-raid purchases`) adds the footer **DASHBOARD** link and a raycast-blocking confirmation modal with separate cancel/confirm paths. Confirm revalidates the authenticated profile/session and local snapshot, while the matched server rejects a changed `ExpectedCost` before journal preparation or debit. Accepted and prepared retries bypass the quote check and retain their original idempotent request and journaled price.
 - Independent UI, transaction-boundary, replay-compatibility, and final whole-diff reviews found no remaining P0-P2 issue. Deploy-suppressed Core and Server builds pass with 0 errors and their existing 28 and 9 baseline warnings; `git diff --check` passes.
-- After explicit approval, all four reviewed DLLs were installed into the live `D:\SPT` component paths and verified byte-for-byte by SHA-256 against the build outputs.
-- The replaced DLLs plus exact pre-first-start ledger/config copies are backed up at `C:\Users\tylev\Desktop\RaidOps\backups\TSC-live-pre-phase1a-dcf1894-20260724-114230`; `INSTALL-MANIFEST.md` records hashes and rollback instructions.
-- The superseded dashboard-shell Core and its rollback instructions remain backed up at `C:\Users\tylev\Desktop\RaidOps\backups\TSC-live-pre-dashboard-style-0f3663c-20260724-120948`.
+- After explicit approval, all four reviewed DLLs were installed into the live test component paths and verified byte-for-byte by SHA-256 against the build outputs.
+- The replaced DLLs plus exact pre-first-start ledger/config copies are saved under `<workspace>/backups/TSC-live-pre-phase1a-dcf1894-20260724-114230`; `INSTALL-MANIFEST.md` records hashes and rollback instructions.
+- The superseded dashboard-shell Core and its rollback instructions remain under `<workspace>/backups/TSC-live-pre-dashboard-style-0f3663c-20260724-120948`.
 - The current live matched pair includes the purchase-confirmation contract: Core SHA-256 `F99E49CBDD5D66CEA9AD020C8E8F13A31BB360BF0EA4A853508E2E46AA1D8E56` and Server SHA-256 `CC422A533BC6500EAEF15AB180F735161BB0E96D8BD6EF374C3FFB27700B155A`. Fika and Fika Interop remain byte-identical to the Phase 1A install.
-- The replaced Core (`23FF2879559379CDBD70B420181CEF8C8BAC339C1665A123EE51A83C721A1D4D`), Server (`A53604DB2BC0A1F95CE2962B0A3A618FDEAAC3540423F015687FC34692D21D0E`), and rollback instructions are backed up at `C:\Users\tylev\Desktop\RaidOps\backups\TSC-live-pre-purchase-confirm-38166e1-20260727-101740`; preceding rollback backups remain available.
+- The replaced Core (`23FF2879559379CDBD70B420181CEF8C8BAC339C1665A123EE51A83C721A1D4D`), Server (`A53604DB2BC0A1F95CE2962B0A3A618FDEAAC3540423F015687FC34692D21D0E`), and rollback instructions are under `<workspace>/backups/TSC-live-pre-purchase-confirm-38166e1-20260727-101740`; preceding rollback backups remain available.
 - No player profile, TSC configuration, authorization ledger, release artifact, or published GitHub release was modified during installation. The SPT server and game were not started.
 - The Phase 1A exit gate remains open until the runtime matrix below is recorded. Phase 2 implementation is recorded below, but it does not close this earlier runtime gate.
 
@@ -325,7 +325,7 @@ live acceptance.
 - `git diff --check` passes. All four deploy-suppressed builds pass with 0
   errors: Core has 28 existing warnings, Server has 9 existing warnings, and
   Fika Interop plus Fika bootstrap have 0 warnings on the final rebuilds.
-- Commit `440140b` was installed to the closed live `D:\SPT` instance as one
+- Commit `440140b` was installed to the closed live test instance as one
   matched four-DLL set. Installed SHA-256 values are Core
   `2F0C6E40ABBB61B7BE1AFD0B41EE29516D3F41A45A12AF7D590A49C67420314F`,
   Fika bootstrap
@@ -336,7 +336,7 @@ live acceptance.
   `035E6B30709A63A5C894033A8DE45EAEB34C56EDBAA4CF4A6131CCE921E2F544`.
 - The replaced DLLs, complete pre-start `storage` directory, current
   `tsc-config.json`, hashes, and rollback procedure are backed up at
-  `C:\Users\tylev\Desktop\RaidOps\backups\TSC-live-pre-phase2-440140b-20260727-114338`.
+  `<workspace>/backups/TSC-live-pre-phase2-440140b-20260727-114338`.
   The server and game were not started, and live profile/config/ledger contents
   were unchanged during installation. The next server initialization upgrades
   the ledger to schema 4; DLL-only downgrade after that point is unsafe.
@@ -444,11 +444,11 @@ not mark any live Phase 2 or Phase 3 row complete.
 - The packet layout changed, so Core, Server, Fika Interop, and Fika bootstrap
   must be installed as one matched set on the server and every participant.
 - After confirming that SPT, EFT, the launcher, and Fika/headless processes
-  were stopped, the four Phase 3 DLLs were installed into the live `D:\SPT`
+  were stopped, the four Phase 3 DLLs were installed into the live test
   component paths as one matched set. Every live SHA-256 value matches the
   reviewed build-output value recorded above.
 - The replaced Phase 2 DLLs and rollback manifest are backed up at
-  `C:\Users\tylev\Desktop\RaidOps\backups\TSC-live-pre-phase3-a37d5c2-20260727-130057`.
+  `<workspace>/backups/TSC-live-pre-phase3-a37d5c2-20260727-130057`.
   No profile, ledger, server configuration, asset bundle, release artifact, or
   published GitHub release was changed, and SPT was not started by the
   installation.
@@ -560,10 +560,10 @@ The current dashboard promises separate extraction-zone countdowns. Unless the p
   and Server
   `3C27753AE1C478F0427DD58FDEEDC56ADBA80D5E124727353C9BD95510801A63`.
 - After confirming SPT, EFT, the launcher, and Fika/headless were stopped, the
-  four DLLs were installed into live `D:\SPT` as one matched set and verified
+  four DLLs were installed into the live test instance as one matched set and verified
   byte-for-byte. The replaced Phase 3 DLLs and exact pre-start config are
   backed up at
-  `C:\Users\tylev\Desktop\RaidOps\backups\TSC-live-pre-phase4-ae02516-20260727-135504`.
+  `<workspace>/backups/TSC-live-pre-phase4-ae02516-20260727-135504`.
 - Installation changed no profile, authorization ledger, stored purchase,
   config, asset, or release artifact. On the next server start, the schema-less
   live config will gain `configSchemaVersion: 2` and its previously dead
@@ -644,11 +644,16 @@ Turn the repaired behavior into repeatable checks so later phone, Fika, payment,
   regression tests.
   `tools/verify-local.ps1` then preflights locally owned references and builds
   the complete solution with `SkipTscDeploy=true`.
-- The declarative package contract resolves to 156 mirrored source files plus
-  exactly four TSC DLLs and eight bundles. A clean 170-file directory fixture
+- The declarative package contract currently resolves to 155 recursively
+  mirrored source files plus 14 explicit generated files (four TSC DLLs, eight
+  bundles, and two notice files). A clean 169-file directory fixture
   passes. The existing public v1.0.8 archive correctly fails because its two
   stale `.gitkeep` entries are not allowlisted, proving that update-in-place
   leakage is detected.
+- Recursive source mirrors are not a final closed inventory: a new file below a
+  mirrored source tree joins the resolved set automatically. Phase 7 must
+  replace them with a reviewed flat per-file inventory and reject source extras
+  before staging.
 - Independent final verification passes: 35 tests, all four runtime outputs,
   package/source checks, JSON/JavaScript parsing, PowerShell parsing, solution
   membership, and `git diff --check`. The deploy-disabled solution build has
@@ -674,18 +679,61 @@ Convert the accumulated work into an intentional, reviewable next-release state.
 
 ### Tasks
 
-- [ ] Review every modified and untracked file and assign it to a phase/commit.
-- [ ] Remove generated, obsolete, or accidental files without discarding intentional user work.
-- [ ] Choose the next public display version, internal assembly version, and release/tag version.
-- [ ] Update version metadata consistently across build properties, plugin metadata, server metadata, config templates, and release filenames.
-- [ ] Update `CHANGELOG.md`.
-- [ ] Update `README.md`, `docs/fika.md`, `docs/dashboard.md`, `docs/known-issues.md`, and `docs/roadmap.md`.
-- [ ] Update the handoff with the final authority model, validation evidence, and remaining limitations.
-- [ ] Create release notes and a Forge description for the chosen version.
-- [ ] Reconcile the package-root contradiction between current build documentation and the verified 1.0.8 archive.
-- [ ] Confirm all shipped configuration templates match server defaults and dashboard ranges.
-- [ ] Confirm dedicated-headless A-10 remains clearly labeled experimental.
-- [ ] Confirm no secrets, local paths, profiles, logs, proprietary binaries, or temporary artifacts are tracked.
+- [x] Review every modified and untracked file and assign it to a phase/commit.
+- [x] Remove generated, obsolete, or accidental files without discarding intentional user work.
+- [x] Choose the next public display version, internal assembly version, and release/tag version.
+- [x] Update version metadata consistently across build properties, plugin metadata, server metadata, config templates, and release filenames.
+- [x] Update `CHANGELOG.md`.
+- [x] Update `README.md`, `docs/fika.md`, `docs/dashboard.md`, `docs/known-issues.md`, and `docs/roadmap.md`.
+- [x] Update the handoff with the final authority model, validation evidence, and remaining limitations.
+- [x] Create release notes and a Forge description for the chosen version.
+- [x] Reconcile the package-root contradiction between current build documentation and the verified 1.0.8 archive.
+- [x] Confirm all shipped configuration templates match server defaults and dashboard ranges.
+- [x] Confirm dedicated-headless A-10 remains clearly labeled experimental.
+- [x] Confirm no secrets, local paths, profiles, logs, proprietary binaries, or temporary artifacts are tracked.
+
+### Implementation Evidence - 2026-07-27
+
+- Authenticated CLI and unauthenticated public-API queries reconfirmed
+  v1.0.8/tag `v0.9.8` as the published source of truth (`draft=false`,
+  `prerelease=false`) and matched its 41,236,560-byte asset and recorded
+  SHA-256. The anonymous rendered release list can omit newer entries and is
+  not used alone for release decisions.
+- The next release is unified as display/tag/package/internal version `1.1.0`
+  (`1.1.0.0` assembly/file version), target SPT `4.0.13`, and intended archive
+  `Tylevo.TacticalServicesControl-v1.1.0-SPT4.0.13.zip`.
+- `Test-ReleaseMetadata.ps1` derives the release identity from
+  `Directory.Build.props` and verifies plugin/server consumers, changelog,
+  release notes, Forge draft, SPT target, and archive naming. It is part of
+  `verify-ci.ps1`.
+- The published v1.0.8 release notes were restored to their tag state. Separate
+  v1.1.0 release-note and Forge drafts are explicitly marked unpublished.
+- The handoff and user docs now describe the pre-raid store, confirmation,
+  main-menu placement, multi-currency payments, scanner-only HUD, transactional
+  Fika lifecycle, extraction timing, and the exact automated/live-validation
+  boundary.
+- Package manifest schema 2 distinguishes archive roots from install roots.
+  The allowed top-level set is exactly `BepInEx/` plus `SPT/`, with no
+  root-level documents. The validator checks the actual root set for a stage
+  or ZIP.
+- The redundant shipped `raidops-firesupport.json` template was removed.
+  Runtime migration of an existing legacy file remains. The canonical schema-3
+  template matches server defaults; its values fall within dashboard ranges.
+- Dashboard section IDs now match the server schema, the dead standard-A-10
+  delay control is removed, speed labels identify multipliers, and Double Pass
+  delay uses the same 6-45-second supported range as local runtime tuning.
+- Tracked-file hygiene now checks documentation and other text assets for
+  user-specific/live-install paths plus private-key/token signatures. No
+  profile, storage, log, archive, proprietary dependency, secret, or
+  user-specific path is tracked.
+- CI-safe verification passes: whitespace, solution/deploy guards, production
+  wiring, JSON, JavaScript, release metadata, hygiene, package inputs, and all
+  35 regression tests.
+- Full local deploy-suppressed verification passes with all four runtime
+  projects plus regression tests: 0 errors and 13 known warnings. The four
+  runtime outputs all report assembly version `1.1.0.0`.
+- `SkipTscDeploy=true` remained active. No live SPT file, profile, config,
+  ledger, tag, release, Forge page, or public asset was changed.
 
 ### Exit Gate
 
@@ -693,6 +741,9 @@ Convert the accumulated work into an intentional, reviewable next-release state.
 - Version numbers and release naming are internally consistent.
 - Documentation describes tested behavior rather than planned behavior.
 - Known limitations are explicit.
+
+Phase 6 satisfies this gate. Phase 7 still owns clean staging, final archive
+inspection, upgrade/clean-install smoke tests, and the open live matrices.
 
 ## Phase 7 - Clean Release Candidate and Final Acceptance
 
@@ -705,7 +756,9 @@ Produce a reproducible release candidate from a clean source state and prove tha
 - [ ] Build from a clean worktree or clean clone at the intended release commit.
 - [ ] Run all four deploy-suppressed release builds.
 - [ ] Run the complete automated verification suite.
-- [ ] Stage the package from an explicit allowlist.
+- [ ] Replace recursive mirror discovery with a reviewed flat per-file
+      inventory, fail on unreviewed or untracked source extras, and stage only
+      those entries into a new empty directory.
 - [ ] Verify the final archive roots against the resolved package contract.
 - [ ] Verify required Core, Server, Fika Interop, Fika bootstrap, assets, config, and metadata files are present and version-matched.
 - [ ] Verify WTT Common Lib, EFT/SPT/Fika proprietary assemblies, profiles, logs, caches, source prompts, and local paths are absent.
@@ -735,10 +788,10 @@ Produce a reproducible release candidate from a clean source state and prove tha
 Use the repository's configured reference paths. Keep deployment disabled:
 
 ```powershell
-dotnet build .\project\SamSWAT.FireSupport\SamSWAT.FireSupport.Core.csproj -c "SPT-4.0 Release" "-p:SptDir=D:/SPT/" "-p:SptSharedAssembliesDir=C:/Users/tylev/Desktop/RaidOps/SPT Assemblies/" -p:SkipTscDeploy=true
-dotnet build .\project\SamSWAT.FireSupport.Server\SamSWAT.FireSupport.Server.csproj -c "SPT-4.0 Release" "-p:SptDir=D:/SPT/" "-p:SptSharedAssembliesDir=C:/Users/tylev/Desktop/RaidOps/SPT Assemblies/" -p:SkipTscDeploy=true
-dotnet build .\project\SamSWAT.FireSupport.Fika.Interop\SamSWAT.FireSupport.Fika.Interop.csproj -c "SPT-4.0 Release" "-p:SptDir=D:/SPT/" "-p:SptSharedAssembliesDir=C:/Users/tylev/Desktop/RaidOps/SPT Assemblies/" -p:SkipTscDeploy=true -p:BuildProjectReferences=false
-dotnet build .\project\SamSWAT.FireSupport.Fika\SamSWAT.FireSupport.Fika.csproj -c "SPT-4.0 Release" "-p:SptDir=D:/SPT/" "-p:SptSharedAssembliesDir=C:/Users/tylev/Desktop/RaidOps/SPT Assemblies/" -p:SkipTscDeploy=true -p:BuildProjectReferences=false
+dotnet build .\project\SamSWAT.FireSupport\SamSWAT.FireSupport.Core.csproj -c "SPT-4.0 Release" "-p:SptDir=C:/Path/To/SPT/" "-p:SptSharedAssembliesDir=C:/Path/To/SPT-Assemblies/" -p:SkipTscDeploy=true
+dotnet build .\project\SamSWAT.FireSupport.Server\SamSWAT.FireSupport.Server.csproj -c "SPT-4.0 Release" "-p:SptDir=C:/Path/To/SPT/" "-p:SptSharedAssembliesDir=C:/Path/To/SPT-Assemblies/" -p:SkipTscDeploy=true
+dotnet build .\project\SamSWAT.FireSupport.Fika.Interop\SamSWAT.FireSupport.Fika.Interop.csproj -c "SPT-4.0 Release" "-p:SptDir=C:/Path/To/SPT/" "-p:SptSharedAssembliesDir=C:/Path/To/SPT-Assemblies/" -p:SkipTscDeploy=true -p:BuildProjectReferences=false
+dotnet build .\project\SamSWAT.FireSupport.Fika\SamSWAT.FireSupport.Fika.csproj -c "SPT-4.0 Release" "-p:SptDir=C:/Path/To/SPT/" "-p:SptSharedAssembliesDir=C:/Path/To/SPT-Assemblies/" -p:SkipTscDeploy=true -p:BuildProjectReferences=false
 git diff --check
 ```
 

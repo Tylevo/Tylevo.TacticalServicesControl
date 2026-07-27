@@ -410,6 +410,12 @@ Invoke-Checked -FilePath "node" -Arguments @(
     (Join-Path $repositoryRoot "project\SamSWAT.FireSupport.Server\CopyToOutput\web\app.mjs")
 )
 
+Write-Host "Validating release identity and metadata."
+& (Join-Path $PSScriptRoot "Test-ReleaseMetadata.ps1") -RepositoryRoot $repositoryRoot
+if (-not $?) {
+    throw "Release metadata verification failed."
+}
+
 Write-Host "Validating tracked-file hygiene."
 $trackedFiles = @(& git -c "safe.directory=$repositoryGitPath" -C $repositoryRoot ls-files)
 if ($LASTEXITCODE -ne 0) {
@@ -430,12 +436,17 @@ $forbiddenTrackedExtensions = @(
 $textExtensions = @(
     ".cs",
     ".csproj",
+    ".css",
+    ".html",
     ".json",
+    ".md",
     ".mjs",
     ".props",
     ".ps1",
     ".sln",
     ".targets",
+    ".txt",
+    ".xml",
     ".yaml",
     ".yml"
 )
@@ -451,9 +462,20 @@ foreach ($trackedFile in $trackedFiles) {
     $extension = [IO.Path]::GetExtension($trackedFile).ToLowerInvariant()
     if ($textExtensions -contains $extension) {
         $fullPath = Join-Path $repositoryRoot $trackedFile
+        if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) {
+            # A locally deleted tracked file remains in `git ls-files` until
+            # staged. Whitespace checks already cover the deletion diff.
+            continue
+        }
+
         $content = Get-Content -LiteralPath $fullPath -Raw
         if ($content -match '(?i)[A-Z]:[\\/](?:Users[\\/][^\\/\s"''`]+|SPT(?:[\\/]|$))') {
             throw "Tracked build/source file contains a user-specific or live-SPT absolute path: '$trackedFile'."
+        }
+
+        if ($content -match '(?i)-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----' -or
+            $content -match '(?i)\b(?:ghp_|github_pat_)[A-Za-z0-9_]{20,}') {
+            throw "Tracked text file appears to contain a private key or access token: '$trackedFile'."
         }
     }
 }
