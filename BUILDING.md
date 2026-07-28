@@ -100,7 +100,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\Test-PackageLayout.p
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\Test-PackageLayout.ps1 -Path "C:\Path\To\TSC.zip"
 ```
 
-The checker normalizes and de-duplicates paths, requires the exact 155-file
+The checker normalizes and de-duplicates paths, requires the exact 154-file
 reviewed mirror inventory, exactly four TSC DLL mappings, and exactly eight
 named asset bundles. It asserts the exact archive-root set and rejects
 proprietary dependencies, profiles, storage, logs, build artifacts, archives,
@@ -113,6 +113,9 @@ The v1.1.0 package contract follows the verified public v1.0.8 artifact:
 - TSC files install only into
   `BepInEx/plugins/Tylevo.TacticalServicesControl/` and
   `SPT/user/mods/Tylevo.TacticalServicesControl/`.
+- The mutable `config/tsc-config.json` is intentionally not shipped. A new
+  installation creates schema-3 defaults on first server start; an upgrade
+  therefore preserves and migrates the administrator's existing file.
 - Root-level README, changelog, license, and release-note files are not part of
   the installer.
 
@@ -159,7 +162,7 @@ binaries and evidence identify that exact candidate revision.
 The output directory must be outside the entire repository and must be new or
 completely empty. The command creates a fresh `stage/`, validates it, creates a
 new archive without updating any prior ZIP, validates the ZIP directly,
-extracts it into a fresh `verify-extracted/`, and independently hashes all 169
+extracts it into a fresh `verify-extracted/`, and independently hashes all 168
 files to require exact path/size/SHA-256 equality with the stage.
 The repository root, manifest, checker, and build-output mappings are fixed by
 the tracked packaging script; release inputs must be tracked, clean, and equal
@@ -170,7 +173,7 @@ success.
 
 The command also writes a new external `*.content-evidence.json` sidecar with
 the source HEAD/tree, manifest identity, verified baseline archive, complete
-169-file content inventory, DLL identities and versions, bundle pins, archive
+168-file content inventory, DLL identities and versions, bundle pins, archive
 identity, and exact file/DLL/bundle counts. The sidecar is not included in the
 installer ZIP and is never overwritten.
 

@@ -17,7 +17,9 @@ The TSC Dashboard is a local server configuration UI.
 
 Existing installs that still have the legacy `config/raidops-firesupport.json`
 filename are migrated automatically when `tsc-config.json` is absent. New
-packages ship only the canonical template.
+packages do not ship either mutable config file: the server creates canonical
+schema-3 defaults on a clean install and preserves an existing file during an
+upgrade.
 
 ## Data Access
 
@@ -34,7 +36,7 @@ maximum dispatch delay plus settlement margin.
 
 `purchasePersistence.mode` and `consumeOn` are fixed protocol values in the
 current release. `refundFailedDispatch` remains an advanced configuration
-value in the JSON template rather than a dashboard control.
+value in the generated JSON config rather than a dashboard control.
 
 The main-menu pre-raid store includes a **Dashboard** button. Its address is
 derived from the active SPT backend connection, so a Fika client does not open

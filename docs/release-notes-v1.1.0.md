@@ -62,8 +62,13 @@ Target: SPT 4.0.13. This update follows the published v1.0.8 build.
 
 ## Verification
 
-- Added 35 zero-dependency regression tests covering authorization presence, ledger persistence, request races and deduplication, Fika settings serialization, tuning precedence, extraction timing, and countdown reset.
-- The suite passed 20 consecutive runs: 700 test executions without a failure or timeout.
+- Added 39 zero-dependency regression tests covering authorization presence,
+  ledger persistence, published-v1.0.8 config and ledger migration, request
+  races and deduplication, Fika settings serialization, tuning precedence,
+  extraction timing, and countdown reset.
+- The preceding 35-test baseline passed 20 consecutive runs: 700 test
+  executions without a failure or timeout. The four migration cases pass in
+  the current suite.
 - Added CI-safe repository, JSON, JavaScript, solution, deployment-guard, and package-layout checks that require no proprietary game assemblies.
 - Added one deploy-disabled local verification path for Core, Server, Fika Interop, Fika bootstrap, and the regression runner.
 - The full local release build completed with 0 errors. Its 13 warnings are pre-existing source/API warnings.
@@ -75,7 +80,13 @@ Target: SPT 4.0.13. This update follows the published v1.0.8 build.
 3. Extract the release ZIP into the SPT root.
 4. Install the exact same TSC build on the server, human host, every client, and any dedicated headless host.
 
-The configuration migrates to schema 3 and defaults an older currency-less config to RUB. The authorization ledger migrates to schema 5. Downgrading only the Server DLL after the ledger upgrade is unsupported; restore the matching pre-upgrade storage backup with the older DLL set.
+The ZIP intentionally does not contain `config/tsc-config.json`, so extracting
+an upgrade cannot replace custom settings with release defaults. A clean
+installation creates schema-3 defaults on first server start. An existing
+configuration migrates to schema 3 and defaults an older currency-less config
+to RUB. The authorization ledger migrates to schema 5. Downgrading only the
+Server DLL after the ledger upgrade is unsupported; restore the matching
+pre-upgrade storage backup with the older DLL set.
 
 Required dependencies are not bundled: UnityToolkit v2.0.1, WTT Client Common Lib, and WTT Server Common Lib. Project Fika is optional and required only for multiplayer.
 

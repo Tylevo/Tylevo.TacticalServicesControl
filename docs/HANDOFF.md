@@ -147,8 +147,8 @@ assemblies reference the Core/Interop assembly versions.
   `BepInEx/` and `SPT/`.
 - The obsolete legacy config template is no longer shipped, while migration of
   an existing legacy filename remains supported.
-- The canonical config template, server defaults, and dashboard ranges have
-  been reconciled.
+- The canonical config source, server defaults, and dashboard ranges have been
+  reconciled.
 - User docs distinguish implemented/automated behavior from open live
   acceptance work.
 
@@ -157,9 +157,12 @@ assemblies reference the Core/Interop assembly versions.
 - GitHub release metadata was re-queried and the local public v1.0.8 archive
   was verified against its published 41,236,560-byte SHA-256 identity.
 - .NET SDK `9.0.314` is pinned for both local and CI release verification.
-- Package manifest schema 3 is a closed inventory: 155 reviewed source files,
+- Package manifest schema 3 is a closed inventory: 154 reviewed source files,
   four fresh build outputs, eight pinned Unity bundles, and two third-party
-  notice copies, for exactly 169 installer files.
+  notice copies, for exactly 168 installer files.
+- The schema-3 reference config is tracked outside deployable source trees.
+  A clean install creates defaults on first server start, while an overlay
+  upgrade leaves the administrator's existing config available for migration.
 - The eight bundles are imported only from the verified public v1.0.8 archive;
   their paths, sizes, and hashes are pinned. Live SPT files and obsolete
   package-stage folders are not release inputs.
@@ -199,7 +202,10 @@ authorization settlement, damage attribution, and teardown.
 
 - Product version: `1.1.0`; config schema: `3`; ledger schema: `5`.
 - Product-version changes do not force data-schema changes.
-- `config/tsc-config.json` is the only new-install template.
+- `config/tsc-config.json` is not shipped in the installer. The server creates
+  schema-3 defaults only when the canonical and legacy config files are absent.
+- An overlay upgrade preserves an existing canonical config instead of
+  replacing it with release defaults.
 - Existing `config/raidops-firesupport.json` files migrate when the canonical
   file is absent.
 - Existing schema-less/schema-1 extraction settings migrate to the historical
@@ -216,8 +222,10 @@ test gate.
 
 Completed:
 
-- 35 regression tests passed.
-- 20 consecutive test-suite repetitions passed: 700/700 executions.
+- The current 39-test regression suite passed, including published-v1.0.8
+  config and ledger migration coverage.
+- The preceding 35-test baseline passed 20 consecutive test-suite
+  repetitions: 700/700 executions.
 - The deploy-suppressed `SPT-4.0 Release` solution build passed for all five
   projects with zero errors.
 - Remaining warnings are known obsolete InventoryController usage and SPT 4.1

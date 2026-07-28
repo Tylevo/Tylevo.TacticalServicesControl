@@ -235,6 +235,21 @@ foreach ($relativeProject in $runtimeProjects) {
     }
 }
 
+$serverProjectPath = Join-Path $repositoryRoot "project\SamSWAT.FireSupport.Server\SamSWAT.FireSupport.Server.csproj"
+[xml] $serverProjectXml = Get-Content -LiteralPath $serverProjectPath -Raw
+$serverPostBuildTargets = @(
+    $serverProjectXml.Project.Target |
+        Where-Object { ([string] $_.Name).Equals("PostBuild", [StringComparison]::Ordinal) }
+)
+if ($serverPostBuildTargets.Count -ne 1) {
+    throw "Expected exactly one Server PostBuild target."
+}
+
+$serverPostBuildCommand = [string] $serverPostBuildTargets[0].Exec.Command
+if ($serverPostBuildCommand -notmatch '(?i)\brobocopy\b.+?/XF\b[^\r\n]*\btsc-config\.json\b') {
+    throw "Server PostBuild must exclude mutable tsc-config.json from developer deployment."
+}
+
 Write-Host "Validating the exclusive release archive workflow."
 $trackedBuildDefinitions = @(
     & git -c "safe.directory=$repositoryGitPath" -C $repositoryRoot ls-files -- "*.csproj" "*.props" "*.targets"
@@ -384,6 +399,10 @@ $serverConfigSourcePath = "project\SamSWAT.FireSupport.Server\FireSupportServerC
 $serverConfigSource = Get-NormalizedCSharpSource -RelativePath $serverConfigSourcePath
 $serverWiringChecks = @(
     @{
+        Pattern = 'NormalizeConfig\s*\([^)]*\)\s*\{.{0,700}?FireSupportServerConfigMigration\s*\.\s*NormalizePersistedFields\s*\('
+        Expectation = "Server config normalization must delegate persisted migration and response-field sanitization to FireSupportServerConfigMigration.NormalizePersistedFields."
+    },
+    @{
         Pattern = 'TryValidateConfig\s*\([^)]*\)\s*\{.{0,3500}?TryValidateExtractionTiming\s*\(\s*config\s*\.\s*Extraction\b.{0,1200}?TryValidateExtractionTiming\s*\(\s*config\s*\.\s*PriorityExfil\b'
         Expectation = "Server config validation must validate both standard and priority extraction timing through TryValidateExtractionTiming."
     },
@@ -408,7 +427,7 @@ foreach ($check in $serverWiringChecks) {
         -Expectation $check.Expectation
 }
 
-Write-Host "Validating shipped JSON and dashboard JavaScript syntax."
+Write-Host "Validating tracked JSON and dashboard JavaScript syntax."
 foreach ($powerShellTool in Get-ChildItem -LiteralPath $PSScriptRoot -File -Filter "*.ps1") {
     $toolTokens = $null
     $toolParseErrors = $null
@@ -429,6 +448,7 @@ foreach ($powerShellTool in Get-ChildItem -LiteralPath $PSScriptRoot -File -Filt
 $jsonRoots = @(
     (Join-Path $repositoryRoot "project\SamSWAT.FireSupport\CopyToOutput")
     (Join-Path $repositoryRoot "project\SamSWAT.FireSupport.Server\CopyToOutput")
+    (Join-Path $repositoryRoot "project\SamSWAT.FireSupport.Server\ConfigSources")
 )
 foreach ($jsonRoot in $jsonRoots) {
     foreach ($jsonFile in Get-ChildItem -LiteralPath $jsonRoot -File -Recurse -Filter "*.json") {

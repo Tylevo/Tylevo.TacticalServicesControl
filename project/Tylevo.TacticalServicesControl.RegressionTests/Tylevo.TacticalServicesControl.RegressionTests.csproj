@@ -16,6 +16,8 @@
   <ItemGroup>
     <Compile Include="..\SamSWAT.FireSupport.Server\FireSupportAuthorizationLedger.cs"
              Link="Production\FireSupportAuthorizationLedger.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Server\FireSupportServerConfigMigration.cs"
+             Link="Production\FireSupportServerConfigMigration.cs" />
     <Compile Include="..\SamSWAT.FireSupport\Unity\ESupportType.cs"
              Link="Production\ESupportType.cs" />
     <Compile Include="..\SamSWAT.FireSupport\Unity\RaidOpsFireSupportServerConfig.cs"

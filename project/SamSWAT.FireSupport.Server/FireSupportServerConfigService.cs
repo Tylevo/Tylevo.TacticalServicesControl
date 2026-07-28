@@ -30,8 +30,6 @@ public sealed class FireSupportServerConfigService(
 	private const string LegacyAdminTokenFileName = "raidops-firesupport-admin-token.txt";
 	private const string AdminTokenEnvironmentVariable = "TSC_ADMIN_TOKEN";
 	private const string LegacyAdminTokenEnvironmentVariable = "RAIDOPS_FIRESUPPORT_ADMIN_TOKEN";
-	private const int CurrentConfigSchemaVersion = 3;
-	private const float LegacyStandardExtractionDispatchDelaySeconds = 8f;
 	private const float MinDoublePassSecondPassDelaySeconds = 6f;
 	private const float MaxDoublePassSecondPassDelaySeconds = 45f;
 	private static readonly TimeSpan s_purchaseRateLimitWindow = TimeSpan.FromSeconds(2);
@@ -1802,8 +1800,10 @@ public sealed class FireSupportServerConfigService(
 	private static void NormalizeConfig(RaidOpsFireSupportServerConfig config)
 	{
 		RaidOpsFireSupportServerConfig defaults = CreateDefaultConfig();
-		int sourceSchemaVersion = config.ConfigSchemaVersion;
-		MigrateConfig(config);
+		int sourceSchemaVersion =
+			FireSupportServerConfigMigration.NormalizePersistedFields(
+				config,
+				defaults);
 		config.PaymentMode = Enum.TryParse(config.PaymentMode, ignoreCase: true, out PaymentMode paymentMode)
 			? paymentMode.ToString()
 			: defaults.PaymentMode;
@@ -1839,14 +1839,6 @@ public sealed class FireSupportServerConfigService(
 		config.PriorityExfil = NormalizeExtractionSettings(config.PriorityExfil, defaults.PriorityExfil);
 		config.A10 = config.A10 ?? defaults.A10;
 		config.DoublePass = NormalizeA10Settings(config.DoublePass, defaults.DoublePass);
-		// These fields are populated only on authenticated response snapshots.
-		// Never accept or persist them as shared administrator configuration.
-		config.PlayerStateIncluded = false;
-		config.StashCurrencyBalance = null;
-		config.StashRoubleBalance = null;
-		config.Authorizations = new Dictionary<string, int>();
-		config.PreparedPurchases = null;
-		config.PreparedPurchaseDetails = null;
 	}
 
 	private static Dictionary<TKey, TValue> MergeDictionary<TKey, TValue>(
@@ -1913,59 +1905,6 @@ public sealed class FireSupportServerConfigService(
 		RaidOpsFireSupportServerConfig.ExtractionSettings defaults)
 	{
 		return settings ?? defaults;
-	}
-
-	private static void MigrateConfig(RaidOpsFireSupportServerConfig config)
-	{
-		if (config.ConfigSchemaVersion >= CurrentConfigSchemaVersion)
-		{
-			return;
-		}
-
-		RaidOpsFireSupportServerConfig defaults = CreateDefaultConfig();
-		if (config.ConfigSchemaVersion < 2)
-		{
-			// Before schema 2 this dashboard field was dead and runtime always
-			// used eight seconds. Preserve that effective behavior once; a v2
-			// config must never be run through this migration again.
-			config.Extraction ??= defaults.Extraction;
-			config.PriorityExfil ??= defaults.PriorityExfil;
-			config.Extraction.DispatchDelaySeconds =
-				LegacyStandardExtractionDispatchDelaySeconds;
-			config.Extraction.WaitTimeSeconds =
-				config.Extraction.WaitTimeSeconds <= 0
-					? defaults.Extraction.WaitTimeSeconds
-					: config.Extraction.WaitTimeSeconds;
-			config.Extraction.ExtractTimeSeconds =
-				config.Extraction.ExtractTimeSeconds <= 0f
-					? defaults.Extraction.ExtractTimeSeconds
-					: config.Extraction.ExtractTimeSeconds;
-			config.Extraction.SpeedMultiplier =
-				config.Extraction.SpeedMultiplier <= 0f
-					? defaults.Extraction.SpeedMultiplier
-					: config.Extraction.SpeedMultiplier;
-			config.PriorityExfil.WaitTimeSeconds =
-				config.PriorityExfil.WaitTimeSeconds <= 0
-					? defaults.PriorityExfil.WaitTimeSeconds
-					: config.PriorityExfil.WaitTimeSeconds;
-			config.PriorityExfil.ExtractTimeSeconds =
-				config.PriorityExfil.ExtractTimeSeconds <= 0f
-					? defaults.PriorityExfil.ExtractTimeSeconds
-					: config.PriorityExfil.ExtractTimeSeconds;
-			config.PriorityExfil.SpeedMultiplier =
-				config.PriorityExfil.SpeedMultiplier <= 0f
-					? defaults.PriorityExfil.SpeedMultiplier
-					: config.PriorityExfil.SpeedMultiplier;
-		}
-
-		if (config.ConfigSchemaVersion < 3)
-		{
-			// Existing prices were authored as RUB amounts. The new currency
-			// selector therefore defaults to RUB without converting any values.
-			config.PaymentCurrency = nameof(PaymentCurrency.RUB);
-		}
-
-		config.ConfigSchemaVersion = CurrentConfigSchemaVersion;
 	}
 
 	private static bool TryValidateConfig(
@@ -2246,7 +2185,8 @@ public sealed class FireSupportServerConfigService(
 	{
 		return new RaidOpsFireSupportServerConfig
 		{
-			ConfigSchemaVersion = CurrentConfigSchemaVersion,
+			ConfigSchemaVersion =
+				FireSupportServerConfigMigration.CurrentConfigSchemaVersion,
 			Revision = 1,
 			PaymentMode = nameof(PaymentMode.PhoneAuthorizations),
 			PaymentSource = nameof(PaymentSource.CarriedRoubles),
@@ -2301,7 +2241,9 @@ public sealed class FireSupportServerConfigService(
 			},
 			Extraction = new RaidOpsFireSupportServerConfig.ExtractionSettings
 			{
-				DispatchDelaySeconds = LegacyStandardExtractionDispatchDelaySeconds,
+				DispatchDelaySeconds =
+					FireSupportServerConfigMigration
+						.LegacyStandardExtractionDispatchDelaySeconds,
 				WaitTimeSeconds = 30,
 				ExtractTimeSeconds = 10f,
 				SpeedMultiplier = 1f

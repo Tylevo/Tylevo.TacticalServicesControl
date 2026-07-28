@@ -28,10 +28,15 @@
 - The release candidate aligns its public display, intended Git tag, package, plugin, server, assembly, and file versions on one `1.1.0` identity. All four DLLs must be installed as one matched set.
 - The release archive contract is exactly two top-level roots, `BepInEx/` and `SPT/`, extracted directly into the SPT installation root.
 - The redundant legacy `raidops-firesupport.json` template is no longer shipped. Existing installs using that filename still migrate to `tsc-config.json`.
+- The mutable `tsc-config.json` is no longer shipped in the installer, preventing overlay upgrades from replacing custom settings. Clean installs create current defaults on first server start.
 
 ### Validation Status
 
-- The 35-test regression runner passed 20 consecutive repetitions (700/700 test executions), and the full deploy-suppressed solution build passed for Core, Server, Fika Interop, Fika bootstrap, and the regression project.
+- The 35-test baseline regression runner passed 20 consecutive repetitions
+  (700/700 test executions). The current 39-test suite additionally covers
+  published-v1.0.8 config and ledger migration, and the full
+  deploy-suppressed solution build passed for Core, Server, Fika Interop, Fika
+  bootstrap, and the regression project.
 - Solo SPT and the main-menu purchase flow have user-reported smoke coverage.
 - Matched-version human-host, Fika-client, and dedicated-headless live acceptance remains open. Dedicated-headless A-10 damage is separately gated and experimental.
 

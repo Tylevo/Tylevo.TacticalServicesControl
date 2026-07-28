@@ -108,6 +108,10 @@ The TSC Dashboard is local by default:
 - Config file: `config/tsc-config.json`
 - Token file: `config/tsc-admin-token.txt`
 
+The installer does not overwrite `config/tsc-config.json`. The server creates
+the file with current defaults when no canonical or legacy config exists, and
+migrates an existing file during upgrades.
+
 Remote dashboard access is disabled by default. If you enable remote access, keep it on a trusted LAN/VPN only and require the admin token for writes. Do not port-forward the dashboard.
 
 See `docs/dashboard.md`, `PRIVACY.md`, and `SECURITY.md`.

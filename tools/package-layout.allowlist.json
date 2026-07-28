@@ -168,7 +168,6 @@
       "destination": "SPT/user/mods/Tylevo.TacticalServicesControl",
       "files": [
         "bundles.json",
-        "config/tsc-config.json",
         "database/ammo_30x173_gau8_avenger.json",
         "database/weapon_ge_gau8_avenger_30x173.json",
         "db/CustomAssortSchemes/jaeger_uav_uplink.json",
@@ -273,7 +272,6 @@
     "SPT/user/mods/Tylevo.TacticalServicesControl/Tylevo.TacticalServicesControl.Server.dll",
     "SPT/user/mods/Tylevo.TacticalServicesControl/bundles/raidops/uav_uplink_container.bundle",
     "SPT/user/mods/Tylevo.TacticalServicesControl/bundles/raidops/uav_uplink_loot.bundle",
-    "SPT/user/mods/Tylevo.TacticalServicesControl/config/tsc-config.json",
     "SPT/user/mods/Tylevo.TacticalServicesControl/web/app.mjs",
     "SPT/user/mods/Tylevo.TacticalServicesControl/web/index.html",
     "SPT/user/mods/Tylevo.TacticalServicesControl/web/styles.css"
@@ -309,6 +307,7 @@
     "storage"
   ],
   "forbiddenFileNamePatterns": [
+    "^(?:raidops-firesupport|tsc-config)\\.json$",
     "^0Harmony\\.dll$",
     "^Assembly-CSharp\\.dll$",
     "^BepInEx(?:\\..+)?\\.dll$",

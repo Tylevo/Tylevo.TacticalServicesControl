@@ -682,13 +682,13 @@ Convert the accumulated work into an intentional, reviewable next-release state.
 - [x] Review every modified and untracked file and assign it to a phase/commit.
 - [x] Remove generated, obsolete, or accidental files without discarding intentional user work.
 - [x] Choose the next public display version, internal assembly version, and release/tag version.
-- [x] Update version metadata consistently across build properties, plugin metadata, server metadata, config templates, and release filenames.
+- [x] Update version metadata consistently across build properties, plugin metadata, server metadata, canonical config source, and release filenames.
 - [x] Update `CHANGELOG.md`.
 - [x] Update `README.md`, `docs/fika.md`, `docs/dashboard.md`, `docs/known-issues.md`, and `docs/roadmap.md`.
 - [x] Update the handoff with the final authority model, validation evidence, and remaining limitations.
 - [x] Create release notes and a Forge description for the chosen version.
 - [x] Reconcile the package-root contradiction between current build documentation and the verified 1.0.8 archive.
-- [x] Confirm all shipped configuration templates match server defaults and dashboard ranges.
+- [x] Confirm the tracked canonical config source matches server defaults and dashboard ranges.
 - [x] Confirm dedicated-headless A-10 remains clearly labeled experimental.
 - [x] Confirm no secrets, local paths, profiles, logs, proprietary binaries, or temporary artifacts are tracked.
 
@@ -718,8 +718,9 @@ Convert the accumulated work into an intentional, reviewable next-release state.
   for a stage or ZIP. Phase 7 preserves those roots in the closed schema-3
   manifest.
 - The redundant shipped `raidops-firesupport.json` template was removed.
-  Runtime migration of an existing legacy file remains. The canonical schema-3
-  template matches server defaults; its values fall within dashboard ranges.
+  Runtime migration of an existing legacy file remains. The tracked canonical
+  schema-3 config source matches server defaults and dashboard ranges; Phase 7
+  later excludes mutable config from the installer.
 - Dashboard section IDs now match the server schema, the dead standard-A-10
   delay control is removed, speed labels identify multipliers, and Double Pass
   delay uses the same 6-45-second supported range as local runtime tuning.
@@ -766,8 +767,9 @@ Produce a reproducible release candidate from a clean source state and prove tha
 - [ ] Package independently into two new external directories and require
       identical archive hashes.
 - [ ] Verify the final archive roots against the resolved package contract.
-- [ ] Verify required Core, Server, Fika Interop, Fika bootstrap, assets,
-      config, and metadata files are present and version-matched.
+- [ ] Verify required Core, Server, Fika Interop, Fika bootstrap, assets, and
+      metadata files are present and version-matched, while mutable canonical
+      and legacy config files are absent.
 - [ ] Verify WTT Common Lib, EFT/SPT/Fika proprietary assemblies, profiles,
       logs, caches, source prompts, and local paths are absent.
 - [ ] Extract each archive into an empty directory, validate its layout, and
@@ -783,9 +785,17 @@ Produce a reproducible release candidate from a clean source state and prove tha
   `Tylevo.TacticalServicesControl-v1.0.8-SPT4.0.13.zip`, size `41,236,560`
   bytes, and SHA-256
   `C3C0390CC6641E5F82C99C3E57D8AEDA358FD0278E667E6616E53963EB2FCB8D`.
-- Package manifest schema 3 closes the installer at 169 files: 155 reviewed
+- Package manifest schema 3 closes the installer at 168 files: 154 reviewed
   tracked source entries, four fresh DLLs, eight Unity bundles, and two notice
   copies. Unreviewed, missing, or untracked source entries fail validation.
+- A preliminary 169-file candidate was rejected before installation because
+  it still contained the mutable canonical config. The corrected contract
+  omits both canonical and legacy config filenames, rejects either filename if
+  it is reintroduced, and excludes the canonical filename from developer
+  PostBuild deployment.
+- The schema-3 reference config is tracked outside deployable source trees.
+  Missing config creates current defaults at first startup; existing canonical
+  or legacy config remains in place for migration during an upgrade.
 - The verified public v1.0.8 ZIP is the only bundle input. Every bundle path,
   size, and hash is pinned; live SPT and obsolete ignored package stages are
   excluded as sources.
@@ -794,9 +804,13 @@ Produce a reproducible release candidate from a clean source state and prove tha
   versions, and hashes.
 - The package builder requires matching build evidence, creates a new
   deterministic archive, validates its stage and fresh extraction, and records
-  all 169 paths, sizes, and hashes in an external content-evidence sidecar.
+  all 168 paths, sizes, and hashes in an external content-evidence sidecar.
 - The former 7-Zip update-in-place release targets were removed, while the
   separately guarded developer deployment path remains.
+- The current 39-test suite passes, including exact published-v1.0.8 config
+  migration and schema-1-to-schema-5 ledger replay/idempotency coverage. The
+  preceding 35-test baseline remains the suite that completed 20 consecutive
+  repetitions.
 - Phase 2-4 and multi-currency validation matrices match the current ledger,
   config, request, and requester-identity contracts. All live rows remain open.
 - No clean v1.1.0 candidate has been built or installed at this checkpoint; no
