@@ -14,18 +14,18 @@ installed on every participant.
 | Field | Value |
 | --- | --- |
 | Candidate version | `v1.1.0` |
-| Candidate status | `OPEN - final Phase 7 package not yet recorded` |
-| Candidate commit | `TO RECORD` |
-| Release archive filename / SHA-256 | `TO RECORD` |
-| Package manifest SHA-256 | `TO RECORD` |
-| Build evidence SHA-256 | `TO RECORD` |
-| Content evidence SHA-256 | `TO RECORD` |
-| Core DLL SHA-256 | `TO RECORD` |
-| Server DLL SHA-256 | `TO RECORD` |
-| Fika Interop DLL SHA-256 | `TO RECORD` |
-| Fika bootstrap DLL SHA-256 | `TO RECORD` |
+| Candidate status | `VERIFIED - installed on the local server; matched peer installation remains OPEN` |
+| Candidate commit | `a958630633e2f792bc52558aba2b6d0a67fa485a` |
+| Release archive filename / SHA-256 | `Tylevo.TacticalServicesControl-v1.1.0-SPT4.0.13.zip` / `A871D44AE86C28779C3471338F61A896530580AF97D6AAF1F1C3C4D31547B3CE` |
+| Package manifest SHA-256 | `057924363255172AAD1B9102A75F61CDF7A7A94BFE1DDF6E5EEF7294B56DB654` |
+| Build evidence SHA-256 | `3ACDB3A59FA4D415F3F6886FA1044E3F47B9A633A31A5329CD3B81FF996093D6` |
+| Content evidence SHA-256 | `E9A1DCFA77351B12AB6284515F0B00DC2ED4E61D1DB8BAF33FB3149638824345` |
+| Core DLL SHA-256 | `D2F4476F1006ADED9B3701F332BA45AE5E6178C4D93CD8DFB43C4D91EFB1E032` |
+| Server DLL SHA-256 | `2BDC2E25CBFF42C538FF9AECC3055492B8A685E396109FA421736AF9F16B3159` |
+| Fika Interop DLL SHA-256 | `9E28B8BE3A09CDFF9789A68B98BC9846BDAE5025564E774744BABE6E3ACAD401` |
+| Fika bootstrap DLL SHA-256 | `37164B44E16C65809017BC2E54E0D7307F51163C43AC14B07B3BB953F2265ECE` |
 | Config schema / authorization-ledger schema | `3 / 5` |
-| Evidence root | `TO RECORD` |
+| Evidence root | External `release_candidate/v1.1.0-a958630` directory |
 
 This matrix validates that a TSC authorization is finalized from an explicit
 authority outcome rather than from packet transport. It applies to A-10
@@ -99,6 +99,11 @@ accepted broadcast plus the final ledger state. Solo and local human-host
 cases may instead use the local-runtime/in-process authority acceptance log
 plus the final ledger state.
 
+Informal solo observation on 2026-07-28 confirmed that saving a changed service
+price during an active raid affected a subsequent purchase without restarting
+the raid. This is useful preliminary evidence for P2-17, but it does not close
+the matched Fika or dedicated-headless cases.
+
 ## Matrix
 
 | ID | Topology / fault | Action | Required result |
@@ -119,6 +124,7 @@ plus the final ledger state.
 | P2-14 | Commit/refund transport interruption | Interrupt the SPT HTTP finalization call, then restore it before the pending-use timeout while the client remains active. | Same-ID retries converge on one terminal ledger state. An uncorrelated response or changed backend session/profile is never applied. |
 | P2-15 | Backend outage beyond pending expiry | Keep the SPT ledger endpoint unavailable beyond the pending-use timeout after an accepted service. | Record the known limitation: expiry can restore the credit before the same-ID commit arrives, leaving the delivered service free. No second execution may occur. |
 | P2-16 | Both accepted paths and cancel settlement lost (injected) | Let the authority accept, but drop the direct result, accepted broadcast, and cancel-settlement replay for more than 35 seconds while SPT HTTP remains available; then deliver a late accepted replay. | Record the known limitation: `AuthorityCancelUnsettled` refunds before authority state is known, so the accepted effect can be free and the late replay can register after the waiter is gone. It must still never execute twice. |
+| P2-17 | Live in-raid price change | In solo, human-host, remote-client, and dedicated-headless topologies, begin with a distinctive service price A. Keep one prepared/in-flight purchase at a controlled fault point, save price B through the dashboard during the active raid, then make a fresh purchase and resume/retry the original request ID. | The fresh request uses authoritative price B without a raid restart. The prepared/in-flight request remains pinned to price A and its original currency across retry or replay. Only the authenticated requester is debited, each purchase grants at most once, and no host, observer, or headless profile is charged. Record the config revision and quote identity for both requests. |
 
 ## Known Residuals And Contract Checks
 

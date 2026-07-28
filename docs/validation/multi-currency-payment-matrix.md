@@ -3,8 +3,8 @@
 Status:
 
 - v1.1.0 implementation/build checks: complete.
-- Phase 7 candidate identity: **OPEN - final commit and package manifest not yet
-  recorded**.
+- Phase 7 candidate identity: **VERIFIED - installed on the local server;
+  matched peer installation remains open**.
 - Live acceptance: **OPEN - not yet run**.
 - Every live row below starts `OPEN`; no build or static result closes a row.
 
@@ -19,18 +19,18 @@ Complete this record before changing any live row from `OPEN`.
 | Field | Value |
 | --- | --- |
 | Candidate version | `v1.1.0` |
-| Candidate status | `OPEN - final Phase 7 package not yet recorded` |
-| Candidate commit | `TO RECORD` |
-| Release archive filename / SHA-256 | `TO RECORD` |
-| Package manifest SHA-256 | `TO RECORD` |
-| Build evidence SHA-256 | `TO RECORD` |
-| Content evidence SHA-256 | `TO RECORD` |
-| Core DLL SHA-256 | `TO RECORD` |
-| Server DLL SHA-256 | `TO RECORD` |
-| Fika Interop DLL SHA-256 | `TO RECORD` |
-| Fika bootstrap DLL SHA-256 | `TO RECORD` |
+| Candidate status | `VERIFIED - installed on the local server; matched peer installation remains OPEN` |
+| Candidate commit | `a958630633e2f792bc52558aba2b6d0a67fa485a` |
+| Release archive filename / SHA-256 | `Tylevo.TacticalServicesControl-v1.1.0-SPT4.0.13.zip` / `A871D44AE86C28779C3471338F61A896530580AF97D6AAF1F1C3C4D31547B3CE` |
+| Package manifest SHA-256 | `057924363255172AAD1B9102A75F61CDF7A7A94BFE1DDF6E5EEF7294B56DB654` |
+| Build evidence SHA-256 | `3ACDB3A59FA4D415F3F6886FA1044E3F47B9A633A31A5329CD3B81FF996093D6` |
+| Content evidence SHA-256 | `E9A1DCFA77351B12AB6284515F0B00DC2ED4E61D1DB8BAF33FB3149638824345` |
+| Core DLL SHA-256 | `D2F4476F1006ADED9B3701F332BA45AE5E6178C4D93CD8DFB43C4D91EFB1E032` |
+| Server DLL SHA-256 | `2BDC2E25CBFF42C538FF9AECC3055492B8A685E396109FA421736AF9F16B3159` |
+| Fika Interop DLL SHA-256 | `9E28B8BE3A09CDFF9789A68B98BC9846BDAE5025564E774744BABE6E3ACAD401` |
+| Fika bootstrap DLL SHA-256 | `37164B44E16C65809017BC2E54E0D7307F51163C43AC14B07B3BB953F2265ECE` |
 | Config schema / authorization-ledger schema | `3 / 5` |
-| Evidence root | `TO RECORD` |
+| Evidence root | External `release_candidate/v1.1.0-a958630` directory |
 
 ## Test-Set Safety
 
@@ -79,6 +79,11 @@ For every row, record:
 `TO RECORD` is a placeholder, not evidence. Attach the evidence location before
 changing a row from `OPEN`, and preserve the first failing run before retrying.
 
+Informal solo observation on 2026-07-28 confirmed that a service-price save
+during an active raid affected a subsequent purchase without restarting the
+raid. MC-F06 keeps the cross-peer, headless, and in-flight quote behavior open
+until it has matched-candidate evidence.
+
 ## Configuration And Display Matrix
 
 | ID | Scenario | Action | Required result | Status | Evidence |
@@ -122,6 +127,7 @@ the human host, every client, and any dedicated headless host.
 | MC-F03 | Older-client fail-closed compatibility | In an isolated compatibility run, attempt a USD/EUR server purchase with an older client that lacks the current currency contract. Do not use this mixed set for any other acceptance row. | The request fails closed before debit/grant with an actionable compatibility or contract error. It cannot be reinterpreted as RUB, use a client-local price, or mutate the ledger. | OPEN | TO RECORD |
 | MC-F04 | Headless duplicate resistance | In a dedicated-headless raid, retry/duplicate one purchase and one paid support request while observing client and server logs. | Headless authority creates no extra debit or authorization. The purchase request and support request each retain one canonical identity and execute/grant at most once. | OPEN | TO RECORD |
 | MC-F05 | Disconnect override cleanup | Connect to a host using a currency different from the client's fallback, disconnect/end the raid, then inspect the supported offline/server fallback and reconnect. | Disconnect clears the stale host override. Offline/fallback state returns to its configured source, and reconnect applies the current host value once without carrying the prior session's revision. | OPEN | TO RECORD |
+| MC-F06 | Live in-raid price/currency update | In human-host and dedicated-headless topologies, keep one prepared purchase paused, save a distinctive new price during the active raid, and make a fresh request from the host and each client. Repeat once while changing both currency and price, then resume/retry the original request ID. | Fresh requests use the latest server revision, price, and currency without a raid restart. The prepared request remains bound to its original quote and currency. Only the authenticated requester is debited, no peer-local stale price is accepted, and retries/replays cannot debit or grant twice. | OPEN | TO RECORD |
 
 ## Exit Record
 
