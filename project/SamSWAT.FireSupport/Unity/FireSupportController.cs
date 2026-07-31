@@ -108,14 +108,12 @@ public class FireSupportController : UIInputNode
 
 		var heliExfil = new HeliExfiltrationService(
 			_spotter,
-			PluginSettings.AmountOfExtractionRequests.Value,
-			ESupportType.Extract);
+			PluginSettings.AmountOfExtractionRequests.Value);
 		_services[heliExfil.SupportType] = heliExfil;
-		var priorityExfil = new HeliExfiltrationService(
+		var cargoTransfer = new HeliCargoTransferService(
 			_spotter,
-			PluginSettings.AmountOfExtractionRequests.Value,
-			ESupportType.PriorityExfil);
-		_services[priorityExfil.SupportType] = priorityExfil;
+			PluginSettings.AmountOfExtractionRequests.Value);
+		_services[cargoTransfer.SupportType] = cargoTransfer;
 
 		var jetStrafe = new JetStrafeService(
 			_spotter,

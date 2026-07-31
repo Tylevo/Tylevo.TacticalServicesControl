@@ -1,6 +1,6 @@
 # Tylevo's Tactical Services Control v1.1.0 Public Beta
 
-> Release-candidate draft. This build has not been published.
+> Separate tester prerelease published as GitHub tag `v1.1.0-beta.1`. This does not consume the final `v1.1.0` tag.
 
 Target: SPT 4.0.13. This update follows the published v1.0.8 build.
 
@@ -10,8 +10,9 @@ Target: SPT 4.0.13. This update follows the published v1.0.8 build.
 - Added an explicit pre-raid purchase confirmation showing the service, authoritative price, current stash balance, and projected balance. The store also includes a link to the active server's TSC Dashboard.
 - Added configurable RUB, USD, and EUR payments across the dashboard, in-raid phone, pre-raid store, carried wallet, stash debit, persistent purchase journal, and Fika settings sync.
 - Added a configurable UAV presentation choice in F12. `Phone` keeps the held-`J` physical Uplink; `HUD` shows only the square live scanner in a selected screen corner.
+- Added an F12 Cargo Transfer handling-fee source. `Carried` remains the default native behavior; `Stash` pays the same EFT-calculated RUB fee from the authenticated PMC stash.
 - Hardened persistent authorization hydration and the Fika request lifecycle so payment, authority acceptance, execution, commit, refund, and duplicate delivery have explicit states.
-- Made standard Extraction and Priority Exfil use separate configurable dispatch, wait, zone-countdown, and helicopter-speed contracts.
+- Replaced the released Priority Exfil slot with **UH-60 Cargo Transfer** while preserving its saved key, credits, artwork, dispatch delay, wait window, and speed tuning for upgrade compatibility.
 
 ## Pre-Raid Authorization Store
 
@@ -51,27 +52,35 @@ Target: SPT 4.0.13. This update follows the published v1.0.8 build.
 - HUD position can be set to any screen corner in F12.
 - Async equip, rapid release, death, disconnect, raid teardown, render textures, phone renderers, loiter objects, and repeated-raid state have guarded cleanup paths.
 
-## Extraction Timing
+## UH-60 Services
 
-- Standard Extraction and Priority Exfil retain distinct dispatch delay, wait window, extraction-zone countdown, and speed multiplier values.
+- Standard Extraction retains its dispatch delay, wait window, extraction-zone countdown, and speed multiplier.
+- UH-60 Cargo Transfer is cargo-only: it opens EFT's native mid-raid transfer screen for the requester, never starts an extraction countdown, and never ends the raid.
+- Cargo Transfer reuses the legacy `PriorityExfil` configuration and authorization slot one-for-one. Its dispatch delay, wait window, and speed multiplier remain configurable; the old Priority extraction-time field is retained only as an ignored compatibility value.
+- After EFT confirms at least one paid item reached its persistent delivery grid, Cargo Transfer immediately triggers the successful-pickup departure. Cancellation, insufficient funds, and rejected native purchases retain the remaining landed window, and Fika observers receive one reliable request-bound departure event.
+- The Cargo dispatch authorization and EFT's native per-item handling charge are separate costs. The handling fee remains RUB-only and never follows the configurable RUB, USD, or EUR authorization currency.
+- The F12 **Transfer fee source** defaults to `Carried`, preserving EFT's native carried-RUB purchase. `Stash` uses an authenticated TSC server debit while leaving the native transfer grid, item removal, and delivery flow unchanged.
+- Stash-fee prepare, commit, refund, and replay are keyed by one stable transaction ID in an idempotent write-ahead journal. A retry cannot charge twice, a rejected native purchase refunds once, and cancelling before submission charges nothing.
+- Unfinished client-side commit or refund intents survive a restart and retry when the same PMC reconnects. New stash-funded cargo submissions remain blocked until that recovery reaches a confirmed terminal state.
+- `Stash` mode fails closed when the matching server endpoint is unavailable, including a client paired with an older TSC server. It does not fall back to carried cash or submit cargo after an unconfirmed debit.
+- Valid TSC-marked cargo returns through post-raid mail from an isolated **UH-60 Pilot** messenger. This does not rename or replace the stock **BTR Driver**; unmarked native cargo stays with BTR, and a marker or custom-routing failure falls back to stock BTR delivery rather than dropping accepted items.
 - Solo requests honor the configured dispatch delay. In Fika, the raid authority validates the requested timing snapshot and owns dispatch.
-- Only the requester receives a functional extraction point and countdown. Other non-headless peers render the accepted helicopter visual; a dedicated headless authority creates no client presentation.
-- Leaving the zone resets the correct service-specific countdown. Multi-collider boundary jitter cannot restart or complete it twice.
-- Invalid timing is rejected unless `waitTimeSeconds >= ceil(extractTimeSeconds + 1)`.
+- Only the requester receives the functional local service point: an extraction point for standard Extraction or a loading interaction for Cargo. Other non-headless peers render the accepted helicopter visual; a dedicated headless authority creates no client presentation.
+- Cargo Transfer is available in solo SPT and to a human Fika host. Non-host Fika clients fail closed before purchase, authorization consumption, or dispatch until native transfer pricing can be synchronized safely.
+- Leaving standard Extraction resets its extraction countdown. Leaving Cargo closes its loading interaction; Cargo never starts, resumes, or completes a countdown.
+- Standard Extraction rejects timing unless `waitTimeSeconds >= ceil(extractTimeSeconds + 1)`. Cargo independently validates only dispatch delay, landed wait time, and speed; its legacy `priorityExfil.extractTimeSeconds` value is never an active runtime setting.
 - Existing schema-less standard dispatch settings migrate to the historical effective eight-second delay; an explicit current-schema zero remains immediate dispatch.
 
 ## Verification
 
-- Added 39 zero-dependency regression tests covering authorization presence,
-  ledger persistence, published-v1.0.8 config and ledger migration, request
-  races and deduplication, Fika settings serialization, tuning precedence,
-  extraction timing, and countdown reset.
-- The preceding 35-test baseline passed 20 consecutive runs: 700 test
-  executions without a failure or timeout. The four migration cases pass in
-  the current suite.
+- The current 101-test zero-dependency regression suite covers authorization
+  presence and persistence, published-v1.0.8 migration, request races and
+  deduplication, Fika serialization and service semantics, multi-currency
+  payment, extraction/cargo isolation, native UH-60 item transfer and delivery,
+  stash-fee recovery, and ownership-safe headless A-10 damage routing.
 - Added CI-safe repository, JSON, JavaScript, solution, deployment-guard, and package-layout checks that require no proprietary game assemblies.
 - Added one deploy-disabled local verification path for Core, Server, Fika Interop, Fika bootstrap, and the regression runner.
-- The full local release build completed with 0 errors. Its 13 warnings are pre-existing source/API warnings.
+- The full local release build completed with 0 errors. Its 17 warnings are existing nullable/obsolete-API warnings.
 
 ## Updating
 
@@ -92,9 +101,9 @@ Required dependencies are not bundled: UnityToolkit v2.0.1, WTT Client Common Li
 
 ## Validation Status And Known Limitations
 
-- Solo SPT has been reported healthy, but the complete persistent-purchase, recon, and extraction acceptance matrices are not yet recorded.
-- The new human-host, Fika-client, two-client, and dedicated-headless transaction/recon/extraction matrices remain open. Do not treat automated tests or a successful build as live multiplayer acceptance.
-- No current headless tester has yet verified that the experimental A-10 executor applies damage once and settles the matching authorization correctly in a real raid.
+- Solo SPT has been reported healthy, but the complete persistent-purchase, recon, standard-Extraction, and Cargo-transfer acceptance matrices are not yet recorded.
+- The new human-host, Fika-client, two-client, and dedicated-headless transaction, recon, standard-Extraction, and Cargo-transfer matrices remain open. Do not treat automated tests or a successful build as live multiplayer acceptance.
+- No current headless tester has yet verified that the experimental A-10 executor applies damage once and settles the matching authorization correctly in a real raid. The previous direct health-controller fallback has been removed: headless-owned bots now use Fika's player damage lifecycle and remote humans use Fika's explosive damage-packet wrapper, but the lethal corpse/downed matrix remains open until tested live.
 - If both accepted-result paths and cancellation settlement are lost beyond the bounded wait, an authority-executed service can still be refunded. A late acceptance remains deduplicated, but the service may become free.
 - Client commit/refund retries are in memory. A client crash, permanent logout, or backend outage lasting beyond pending expiry can refund an already delivered service.
 - Dedicated-headless A-10 is not claimed to match the human-host ballistic path on every map or mod combination.

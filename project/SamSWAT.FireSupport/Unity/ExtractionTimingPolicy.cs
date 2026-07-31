@@ -198,10 +198,7 @@ public static class ExtractionTimingPolicy
 		ExtractionTimingValues settings,
 		Action<string>? warning = null)
 	{
-		ESupportType effectiveSupportType =
-			supportType == ESupportType.PriorityExfil
-				? ESupportType.PriorityExfil
-				: ESupportType.Extract;
+		ESupportType effectiveSupportType = ESupportType.Extract;
 		float dispatchDelaySeconds = Math.Max(
 			0f,
 			settings.DispatchDelaySeconds);

@@ -23,6 +23,7 @@ public class FireSupportRequestPacket : INetSerializable
 	public int HelicopterWaitTimeSeconds;
 	public float HelicopterExtractTimeSeconds;
 	public float HelicopterSpeedMultiplier;
+	public int ServiceSemanticsVersion = FireSupportServiceSemantics.CurrentVersion;
 
 	public FireSupportRequestPacket()
 	{
@@ -71,7 +72,10 @@ public class FireSupportRequestPacket : INetSerializable
 		HelicopterTimingRevision = revision;
 		HelicopterDispatchDelaySeconds = timingSnapshot.DispatchDelaySeconds;
 		HelicopterWaitTimeSeconds = timingSnapshot.WaitTimeSeconds;
-		HelicopterExtractTimeSeconds = timingSnapshot.ExtractTimeSeconds;
+		HelicopterExtractTimeSeconds =
+			SupportType == ESupportType.PriorityExfil
+				? 0f
+				: timingSnapshot.ExtractTimeSeconds;
 		HelicopterSpeedMultiplier = timingSnapshot.SpeedMultiplier;
 	}
 
@@ -81,7 +85,9 @@ public class FireSupportRequestPacket : INetSerializable
 			SupportType,
 			HelicopterDispatchDelaySeconds,
 			HelicopterWaitTimeSeconds,
-			HelicopterExtractTimeSeconds,
+			SupportType == ESupportType.PriorityExfil
+				? 0f
+				: HelicopterExtractTimeSeconds,
 			HelicopterSpeedMultiplier);
 	}
 
@@ -103,6 +109,7 @@ public class FireSupportRequestPacket : INetSerializable
 		writer.Put(HelicopterWaitTimeSeconds);
 		writer.Put(HelicopterExtractTimeSeconds);
 		writer.Put(HelicopterSpeedMultiplier);
+		writer.Put(ServiceSemanticsVersion);
 	}
 
 	public void Deserialize(NetDataReader reader)
@@ -121,8 +128,15 @@ public class FireSupportRequestPacket : INetSerializable
 		HelicopterTimingRevision = reader.GetInt();
 		HelicopterDispatchDelaySeconds = reader.GetFloat();
 		HelicopterWaitTimeSeconds = reader.GetInt();
-		HelicopterExtractTimeSeconds = reader.GetFloat();
+		float legacyHelicopterExtractTimeSeconds = reader.GetFloat();
+		HelicopterExtractTimeSeconds =
+			SupportType == ESupportType.PriorityExfil
+				? 0f
+				: legacyHelicopterExtractTimeSeconds;
 		HelicopterSpeedMultiplier = reader.GetFloat();
+		ServiceSemanticsVersion = reader.AvailableBytes >= sizeof(int)
+			? reader.GetInt()
+			: FireSupportServiceSemantics.LegacyVersion;
 	}
 
 	public void EnsureRequestId()

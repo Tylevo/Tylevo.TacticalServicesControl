@@ -1,4 +1,4 @@
-﻿using Comfort.Common;
+using Comfort.Common;
 using EFT;
 using EFT.UI;
 using SamSWAT.FireSupport.ArysReloaded.Utils;
@@ -9,28 +9,27 @@ using UnityEngine;
 
 namespace SamSWAT.FireSupport.ArysReloaded.Unity;
 
+/// <summary>
+/// Standard UH-60 extraction zone. Cargo transfer uses a separate component
+/// and never instantiates this one.
+/// </summary>
 public class HeliExfiltrationPoint : MonoBehaviour, IPhysicsTrigger
 {
 	private readonly ExtractionCountdownClock _countdown = new();
+	private readonly HashSet<Collider> _localColliders = new();
 	private Coroutine _coroutine;
 	private BattleUIPanelExitTrigger _battleUIPanelExitTrigger;
 	private GameWorld _gameWorld;
-	private ESupportType _supportType = ESupportType.Extract;
 	private bool _initialized;
 	private bool _completed;
 	private CancellationToken _cancellationToken;
-	private readonly HashSet<Collider> _localColliders = new();
 
 	public string Description => "HeliExfiltrationPoint";
 
 	public void Initialize(
-		ESupportType supportType,
 		float extractTimeSeconds,
 		CancellationToken cancellationToken)
 	{
-		_supportType = supportType == ESupportType.PriorityExfil
-			? ESupportType.PriorityExfil
-			: ESupportType.Extract;
 		_countdown.Initialize(extractTimeSeconds);
 		_cancellationToken = cancellationToken;
 		_initialized = true;
@@ -41,13 +40,13 @@ public class HeliExfiltrationPoint : MonoBehaviour, IPhysicsTrigger
 		if (!_initialized)
 		{
 			Initialize(
-				_supportType,
-				FireSupportTuningSettings.GetHelicopterExtractTime(_supportType),
+				FireSupportTuningSettings.GetHelicopterExtractTime(),
 				CancellationToken.None);
 		}
 
 		_gameWorld = Singleton<GameWorld>.Instance;
-		_battleUIPanelExitTrigger = Singleton<GameUI>.Instance?.BattleUiPanelExitTrigger;
+		_battleUIPanelExitTrigger =
+			Singleton<GameUI>.Instance?.BattleUiPanelExitTrigger;
 	}
 
 	public void OnTriggerEnter(Collider collider)
@@ -89,12 +88,8 @@ public class HeliExfiltrationPoint : MonoBehaviour, IPhysicsTrigger
 
 		ResetTimer();
 		_battleUIPanelExitTrigger?.Close();
-
-		if (_coroutine != null)
-		{
-			StopCoroutine(_coroutine);
-			_coroutine = null;
-		}
+		StopCoroutine(_coroutine);
+		_coroutine = null;
 	}
 
 	private void OnDestroy()
@@ -106,7 +101,8 @@ public class HeliExfiltrationPoint : MonoBehaviour, IPhysicsTrigger
 		}
 
 		_localColliders.Clear();
-		if (Singleton<GameUI>.Instantiated && _battleUIPanelExitTrigger != null)
+		if (Singleton<GameUI>.Instantiated &&
+		    _battleUIPanelExitTrigger != null)
 		{
 			_battleUIPanelExitTrigger.Close();
 		}
@@ -141,18 +137,22 @@ public class HeliExfiltrationPoint : MonoBehaviour, IPhysicsTrigger
 		_completed = true;
 		CloseAndStopTimer();
 
-		// In a Fika session the extraction must go through Fika's extract flow
-		// (host stays to keep the session alive, clients despawn cleanly).
-		// Stopping the session directly here put the lobby into limbo when the
-		// host extracted before other players.
-		if (FireSupportExtraction.TryOverrideExtract(player, "UH-60 Black Hawk"))
+		// Fika owns multiplayer extraction so the host can keep the raid alive
+		// and clients despawn cleanly. Solo SPT uses the ordinary session stop.
+		if (FireSupportExtraction.TryOverrideExtract(
+			    player,
+			    "UH-60 Black Hawk"))
 		{
 			yield break;
 		}
 
-		if (Singleton<AbstractGame>.Instance is ISessionStopper sessionStopper)
+		if (Singleton<AbstractGame>.Instance is
+		    ISessionStopper sessionStopper)
 		{
-			sessionStopper.StopSession(player.ProfileId, ExitStatus.Survived, "UH-60 Black Hawk");
+			sessionStopper.StopSession(
+				player.ProfileId,
+				ExitStatus.Survived,
+				"UH-60 Black Hawk");
 		}
 	}
 

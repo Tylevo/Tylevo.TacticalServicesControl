@@ -5,6 +5,8 @@ using EFT;
 using Newtonsoft.Json;
 using SPT.Common.Http;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Security;
@@ -24,6 +26,9 @@ public static class FireSupportServerConfigClient
 	private static int s_hostPurchaseRevision;
 	private static long s_profileMutationEpoch;
 	private static int s_profileMutationsInFlight;
+
+	public static bool IsFikaClientHostAuthorityActive =>
+		s_globalSettingsSuppressedByFikaClient;
 
 	public static void Initialize()
 	{
@@ -173,6 +178,10 @@ public static class FireSupportServerConfigClient
 			throw new InvalidOperationException("The authenticated PMC profile is unavailable.");
 		}
 
+		await Uh60TransferFeeRecoveryStore.RetryMatchingProfileAsync(
+			profileId,
+			"pre-raid menu synchronization");
+
 		string route = BuildConfigRoute(profileId);
 		long mutationEpochAtRequest = CaptureProfileMutationEpoch();
 		TscDiagnostics.LogPayment($"TSC pre-raid player-state snapshot requested: {route}");
@@ -252,6 +261,201 @@ public static class FireSupportServerConfigClient
 			expectedCost,
 			expectedCurrency,
 			clientKnownRevision);
+	}
+
+	/// <summary>
+	/// Tags only cargo that EFT has already moved into its canonical persistent
+	/// transfer grid. A failed tag never rolls back or blocks the native
+	/// transfer: the server intentionally falls back to the stock BTR sender.
+	/// </summary>
+	public static async UniTask<bool> TryMarkUh60TransferAsync(
+		string profileId,
+		IReadOnlyCollection<string> itemIds)
+	{
+		string normalizedProfileId = profileId?.Trim() ?? string.Empty;
+		if (string.IsNullOrWhiteSpace(normalizedProfileId) ||
+		    !IsAuthenticatedProfile(normalizedProfileId) ||
+		    itemIds == null ||
+		    itemIds.Count == 0)
+		{
+			return false;
+		}
+
+		string[] distinctItemIds =
+			itemIds
+				.Where(itemId => !string.IsNullOrWhiteSpace(itemId))
+				.Select(itemId => itemId.Trim())
+				.Distinct(StringComparer.Ordinal)
+				.Take(4096)
+				.ToArray();
+		if (distinctItemIds.Length == 0)
+		{
+			return false;
+		}
+
+		try
+		{
+			string requestBody = JsonConvert.SerializeObject(
+				new
+				{
+					profileId = normalizedProfileId,
+					itemIds = distinctItemIds
+				});
+			string responseBody = await SendServerRequestAsync(
+				HttpMethod.Post,
+				"uh60-transfer/mark",
+				requestBody,
+				CancellationToken.None);
+			Uh60TransferMarkResponse response =
+				JsonConvert.DeserializeObject<Uh60TransferMarkResponse>(
+					responseBody);
+			if (response?.Ok == true &&
+			    response.AcceptedItemCount > 0)
+			{
+				return true;
+			}
+
+			FireSupportPlugin.LogSource?.LogWarning(
+				$"UH-60 Pilot marker was declined ({response?.Reason ?? "invalid response"}); native delivery remains active.");
+			return false;
+		}
+		catch (Exception ex)
+		{
+			FireSupportPlugin.LogSource?.LogWarning(
+				$"UH-60 Pilot marker request failed; native delivery remains active. {ex.Message}");
+			return false;
+		}
+	}
+
+	internal static UniTask<FireSupportUh60TransferFeeResponse> PrepareUh60TransferFeeAsync(
+		string profileId,
+		string transactionId,
+		int amountRoubles)
+	{
+		return SendUh60TransferFeeActionAsync(
+			"Prepare",
+			profileId,
+			transactionId,
+			amountRoubles);
+	}
+
+	internal static UniTask<FireSupportUh60TransferFeeResponse> CommitUh60TransferFeeAsync(
+		string profileId,
+		string transactionId,
+		int amountRoubles)
+	{
+		return SendUh60TransferFeeActionAsync(
+			"Commit",
+			profileId,
+			transactionId,
+			amountRoubles);
+	}
+
+	internal static UniTask<FireSupportUh60TransferFeeResponse> RefundUh60TransferFeeAsync(
+		string profileId,
+		string transactionId,
+		int amountRoubles)
+	{
+		return SendUh60TransferFeeActionAsync(
+			"Refund",
+			profileId,
+			transactionId,
+			amountRoubles);
+	}
+
+	internal static UniTask<FireSupportUh60TransferFeeResponse> GetUh60TransferFeeStatusAsync(
+		string profileId,
+		string transactionId,
+		int amountRoubles)
+	{
+		return SendUh60TransferFeeActionAsync(
+			"Status",
+			profileId,
+			transactionId,
+			amountRoubles);
+	}
+
+	private static async UniTask<FireSupportUh60TransferFeeResponse> SendUh60TransferFeeActionAsync(
+		string action,
+		string profileId,
+		string transactionId,
+		int amountRoubles)
+	{
+		string normalizedProfileId = profileId?.Trim() ?? string.Empty;
+		string normalizedTransactionId = transactionId?.Trim() ?? string.Empty;
+		var fallback = new FireSupportUh60TransferFeeResponse
+		{
+			Ok = false,
+			Reason = "ServerConfigUnavailable",
+			State = string.Empty,
+			TransactionId = normalizedTransactionId,
+			AmountRoubles = amountRoubles
+		};
+
+		if (string.IsNullOrWhiteSpace(normalizedProfileId) ||
+		    !IsAuthenticatedProfile(normalizedProfileId))
+		{
+			fallback.Reason = "ProfileSessionChanged";
+			return fallback;
+		}
+
+		if (string.IsNullOrWhiteSpace(normalizedTransactionId) ||
+		    amountRoubles < 0)
+		{
+			fallback.Reason = "InvalidRequest";
+			return fallback;
+		}
+
+		BeginProfileMutation();
+		try
+		{
+			var request = new FireSupportUh60TransferFeeRequest
+			{
+				Action = action,
+				ProfileId = normalizedProfileId,
+				TransactionId = normalizedTransactionId,
+				AmountRoubles = amountRoubles
+			};
+			string responseBody = await SendServerRequestAsync(
+				HttpMethod.Post,
+				"uh60-transfer/fee",
+				JsonConvert.SerializeObject(request),
+				CancellationToken.None);
+			FireSupportUh60TransferFeeResponse response =
+				JsonConvert.DeserializeObject<FireSupportUh60TransferFeeResponse>(
+					responseBody);
+			if (response == null ||
+			    string.IsNullOrWhiteSpace(response.TransactionId) ||
+			    !string.Equals(
+				    response.TransactionId,
+				    normalizedTransactionId,
+				    StringComparison.Ordinal) ||
+			    response.AmountRoubles != amountRoubles)
+			{
+				fallback.Reason = "InvalidServerResponse";
+				return fallback;
+			}
+
+			FireSupportPayment.ApplyAuthenticatedStashBalance(
+				PaymentCurrency.RUB,
+				response.StashRoubleBalance,
+				$"UH-60 cargo fee {action}");
+			return response;
+		}
+		catch (Exception ex)
+		{
+			// A legacy TSC server has no /uh60-transfer/fee route. Its 404
+			// reaches this path and deliberately fails Prepare before EFT's
+			// native purchase can be invoked.
+			FireSupportPlugin.LogSource?.LogWarning(
+				$"UH-60 cargo transfer fee {action} request failed closed. {ex.Message}");
+			fallback.Reason = "RequestFailed";
+			return fallback;
+		}
+		finally
+		{
+			EndProfileMutation();
+		}
 	}
 
 	private static async UniTask<FireSupportPurchaseResponse> SendPurchaseRequestAsync(
@@ -556,6 +760,15 @@ public static class FireSupportServerConfigClient
 	{
 		try
 		{
+			string profileId = GetLocalProfileId();
+			if (!string.IsNullOrWhiteSpace(profileId))
+			{
+				await Uh60TransferFeeRecoveryStore
+					.RetryMatchingProfileAsync(
+						profileId,
+						"in-raid server synchronization");
+			}
+
 			string route = BuildConfigRoute();
 			TscDiagnostics.LogPayment($"TSC server config requested: {route}");
 			long mutationEpochAtRequest = CaptureProfileMutationEpoch();
@@ -703,10 +916,9 @@ public static class FireSupportServerConfigClient
 			(snapshot.Extraction ?? new RaidOpsFireSupportServerConfig.ExtractionSettings()).WaitTimeSeconds,
 			(snapshot.Extraction ?? new RaidOpsFireSupportServerConfig.ExtractionSettings()).ExtractTimeSeconds,
 			(snapshot.Extraction ?? new RaidOpsFireSupportServerConfig.ExtractionSettings()).SpeedMultiplier,
-			(snapshot.PriorityExfil ?? new RaidOpsFireSupportServerConfig.ExtractionSettings()).DispatchDelaySeconds,
-			(snapshot.PriorityExfil ?? new RaidOpsFireSupportServerConfig.ExtractionSettings()).WaitTimeSeconds,
-			(snapshot.PriorityExfil ?? new RaidOpsFireSupportServerConfig.ExtractionSettings()).ExtractTimeSeconds,
-			(snapshot.PriorityExfil ?? new RaidOpsFireSupportServerConfig.ExtractionSettings()).SpeedMultiplier,
+			(snapshot.PriorityExfil ?? new RaidOpsFireSupportServerConfig.CargoSettings()).DispatchDelaySeconds,
+			(snapshot.PriorityExfil ?? new RaidOpsFireSupportServerConfig.CargoSettings()).WaitTimeSeconds,
+			(snapshot.PriorityExfil ?? new RaidOpsFireSupportServerConfig.CargoSettings()).SpeedMultiplier,
 			snapshot.RequestCooldownSeconds,
 			revision);
 		FireSupportServerConfigClient.ApplyUavSettings(snapshot, revision);
@@ -961,4 +1173,12 @@ public static class FireSupportServerConfigClient
 			return string.Empty;
 		}
 	}
+
+	private sealed class Uh60TransferMarkResponse
+	{
+		public bool Ok { get; set; }
+		public int AcceptedItemCount { get; set; }
+		public string Reason { get; set; } = string.Empty;
+	}
+
 }

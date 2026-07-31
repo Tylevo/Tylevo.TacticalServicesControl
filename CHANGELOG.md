@@ -1,6 +1,8 @@
 # Changelog
 
-## 1.1.0 - Public Beta (unreleased)
+## 1.1.0 - Public Beta
+
+Beta 1 tester prerelease: `v1.1.0-beta.1`, published 2026-07-31.
 
 ### Added
 
@@ -9,6 +11,7 @@
 - Added a dashboard shortcut derived from the active SPT backend connection instead of a hard-coded host.
 - Added configurable UAV presentation in F12. `Phone` raises the physical Uplink while the radar key is held; `HUD` renders only the live scanner square in any selected corner.
 - Added server-authoritative RUB, USD, and EUR purchasing across carried cash, stash debit, the pre-raid store, persistent journal replay, and Fika settings sync.
+- Added requester-local loading to **UH-60 Cargo Transfer** for solo players and human Fika hosts using EFT's canonical Transit/BTR transfer controller. Accepted cargo uses the native RUB fee and post-raid mail delivery; loading spends no additional TSC authorization and does not use configured TSC currencies or immediate stash insertion. Valid TSC-marked cargo is isolated under a **UH-60 Pilot** messenger, while unmarked native cargo remains under **BTR Driver** and marker/routing failure safely falls back to that stock delivery path. Non-host Fika clients fail closed until native item-dependent pricing has an authoritative host synchronization contract.
 - Added focused proprietary-free regression coverage and CI verification for authorization hydration, ledger lifecycle, Fika request state, extraction timing, package layout, source wiring, and tracked-file hygiene.
 
 ### Fixed
@@ -17,26 +20,28 @@
 - Persistent use now follows one server-backed begin, accept, commit, or refund lifecycle instead of decrementing only the client mirror.
 - Networked support requests now wait for raid-authority acceptance. Rejections, timeouts, cancellation, and executor-start failures converge on one idempotent refund/settlement result.
 - Duplicate Fika request, acceptance, commit, refund, tracer, and replay packets are keyed by `SupportRequestId` and cannot execute or settle the same request twice.
+- Dedicated-headless A-10 fallback damage now resolves the target through Fika's authoritative player registry. Headless-owned bots enter `FikaBot.ApplyDamageInfo`, while remote humans enter `ObservedPlayer.HandleExplosive`; the raw health-controller call that could leave a bot upright in a half-dead state has been removed. A short sync-settle and current-health comparison suppress the fallback when the ballistic volley already damaged or killed that target.
 - UAV contracts now carry authoritative requester identity, duration, range, and scan cadence. Requester phone/HUD state and the visible loiter aircraft share one lifetime, while headless hosts create no presentation objects.
 - Hardened physical-phone equip, release-during-equip, death, raid teardown, render-texture, input, and previous-weapon restoration paths.
 - Restored the direct upright presentation for the `K` deployment phone and held `J` radar phone without exposing a ghost landscape phone first.
-- Standard and priority UH-60 services now retain distinct dispatch, wait, extraction-countdown, and speed settings through server config, Fika sync, and runtime use. Unsafe wait/countdown combinations are rejected or repaired.
+- Standard Extraction and Cargo Transfer retain distinct dispatch, wait, and speed settings through server config, Fika sync, and runtime use. Only standard Extraction creates a countdown or ends the raid.
+- A successful paid Cargo item move now makes the UH-60 depart immediately with the successful-pickup voice. Cancelled and rejected submissions retain the remaining wait, while human-host Fika mirrors the one request-bound departure to every observer visual.
 - Hardened currency changes during in-flight purchases so quotes, retries, prepared transactions, and accepted replay remain bound to their original currency.
 
 ### Changed
 
-- The release candidate aligns its public display, intended Git tag, package, plugin, server, assembly, and file versions on one `1.1.0` identity. All four DLLs must be installed as one matched set.
+- Beta 1 aligns its package, plugin, server, assembly, and file versions on one `1.1.0` identity and is published separately under prerelease tag `v1.1.0-beta.1`, leaving `v1.1.0` available for the final release. All four DLLs must be installed as one matched set.
 - The release archive contract is exactly two top-level roots, `BepInEx/` and `SPT/`, extracted directly into the SPT installation root.
 - The redundant legacy `raidops-firesupport.json` template is no longer shipped. Existing installs using that filename still migrate to `tsc-config.json`.
 - The mutable `tsc-config.json` is no longer shipped in the installer, preventing overlay upgrades from replacing custom settings. Clean installs create current defaults on first server start.
+- **UH-60 Cargo Transfer** replaces Priority Exfil in the released `PriorityExfil` authorization/config slot. Existing authorizations carry forward one-for-one, while the legacy key, enum value, and existing Priority artwork remain intact for compatibility.
 
 ### Validation Status
 
-- The 35-test baseline regression runner passed 20 consecutive repetitions
-  (700/700 test executions). The current 39-test suite additionally covers
-  published-v1.0.8 config and ledger migration, and the full
-  deploy-suppressed solution build passed for Core, Server, Fika Interop, Fika
-  bootstrap, and the regression project.
+- The current 101-test regression suite passes, including dedicated guards for
+  Fika ownership-safe A-10 damage routing, and the full deploy-suppressed
+  solution build passes for Core, Server, Fika Interop, Fika bootstrap, and the
+  regression project.
 - Solo SPT and the main-menu purchase flow have user-reported smoke coverage.
 - Matched-version human-host, Fika-client, and dedicated-headless live acceptance remains open. Dedicated-headless A-10 damage is separately gated and experimental.
 

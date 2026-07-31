@@ -6,7 +6,7 @@ six networked TSC services:
 - A-10 Strafe
 - A-10 Double Pass
 - UH-60 Extraction
-- UH-60 Priority Exfil
+- UH-60 Cargo Transfer (legacy `PriorityExfil` wire value)
 - UAV Recon
 - UAV Focused Sweep
 

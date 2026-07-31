@@ -29,6 +29,7 @@ public sealed class FireSupportAuthorityResultPacket : INetSerializable
 	public int HelicopterWaitTimeSeconds;
 	public float HelicopterExtractTimeSeconds;
 	public float HelicopterSpeedMultiplier;
+	public int ServiceSemanticsVersion = FireSupportServiceSemantics.CurrentVersion;
 
 	public FireSupportAuthorityResultPacket()
 	{
@@ -55,8 +56,12 @@ public sealed class FireSupportAuthorityResultPacket : INetSerializable
 		HelicopterTimingRevision = request?.HelicopterTimingRevision ?? 0;
 		HelicopterDispatchDelaySeconds = request?.HelicopterDispatchDelaySeconds ?? 0f;
 		HelicopterWaitTimeSeconds = request?.HelicopterWaitTimeSeconds ?? 0;
-		HelicopterExtractTimeSeconds = request?.HelicopterExtractTimeSeconds ?? 0f;
+		HelicopterExtractTimeSeconds =
+			SupportType == ESupportType.PriorityExfil
+				? 0f
+				: request?.HelicopterExtractTimeSeconds ?? 0f;
 		HelicopterSpeedMultiplier = request?.HelicopterSpeedMultiplier ?? 0f;
+		ServiceSemanticsVersion = FireSupportServiceSemantics.CurrentVersion;
 	}
 
 	public FireSupportRequestPacket ToSupportRequest()
@@ -76,8 +81,12 @@ public sealed class FireSupportAuthorityResultPacket : INetSerializable
 		request.HelicopterTimingRevision = HelicopterTimingRevision;
 		request.HelicopterDispatchDelaySeconds = HelicopterDispatchDelaySeconds;
 		request.HelicopterWaitTimeSeconds = HelicopterWaitTimeSeconds;
-		request.HelicopterExtractTimeSeconds = HelicopterExtractTimeSeconds;
+		request.HelicopterExtractTimeSeconds =
+			SupportType == ESupportType.PriorityExfil
+				? 0f
+				: HelicopterExtractTimeSeconds;
 		request.HelicopterSpeedMultiplier = HelicopterSpeedMultiplier;
+		request.ServiceSemanticsVersion = ServiceSemanticsVersion;
 		return request;
 	}
 
@@ -101,6 +110,7 @@ public sealed class FireSupportAuthorityResultPacket : INetSerializable
 		writer.Put(HelicopterWaitTimeSeconds);
 		writer.Put(HelicopterExtractTimeSeconds);
 		writer.Put(HelicopterSpeedMultiplier);
+		writer.Put(ServiceSemanticsVersion);
 	}
 
 	public void Deserialize(NetDataReader reader)
@@ -121,7 +131,14 @@ public sealed class FireSupportAuthorityResultPacket : INetSerializable
 		HelicopterTimingRevision = reader.GetInt();
 		HelicopterDispatchDelaySeconds = reader.GetFloat();
 		HelicopterWaitTimeSeconds = reader.GetInt();
-		HelicopterExtractTimeSeconds = reader.GetFloat();
+		float legacyHelicopterExtractTimeSeconds = reader.GetFloat();
+		HelicopterExtractTimeSeconds =
+			SupportType == ESupportType.PriorityExfil
+				? 0f
+				: legacyHelicopterExtractTimeSeconds;
 		HelicopterSpeedMultiplier = reader.GetFloat();
+		ServiceSemanticsVersion = reader.AvailableBytes >= sizeof(int)
+			? reader.GetInt()
+			: FireSupportServiceSemantics.LegacyVersion;
 	}
 }

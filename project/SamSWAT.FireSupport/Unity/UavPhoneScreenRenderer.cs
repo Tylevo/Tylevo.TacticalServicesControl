@@ -1403,7 +1403,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		AddServiceCard(root, ESupportType.Uav, new Rect(520, 194, 206, 142));
 
 		RectTransform footer = AddPanel(root, new Rect(42, 356, 684, 52), new Color(0.045f, 0.06f, 0.06f, 0.92f));
-		AddText(footer, "1 EXTRACTION   2 FIRE SUPPORT   3 RECON", 22, FontStyle.Bold, new Color(0.9f, 0.93f, 0.9f), new Rect(0, 5, 684, 34), TextAnchor.MiddleCenter);
+		AddText(footer, "1 UH-60 SERVICES   2 FIRE SUPPORT   3 RECON", 22, FontStyle.Bold, new Color(0.9f, 0.93f, 0.9f), new Rect(0, 5, 684, 34), TextAnchor.MiddleCenter);
 
 		BuildScanlineOverlay(root);
 	}
@@ -3420,8 +3420,8 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 	{
 		return supportType switch
 		{
-			ESupportType.Extract => "EXTRACTION",
-			ESupportType.PriorityExfil => "EXTRACTION",
+			ESupportType.Extract => "UH-60 SERVICES",
+			ESupportType.PriorityExfil => "UH-60 SERVICES",
 			ESupportType.Strafe => "FIRE SUPPORT",
 			ESupportType.DoubleStrafe => "FIRE SUPPORT",
 			ESupportType.Uav => "RECON",
@@ -3435,7 +3435,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		return supportType switch
 		{
 			ESupportType.Extract => "UH-60 EXTRACTION",
-			ESupportType.PriorityExfil => "PRIORITY EXFIL",
+			ESupportType.PriorityExfil => "UH-60 CARGO TRANSFER",
 			ESupportType.Strafe => "A-10 STRAFE",
 			ESupportType.DoubleStrafe => "A-10 DOUBLE PASS",
 			ESupportType.Uav => "UAV RECON",
@@ -3449,7 +3449,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		return supportType switch
 		{
 			ESupportType.Extract => "Authorize helicopter pickup. Aim to mark the LZ.",
-			ESupportType.PriorityExfil => "Authorize expedited pickup. Aim to mark the LZ.",
+			ESupportType.PriorityExfil => "Dispatch cargo pickup. Handling is charged when items are loaded.",
 			ESupportType.Strafe => "Authorize autocannon pass. Aim to mark the gun run.",
 			ESupportType.DoubleStrafe => "Authorize two autocannon passes. Aim to mark the gun run.",
 			ESupportType.Uav => "Authorize local recon scan from the Uplink.",
@@ -3463,7 +3463,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		return _context.SupportType switch
 		{
 			ESupportType.Extract => "PICKUP",
-			ESupportType.PriorityExfil => "EXPEDITED",
+			ESupportType.PriorityExfil => "CARGO ONLY",
 			ESupportType.Strafe => "ONE PASS",
 			ESupportType.DoubleStrafe => "TWO PASSES",
 			ESupportType.FocusedSweep => FormatDuration(_context.DurationSeconds),

@@ -18,6 +18,18 @@
              Link="Production\FireSupportAuthorizationLedger.cs" />
     <Compile Include="..\SamSWAT.FireSupport.Server\FireSupportServerConfigMigration.cs"
              Link="Production\FireSupportServerConfigMigration.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\CargoTimingPolicy.cs"
+             Link="Production\CargoTimingPolicy.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\Uh60CargoDepartureNetworking.cs"
+             Link="Production\Uh60CargoDepartureNetworking.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Server\FireSupportUh60TransferMarkerStore.cs"
+             Link="Production\FireSupportUh60TransferMarkerStore.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Server\FireSupportUh60TransferFeeJournal.cs"
+             Link="Production\FireSupportUh60TransferFeeJournal.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Server\FireSupportUh60TransferFeeService.cs"
+             Link="Production\FireSupportUh60TransferFeeService.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Server\FireSupportProfileMutationGate.cs"
+             Link="Production\FireSupportProfileMutationGate.cs" />
     <Compile Include="..\SamSWAT.FireSupport\Unity\ESupportType.cs"
              Link="Production\ESupportType.cs" />
     <Compile Include="..\SamSWAT.FireSupport\Unity\RaidOpsFireSupportServerConfig.cs"
@@ -40,6 +52,14 @@
              Link="Production\A10ProjectileOwnerMode.cs" />
     <Compile Include="..\SamSWAT.FireSupport.Fika.Interop\FireSupportSettingsPacket.cs"
              Link="Production\FireSupportSettingsPacket.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Fika.Interop\FireSupportRequestPacket.cs"
+             Link="Production\FireSupportRequestPacket.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Fika.Interop\FireSupportAuthorityResultPacket.cs"
+             Link="Production\FireSupportAuthorityResultPacket.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Fika.Interop\Uh60CargoDeparturePacket.cs"
+             Link="Production\Uh60CargoDeparturePacket.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Fika.Interop\FireSupportServiceSemantics.cs"
+             Link="Production\FireSupportServiceSemantics.cs" />
     <Compile Include="..\SamSWAT.FireSupport.Fika.Interop\RequestLifecycle.cs"
              Link="Production\RequestLifecycle.cs" />
 

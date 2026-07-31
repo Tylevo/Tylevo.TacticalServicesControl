@@ -52,10 +52,8 @@ internal static class FireSupportServerConfigMigration
 					config.PriorityExfil.WaitTimeSeconds <= 0
 						? defaults.PriorityExfil.WaitTimeSeconds
 						: config.PriorityExfil.WaitTimeSeconds;
-				config.PriorityExfil.ExtractTimeSeconds =
-					config.PriorityExfil.ExtractTimeSeconds <= 0f
-						? defaults.PriorityExfil.ExtractTimeSeconds
-						: config.PriorityExfil.ExtractTimeSeconds;
+				// PriorityExfil.extractTimeSeconds is a dormant released-schema
+				// field. Preserve the exact loaded value; Cargo has no countdown.
 				config.PriorityExfil.SpeedMultiplier =
 					config.PriorityExfil.SpeedMultiplier <= 0f
 						? defaults.PriorityExfil.SpeedMultiplier

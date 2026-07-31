@@ -2,7 +2,6 @@ using Comfort.Common;
 using Cysharp.Threading.Tasks;
 using EFT;
 using EFT.Ballistics;
-using EFT.HealthSystem;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -31,6 +30,8 @@ public static class A10DamageOnlyPass
 	private const float DirectFallbackPenetrationPower = 100f;
 	private const float DirectFallbackArmorDamage = 150f;
 	private const float DirectFallbackStaminaBurnRate = 0.432f;
+	private const float DirectFallbackBallisticSettleSeconds = 0.35f;
+	private const float DirectFallbackHealthChangeEpsilon = 0.01f;
 
 	/// <summary>
 	/// Verifies that the headless pass can construct its ballistic weapon and
@@ -236,6 +237,22 @@ public static class A10DamageOnlyPass
 			FireSupportPlugin.LogSource?.LogInfo(
 				$"TSC A-10 authoritative fire cancelled before direct fallback role={request.Role} requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} pass={request.PassIndex} seed={seed} fired={fired}/{damageShotPlan.Count}.");
 			return fired > 0;
+		}
+
+		if (request.Role == A10AuthorityRole.FikaHeadlessHost &&
+		    hitAccounting.TotalPlayerHitCount > 0 &&
+		    FireSupportTuningSettings.IsA10HeadlessDirectDamageFallbackEnabled())
+		{
+			try
+			{
+				await UniTask.WaitForSeconds(
+					DirectFallbackBallisticSettleSeconds,
+					cancellationToken: cancellationToken);
+			}
+			catch (OperationCanceledException)
+			{
+				return fired > 0;
+			}
 		}
 
 		DirectDamageFallbackResult fallbackResult = ApplyDirectDamageFallback(
@@ -847,6 +864,29 @@ public static class A10DamageOnlyPass
 				continue;
 			}
 
+			if (TryReadPlayerDamageState(
+				    candidate.Player,
+				    out bool currentlyAlive,
+				    out float currentHealth))
+			{
+				if (!currentlyAlive)
+				{
+					skipped++;
+					FireSupportPlugin.LogSource?.LogInfo(
+						$"TSC A-10 headless direct damage fallback skipped requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} target={A10AuthorityDiagnostics.ShortId(candidate.ProfileId)} reason=TargetKilledByBallistics");
+					continue;
+				}
+
+				if (!float.IsNaN(candidate.InitialHealth) &&
+				    currentHealth < candidate.InitialHealth - DirectFallbackHealthChangeEpsilon)
+				{
+					skipped++;
+					FireSupportPlugin.LogSource?.LogInfo(
+						$"TSC A-10 headless direct damage fallback skipped requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} target={A10AuthorityDiagnostics.ShortId(candidate.ProfileId)} reason=BallisticHealthChanged before={candidate.InitialHealth:0.0} after={currentHealth:0.0}");
+					continue;
+				}
+			}
+
 			if (candidate.IsOwner && !FireSupportTuningSettings.IsA10HeadlessRequesterSelfDamageEnabled())
 			{
 				skipped++;
@@ -869,19 +909,9 @@ public static class A10DamageOnlyPass
 				break;
 			}
 
-			if (TryApplyActiveHealthDamage(candidate.Player, damageInfo, bodyPart, out float appliedDamage, out string localReason))
-			{
-				applied++;
-				FireSupportPlugin.LogSource?.LogInfo(
-					$"TSC A-10 headless direct damage applied method=ActiveHealthController requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} target={A10AuthorityDiagnostics.ShortId(candidate.ProfileId)} netId={targetNetId} type={candidate.Player.GetType().Name} source={candidate.Source} distance={candidate.Distance:0.0}m bodyPart={bodyPart} collider={colliderType} damage={damage:0.0} applied={appliedDamage:0.0}");
-				continue;
-			}
-
-			if (cancellationToken.IsCancellationRequested)
-			{
-				break;
-			}
-
+			string commandReason = targetNetId > 0
+				? string.Empty
+				: "MissingTargetNetId";
 			if (targetNetId > 0 &&
 			    A10HeadlessDamageCommandDispatcher.TryDispatch(
 				    new A10HeadlessDamageCommand
@@ -896,17 +926,17 @@ public static class A10DamageOnlyPass
 					    MaterialType = MaterialType.Body,
 					    Absorbed = 0f
 				    },
-				    out string commandReason))
+				    out commandReason))
 			{
 				commanded++;
 				FireSupportPlugin.LogSource?.LogInfo(
-					$"TSC A-10 headless direct damage commanded method=FikaDamagePacket requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} target={A10AuthorityDiagnostics.ShortId(candidate.ProfileId)} netId={targetNetId} type={candidate.Player.GetType().Name} source={candidate.Source} distance={candidate.Distance:0.0}m bodyPart={bodyPart} collider={colliderType} damage={damage:0.0} reason={commandReason}");
+					$"TSC A-10 headless direct damage routed method=FikaPlayerBridge requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} target={A10AuthorityDiagnostics.ShortId(candidate.ProfileId)} netId={targetNetId} type={candidate.Player.GetType().Name} source={candidate.Source} distance={candidate.Distance:0.0}m bodyPart={bodyPart} collider={colliderType} damage={damage:0.0} route={commandReason}");
 				continue;
 			}
 
 			failures++;
-			FireSupportPlugin.LogSource?.LogInfo(
-				$"TSC A-10 headless direct damage failed requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} target={A10AuthorityDiagnostics.ShortId(candidate.ProfileId)} netId={targetNetId} type={candidate.Player.GetType().Name} source={candidate.Source} distance={candidate.Distance:0.0}m localReason={localReason}");
+			FireSupportPlugin.LogSource?.LogWarning(
+				$"TSC A-10 headless direct damage failed requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} target={A10AuthorityDiagnostics.ShortId(candidate.ProfileId)} netId={targetNetId} type={candidate.Player.GetType().Name} source={candidate.Source} distance={candidate.Distance:0.0}m reason={commandReason}");
 		}
 
 		FireSupportPlugin.LogSource?.LogInfo(
@@ -965,79 +995,6 @@ public static class A10DamageOnlyPass
 		};
 	}
 
-	private static bool TryApplyActiveHealthDamage(
-		Player player,
-		DamageInfoStruct damageInfo,
-		EBodyPart bodyPart,
-		out float appliedDamage,
-		out string reason)
-	{
-		appliedDamage = 0f;
-		reason = string.Empty;
-		if (player == null)
-		{
-			reason = "PlayerNull";
-			return false;
-		}
-
-		if (!IsLocalOrAiDamageTarget(player))
-		{
-			reason = "RemoteHumanRequiresFikaDamagePacket";
-			return false;
-		}
-
-		ActiveHealthController activeHealthController;
-		try
-		{
-			activeHealthController = player.ActiveHealthController;
-		}
-		catch (Exception ex)
-		{
-			reason = $"ActiveHealthControllerReadFailed:{ex.GetType().Name}:{ex.Message}";
-			return false;
-		}
-
-		if (activeHealthController == null)
-		{
-			reason = "NoActiveHealthController";
-			return false;
-		}
-
-		try
-		{
-			appliedDamage = activeHealthController.ApplyDamage(bodyPart, damageInfo.Damage, damageInfo);
-			if (appliedDamage <= 0f)
-			{
-				reason = "ActiveHealthControllerAppliedZero";
-				return false;
-			}
-
-			return true;
-		}
-		catch (Exception ex)
-		{
-			reason = $"ActiveHealthControllerApplyFailed:{ex.GetType().Name}:{ex.Message}";
-			return false;
-		}
-	}
-
-	private static bool IsLocalOrAiDamageTarget(Player player)
-	{
-		if (player == null)
-		{
-			return false;
-		}
-
-		try
-		{
-			return player.IsAI || player.IsYourPlayer;
-		}
-		catch
-		{
-			return false;
-		}
-	}
-
 	private static float CalculateDirectFallbackDamage(float distance)
 	{
 		if (distance <= DirectFallbackFullDamageDistance)
@@ -1047,6 +1004,37 @@ public static class A10DamageOnlyPass
 
 		float t = Mathf.InverseLerp(DirectFallbackFullDamageDistance, DirectFallbackMaxDamageDistance, distance);
 		return Mathf.Lerp(DirectFallbackMaxDamage, DirectFallbackMinDamage, Mathf.Clamp01(t));
+	}
+
+	private static bool TryReadPlayerDamageState(
+		Player player,
+		out bool alive,
+		out float commonHealth)
+	{
+		alive = false;
+		commonHealth = float.NaN;
+		if (player == null)
+		{
+			return false;
+		}
+
+		try
+		{
+			if (player.HealthController == null)
+			{
+				return false;
+			}
+
+			alive = player.HealthController.IsAlive;
+			commonHealth = player.HealthController
+				.GetBodyPartHealth(EBodyPart.Common, false)
+				.Current;
+			return true;
+		}
+		catch
+		{
+			return false;
+		}
 	}
 
 	private static int TryGetPlayerNetId(Player player)
@@ -1186,7 +1174,10 @@ public static class A10DamageOnlyPass
 			HashSet<string> playerSet = isOwner ? _ownerPlayerIds : _nonOwnerPlayerIds;
 			HashSet<string> aliveSet = isOwner ? _aliveOwnerPlayerIds : _aliveNonOwnerPlayerIds;
 			bool firstSeen = playerSet.Add(profileId);
-			bool alive = player.HealthController?.IsAlive == true;
+			bool alive = TryReadPlayerDamageState(
+				player,
+				out bool initialAlive,
+				out float initialHealth) && initialAlive;
 			if (alive)
 			{
 				aliveSet.Add(profileId);
@@ -1212,6 +1203,7 @@ public static class A10DamageOnlyPass
 					profileId,
 					isOwner,
 					alive,
+					initialHealth,
 					resolvedFromCollider || existing.ResolvedFromCollider,
 					distance < existing.Distance || string.IsNullOrWhiteSpace(existing.Source) ? source : existing.Source,
 					Mathf.Min(distance, existing.Distance > 0f ? existing.Distance : distance),
@@ -1340,6 +1332,7 @@ public static class A10DamageOnlyPass
 		public readonly string ProfileId;
 		public readonly bool IsOwner;
 		public readonly bool Alive;
+		public readonly float InitialHealth;
 		public readonly bool ResolvedFromCollider;
 		public readonly string Source;
 		public readonly float Distance;
@@ -1350,6 +1343,7 @@ public static class A10DamageOnlyPass
 			string profileId,
 			bool isOwner,
 			bool alive,
+			float initialHealth,
 			bool resolvedFromCollider,
 			string source,
 			float distance,
@@ -1359,6 +1353,7 @@ public static class A10DamageOnlyPass
 			ProfileId = profileId ?? string.Empty;
 			IsOwner = isOwner;
 			Alive = alive;
+			InitialHealth = initialHealth;
 			ResolvedFromCollider = resolvedFromCollider;
 			Source = source ?? string.Empty;
 			Distance = distance;

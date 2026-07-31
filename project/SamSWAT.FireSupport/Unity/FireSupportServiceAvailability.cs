@@ -28,7 +28,7 @@ public static class FireSupportServiceAvailability
 		_syncedDoublePassEnabled = doublePassEnabled;
 		_syncedFocusedSweepEnabled = focusedSweepEnabled;
 		TscDiagnostics.LogFika(
-			$"Using host TSC availability: Priority exfil={priorityExfilEnabled}, A-10 double pass={doublePassEnabled}, Focused sweep={focusedSweepEnabled}");
+			$"Using host TSC availability: UH-60 cargo transfer={priorityExfilEnabled}, A-10 double pass={doublePassEnabled}, Focused sweep={focusedSweepEnabled}");
 	}
 
 	public static void ClearSyncedAvailability()
@@ -53,7 +53,7 @@ public static class FireSupportServiceAvailability
 		_serverDoublePassEnabled = doublePassEnabled;
 		_serverFocusedSweepEnabled = focusedSweepEnabled;
 		TscDiagnostics.LogDashboard(
-			$"Using server URL TSC availability revision={revision}: Priority exfil={priorityExfilEnabled}, A-10 double pass={doublePassEnabled}, Focused sweep={focusedSweepEnabled}");
+			$"Using server URL TSC availability revision={revision}: UH-60 cargo transfer={priorityExfilEnabled}, A-10 double pass={doublePassEnabled}, Focused sweep={focusedSweepEnabled}");
 	}
 
 	public static void ClearServerConfigAvailability()
@@ -72,11 +72,57 @@ public static class FireSupportServiceAvailability
 	{
 		return supportType switch
 		{
-			ESupportType.PriorityExfil => _syncedPriorityExfilEnabled ?? _serverPriorityExfilEnabled ?? GetConfiguredPriorityExfilEnabled(),
+			ESupportType.PriorityExfil =>
+				IsLocalUseAllowed(supportType) &&
+				(_syncedPriorityExfilEnabled ??
+				 _serverPriorityExfilEnabled ??
+				 GetConfiguredPriorityExfilEnabled()),
 			ESupportType.DoubleStrafe => _syncedDoublePassEnabled ?? _serverDoublePassEnabled ?? GetConfiguredDoublePassEnabled(),
 			ESupportType.FocusedSweep => _syncedFocusedSweepEnabled ?? _serverFocusedSweepEnabled ?? GetConfiguredFocusedSweepEnabled(),
 			_ => true
 		};
+	}
+
+	public static bool IsLocalUseAllowed(ESupportType supportType)
+	{
+		return string.IsNullOrEmpty(GetLocalRestrictionReason(supportType));
+	}
+
+	public static string GetLocalRestrictionReason(ESupportType supportType)
+	{
+		if (supportType != ESupportType.PriorityExfil)
+		{
+			return string.Empty;
+		}
+
+		if (FireSupportServerConfigClient.IsFikaClientHostAuthorityActive)
+		{
+			return "UH-60 cargo transfer is host-only in Fika. Non-host clients cannot purchase or deploy it.";
+		}
+
+		if (!(PluginSettings.EnableHelicopterItemTransfer?.Value ?? true))
+		{
+			return "UH-60 cargo transfer is disabled because Enable mid-raid item transfer is off in F12.";
+		}
+
+		return string.Empty;
+	}
+
+	public static string GetLocalRestrictionStatus(ESupportType supportType)
+	{
+		if (supportType != ESupportType.PriorityExfil)
+		{
+			return string.Empty;
+		}
+
+		if (FireSupportServerConfigClient.IsFikaClientHostAuthorityActive)
+		{
+			return "FIKA HOST ONLY";
+		}
+
+		return PluginSettings.EnableHelicopterItemTransfer?.Value == false
+			? "CARGO DISABLED"
+			: string.Empty;
 	}
 
 	public static bool GetConfiguredPriorityExfilEnabled()

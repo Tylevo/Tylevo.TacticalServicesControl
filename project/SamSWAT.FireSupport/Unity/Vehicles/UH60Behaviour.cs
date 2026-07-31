@@ -12,6 +12,9 @@ namespace SamSWAT.FireSupport.ArysReloaded.Unity;
 
 public sealed class UH60Behaviour : FireSupportBehaviour
 {
+	private const float RemoteCargoDepartureFallbackSeconds = 600f;
+	private const float CargoDeparturePublishRetrySeconds = 0.5f;
+	private const int CargoDeparturePublishMaxAttempts = 5;
 	private static readonly int s_flySpeedMultiplier = Animator.StringToHash("FlySpeedMultiplier");
 	private static readonly int s_flyAway = Animator.StringToHash("FlyAway");
 
@@ -28,11 +31,22 @@ public sealed class UH60Behaviour : FireSupportBehaviour
 	private ESupportType _requestSupportType = ESupportType.Extract;
 	private HelicopterTimingSnapshot _timingSnapshot;
 	private bool _hasTimingSnapshot;
-	private bool _allowLocalExtraction = true;
-	private GameObject _extractionPoint;
+	private bool _allowLocalServicePoint = true;
+	private GameObject _landingPoint;
 	private bool _returningToPool;
+	private bool _cargoDepartureRequested;
+	private bool _cargoDeparturePublished;
+	private bool _cargoTransferSucceeded;
+	private int _cargoDeparturePublishAttempts;
+	private float _nextCargoDeparturePublishTime;
+	private string _pendingCargoDepartureRequesterProfileId =
+		string.Empty;
+	private bool _pendingCargoDepartureSuccessfulTransfer;
+	private string _supportRequestId = string.Empty;
 	private int _requestGeneration;
 
+	// Both UH-60 products reuse the existing Extract prefab pool. Product
+	// behavior is selected from _requestSupportType after the asset is leased.
 	public override ESupportType SupportType => ESupportType.Extract;
 
 	public override void ProcessRequest(
@@ -55,7 +69,8 @@ public sealed class UH60Behaviour : FireSupportBehaviour
 			SetRequestTiming(
 				_requestSupportType,
 				null,
-				allowLocalExtraction: true);
+				allowLocalServicePoint: true,
+				supportRequestId: string.Empty);
 		}
 
 		Transform heliTransform = transform;
@@ -64,25 +79,34 @@ public sealed class UH60Behaviour : FireSupportBehaviour
 		helicopterAnimator.SetFloat(s_flySpeedMultiplier, _timingSnapshot.SpeedMultiplier);
 	}
 
-	public void SetPriorityExfil(bool priorityExfil)
-	{
-		SetRequestTiming(
-			priorityExfil ? ESupportType.PriorityExfil : ESupportType.Extract,
-			null,
-			allowLocalExtraction: true);
-	}
-
 	public void SetRequestTiming(
 		ESupportType supportType,
 		HelicopterTimingSnapshot? timingSnapshot,
-		bool allowLocalExtraction)
+		bool allowLocalServicePoint,
+		string supportRequestId = "")
 	{
 		_requestSupportType = supportType == ESupportType.PriorityExfil
 			? ESupportType.PriorityExfil
 			: ESupportType.Extract;
 		_timingSnapshot = timingSnapshot ??
 			FireSupportTuningSettings.CaptureHelicopterTiming(_requestSupportType);
-		_allowLocalExtraction = allowLocalExtraction;
+		_allowLocalServicePoint = allowLocalServicePoint;
+		_supportRequestId = supportRequestId?.Trim() ?? string.Empty;
+		_cargoDepartureRequested = false;
+		_cargoDeparturePublished = false;
+		_cargoTransferSucceeded = false;
+		_cargoDeparturePublishAttempts = 0;
+		_nextCargoDeparturePublishTime = 0f;
+		_pendingCargoDepartureRequesterProfileId = string.Empty;
+		_pendingCargoDepartureSuccessfulTransfer = false;
+		if (_requestSupportType == ESupportType.PriorityExfil &&
+		    Uh60CargoDepartureNetworking.TryGetRemoteDeparture(
+			    _supportRequestId,
+			    out bool successfulTransfer))
+		{
+			_cargoDepartureRequested = true;
+			_cargoTransferSucceeded = successfulTransfer;
+		}
 		_hasTimingSnapshot = true;
 	}
 
@@ -95,6 +119,7 @@ public sealed class UH60Behaviour : FireSupportBehaviour
 			return;
 		}
 
+		RetryPendingCargoDeparturePublication();
 		CrossFadeAudio();
 	}
 
@@ -107,6 +132,8 @@ public sealed class UH60Behaviour : FireSupportBehaviour
 		engineDistantSource.outputAudioMixerGroup = outputAudioMixerGroup;
 		rotorsCloseSource.outputAudioMixerGroup = outputAudioMixerGroup;
 		rotorsDistantSource.outputAudioMixerGroup = outputAudioMixerGroup;
+		Uh60CargoDepartureNetworking.RemoteDepartureReceived +=
+			OnRemoteCargoDepartureReceived;
 
 		HasFinishedInitialization = true;
 	}
@@ -135,44 +162,78 @@ public sealed class UH60Behaviour : FireSupportBehaviour
 		CancellationToken requestCancellationToken = _cancellationToken;
 		HelicopterTimingSnapshot timingSnapshot = _timingSnapshot;
 		ESupportType requestSupportType = _requestSupportType;
-		bool allowLocalExtraction = _allowLocalExtraction;
-		GameObject requestExtractionPoint = null;
+		bool allowLocalServicePoint = _allowLocalServicePoint;
+		GameObject requestLandingPoint = null;
+		HeliCargoTransferPoint requestCargoTransferPoint = null;
 		try
 		{
 			FireSupportAudio.Instance.PlayVoiceover(EVoiceoverType.SupportHeliPickingUp);
-			DestroyExtractionPoint();
-			if (allowLocalExtraction)
+			DestroyLandingPoint();
+			if (allowLocalServicePoint)
 			{
-				requestExtractionPoint = CreateExfilPoint(
+				requestLandingPoint = CreateLandingPoint(
 					requestSupportType,
 					timingSnapshot,
 					requestCancellationToken);
-				_extractionPoint = requestExtractionPoint;
+				_landingPoint = requestLandingPoint;
+				requestCargoTransferPoint =
+					requestLandingPoint.GetComponent<HeliCargoTransferPoint>();
 			}
 
-			int configWaitTime = timingSnapshot.WaitTimeSeconds;
-			float waitTime = configWaitTime * 0.75f;
+			bool cargoTransferred;
+			if (requestSupportType == ESupportType.PriorityExfil &&
+			    !allowLocalServicePoint)
+			{
+				cargoTransferred =
+					await WaitForAuthoritativeCargoDeparture(
+						requestCancellationToken);
+			}
+			else
+			{
+				int configWaitTime = timingSnapshot.WaitTimeSeconds;
+				float waitTime = configWaitTime * 0.75f;
 
-			await UniTask.WaitForSeconds(
-				waitTime,
-				cancellationToken: requestCancellationToken);
+				cargoTransferred =
+					await WaitForAvailableHelicopterWindow(
+						waitTime,
+						requestCargoTransferPoint,
+						requestCancellationToken);
+				if (requestGeneration != _requestGeneration)
+				{
+					return;
+				}
+
+				if (!cargoTransferred)
+				{
+					FireSupportAudio.Instance.PlayVoiceover(
+						EVoiceoverType.SupportHeliHurry);
+
+					cargoTransferred =
+						await WaitForAvailableHelicopterWindow(
+							configWaitTime - waitTime,
+							requestCargoTransferPoint,
+							requestCancellationToken);
+				}
+			}
+
 			if (requestGeneration != _requestGeneration)
 			{
 				return;
 			}
 
-			FireSupportAudio.Instance.PlayVoiceover(EVoiceoverType.SupportHeliHurry);
-
-			await UniTask.WaitForSeconds(
-				duration: configWaitTime - waitTime,
-				cancellationToken: requestCancellationToken);
-			if (requestGeneration != _requestGeneration)
+			if (requestSupportType == ESupportType.PriorityExfil &&
+			    allowLocalServicePoint)
 			{
-				return;
+				PublishLocalCargoDeparture(
+					requestCargoTransferPoint,
+					cargoTransferred);
 			}
 
 			helicopterAnimator.SetTrigger(s_flyAway);
-			FireSupportAudio.Instance.PlayVoiceover(EVoiceoverType.SupportHeliLeavingNoPickup);
+			FireSupportAudio.Instance.PlayVoiceover(
+				cargoTransferred
+					? EVoiceoverType.SupportHeliLeavingAfterPickup
+					: EVoiceoverType.SupportHeliLeavingNoPickup);
 		}
 		catch (OperationCanceledException)
 		{
@@ -180,8 +241,173 @@ public sealed class UH60Behaviour : FireSupportBehaviour
 		}
 		finally
 		{
-			DestroyExtractionPoint(requestExtractionPoint);
+			DestroyLandingPoint(requestLandingPoint);
 		}
+	}
+
+	private async UniTask<bool> WaitForAvailableHelicopterWindow(
+		float durationSeconds,
+		HeliCargoTransferPoint cargoTransferPoint,
+		CancellationToken cancellationToken)
+	{
+		float elapsedSeconds = 0f;
+		while (elapsedSeconds < durationSeconds)
+		{
+			await UniTask.Yield(cancellationToken: cancellationToken);
+			if (TryBeginImmediateCargoDeparture(cargoTransferPoint))
+			{
+				return true;
+			}
+
+			if (cargoTransferPoint == null ||
+			    (!cargoTransferPoint.IsItemTransferOpen &&
+			     !cargoTransferPoint.IsSuccessfulTransferPending))
+			{
+				elapsedSeconds += Time.deltaTime;
+			}
+		}
+
+		return TryBeginImmediateCargoDeparture(cargoTransferPoint);
+	}
+
+	private async UniTask<bool> WaitForAuthoritativeCargoDeparture(
+		CancellationToken cancellationToken)
+	{
+		float elapsedSeconds = 0f;
+		while (!_cargoDepartureRequested &&
+		       elapsedSeconds < RemoteCargoDepartureFallbackSeconds)
+		{
+			await UniTask.Yield(cancellationToken: cancellationToken);
+			elapsedSeconds += Time.deltaTime;
+		}
+
+		return _cargoDepartureRequested && _cargoTransferSucceeded;
+	}
+
+	private bool TryBeginImmediateCargoDeparture(
+		HeliCargoTransferPoint cargoTransferPoint)
+	{
+		if (_requestSupportType != ESupportType.PriorityExfil)
+		{
+			return false;
+		}
+
+		if (!_cargoDepartureRequested &&
+		    cargoTransferPoint?.HasCompletedTransfer == true)
+		{
+			_cargoDepartureRequested = true;
+			_cargoTransferSucceeded = true;
+			PublishLocalCargoDeparture(
+				cargoTransferPoint,
+				successfulTransfer: true);
+		}
+
+		return _cargoDepartureRequested;
+	}
+
+	private void PublishLocalCargoDeparture(
+		HeliCargoTransferPoint cargoTransferPoint,
+		bool successfulTransfer)
+	{
+		if (_cargoDeparturePublished)
+		{
+			return;
+		}
+
+		string requesterProfileId =
+			cargoTransferPoint?.CompletedRequesterProfileId;
+		if (string.IsNullOrWhiteSpace(requesterProfileId))
+		{
+			requesterProfileId =
+				_gameWorld?.MainPlayer?.ProfileId?.Trim() ??
+				string.Empty;
+		}
+
+		if (string.IsNullOrWhiteSpace(_supportRequestId) ||
+		    string.IsNullOrWhiteSpace(requesterProfileId))
+		{
+			return;
+		}
+
+		if (string.IsNullOrWhiteSpace(
+			    _pendingCargoDepartureRequesterProfileId))
+		{
+			_pendingCargoDepartureRequesterProfileId =
+				requesterProfileId;
+			_pendingCargoDepartureSuccessfulTransfer =
+				successfulTransfer;
+		}
+
+		if (_cargoDeparturePublishAttempts == 0 ||
+		    Time.unscaledTime >= _nextCargoDeparturePublishTime)
+		{
+			TryPublishPendingCargoDeparture();
+		}
+	}
+
+	private void RetryPendingCargoDeparturePublication()
+	{
+		if (_cargoDeparturePublished ||
+		    _cargoDeparturePublishAttempts <= 0 ||
+		    _cargoDeparturePublishAttempts >=
+		    CargoDeparturePublishMaxAttempts ||
+		    string.IsNullOrWhiteSpace(
+			    _pendingCargoDepartureRequesterProfileId) ||
+		    Time.unscaledTime < _nextCargoDeparturePublishTime)
+		{
+			return;
+		}
+
+		TryPublishPendingCargoDeparture();
+	}
+
+	private void TryPublishPendingCargoDeparture()
+	{
+		if (_cargoDeparturePublished ||
+		    _cargoDeparturePublishAttempts >=
+		    CargoDeparturePublishMaxAttempts)
+		{
+			return;
+		}
+
+		_cargoDeparturePublishAttempts++;
+		_cargoDeparturePublished =
+			Uh60CargoDepartureNetworking.TryPublishDeparture(
+				_supportRequestId,
+				_pendingCargoDepartureRequesterProfileId,
+				_pendingCargoDepartureSuccessfulTransfer);
+		if (_cargoDeparturePublished)
+		{
+			return;
+		}
+
+		_nextCargoDeparturePublishTime =
+			Time.unscaledTime +
+			CargoDeparturePublishRetrySeconds;
+		if (_cargoDeparturePublishAttempts >=
+		    CargoDeparturePublishMaxAttempts)
+		{
+			FireSupportPlugin.LogSource?.LogWarning(
+				$"TSC UH-60 cargo departure broadcast was not queued after {CargoDeparturePublishMaxAttempts} attempts; remote visuals will use their safety fallback.");
+		}
+	}
+
+	private void OnRemoteCargoDepartureReceived(
+		string supportRequestId,
+		bool successfulTransfer)
+	{
+		if (_requestSupportType != ESupportType.PriorityExfil ||
+		    string.IsNullOrWhiteSpace(_supportRequestId) ||
+		    !string.Equals(
+			    _supportRequestId,
+			    supportRequestId,
+			    StringComparison.Ordinal))
+		{
+			return;
+		}
+
+		_cargoDepartureRequested = true;
+		_cargoTransferSucceeded = successfulTransfer;
 	}
 
 	[UsedImplicitly]
@@ -193,24 +419,63 @@ public sealed class UH60Behaviour : FireSupportBehaviour
 	protected override void OnDisable()
 	{
 		CancelRequestLifetime();
-		DestroyExtractionPoint();
+		DestroyLandingPoint();
 		base.OnDisable();
 	}
 
 	private void OnDestroy()
 	{
+		Uh60CargoDepartureNetworking.RemoteDepartureReceived -=
+			OnRemoteCargoDepartureReceived;
 		CancelRequestLifetime();
-		DestroyExtractionPoint();
+		DestroyLandingPoint();
 	}
 
-	private GameObject CreateExfilPoint(
+	private GameObject CreateLandingPoint(
 		ESupportType requestSupportType,
 		HelicopterTimingSnapshot timingSnapshot,
 		CancellationToken cancellationToken)
 	{
-		var extractionPoint = new GameObject
+		if (requestSupportType == ESupportType.PriorityExfil)
 		{
-			name = "HeliExfilPoint",
+			return CreateCargoTransferPoint(cancellationToken);
+		}
+
+		return CreateExtractionPoint(
+			timingSnapshot,
+			cancellationToken);
+	}
+
+	private GameObject CreateCargoTransferPoint(
+		CancellationToken cancellationToken)
+	{
+		GameObject cargoPoint =
+			CreateLandingPointObject("HeliCargoTransferPoint");
+		HeliCargoTransferPoint transferPoint =
+			cargoPoint.AddComponent<HeliCargoTransferPoint>();
+		transferPoint.Initialize(cancellationToken);
+		return cargoPoint;
+	}
+
+	private GameObject CreateExtractionPoint(
+		HelicopterTimingSnapshot timingSnapshot,
+		CancellationToken cancellationToken)
+	{
+		GameObject extractionPoint =
+			CreateLandingPointObject("HeliExfilPoint");
+		HeliExfiltrationPoint exfiltrationPoint =
+			extractionPoint.AddComponent<HeliExfiltrationPoint>();
+		exfiltrationPoint.Initialize(
+			timingSnapshot.ExtractTimeSeconds,
+			cancellationToken);
+		return extractionPoint;
+	}
+
+	private GameObject CreateLandingPointObject(string pointName)
+	{
+		var landingPoint = new GameObject
+		{
+			name = pointName,
 			layer = 13,
 			transform =
 			{
@@ -218,17 +483,10 @@ public sealed class UH60Behaviour : FireSupportBehaviour
 				eulerAngles = new Vector3(-90, 0, 0),
 			}
 		};
-		var extractionCollider = extractionPoint.AddComponent<BoxCollider>();
-		extractionCollider.size = new Vector3(16.5f, 20f, 15);
-		extractionCollider.isTrigger = true;
-		HeliExfiltrationPoint exfiltrationPoint =
-			extractionPoint.AddComponent<HeliExfiltrationPoint>();
-		exfiltrationPoint.Initialize(
-			requestSupportType,
-			timingSnapshot.ExtractTimeSeconds,
-			cancellationToken);
-
-		return extractionPoint;
+		var landingCollider = landingPoint.AddComponent<BoxCollider>();
+		landingCollider.size = new Vector3(16.5f, 20f, 15);
+		landingCollider.isTrigger = true;
+		return landingPoint;
 	}
 
 	private void ReturnToPoolSafely(int expectedRequestGeneration = -1)
@@ -247,31 +505,39 @@ public sealed class UH60Behaviour : FireSupportBehaviour
 		_returningToPool = true;
 		_requestGeneration++;
 		CancelRequestLifetime();
-		DestroyExtractionPoint();
+		DestroyLandingPoint();
 		_cancellationToken = CancellationToken.None;
 		_requestSupportType = ESupportType.Extract;
 		_timingSnapshot = default;
 		_hasTimingSnapshot = false;
-		_allowLocalExtraction = true;
+		_allowLocalServicePoint = true;
+		_supportRequestId = string.Empty;
+		_cargoDepartureRequested = false;
+		_cargoDeparturePublished = false;
+		_cargoTransferSucceeded = false;
+		_cargoDeparturePublishAttempts = 0;
+		_nextCargoDeparturePublishTime = 0f;
+		_pendingCargoDepartureRequesterProfileId = string.Empty;
+		_pendingCargoDepartureSuccessfulTransfer = false;
 		ReturnToPool();
 	}
 
-	private void DestroyExtractionPoint()
+	private void DestroyLandingPoint()
 	{
-		DestroyExtractionPoint(_extractionPoint);
+		DestroyLandingPoint(_landingPoint);
 	}
 
-	private void DestroyExtractionPoint(GameObject extractionPoint)
+	private void DestroyLandingPoint(GameObject landingPoint)
 	{
-		if (extractionPoint == null)
+		if (landingPoint == null)
 		{
 			return;
 		}
 
-		Destroy(extractionPoint);
-		if (_extractionPoint == extractionPoint)
+		Destroy(landingPoint);
+		if (_landingPoint == landingPoint)
 		{
-			_extractionPoint = null;
+			_landingPoint = null;
 		}
 	}
 

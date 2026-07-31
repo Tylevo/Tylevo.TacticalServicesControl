@@ -37,7 +37,9 @@ const serviceMetaRules = [
 	{ key: "uav", title: "UAV Recon", code: "REC", summary: "Wide-area scan", pattern: /\buav\b/i },
 	{ key: "focused", title: "Focused Sweep", code: "REC+", summary: "Tighter scan radius", pattern: /focused/i },
 	{ key: "extraction", title: "UH-60 Extraction", code: "EXT", summary: "Combat pickup", pattern: /extraction(?!.*priority)|extract(?!.*priority)/i },
-	{ key: "priority", title: "Priority Exfil", code: "EXT+", summary: "Expedited pickup", pattern: /priority/i },
+	// The persisted config path remains PriorityExfil for released-config
+	// compatibility; the product occupying that slot is now Cargo Transfer.
+	{ key: "priority", title: "UH-60 Cargo Transfer", code: "CGO", summary: "Mid-raid item delivery", pattern: /cargo|priority/i },
 	{ key: "payment", title: "Payment", code: "PAY", summary: "Authorization source", pattern: /payment|source|mode/i },
 	{ key: "cooldown", title: "Cooldown", code: "CD", summary: "Request pacing", pattern: /cooldown/i }
 ];
@@ -47,7 +49,7 @@ const sectionIntros = {
 	payment: "Select which wallet supplies the configured payment currency.",
 	services: "Enable or lock service packages before players can purchase them.",
 	recon: "UAV and focused sweep scan timing, range, and refresh behavior.",
-	extraction: "UH-60 dispatch, wait, arrival, and priority exfil tuning.",
+	extraction: "UH-60 extraction and cargo-transfer dispatch, wait, and arrival tuning.",
 	fire: "A-10, double-pass, and fire support behavior.",
 	diagnostics: "Live route and server state."
 };

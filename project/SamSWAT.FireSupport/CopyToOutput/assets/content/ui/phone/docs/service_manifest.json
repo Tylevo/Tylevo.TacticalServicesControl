@@ -2,24 +2,17 @@
   "version": "v9",
   "implemented_now": [
     "uh60_extraction",
+    "priority_exfil",
     "a10_strafe",
-    "uav_recon"
+    "double_pass",
+    "uav_recon",
+    "focused_sweep"
   ],
-  "future_low_asset_change_options": {
+  "service_notes": {
     "priority_exfil": {
-      "reuses": "Existing UH-60 model, flight path, landing/extraction animation.",
-      "code_change": "Shorter arrival delay and higher configurable price.",
-      "default_enabled": false
-    },
-    "double_pass": {
-      "reuses": "Existing A-10 model, route, and strafe effect.",
-      "code_change": "Execute a second pass after the first, with higher configurable price.",
-      "default_enabled": false
-    },
-    "focused_sweep": {
-      "reuses": "Existing UAV radar overlay, ping loop, and cosmetic loiter aircraft.",
-      "code_change": "Smaller radius, shorter duration, and faster refresh interval.",
-      "default_enabled": false
+      "display_name": "UH-60 Cargo Transfer",
+      "compatibility": "Retains the legacy priority_exfil service key, authorization/config slot, and existing Priority Exfil artwork until dedicated cargo artwork is available.",
+      "behavior": "Cargo-only helicopter service; it never extracts the PMC."
     }
   }
 }

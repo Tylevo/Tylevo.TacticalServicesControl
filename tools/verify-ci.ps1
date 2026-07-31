@@ -387,13 +387,101 @@ foreach ($check in $heliWiringChecks) {
         -Expectation $check.Expectation
 }
 
+$cargoPointSourcePath = "project\SamSWAT.FireSupport\Unity\HeliCargoTransferPoint.cs"
+$cargoPointSource = Get-NormalizedCSharpSource -RelativePath $cargoPointSourcePath
+foreach ($check in @(
+    @{
+        Pattern = 'class\s+HeliCargoTransferPoint\b'
+        Expectation = "Cargo must own a dedicated HeliCargoTransferPoint component."
+    },
+    @{
+        Pattern = 'FireSupportItemTransfer\s*\.\s*EnterZone\s*\('
+        Expectation = "The Cargo point must register its requester-local transfer interaction."
+    },
+    @{
+        Pattern = 'FireSupportItemTransfer\s*\.\s*PointDestroyed\s*\('
+        Expectation = "The Cargo point must close transfer state when the helicopter departs."
+    }
+)) {
+    Assert-SourceWiring `
+        -RelativePath $cargoPointSourcePath `
+        -NormalizedSource $cargoPointSource `
+        -Pattern $check.Pattern `
+        -Expectation $check.Expectation
+}
+
+if ($cargoPointSource -match
+    'HeliExfiltrationPoint|ExtractionCountdownClock|BattleUIPanelExitTrigger|' +
+    'FireSupportExtraction|TryOverrideExtract|ISessionStopper|StopSession|' +
+    'ExitStatus|extractTime') {
+    throw "HeliCargoTransferPoint must contain no extraction countdown or raid-ending wiring."
+}
+if ($heliSource -match
+    'PriorityExfil|FireSupportItemTransfer|HeliCargoTransferPoint|GInterface177') {
+    throw "HeliExfiltrationPoint must remain a standard-Extraction-only component."
+}
+
+$uh60SourcePath = "project\SamSWAT.FireSupport\Unity\Vehicles\UH60Behaviour.cs"
+$uh60Source = Get-NormalizedCSharpSource -RelativePath $uh60SourcePath
+foreach ($check in @(
+    @{
+        Pattern = 'CreateLandingPoint\s*\([^)]*\)\s*\{.{0,700}?requestSupportType\s*==\s*ESupportType\s*\.\s*PriorityExfil.{0,300}?CreateCargoTransferPoint\s*\(.{0,500}?CreateExtractionPoint\s*\('
+        Expectation = "UH60Behaviour must route PriorityExfil to Cargo and ordinary Extract to separate landing-point factories."
+    },
+    @{
+        Pattern = 'CreateCargoTransferPoint\s*\([^)]*\)\s*\{.{0,700}?AddComponent\s*<\s*HeliCargoTransferPoint\s*>\s*\('
+        Expectation = "The Cargo factory must instantiate only the Cargo interaction component."
+    },
+    @{
+        Pattern = 'CreateExtractionPoint\s*\([^)]*\)\s*\{.{0,700}?AddComponent\s*<\s*HeliExfiltrationPoint\s*>\s*\(.{0,400}?timingSnapshot\s*\.\s*ExtractTimeSeconds'
+        Expectation = "The standard extraction factory must own the extraction component and countdown duration."
+    }
+)) {
+    Assert-SourceWiring `
+        -RelativePath $uh60SourcePath `
+        -NormalizedSource $uh60Source `
+        -Pattern $check.Pattern `
+        -Expectation $check.Expectation
+}
+
+$controllerSourcePath = "project\SamSWAT.FireSupport\Unity\FireSupportController.cs"
+$controllerSource = Get-NormalizedCSharpSource -RelativePath $controllerSourcePath
+Assert-SourceWiring `
+    -RelativePath $controllerSourcePath `
+    -NormalizedSource $controllerSource `
+    -Pattern 'new\s+HeliCargoTransferService\s*\(' `
+    -Expectation "The released PriorityExfil slot must register the dedicated Cargo dispatch service."
+if ($controllerSource -match
+    'new\s+HeliExfiltrationService\s*\([^;]{0,500}?PriorityExfil') {
+    throw "PriorityExfil must not be registered through HeliExfiltrationService."
+}
+
+foreach ($bridgeSourcePath in @(
+    "project\SamSWAT.FireSupport\Unity\FireSupportItemTransfer.cs",
+    "project\SamSWAT.FireSupport\Patches\HelicopterItemTransferInteractionPatches.cs"
+)) {
+    $bridgeSource = Get-NormalizedCSharpSource -RelativePath $bridgeSourcePath
+    Assert-SourceWiring `
+        -RelativePath $bridgeSourcePath `
+        -NormalizedSource $bridgeSource `
+        -Pattern '\bHeliCargoTransferPoint\b' `
+        -Expectation "Item-transfer wiring must target the dedicated Cargo point."
+    if ($bridgeSource -match '\bHeliExfiltrationPoint\b') {
+        throw "$bridgeSourcePath must not bind item transfer to the standard extraction point."
+    }
+}
+
 $tuningSourcePath = "project\SamSWAT.FireSupport\Unity\FireSupportTuningSettings.cs"
 $tuningSource = Get-NormalizedCSharpSource -RelativePath $tuningSourcePath
 Assert-SourceWiring `
     -RelativePath $tuningSourcePath `
     -NormalizedSource $tuningSource `
-    -Pattern 'CaptureHelicopterTiming\s*\([^)]*\)\s*\{.{0,1800}?return\s+ExtractionTimingPolicy\s*\.\s*CreateRuntimeSnapshot\s*\(' `
-    -Expectation "CaptureHelicopterTiming must delegate runtime clamping/snapshot creation to ExtractionTimingPolicy.CreateRuntimeSnapshot."
+    -Pattern 'CaptureHelicopterTiming\s*\([^)]*\)\s*\{.{0,1800}?CargoTimingPolicy\s*\.\s*CreateRuntimeSnapshot\s*\(.{0,800}?ExtractionTimingPolicy\s*\.\s*CreateRuntimeSnapshot\s*\(' `
+    -Expectation "CaptureHelicopterTiming must route Cargo to CargoTimingPolicy and standard Extraction to ExtractionTimingPolicy."
+if ($tuningSource -match
+    'PriorityExfilHelicopterExtractTime|priorityExfilHelicopterExtractTime') {
+    throw "Active runtime tuning must not retain a PriorityExfil extraction-time state or argument."
+}
 
 $serverConfigSourcePath = "project\SamSWAT.FireSupport.Server\FireSupportServerConfigService.cs"
 $serverConfigSource = Get-NormalizedCSharpSource -RelativePath $serverConfigSourcePath
@@ -403,20 +491,44 @@ $serverWiringChecks = @(
         Expectation = "Server config normalization must delegate persisted migration and response-field sanitization to FireSupportServerConfigMigration.NormalizePersistedFields."
     },
     @{
-        Pattern = 'TryValidateConfig\s*\([^)]*\)\s*\{.{0,3500}?TryValidateExtractionTiming\s*\(\s*config\s*\.\s*Extraction\b.{0,1200}?TryValidateExtractionTiming\s*\(\s*config\s*\.\s*PriorityExfil\b'
-        Expectation = "Server config validation must validate both standard and priority extraction timing through TryValidateExtractionTiming."
+        Pattern = 'TryValidateConfig\s*\([^)]*\)\s*\{.{0,3500}?TryValidateExtractionTiming\s*\(\s*config\s*\.\s*Extraction\b.{0,1200}?TryValidateCargoTiming\s*\(\s*config\s*\.\s*PriorityExfil\b'
+        Expectation = "Server config validation must keep standard Extraction on its countdown contract and validate the released priorityExfil path through the Cargo timing contract."
     },
     @{
         Pattern = 'TryValidateExtractionTiming\s*\([^)]*\)\s*\{\s*return\s+ExtractionTimingPolicy\s*\.\s*TryValidate\s*\('
         Expectation = "Server extraction validation must delegate to ExtractionTimingPolicy.TryValidate."
     },
     @{
-        Pattern = 'RepairInvalidExtractionTimings\s*\([^)]*\)\s*\{.{0,1200}?RepairExtractionTiming\s*\(\s*config\s*\.\s*Extraction\b.{0,500}?RepairExtractionTiming\s*\(\s*config\s*\.\s*PriorityExfil\b'
-        Expectation = "Server migration repair must repair both standard and priority extraction timing."
+        Pattern = 'TryValidateCargoTiming\s*\([^)]*\)\s*\{\s*return\s+CargoTimingPolicy\s*\.\s*TryValidate\s*\('
+        Expectation = "Server Cargo validation must delegate to CargoTimingPolicy.TryValidate."
+    },
+    @{
+        Pattern = 'RepairInvalidServiceTimings\s*\([^)]*\)\s*\{.{0,1200}?RepairExtractionTiming\s*\(\s*config\s*\.\s*Extraction\b.{0,500}?RepairCargoTiming\s*\(\s*config\s*\.\s*PriorityExfil\b'
+        Expectation = "Server migration repair must keep standard Extraction and Cargo on their distinct timing contracts."
     },
     @{
         Pattern = 'RepairExtractionTiming\s*\([^)]*\)\s*\{.{0,800}?ExtractionTimingPolicy\s*\.\s*Repair\s*\('
         Expectation = "Server extraction repair must delegate to ExtractionTimingPolicy.Repair."
+    },
+    @{
+        Pattern = 'RepairCargoTiming\s*\([^)]*\)\s*\{.{0,800}?CargoTimingPolicy\s*\.\s*Repair\s*\('
+        Expectation = "Server Cargo repair must delegate to CargoTimingPolicy.Repair."
+    },
+    @{
+        Pattern = 'Field\s*\(\s*"prices\.PriorityExfil"\s*,\s*"Cargo Transfer Price"'
+        Expectation = "The released PriorityExfil price path must be labeled Cargo Transfer Price in the dashboard."
+    },
+    @{
+        Pattern = 'Field\s*\(\s*"enabled\.PriorityExfil"\s*,\s*"Cargo Transfer Enabled"'
+        Expectation = "The released PriorityExfil enabled path must be labeled Cargo Transfer Enabled in the dashboard."
+    },
+    @{
+        Pattern = 'Section\s*\(\s*"extraction"\s*,\s*"UH-60 Services"'
+        Expectation = "The extraction dashboard section must be presented as UH-60 Services."
+    },
+    @{
+        Pattern = 'Field\s*\(\s*"priorityExfil\.dispatchDelaySeconds"\s*,\s*"Cargo Dispatch Delay".{0,800}?Field\s*\(\s*"priorityExfil\.waitTimeSeconds"\s*,\s*"Cargo Wait Time".{0,800}?Field\s*\(\s*"priorityExfil\.speedMultiplier"\s*,\s*"Cargo Speed Multiplier"'
+        Expectation = "Cargo dashboard timing must expose the released priorityExfil dispatch, wait, and speed paths with Cargo labels."
     }
 )
 foreach ($check in $serverWiringChecks) {
@@ -425,6 +537,101 @@ foreach ($check in $serverWiringChecks) {
         -NormalizedSource $serverConfigSource `
         -Pattern $check.Pattern `
         -Expectation $check.Expectation
+}
+
+if ($serverConfigSource -match 'Field\s*\(\s*"priorityExfil\.extractTimeSeconds"') {
+    throw "Cargo dashboard schema must not expose the retired priorityExfil extraction-countdown field."
+}
+
+if ($serverConfigSource -match '"Priority Exfil (?:Price|Enabled)"' -or
+    $serverConfigSource -match '"Priority Extraction Time"') {
+    throw "Cargo dashboard schema still contains a retired Priority Exfil display label."
+}
+
+if ($serverConfigSource -match 'RepairCargoTiming\s*\([^)]*\)\s*\{.{0,1200}?settings\s*\.\s*ExtractTimeSeconds\s*=') {
+    throw "Cargo repair must preserve the stored legacy priorityExfil.extractTimeSeconds value."
+}
+
+$cargoTimingSourcePath = "project\SamSWAT.FireSupport\Unity\CargoTimingPolicy.cs"
+$cargoTimingSource = Get-NormalizedCSharpSource -RelativePath $cargoTimingSourcePath
+Assert-SourceWiring `
+    -RelativePath $cargoTimingSourcePath `
+    -NormalizedSource $cargoTimingSource `
+    -Pattern 'Repair\s*\([^)]*\)\s*\{.{0,2400}?return\s+new\s+ExtractionTimingValues\s*\([^)]*settings\s*\.\s*ExtractTimeSeconds' `
+    -Expectation "Cargo repair must carry the stored legacy extractTimeSeconds value through unchanged."
+Assert-SourceWiring `
+    -RelativePath $cargoTimingSourcePath `
+    -NormalizedSource $cargoTimingSource `
+    -Pattern 'CreateRuntimeSnapshot\s*\([^)]*\)\s*\{.{0,1000}?new\s+HelicopterTimingSnapshot\s*\(\s*ESupportType\s*\.\s*PriorityExfil.{0,600}?\b0f\s*,\s*Math\s*\.\s*Max\s*\(\s*ExtractionTimingPolicy\s*\.\s*RuntimeMinSpeedMultiplier' `
+    -Expectation "Cargo runtime snapshots must zero the dormant extraction-time compatibility field."
+
+$configContractSourcePath = "project\SamSWAT.FireSupport\Unity\RaidOpsFireSupportServerConfig.cs"
+$configContractSource = Get-NormalizedCSharpSource -RelativePath $configContractSourcePath
+Assert-SourceWiring `
+    -RelativePath $configContractSourcePath `
+    -NormalizedSource $configContractSource `
+    -Pattern 'CargoSettings\s+PriorityExfil\s*\{' `
+    -Expectation "The released PriorityExfil config path must use a Cargo-specific settings contract."
+
+$fikaCargoValidation = [regex]::Match(
+    $fikaSource,
+    'if\s*\(\s*packet\s*\.\s*SupportType\s*==\s*ESupportType\s*\.\s*PriorityExfil\s*&&(?<body>.*?)reason\s*=\s*"InvalidCargoTimingContract"',
+    [Text.RegularExpressions.RegexOptions]::Singleline -bor
+        [Text.RegularExpressions.RegexOptions]::CultureInvariant
+)
+if (-not $fikaCargoValidation.Success) {
+    throw "Fika request validation must own a distinct InvalidCargoTimingContract branch for wire type 10."
+}
+if ($fikaCargoValidation.Groups["body"].Value -match 'HelicopterExtractTimeSeconds|MinimumExtractionWindowMarginSeconds') {
+    throw "Fika Cargo validation must not inspect the legacy extract-time field or extraction-window relationship."
+}
+foreach ($requiredCargoField in @(
+    "HelicopterDispatchDelaySeconds",
+    "HelicopterWaitTimeSeconds",
+    "HelicopterSpeedMultiplier"
+)) {
+    if ($fikaCargoValidation.Groups["body"].Value.IndexOf(
+            $requiredCargoField,
+            [StringComparison]::Ordinal
+        ) -lt 0) {
+        throw "Fika Cargo validation does not validate $requiredCargoField."
+    }
+}
+
+Assert-SourceWiring `
+    -RelativePath $fikaSourcePath `
+    -NormalizedSource $fikaSource `
+    -Pattern 'HelicopterTimingsEqual\s*\([^)]*\)\s*\{.{0,900}?left\s*\.\s*SupportType\s*==\s*ESupportType\s*\.\s*PriorityExfil\s*\|\|.{0,300}?left\s*\.\s*ExtractTimeSeconds\s*\.\s*Equals' `
+    -Expectation "Fika host timing equality must ignore the compatibility extract field for Cargo while retaining it for standard Extraction."
+Assert-SourceWiring `
+    -RelativePath $fikaSourcePath `
+    -NormalizedSource $fikaSource `
+    -Pattern '_helicopterExtractTimeSeconds\s*=\s*packet\s*\.\s*SupportType\s*==\s*ESupportType\s*\.\s*PriorityExfil\s*\?\s*0f\s*:\s*packet\s*\.\s*HelicopterExtractTimeSeconds' `
+    -Expectation "Fika request fingerprints must normalize the ignored Cargo extract field."
+Assert-SourceWiring `
+    -RelativePath $fikaSourcePath `
+    -NormalizedSource $fikaSource `
+    -Pattern 'IsStandardExtraction\s*\([^)]*\)\s*\{\s*return\s+supportType\s*==\s*ESupportType\s*\.\s*Extract\s*;' `
+    -Expectation "Fika extraction-only behavior must recognize standard Extract and never Cargo."
+Assert-SourceWiring `
+    -RelativePath $fikaSourcePath `
+    -NormalizedSource $fikaSource `
+    -Pattern 'request\s*\.\s*SupportType\s*==\s*ESupportType\s*\.\s*PriorityExfil\s*&&\s*\(\s*entry\s*\.\s*OriginPeer\s*!=\s*null\s*\|\|\s*IsFikaHeadlessHost\s*\(\s*\)\s*\).{0,250}?"CargoHostOnly"' `
+    -Expectation "Fika authority must reject remote or headless Cargo requests before dispatch."
+if ($fikaSource -match '\bIsExtractionType\s*\(') {
+    throw "Fika must not classify Cargo through an extraction-type helper."
+}
+
+foreach ($packetSourcePath in @(
+    "project\SamSWAT.FireSupport.Fika.Interop\FireSupportRequestPacket.cs",
+    "project\SamSWAT.FireSupport.Fika.Interop\FireSupportAuthorityResultPacket.cs"
+)) {
+    $packetSource = Get-NormalizedCSharpSource -RelativePath $packetSourcePath
+    Assert-SourceWiring `
+        -RelativePath $packetSourcePath `
+        -NormalizedSource $packetSource `
+        -Pattern 'SupportType\s*==\s*ESupportType\s*\.\s*PriorityExfil\s*\?\s*0f\s*:' `
+        -Expectation "Fika Cargo packet runtime consumers must zero the legacy extraction-time slot."
 }
 
 Write-Host "Validating tracked JSON and dashboard JavaScript syntax."

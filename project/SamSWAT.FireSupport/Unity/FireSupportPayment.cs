@@ -161,7 +161,7 @@ public static class FireSupportPayment
 		_syncedUavCost = uavCost;
 		_syncedFocusedSweepCost = focusedSweepCost;
 		TscDiagnostics.LogPayment(
-			$"Using host TSC prices: A-10={FormatCurrency(strafeCost)}, A-10 double pass={FormatCurrency(doubleStrafeCost)}, UH-60={FormatCurrency(extractionCost)}, Priority exfil={FormatCurrency(priorityExfilCost)}, UAV={FormatCurrency(uavCost)}, Focused sweep={FormatCurrency(focusedSweepCost)}");
+			$"Using host TSC prices: A-10={FormatCurrency(strafeCost)}, A-10 double pass={FormatCurrency(doubleStrafeCost)}, UH-60 extraction={FormatCurrency(extractionCost)}, UH-60 cargo transfer={FormatCurrency(priorityExfilCost)}, UAV={FormatCurrency(uavCost)}, Focused sweep={FormatCurrency(focusedSweepCost)}");
 	}
 
 	public static void ClearSyncedCosts()
@@ -205,7 +205,7 @@ public static class FireSupportPayment
 		_serverConfigUnavailable = false;
 		_serverConfigUnavailableReason = null;
 		TscDiagnostics.LogPayment(
-			$"Using server URL TSC prices revision={revision}: A-10={FormatCurrency(strafeCost)}, A-10 double pass={FormatCurrency(doubleStrafeCost)}, UH-60={FormatCurrency(extractionCost)}, Priority exfil={FormatCurrency(priorityExfilCost)}, UAV={FormatCurrency(uavCost)}, Focused sweep={FormatCurrency(focusedSweepCost)}");
+			$"Using server URL TSC prices revision={revision}: A-10={FormatCurrency(strafeCost)}, A-10 double pass={FormatCurrency(doubleStrafeCost)}, UH-60 extraction={FormatCurrency(extractionCost)}, UH-60 cargo transfer={FormatCurrency(priorityExfilCost)}, UAV={FormatCurrency(uavCost)}, Focused sweep={FormatCurrency(focusedSweepCost)}");
 	}
 
 	public static void SetServerConfigGlobals(
@@ -230,7 +230,7 @@ public static class FireSupportPayment
 		_serverPaymentCurrency = PaymentCurrencyInfo.Normalize(paymentCurrency);
 		_serverPaymentCurrencyInvalid = false;
 		TscDiagnostics.LogPayment(
-			$"Using server URL TSC globals: mode={paymentMode}, source={paymentSource}, currency={GetActivePaymentCurrency()}, A-10={FormatCurrency(strafeCost)}, A-10 double pass={FormatCurrency(doubleStrafeCost)}, UH-60={FormatCurrency(extractionCost)}, Priority exfil={FormatCurrency(priorityExfilCost)}, UAV={FormatCurrency(uavCost)}, Focused sweep={FormatCurrency(focusedSweepCost)}");
+			$"Using server URL TSC globals: mode={paymentMode}, source={paymentSource}, currency={GetActivePaymentCurrency()}, A-10={FormatCurrency(strafeCost)}, A-10 double pass={FormatCurrency(doubleStrafeCost)}, UH-60 extraction={FormatCurrency(extractionCost)}, UH-60 cargo transfer={FormatCurrency(priorityExfilCost)}, UAV={FormatCurrency(uavCost)}, Focused sweep={FormatCurrency(focusedSweepCost)}");
 	}
 
 	public static void ClearServerConfig()
@@ -370,6 +370,33 @@ public static class FireSupportPayment
 		_serverAllowAutoPurchaseOnUse = allowAutoPurchaseOnUse;
 		TscDiagnostics.LogPayment(
 			$"Using server URL TSC profile state revision={revision}: currency={normalizedCurrency}, stashBalance={(stashCurrencyBalance.HasValue ? FormatCurrency(stashCurrencyBalance.Value, normalizedCurrency) : "unknown")}, persistence={persistenceEnabled}");
+	}
+
+	internal static void ApplyAuthenticatedStashBalance(
+		PaymentCurrency paymentCurrency,
+		int balance,
+		string source)
+	{
+		if (balance < 0)
+		{
+			return;
+		}
+
+		PaymentCurrency normalizedCurrency =
+			PaymentCurrencyInfo.Normalize(paymentCurrency);
+		if (normalizedCurrency != GetActivePaymentCurrency())
+		{
+			// The payment cache intentionally represents only the active
+			// authorization currency. A normal authenticated snapshot will
+			// populate RUB if the operator later switches back to it.
+			return;
+		}
+
+		_serverStashCurrencyBalance = balance;
+		_serverStashBalanceCurrency = normalizedCurrency;
+		TscDiagnostics.LogPayment(
+			$"Applied authenticated stash balance from {source}: {FormatCurrency(balance, normalizedCurrency)}");
+		NotifySettingsChanged(source);
 	}
 
 	public static void SetServerPurchasePersistence(
@@ -1210,6 +1237,13 @@ public static class FireSupportPayment
 			RequestId = requestId ?? string.Empty
 		};
 
+		if (!FireSupportServiceAvailability.IsLocalUseAllowed(supportType))
+		{
+			fallback.Reason = "ServiceUnavailable";
+			RememberPurchaseDenial(supportType, fallback);
+			return fallback;
+		}
+
 		if (string.IsNullOrWhiteSpace(requestId))
 		{
 			fallback.Reason = "InvalidRequestId";
@@ -1697,8 +1731,12 @@ public static class FireSupportPayment
 
 	public static void NotifyServiceUnavailable(ESupportType supportType)
 	{
+		string localRestriction =
+			FireSupportServiceAvailability.GetLocalRestrictionReason(supportType);
 		NotificationManagerClass.DisplayWarningNotification(
-			$"{GetSupportName(supportType)} is unavailable in the host's FireSupport settings.",
+			string.IsNullOrWhiteSpace(localRestriction)
+				? $"{GetSupportName(supportType)} is unavailable in the host's FireSupport settings."
+				: localRestriction,
 			ENotificationDurationType.Long);
 	}
 
@@ -2060,7 +2098,7 @@ public static class FireSupportPayment
 			ESupportType.Strafe => "A-10 strafe",
 			ESupportType.DoubleStrafe => "A-10 double pass",
 			ESupportType.Extract => "UH-60 extraction",
-			ESupportType.PriorityExfil => "priority exfil",
+			ESupportType.PriorityExfil => "UH-60 cargo transfer",
 			ESupportType.Uav => "UAV recon",
 			ESupportType.FocusedSweep => "focused sweep",
 			_ => "fire support"

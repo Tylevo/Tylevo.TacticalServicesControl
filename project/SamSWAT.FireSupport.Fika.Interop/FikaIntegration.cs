@@ -11,8 +11,6 @@ using Fika.Core.Modding;
 using Fika.Core.Modding.Events;
 using Fika.Core.Networking;
 using Fika.Core.Networking.LiteNetLib;
-using Fika.Core.Networking.Packets.Player.Common;
-using Fika.Core.Networking.Packets.Player.Common.SubPackets;
 using SamSWAT.FireSupport.ArysReloaded.Unity;
 using System;
 using System.Collections.Generic;
@@ -61,11 +59,14 @@ public static class FikaIntegration
 	private static readonly AcceptedEventRegistry<SupportRequestFingerprint>
 		s_acceptedClientEvents = new();
 	private static readonly HashSet<string> s_startedClientUavLoiterEvents = new(StringComparer.Ordinal);
+	private static readonly HashSet<string> s_completedClientCargoDepartures =
+		new(StringComparer.Ordinal);
 	private static readonly Dictionary<string, UavAuthorityReservation> s_uavAuthorityReservations = new(StringComparer.Ordinal);
 	private static int s_inFlightAuthorityRequestCount;
 	private static int s_hostSettingsRevision;
 	private static int s_currentHostSettingsRevision;
 	private static bool s_hasHostSettingsOverride;
+	private static int s_hostServiceSemanticsVersion = FireSupportServiceSemantics.LegacyVersion;
 	private static CancellationTokenSource s_settingsBroadcastDebounceCts;
 
 	public static void Enable(ManualLogSource logSource)
@@ -79,8 +80,10 @@ public static class FikaIntegration
 		s_enabled = true;
 		s_logSource = logSource;
 		FireSupportNetworking.SupportRequested += OnLocalSupportRequested;
+		Uh60CargoDepartureNetworking.DeparturePublished +=
+			OnLocalUh60CargoDeparture;
 		A10TracerNetworking.TracerBurstCreated += OnA10TracerBurstCreated;
-		A10HeadlessDamageCommandDispatcher.Handler = TrySendA10HeadlessDamageCommand;
+		A10HeadlessDamageCommandDispatcher.Handler = TryRouteA10HeadlessDamageCommand;
 		UavA10LoiterNetworking.StartRequested += OnLocalUavLoiterRequested;
 		if (RemotePhoneVisualSyncEnabled)
 		{
@@ -101,6 +104,8 @@ public static class FikaIntegration
 		}
 
 		FireSupportNetworking.SupportRequested -= OnLocalSupportRequested;
+		Uh60CargoDepartureNetworking.DeparturePublished -=
+			OnLocalUh60CargoDeparture;
 		A10TracerNetworking.TracerBurstCreated -= OnA10TracerBurstCreated;
 		A10HeadlessDamageCommandDispatcher.Handler = null;
 		UavA10LoiterNetworking.StartRequested -= OnLocalUavLoiterRequested;
@@ -237,6 +242,8 @@ public static class FikaIntegration
 					client.RegisterPacket<FireSupportAuthorityResultPacket>(OnClientAuthorityResult);
 					client.RegisterPacket<FireSupportSettingsPacket>(OnClientSettingsResponse);
 					client.RegisterPacket<StartUavLoiterPacket>(OnClientStartUavLoiter);
+					client.RegisterPacket<Uh60CargoDeparturePacket>(
+						OnClientUh60CargoDeparture);
 					client.RegisterPacket<A10TracerBurstPacket>(OnClientA10TracerBurst);
 					if (RemotePhoneVisualSyncEnabled)
 					{
@@ -260,6 +267,118 @@ public static class FikaIntegration
 
 		s_registeredPacketManagers.Add(manager);
 		return true;
+	}
+
+	private static bool OnLocalUh60CargoDeparture(
+		string supportRequestId,
+		string requesterProfileId,
+		bool successfulTransfer)
+	{
+		try
+		{
+			if (!FikaBackendUtils.IsServer ||
+			    string.IsNullOrWhiteSpace(supportRequestId) ||
+			    string.IsNullOrWhiteSpace(requesterProfileId))
+			{
+				return true;
+			}
+
+			bool isAcceptedCargo;
+			lock (s_networkRequestGate)
+			{
+				isAcceptedCargo =
+					s_authorityRequests.TryGetValue(
+						supportRequestId,
+						out AuthorityRequestEntry entry) &&
+					entry.Request.SupportType ==
+					ESupportType.PriorityExfil &&
+					string.Equals(
+						entry.Request.RequesterProfileId,
+						requesterProfileId,
+						StringComparison.Ordinal) &&
+					entry.TryGetOutcome(out AuthorityOutcome outcome) &&
+					outcome.Result.Accepted;
+			}
+
+			if (!isAcceptedCargo)
+			{
+				s_logSource?.LogWarning(
+					$"TSC Fika ignored an unbound UH-60 cargo departure requestId={A10AuthorityDiagnostics.FormatRequestId(supportRequestId)} requester={A10AuthorityDiagnostics.ShortId(requesterProfileId)}.");
+				return true;
+			}
+
+			FikaServer server = GetServer();
+			if (server == null)
+			{
+				s_logSource?.LogWarning(
+					$"TSC Fika could not broadcast UH-60 cargo departure; server unavailable requestId={A10AuthorityDiagnostics.FormatRequestId(supportRequestId)}.");
+				return false;
+			}
+
+			var packet = new Uh60CargoDeparturePacket(
+				supportRequestId,
+				requesterProfileId,
+				successfulTransfer);
+			server.SendData(
+				ref packet,
+				DeliveryMethod.ReliableOrdered,
+				broadcast: true);
+			TscDiagnostics.LogFika(
+				$"TSC Fika broadcast UH-60 cargo departure requestId={A10AuthorityDiagnostics.FormatRequestId(supportRequestId)} requester={A10AuthorityDiagnostics.ShortId(requesterProfileId)} successfulTransfer={successfulTransfer}.");
+			return true;
+		}
+		catch (Exception ex)
+		{
+			s_logSource?.LogWarning(
+				$"TSC Fika UH-60 cargo departure broadcast failed requestId={A10AuthorityDiagnostics.FormatRequestId(supportRequestId)}. {ex}");
+			return false;
+		}
+	}
+
+	private static void OnClientUh60CargoDeparture(
+		Uh60CargoDeparturePacket packet)
+	{
+		if (packet == null ||
+		    packet.SupportType != ESupportType.PriorityExfil ||
+		    string.IsNullOrWhiteSpace(packet.SupportRequestId) ||
+		    string.IsNullOrWhiteSpace(packet.RequesterProfileId))
+		{
+			return;
+		}
+
+		string requestId = packet.SupportRequestId;
+		if (requestId.Length > MaxSupportRequestIdLength ||
+		    !string.Equals(
+			    requestId,
+			    requestId.Trim(),
+			    StringComparison.Ordinal))
+		{
+			return;
+		}
+
+		bool shouldApply;
+		lock (s_networkRequestGate)
+		{
+			shouldApply =
+				s_acceptedClientEvents.TryGetValue(
+					requestId,
+					out SupportRequestFingerprint acceptedEvent) &&
+				acceptedEvent.MatchesCargoDeparture(packet) &&
+				s_completedClientCargoDepartures.Add(requestId);
+		}
+
+		if (!shouldApply)
+		{
+			TscDiagnostics.LogFika(
+				$"TSC Fika ignored duplicate or unbound UH-60 cargo departure requestId={A10AuthorityDiagnostics.FormatRequestId(requestId)}.");
+			return;
+		}
+
+		Uh60CargoDepartureNetworking.ApplyRemoteDeparture(
+			requestId,
+			packet.SuccessfulTransfer);
+		TscDiagnostics.LogFika(
+			$"TSC Fika applied UH-60 cargo departure requestId={A10AuthorityDiagnostics.FormatRequestId(requestId)} successfulTransfer={packet.SuccessfulTransfer}.");
 	}
 
 	private static async UniTask<FireSupportNetworkRequestResult> OnLocalSupportRequested(
@@ -286,8 +405,17 @@ public static class FikaIntegration
 
 		bool isServer = FikaBackendUtils.IsServer;
 		bool isClient = FikaBackendUtils.IsClient;
+		if (isClient &&
+		    !FireSupportServiceSemantics.CanExecute(
+			    supportType,
+			    s_hostServiceSemanticsVersion))
+		{
+			return FireSupportNetworkRequestResult.Reject(
+				"HostCargoServiceSemanticsUnsupported");
+		}
+
 		HelicopterTimingSnapshot? effectiveHelicopterTiming =
-			IsExtractionType(supportType)
+			IsHelicopterType(supportType)
 				? helicopterTimingSnapshot ??
 				  FireSupportTuningSettings.CaptureHelicopterTiming(supportType)
 				: null;
@@ -385,7 +513,7 @@ public static class FikaIntegration
 
 		using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 		float authorityTimeoutSeconds = ClientRequestTimeoutSeconds +
-			(IsExtractionType(packet.SupportType)
+			(IsHelicopterType(packet.SupportType)
 				? Math.Max(0f, packet.HelicopterDispatchDelaySeconds)
 				: 0f);
 		timeoutCts.CancelAfter(TimeSpan.FromSeconds(authorityTimeoutSeconds));
@@ -686,7 +814,13 @@ public static class FikaIntegration
 				return AuthorityOutcome.Rejected(request, "ServiceDisabled");
 			}
 
-			if (IsExtractionType(request.SupportType))
+			if (request.SupportType == ESupportType.PriorityExfil &&
+			    (entry.OriginPeer != null || IsFikaHeadlessHost()))
+			{
+				return AuthorityOutcome.Rejected(request, "CargoHostOnly");
+			}
+
+			if (IsHelicopterType(request.SupportType))
 			{
 				await UniTask.WaitForSeconds(
 					request.HelicopterDispatchDelaySeconds,
@@ -737,7 +871,7 @@ public static class FikaIntegration
 			}
 
 			if (!IsUavType(request.SupportType) &&
-			    !(IsExtractionType(request.SupportType) &&
+			    !(IsStandardExtraction(request.SupportType) &&
 			      IsFikaHeadlessHost()))
 			{
 				// Asset/pool initialization can yield, but it has no support
@@ -1677,6 +1811,7 @@ public static class FikaIntegration
 	{
 		s_hasHostSettingsOverride = true;
 		s_currentHostSettingsRevision = packet.Revision;
+		s_hostServiceSemanticsVersion = packet.ServiceSemanticsVersion;
 		FireSupportPayment.SetSyncedPaymentCurrency(packet.PaymentCurrency);
 		FireSupportPayment.SetSyncedCosts(
 			packet.StrafeCostRoubles,
@@ -1688,8 +1823,16 @@ public static class FikaIntegration
 		FireSupportPayment.SetSyncedPaymentMode(packet.PaymentMode);
 		FireSupportPayment.SetSyncedPaymentSource(packet.PaymentSource);
 		FireSupportServerConfigClient.SetHostPurchaseEndpoint(packet.ServerConfigUrl, packet.Revision);
-		FireSupportServiceAvailability.SetSyncedAvailability(
+		bool cargoAvailable = FireSupportServiceSemantics.IsCargoAvailable(
 			packet.EnablePriorityExfil,
+			packet.ServiceSemanticsVersion);
+		if (packet.EnablePriorityExfil && !cargoAvailable)
+		{
+			s_logSource?.LogWarning(
+				"TSC Fika settings: host advertises wire type 10 without Cargo service semantics; Cargo disabled for this client.");
+		}
+		FireSupportServiceAvailability.SetSyncedAvailability(
+			cargoAvailable,
 			packet.EnableDoublePass,
 			packet.EnableFocusedSweep);
 		UavReconSettings.SetSyncedDuration(
@@ -1708,7 +1851,6 @@ public static class FikaIntegration
 			packet.HelicopterSpeedMultiplier,
 			packet.PriorityExfilDispatchDelaySeconds,
 			packet.PriorityExfilHelicopterWaitTimeSeconds,
-			packet.PriorityExfilExtractTimeSeconds,
 			packet.PriorityExfilHelicopterSpeedMultiplier,
 			packet.RequestCooldownSeconds);
 		FireSupportPayment.NotifySettingsChanged(packet);
@@ -1836,13 +1978,15 @@ public static class FikaIntegration
 			HelicopterSpeedMultiplier = extractionTiming.SpeedMultiplier,
 			PriorityExfilDispatchDelaySeconds = priorityExfilTiming.DispatchDelaySeconds,
 			PriorityExfilHelicopterWaitTimeSeconds = priorityExfilTiming.WaitTimeSeconds,
-			PriorityExfilExtractTimeSeconds = priorityExfilTiming.ExtractTimeSeconds,
+			// Retain the released packet slot, but Cargo has no extraction time.
+			PriorityExfilExtractTimeSeconds = 0f,
 			PriorityExfilHelicopterSpeedMultiplier = priorityExfilTiming.SpeedMultiplier,
 			RequestCooldownSeconds = FireSupportTuningSettings.GetRequestCooldown(),
 			PaymentMode = FireSupportPayment.GetActivePaymentMode(),
 			PaymentSource = FireSupportPayment.GetActivePaymentSource(),
 			ServerConfigUrl = FireSupportServerConfigClient.GetConfiguredServerConfigUrl(),
-			PaymentCurrency = FireSupportPayment.GetActivePaymentCurrency()
+			PaymentCurrency = FireSupportPayment.GetActivePaymentCurrency(),
+			ServiceSemanticsVersion = FireSupportServiceSemantics.CurrentVersion
 		};
 
 		TscDiagnostics.LogFika($"TSC Fika settings: host snapshot built revision={packet.Revision}");
@@ -1866,6 +2010,7 @@ public static class FikaIntegration
 
 		s_hasHostSettingsOverride = false;
 		s_currentHostSettingsRevision = 0;
+		s_hostServiceSemanticsVersion = FireSupportServiceSemantics.LegacyVersion;
 		FireSupportPayment.ClearSyncedCosts();
 		FireSupportServiceAvailability.ClearSyncedAvailability();
 		UavReconSettings.ClearSyncedDuration();
@@ -1987,20 +2132,20 @@ public static class FikaIntegration
 		else
 		{
 			if (!visualOnly &&
-			    IsExtractionType(packet.SupportType) &&
+			    IsStandardExtraction(packet.SupportType) &&
 			    IsFikaHeadlessHost())
 			{
 				TscDiagnostics.LogFika(
-					$"TSC Fika headless extraction authority accepted without local presentation type={packet.SupportType} requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)}.");
+					$"TSC Fika headless standard extraction authority accepted without local presentation requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)}.");
 				return true;
 			}
 
 			HelicopterTimingSnapshot? helicopterTiming =
-				IsExtractionType(packet.SupportType)
+				IsHelicopterType(packet.SupportType)
 					? packet.GetHelicopterTiming()
 					: null;
-			bool allowLocalHelicopterExtraction =
-				!IsExtractionType(packet.SupportType) ||
+			bool allowLocalHelicopterServicePoint =
+				!IsHelicopterType(packet.SupportType) ||
 				IsLocalRequester(packet);
 			success = await FireSupportRuntime.TryProcessRequest(
 				packet.SupportType,
@@ -2012,10 +2157,11 @@ public static class FikaIntegration
 				cancellationToken,
 				packet.PassIndex,
 				helicopterTiming,
-				allowLocalHelicopterExtraction);
+				allowLocalHelicopterServicePoint,
+				packet.SupportRequestId);
 		}
 
-		if (success && IsExtractionType(packet.SupportType) && !visualOnly)
+		if (success && IsHelicopterType(packet.SupportType) && !visualOnly)
 		{
 			try
 			{
@@ -2025,10 +2171,10 @@ public static class FikaIntegration
 			catch (Exception ex)
 			{
 				// The helicopter runtime has already accepted the request. A
-				// presentation failure must not convert live extraction into a
+				// presentation failure must not convert a live UH-60 service into a
 				// rejected/refunded authority outcome.
 				s_logSource?.LogWarning(
-					$"TSC Fika extraction arrival voiceover failed after executor acceptance. {ex}");
+					$"TSC Fika UH-60 arrival voiceover failed after executor acceptance. {ex}");
 			}
 		}
 
@@ -2055,7 +2201,7 @@ public static class FikaIntegration
 		};
 	}
 
-	private static bool TrySendA10HeadlessDamageCommand(A10HeadlessDamageCommand command, out string reason)
+	private static bool TryRouteA10HeadlessDamageCommand(A10HeadlessDamageCommand command, out string reason)
 	{
 		reason = string.Empty;
 		if (command == null)
@@ -2091,27 +2237,74 @@ public static class FikaIntegration
 			return false;
 		}
 
-		DamageInfoStruct damageInfo = command.DamageInfo;
-		DamagePacket damagePacket = DamagePacket.FromValue(
-			command.TargetNetId,
-			damageInfo,
-			command.BodyPart,
-			command.ColliderType,
-			command.ArmorPlateCollider,
-			command.MaterialType,
-			command.Absorbed);
-
-		var packet = new CommonPlayerPacket
+		if (server.CoopHandler?.Players == null ||
+		    !server.CoopHandler.Players.TryGetValue(command.TargetNetId, out FikaPlayer targetPlayer) ||
+		    targetPlayer == null)
 		{
-			NetId = command.TargetNetId,
-			Type = ECommonSubPacketType.Damage,
-			SubPacket = damagePacket
-		};
+			reason = "FikaTargetUnavailable";
+			return false;
+		}
 
-		server.SendNetReusable(ref packet, DeliveryMethod.ReliableOrdered, true, null);
-		reason = "BroadcastFikaDamagePacket";
+		if (!string.IsNullOrWhiteSpace(command.TargetProfileId) &&
+		    !string.Equals(targetPlayer.ProfileId, command.TargetProfileId, StringComparison.Ordinal))
+		{
+			reason = "FikaTargetProfileMismatch";
+			return false;
+		}
+
+		if (targetPlayer.HealthController?.IsAlive != true)
+		{
+			reason = "FikaTargetAlreadyDead";
+			TscDiagnostics.LogFika(
+				$"TSC A-10 headless damage route skipped requestId={A10AuthorityDiagnostics.FormatRequestId(command.SupportRequestId)} target={A10AuthorityDiagnostics.ShortId(command.TargetProfileId)} netId={command.TargetNetId} targetType={targetPlayer.GetType().Name} reason={reason}");
+			return true;
+		}
+
+		string route;
+		switch (targetPlayer)
+		{
+			case FikaBot bot:
+				// Mirrors Fika 2.3.3 BotPlayerBridge.ApplyDamageInfo. The virtual
+				// player pipeline populates LastDamage state before health/death sync.
+				bot.ApplyDamageInfo(
+					command.DamageInfo,
+					command.BodyPart,
+					command.ColliderType,
+					command.Absorbed);
+				route = "FikaBot.ApplyDamageInfo";
+				break;
+
+			case ObservedPlayer observedPlayer:
+				if (command.DamageInfo.DamageType is not (EDamageType.Artillery or EDamageType.Landmine))
+				{
+					reason = "ObservedTargetRequiresExplosiveDamage";
+					return false;
+				}
+
+				observedPlayer.HandleExplosive(
+					command.DamageInfo,
+					command.BodyPart,
+					command.ColliderType);
+				route = "ObservedPlayer.HandleExplosive";
+				break;
+
+			case FikaPlayer localPlayer when localPlayer.IsYourPlayer:
+				localPlayer.ApplyDamageInfo(
+					command.DamageInfo,
+					command.BodyPart,
+					command.ColliderType,
+					command.Absorbed);
+				route = "FikaPlayer.ApplyDamageInfo";
+				break;
+
+			default:
+				reason = $"UnsupportedFikaTarget:{targetPlayer.GetType().Name}";
+				return false;
+		}
+
+		reason = route;
 		TscDiagnostics.LogFika(
-			$"TSC A-10 headless damage command broadcast requestId={A10AuthorityDiagnostics.FormatRequestId(command.SupportRequestId)} target={A10AuthorityDiagnostics.ShortId(command.TargetProfileId)} netId={command.TargetNetId} damage={command.DamageInfo.Damage:0.0} bodyPart={command.BodyPart} collider={command.ColliderType}");
+			$"TSC A-10 headless damage routed requestId={A10AuthorityDiagnostics.FormatRequestId(command.SupportRequestId)} target={A10AuthorityDiagnostics.ShortId(command.TargetProfileId)} netId={command.TargetNetId} targetType={targetPlayer.GetType().Name} route={route} damage={command.DamageInfo.Damage:0.0} bodyPart={command.BodyPart} collider={command.ColliderType}");
 		return true;
 	}
 
@@ -2250,6 +2443,14 @@ public static class FikaIntegration
 			return false;
 		}
 
+		if (!FireSupportServiceSemantics.CanExecute(
+			    packet.SupportType,
+			    packet.ServiceSemanticsVersion))
+		{
+			reason = "CargoServiceSemanticsUnsupported";
+			return false;
+		}
+
 		string requestId = packet.SupportRequestId ?? string.Empty;
 		if (string.IsNullOrWhiteSpace(requestId))
 		{
@@ -2306,7 +2507,7 @@ public static class FikaIntegration
 			return false;
 		}
 
-		if (IsExtractionType(packet.SupportType) &&
+		if (packet.SupportType == ESupportType.Extract &&
 		    (!IsFinite(packet.HelicopterDispatchDelaySeconds) ||
 		     !IsFinite(packet.HelicopterExtractTimeSeconds) ||
 		     !IsFinite(packet.HelicopterSpeedMultiplier) ||
@@ -2323,6 +2524,21 @@ public static class FikaIntegration
 		     packet.HelicopterExtractTimeSeconds + MinimumExtractionWindowMarginSeconds))
 		{
 			reason = "InvalidExtractionTimingContract";
+			return false;
+		}
+
+		if (packet.SupportType == ESupportType.PriorityExfil &&
+		    (packet.HelicopterTimingRevision < 0 ||
+		     !CargoTimingPolicy.TryValidate(
+			     new ExtractionTimingValues(
+				     packet.HelicopterDispatchDelaySeconds,
+				     packet.HelicopterWaitTimeSeconds,
+				     extractTimeSeconds: 0f,
+				     speedMultiplier: packet.HelicopterSpeedMultiplier),
+			     "cargo",
+			     out _)))
+		{
+			reason = "InvalidCargoTimingContract";
 			return false;
 		}
 
@@ -2405,8 +2621,12 @@ public static class FikaIntegration
 		clone.HelicopterTimingRevision = packet.HelicopterTimingRevision;
 		clone.HelicopterDispatchDelaySeconds = packet.HelicopterDispatchDelaySeconds;
 		clone.HelicopterWaitTimeSeconds = packet.HelicopterWaitTimeSeconds;
-		clone.HelicopterExtractTimeSeconds = packet.HelicopterExtractTimeSeconds;
+		clone.HelicopterExtractTimeSeconds =
+			packet.SupportType == ESupportType.PriorityExfil
+				? 0f
+				: packet.HelicopterExtractTimeSeconds;
 		clone.HelicopterSpeedMultiplier = packet.HelicopterSpeedMultiplier;
+		clone.ServiceSemanticsVersion = packet.ServiceSemanticsVersion;
 		return clone;
 	}
 
@@ -2574,6 +2794,8 @@ public static class FikaIntegration
 			pendingClients = s_pendingClientRequests.ClearAndGetValues();
 			s_acceptedClientEvents.Clear();
 			s_startedClientUavLoiterEvents.Clear();
+			s_completedClientCargoDepartures.Clear();
+			Uh60CargoDepartureNetworking.ResetRemoteDepartures();
 
 			if (clearAuthorityOutcomes)
 			{
@@ -2761,7 +2983,7 @@ public static class FikaIntegration
 				$"TSC Fika host-authoritative UAV contract type={packet.SupportType} duration={packet.DurationSeconds:0.#}s scan={packet.ScanIntervalSeconds:0.##}s range={packet.RangeMeters:0.#}m requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)}");
 		}
 
-		if (!IsExtractionType(packet.SupportType))
+		if (!IsHelicopterType(packet.SupportType))
 		{
 			return true;
 		}
@@ -2771,9 +2993,12 @@ public static class FikaIntegration
 		HelicopterTimingSnapshot requestedTiming = packet.GetHelicopterTiming();
 		if (!HelicopterTimingsEqual(requestedTiming, hostTiming))
 		{
-			reason = "ExtractionTimingContractChanged";
+			bool isCargo = packet.SupportType == ESupportType.PriorityExfil;
+			reason = isCargo
+				? "CargoTimingContractChanged"
+				: "ExtractionTimingContractChanged";
 			TscDiagnostics.LogFika(
-				$"TSC Fika extraction timing rejected type={packet.SupportType} " +
+				$"TSC Fika {(isCargo ? "Cargo" : "extraction")} timing rejected type={packet.SupportType} " +
 				$"requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)} " +
 				$"clientRevision={packet.HelicopterTimingRevision} hostRevision={s_hostSettingsRevision}; " +
 				"requester must retry with current host settings.");
@@ -2781,13 +3006,17 @@ public static class FikaIntegration
 		}
 
 		packet.SetHelicopterTiming(hostTiming, s_hostSettingsRevision);
+		string standardExtractionTiming =
+			IsStandardExtraction(packet.SupportType)
+				? $" extract={packet.HelicopterExtractTimeSeconds:0.##}s"
+				: string.Empty;
 		TscDiagnostics.LogFika(
-			$"TSC Fika host-authoritative extraction timing type={packet.SupportType} " +
+			$"TSC Fika host-authoritative UH-60 timing type={packet.SupportType} " +
 			$"revision={packet.HelicopterTimingRevision} " +
 			$"dispatch={packet.HelicopterDispatchDelaySeconds:0.##}s " +
-			$"wait={packet.HelicopterWaitTimeSeconds}s " +
-			$"extract={packet.HelicopterExtractTimeSeconds:0.##}s " +
-			$"speed={packet.HelicopterSpeedMultiplier:0.##} " +
+			$"wait={packet.HelicopterWaitTimeSeconds}s" +
+			standardExtractionTiming +
+			$" speed={packet.HelicopterSpeedMultiplier:0.##} " +
 			$"requestId={A10AuthorityDiagnostics.FormatRequestId(packet.SupportRequestId)}");
 		return true;
 	}
@@ -2799,7 +3028,8 @@ public static class FikaIntegration
 		return left.SupportType == right.SupportType &&
 		       left.DispatchDelaySeconds.Equals(right.DispatchDelaySeconds) &&
 		       left.WaitTimeSeconds == right.WaitTimeSeconds &&
-		       left.ExtractTimeSeconds.Equals(right.ExtractTimeSeconds) &&
+		       (left.SupportType == ESupportType.PriorityExfil ||
+		        left.ExtractTimeSeconds.Equals(right.ExtractTimeSeconds)) &&
 		       left.SpeedMultiplier.Equals(right.SpeedMultiplier);
 	}
 
@@ -2851,10 +3081,15 @@ public static class FikaIntegration
 		       supportType == ESupportType.FocusedSweep;
 	}
 
-	private static bool IsExtractionType(ESupportType supportType)
+	private static bool IsHelicopterType(ESupportType supportType)
 	{
-		return supportType == ESupportType.Extract ||
+		return IsStandardExtraction(supportType) ||
 		       supportType == ESupportType.PriorityExfil;
+	}
+
+	private static bool IsStandardExtraction(ESupportType supportType)
+	{
+		return supportType == ESupportType.Extract;
 	}
 
 	private static bool IsUavType(ESupportType supportType)
@@ -2924,7 +3159,7 @@ public static class FikaIntegration
 			// this handler and any launched executor work have unwound.
 			_activeAuthorityWorkCount = 1;
 			float authorityTimeoutSeconds = AuthorityRequestTimeoutSeconds +
-				(IsExtractionType(request.SupportType)
+				(IsHelicopterType(request.SupportType)
 					? Math.Max(0f, request.HelicopterDispatchDelaySeconds)
 					: 0f);
 			_cancellationTokenSource.CancelAfter(
@@ -3307,6 +3542,7 @@ public static class FikaIntegration
 		private readonly int _helicopterWaitTimeSeconds;
 		private readonly float _helicopterExtractTimeSeconds;
 		private readonly float _helicopterSpeedMultiplier;
+		private readonly int _serviceSemanticsVersion;
 		private readonly int _passIndex;
 		private readonly string _requesterProfileId;
 
@@ -3322,8 +3558,15 @@ public static class FikaIntegration
 			_rangeMeters = packet.RangeMeters;
 			_helicopterDispatchDelaySeconds = packet.HelicopterDispatchDelaySeconds;
 			_helicopterWaitTimeSeconds = packet.HelicopterWaitTimeSeconds;
-			_helicopterExtractTimeSeconds = packet.HelicopterExtractTimeSeconds;
+			_helicopterExtractTimeSeconds =
+				packet.SupportType == ESupportType.PriorityExfil
+					? 0f
+					: packet.HelicopterExtractTimeSeconds;
 			_helicopterSpeedMultiplier = packet.HelicopterSpeedMultiplier;
+			_serviceSemanticsVersion =
+				packet.SupportType == ESupportType.PriorityExfil
+					? packet.ServiceSemanticsVersion
+					: FireSupportServiceSemantics.LegacyVersion;
 			_passIndex = packet.PassIndex;
 			_requesterProfileId = packet.RequesterProfileId ?? string.Empty;
 		}
@@ -3332,6 +3575,9 @@ public static class FikaIntegration
 		{
 			return packet != null &&
 			       _supportType == packet.SupportType &&
+			       (_supportType != ESupportType.PriorityExfil ||
+			        !packet.Accepted ||
+			        _serviceSemanticsVersion == packet.ServiceSemanticsVersion) &&
 			       _passIndex == packet.PassIndex &&
 			       string.Equals(
 				       _requesterProfileId,
@@ -3363,6 +3609,8 @@ public static class FikaIntegration
 			         _scanIntervalSeconds.Equals(packet.ScanIntervalSeconds) &&
 			         _rangeMeters.Equals(packet.RangeMeters))) &&
 			       MatchesHelicopterTiming(packet) &&
+			       (_supportType != ESupportType.PriorityExfil ||
+			        _serviceSemanticsVersion == packet.ServiceSemanticsVersion) &&
 			       _passIndex == packet.PassIndex &&
 			       string.Equals(
 				       _requesterProfileId,
@@ -3383,6 +3631,18 @@ public static class FikaIntegration
 				       StringComparison.Ordinal);
 		}
 
+		public bool MatchesCargoDeparture(
+			Uh60CargoDeparturePacket packet)
+		{
+			return packet != null &&
+			       _supportType == ESupportType.PriorityExfil &&
+			       packet.SupportType == ESupportType.PriorityExfil &&
+			       string.Equals(
+				       _requesterProfileId,
+				       packet.RequesterProfileId,
+				       StringComparison.Ordinal);
+		}
+
 		public bool Equals(SupportRequestFingerprint other)
 		{
 			return _supportType == other._supportType &&
@@ -3397,6 +3657,7 @@ public static class FikaIntegration
 			       _helicopterWaitTimeSeconds == other._helicopterWaitTimeSeconds &&
 			       _helicopterExtractTimeSeconds.Equals(other._helicopterExtractTimeSeconds) &&
 			       _helicopterSpeedMultiplier.Equals(other._helicopterSpeedMultiplier) &&
+			       _serviceSemanticsVersion == other._serviceSemanticsVersion &&
 			       _passIndex == other._passIndex &&
 			       string.Equals(
 				       _requesterProfileId,
@@ -3425,6 +3686,7 @@ public static class FikaIntegration
 				hash = hash * 397 ^ _helicopterWaitTimeSeconds;
 				hash = hash * 397 ^ _helicopterExtractTimeSeconds.GetHashCode();
 				hash = hash * 397 ^ _helicopterSpeedMultiplier.GetHashCode();
+				hash = hash * 397 ^ _serviceSemanticsVersion;
 				hash = hash * 397 ^ _passIndex;
 				hash = hash * 397 ^ StringComparer.Ordinal.GetHashCode(
 					_requesterProfileId ?? string.Empty);
@@ -3434,12 +3696,13 @@ public static class FikaIntegration
 
 		private bool MatchesHelicopterTiming(FireSupportRequestPacket packet)
 		{
-			return !IsExtractionType(_supportType) ||
+			return !IsHelicopterType(_supportType) ||
 			       (_helicopterDispatchDelaySeconds.Equals(
 				        packet.HelicopterDispatchDelaySeconds) &&
 			        _helicopterWaitTimeSeconds == packet.HelicopterWaitTimeSeconds &&
-			        _helicopterExtractTimeSeconds.Equals(
-				        packet.HelicopterExtractTimeSeconds) &&
+			        (_supportType == ESupportType.PriorityExfil ||
+			         _helicopterExtractTimeSeconds.Equals(
+				         packet.HelicopterExtractTimeSeconds)) &&
 			        _helicopterSpeedMultiplier.Equals(
 				        packet.HelicopterSpeedMultiplier));
 		}

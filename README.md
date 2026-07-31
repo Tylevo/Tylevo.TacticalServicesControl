@@ -9,7 +9,7 @@ Currently available support options:
 - A-10 autocannon strafe.
 - A-10 Double Pass.
 - UH-60 Black Hawk extraction.
-- Priority Exfil.
+- UH-60 Cargo Transfer.
 - UAV Recon.
 - Focused Sweep.
 
@@ -53,14 +53,15 @@ Pre-raid purchases require persistent authorizations and a server-backed stash p
 
 1. Bring the **TerraGroup TSC Uplink** into raid.
 2. Press `U` to open the Uplink in purchase mode.
-3. Press `1`, `2`, or `3` to open Extraction, Fire Support, or UAV Recon. Inside a category, press `1` for the standard service or `2` for its upgraded variant when available.
+3. Press `1`, `2`, or `3` to open UH-60 Services, Fire Support, or UAV Recon. Inside a category, press `1` for the standard service or `2` for its alternate service when available.
 4. Press `Enter` on the confirmation screen to pay with the configured currency and wallet source. `RMB` returns to the previous screen and `Escape` closes the phone.
 5. When you are ready to use an authorization, press `K` to open the Uplink in deployment mode. Only services you currently own are listed.
 6. Press `1`-`6` to select a service, then press `LMB` or `Enter` to deploy it. `RMB`, `Backspace`, or `Escape` stows the phone without spending the authorization.
 7. A-10 and UH-60 services use camera-based target designation. Confirm each targeting step with `Mouse 2` (middle mouse) or `Enter`; cancel with `Alt + RMB` or `Backspace`.
 8. UAV Recon and Focused Sweep begin directly after deployment. The default `Phone` display mode uses `J`: hold it to raise the Uplink and view the live radar, then release it to return to your weapon. Walking and sprint keys do not lower it while the radar key remains held, and the recon timer keeps running while the phone is stowed. The optional `HUD` display mode keeps only the square live scanner visible in a selected screen corner for the active recon session.
+9. UH-60 Cargo Transfer lands at the marked loading zone and provides **SEND ITEMS VIA UH-60**. It never extracts your PMC. The authorization pays for dispatch; EFT calculates a separate RUB-only item-handling fee when cargo is submitted. In `F12`, **Transfer fee source** defaults to `Carried`, preserving EFT's native carried-RUB payment, or can use `Stash` to debit the authenticated PMC stash through the TSC server. This fee is independent of TSC's configured authorization currency. Once EFT confirms the paid items reached its persistent delivery grid, the helicopter departs immediately; cancelling or failing payment leaves the remaining landed window available for retry. Successfully marked cargo returns through post-raid mail from **UH-60 Pilot** without replacing the native **BTR Driver** contact; if TSC routing cannot be completed safely, the accepted native cargo falls back to BTR delivery instead of being discarded.
 
-The `U`, `K`, `J`, and spotter-confirm controls are configurable in the BepInEx configuration manager opened with `F12`. `UAV Radar Display` also provides the `Phone`/`HUD` choice and four HUD positions. Phone framing and optional authorization-screen zoom are available there as well; the `K` deploy view and held `J` radar preserve the current raid FOV and reveal directly in the upright presentation after EFT finishes the concealed equip transaction.
+The `U`, `K`, `J`, and spotter-confirm controls are configurable in the BepInEx configuration manager opened with `F12`. `UAV Radar Display` also provides the `Phone`/`HUD` choice and four HUD positions, while `Helicopter Cargo` provides the `Carried`/`Stash` handling-fee source. Phone framing and optional authorization-screen zoom are available there as well; the `K` deploy view and held `J` radar preserve the current raid FOV and reveal directly in the upright presentation after EFT finishes the concealed equip transaction.
 
 Server/host settings are changed from the local TSC Dashboard:
 
@@ -79,7 +80,8 @@ The dashboard is localhost-only by default. Do not port-forward it.
 - PhoneAuthorizations and Hybrid payment modes.
 - Configurable RUB, USD, or EUR payment from the stash or carried wallet.
 - A-10 Strafe and A-10 Double Pass.
-- UH-60 Extraction and Priority Exfil.
+- UH-60 Extraction and UH-60 Cargo Transfer.
+- Configurable carried- or authenticated-stash RUB payment for EFT's native Cargo Transfer handling fee.
 - UAV Recon and Focused Sweep.
 - Requester-only UAV radar rendered on the physical Uplink phone or as a scanner-only square corner HUD, plus the UAV A-10 loiter visual.
 - Fika support request sync.
@@ -90,11 +92,22 @@ The dashboard is localhost-only by default. Do not port-forward it.
 
 Install the same TSC version on the host, any headless host, and every client. The host config is authoritative while connected. Client local config does not override host settings during a joined raid, dashboard changes on the host sync to clients, and disconnect clears synced overrides.
 
+UH-60 Cargo Transfer is currently supported for solo players and a requesting
+human Fika host. Non-host and dedicated-headless requesters remain fail-closed
+until the item-dependent native handling price has an authoritative host
+synchronization contract. On a supported requester, `Stash` fee mode requires
+the matching TSC server endpoint and fails closed without moving cargo or
+charging carried cash when used with an older server.
+
 ## Payment Modes
 
 TSC supports RUB, USD, or EUR from carried cash, stash cash, and hybrid payment behavior where configured. Select the server-authoritative currency in the dashboard. The phone displays the active price and balance source, and the server calculates authoritative stash prices. Client-sent prices and currency are not trusted.
 
 Changing the currency does not convert the numeric service prices. Review every service price before saving a different currency.
+
+These settings price the TSC dispatch authorization. UH-60 Cargo Transfer's
+separate EFT handling fee remains RUB-only and uses its own local `F12`
+`Carried`/`Stash` selector.
 
 Back up profiles before testing payment-source modes.
 

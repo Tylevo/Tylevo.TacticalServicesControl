@@ -42,15 +42,17 @@ GitHub release query on 2026-07-27 confirmed v1.0.8 and its matching asset.
 
 Next-release identity:
 
-- Display: **Tylevo's Tactical Services Control v1.1.0 Public Beta**
+- Display: **Tylevo's Tactical Services Control v1.1.0 Beta 1**
 - MSBuild, plugin, server, assembly, and file version: `1.1.0` / `1.1.0.0`
-- Intended tag: `v1.1.0`
+- Published tester tag: `v1.1.0-beta.1`
+- Reserved final tag: `v1.1.0`
 - Intended archive: `Tylevo.TacticalServicesControl-v1.1.0-SPT4.0.13.zip`
 - Target: SPT `4.0.13`
 
-No v1.1.0 tag, release, Forge update, or public archive exists yet. All four
-runtime DLLs must be rebuilt and distributed together because the Fika
-assemblies reference the Core/Interop assembly versions.
+Beta 1 is published as a separate GitHub prerelease; no final `v1.1.0` release
+or Forge update exists yet. All four runtime DLLs must be rebuilt and
+distributed together because the Fika assemblies reference the Core/Interop
+assembly versions.
 
 ## Stabilization Work Completed
 
@@ -103,15 +105,28 @@ assemblies reference the Core/Interop assembly versions.
 - `K` and `J` reveal the phone directly in its upright presentation after the
   concealed EFT equip transaction.
 
-### Phase 4 - Extraction Timing
+### Phase 4 - UH-60 Timing And Cargo
 
-- Standard Extraction and Priority Exfil carry separate dispatch, wait,
-  extraction-countdown, and animation-speed values.
-- Both countdowns and dispatch values cross the server and Fika settings
-  contracts.
-- The extraction point keeps the selected service type when initialized and
-  when a player leaves/re-enters the zone.
-- The dashboard/config path rejects unsafe wait/countdown combinations.
+- Standard Extraction retains its dispatch, wait, extraction-countdown, and
+  animation-speed contract.
+- UH-60 Cargo Transfer replaces the Priority Exfil product while keeping its
+  enum value, saved `PriorityExfil` key, credits, and artwork compatible.
+- Cargo keeps the legacy slot's dispatch, wait, and speed values but never
+  starts an extraction countdown or ends the raid.
+- The requester loads cargo through EFT's native mid-raid transfer screen.
+  Standard Extraction never exposes that interaction.
+- After EFT verifies a paid item move in its persistent transfer grid, Cargo
+  immediately uses the successful-pickup departure. Cancel and payment failure
+  preserve the remaining wait; human-host Fika publishes one accepted-request
+  departure packet so observer visuals leave once with the host.
+- Successfully marked cargo is delivered by an isolated **UH-60 Pilot**
+  messenger. The stock **BTR Driver** identity and unmarked native deliveries
+  remain untouched; missing/rejected markers and routing failures fall back to
+  stock BTR delivery so an accepted item tree is not intentionally discarded.
+- Cargo markers are authenticated, profile/session-bound, durable across an
+  SPT restart, and route connected item trees as one unit.
+- Non-host Fika clients fail closed before Cargo purchase, authorization
+  consumption, or dispatch. Solo SPT and a human Fika host remain supported.
 - Completion timing is derived from the configured service snapshot instead of
   one fixed estimate.
 
@@ -247,7 +262,10 @@ Still open:
 - Two-client per-profile isolation.
 - Duplicate/lost/late Fika acceptance and settlement in live raids.
 - Full requester-owned UAV Phone/HUD lifecycle and teardown matrix.
-- Distinct standard/priority extraction timing in solo and Fika.
+- Standard extraction and host-only cargo-transfer timing in solo and Fika.
+- UH-60 Pilot versus native BTR sender isolation, mixed-package tree
+  partitioning, restart persistence, wrong-profile/auth rejection, fallback,
+  and duplicate/loss accounting.
 - RUB/USD/EUR live carried/stash boundary cases.
 - Dedicated-headless duplication, authorization, damage, and teardown testing.
 - Clean-install and v1.0.8-upgrade smoke tests from the final v1.1.0 archive.

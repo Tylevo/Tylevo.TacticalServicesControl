@@ -150,6 +150,12 @@ internal static class ServerConfigMigrationTests
 			1.35f,
 			config.PriorityExfil.SpeedMultiplier,
 			0.0001f);
+		string persistedJson = JsonSerializer.Serialize(config, s_jsonOptions);
+		AssertEx.Contains("\"PriorityExfil\"", persistedJson);
+		AssertEx.Contains("\"priorityExfil\"", persistedJson);
+		AssertEx.False(
+			persistedJson.Contains("\"cargo", StringComparison.OrdinalIgnoreCase),
+			"Cargo conversion must not rename the released PriorityExfil configuration contract.");
 		AssertResponseOnlyFieldsCleared(config);
 	}
 
@@ -207,7 +213,7 @@ internal static class ServerConfigMigrationTests
 					SpeedMultiplier = 1.1f
 				},
 			PriorityExfil =
-				new RaidOpsFireSupportServerConfig.ExtractionSettings
+				new RaidOpsFireSupportServerConfig.CargoSettings
 				{
 					DispatchDelaySeconds = 2.25f,
 					WaitTimeSeconds = 19,
@@ -300,7 +306,7 @@ internal static class ServerConfigMigrationTests
 					SpeedMultiplier = 1f
 				},
 			PriorityExfil =
-				new RaidOpsFireSupportServerConfig.ExtractionSettings
+				new RaidOpsFireSupportServerConfig.CargoSettings
 				{
 					DispatchDelaySeconds = 3f,
 					WaitTimeSeconds = 20,

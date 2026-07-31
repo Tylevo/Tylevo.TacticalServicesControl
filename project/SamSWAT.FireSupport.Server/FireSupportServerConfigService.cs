@@ -11,7 +11,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using System.Threading;
 using IOPath = System.IO.Path;
 
 namespace SamSWAT.FireSupport.ArysReloaded;
@@ -22,6 +21,7 @@ public sealed class FireSupportServerConfigService(
 	ProfileHelper profileHelper,
 	SaveServer saveServer,
 	FireSupportAuthorizationLedger authorizationLedger,
+	FireSupportProfileMutationGate profileMutationGate,
 	ICloner cloner)
 {
 	private const string ConfigFileName = "tsc-config.json";
@@ -42,7 +42,6 @@ public sealed class FireSupportServerConfigService(
 	};
 
 	private readonly object _gate = new();
-	private readonly SemaphoreSlim _purchaseGate = new(1, 1);
 	private RaidOpsFireSupportServerConfig _config = CreateDefaultConfig();
 	private readonly Dictionary<string, DateTimeOffset> _purchaseRateLimits = new(StringComparer.OrdinalIgnoreCase);
 	private string _configPath = string.Empty;
@@ -73,9 +72,9 @@ public sealed class FireSupportServerConfigService(
 			{
 				logger.Error(
 					$"TSC config validation failed: {validationError} " +
-					"Unsafe extraction timing is repaired automatically; an invalid " +
+					"Unsafe UH-60 service timing is repaired automatically; an invalid " +
 					"payment currency remains fail-closed until corrected in the dashboard.");
-				RepairInvalidExtractionTimings(_config);
+				RepairInvalidServiceTimings(_config);
 			}
 
 			if (_config.Revision <= 0)
@@ -199,15 +198,8 @@ public sealed class FireSupportServerConfigService(
 		MongoId sessionId,
 		FireSupportPurchaseRequest request)
 	{
-		await _purchaseGate.WaitAsync();
-		try
-		{
-			return await TryPurchaseSerializedAsync(sessionId, request);
-		}
-		finally
-		{
-			_purchaseGate.Release();
-		}
+		return await profileMutationGate.RunAsync(
+			() => TryPurchaseSerializedAsync(sessionId, request));
 	}
 
 	private async Task<FireSupportPurchaseResponse> TryPurchaseSerializedAsync(
@@ -1077,14 +1069,14 @@ public sealed class FireSupportServerConfigService(
 					Field("prices.Uav", "UAV Price", "number", min: 0, max: 10000000, step: 1, slider: true),
 					Field("prices.FocusedSweep", "Focused Sweep Price", "number", min: 0, max: 10000000, step: 1, slider: true),
 					Field("prices.Extraction", "Extraction Price", "number", min: 0, max: 10000000, step: 1, slider: true),
-					Field("prices.PriorityExfil", "Priority Exfil Price", "number", min: 0, max: 10000000, step: 1, slider: true)),
+					Field("prices.PriorityExfil", "Cargo Transfer Price", "number", min: 0, max: 10000000, step: 1, slider: true)),
 				Section("services", "Service Toggles",
 					Field("enabled.A10", "A-10 Enabled", "toggle"),
 					Field("enabled.DoublePass", "Double Pass Enabled", "toggle"),
 					Field("enabled.Uav", "UAV Enabled", "toggle"),
 					Field("enabled.FocusedSweep", "Focused Sweep Enabled", "toggle"),
 					Field("enabled.Extraction", "Extraction Enabled", "toggle"),
-					Field("enabled.PriorityExfil", "Priority Exfil Enabled", "toggle")),
+					Field("enabled.PriorityExfil", "Cargo Transfer Enabled", "toggle")),
 				Section("recon", "Recon Services",
 					Field("uav.durationSeconds", "UAV Duration", "number", min: 5, max: 1800, step: 5, slider: true),
 					Field("uav.rangeMeters", "UAV Range", "number", min: 25, max: 1000, step: 25, slider: true),
@@ -1092,15 +1084,14 @@ public sealed class FireSupportServerConfigService(
 					Field("focusedSweep.durationSeconds", "Focused Sweep Duration", "number", min: 5, max: 1800, step: 5, slider: true),
 					Field("focusedSweep.rangeMeters", "Focused Sweep Range", "number", min: 25, max: 1000, step: 25, slider: true),
 					Field("focusedSweep.scanIntervalSeconds", "Focused Sweep Scan Interval", "number", min: 0.1, max: 10, step: 0.05)),
-				Section("extraction", "Extraction Services",
+				Section("extraction", "UH-60 Services",
 					Field("extraction.dispatchDelaySeconds", "Extraction Dispatch Delay", "number", min: 0, max: ExtractionTimingPolicy.MaxDispatchDelaySeconds, step: 1),
 					Field("extraction.waitTimeSeconds", "Extraction Wait Time", "number", min: ExtractionTimingPolicy.MinWaitTimeSeconds, max: ExtractionTimingPolicy.MaxWaitTimeSeconds, step: 5, slider: true),
 					Field("extraction.extractTimeSeconds", "Extraction Time", "number", min: ExtractionTimingPolicy.MinExtractTimeSeconds, max: ExtractionTimingPolicy.MaxExtractTimeSeconds, step: 1),
 					Field("extraction.speedMultiplier", "Extraction Speed Multiplier", "number", min: ExtractionTimingPolicy.MinSpeedMultiplier, max: ExtractionTimingPolicy.MaxSpeedMultiplier, step: 0.05, slider: true),
-					Field("priorityExfil.dispatchDelaySeconds", "Priority Dispatch Delay", "number", min: 0, max: ExtractionTimingPolicy.MaxDispatchDelaySeconds, step: 1),
-					Field("priorityExfil.waitTimeSeconds", "Priority Wait Time", "number", min: ExtractionTimingPolicy.MinWaitTimeSeconds, max: ExtractionTimingPolicy.MaxWaitTimeSeconds, step: 5, slider: true),
-					Field("priorityExfil.extractTimeSeconds", "Priority Extraction Time", "number", min: ExtractionTimingPolicy.MinExtractTimeSeconds, max: ExtractionTimingPolicy.MaxExtractTimeSeconds, step: 1),
-					Field("priorityExfil.speedMultiplier", "Priority Speed Multiplier", "number", min: ExtractionTimingPolicy.MinSpeedMultiplier, max: ExtractionTimingPolicy.MaxSpeedMultiplier, step: 0.05, slider: true)),
+					Field("priorityExfil.dispatchDelaySeconds", "Cargo Dispatch Delay", "number", min: 0, max: ExtractionTimingPolicy.MaxDispatchDelaySeconds, step: 1),
+					Field("priorityExfil.waitTimeSeconds", "Cargo Wait Time", "number", min: ExtractionTimingPolicy.MinWaitTimeSeconds, max: ExtractionTimingPolicy.MaxWaitTimeSeconds, step: 5, slider: true),
+					Field("priorityExfil.speedMultiplier", "Cargo Speed Multiplier", "number", min: ExtractionTimingPolicy.MinSpeedMultiplier, max: ExtractionTimingPolicy.MaxSpeedMultiplier, step: 0.05, slider: true)),
 				Section("fire", "Fire Support",
 					Field("doublePass.secondPassDelaySeconds", "Double Pass Delay", "number", min: MinDoublePassSecondPassDelaySeconds, max: MaxDoublePassSecondPassDelaySeconds, step: 1))
 			}
@@ -1836,7 +1827,7 @@ public sealed class FireSupportServerConfigService(
 		config.Uav = NormalizeUavSettings(config.Uav, defaults.Uav);
 		config.FocusedSweep = NormalizeUavSettings(config.FocusedSweep, defaults.FocusedSweep);
 		config.Extraction = NormalizeExtractionSettings(config.Extraction, defaults.Extraction);
-		config.PriorityExfil = NormalizeExtractionSettings(config.PriorityExfil, defaults.PriorityExfil);
+		config.PriorityExfil = NormalizeCargoSettings(config.PriorityExfil, defaults.PriorityExfil);
 		config.A10 = config.A10 ?? defaults.A10;
 		config.DoublePass = NormalizeA10Settings(config.DoublePass, defaults.DoublePass);
 	}
@@ -1907,6 +1898,13 @@ public sealed class FireSupportServerConfigService(
 		return settings ?? defaults;
 	}
 
+	private static RaidOpsFireSupportServerConfig.CargoSettings NormalizeCargoSettings(
+		RaidOpsFireSupportServerConfig.CargoSettings? settings,
+		RaidOpsFireSupportServerConfig.CargoSettings defaults)
+	{
+		return settings ?? defaults;
+	}
+
 	private static bool TryValidateConfig(
 		RaidOpsFireSupportServerConfig config,
 		out string error)
@@ -1925,7 +1923,7 @@ public sealed class FireSupportServerConfigService(
 			return false;
 		}
 
-		if (!TryValidateExtractionTiming(
+		if (!TryValidateCargoTiming(
 			    config.PriorityExfil,
 			    "priorityExfil",
 			    out error))
@@ -1961,12 +1959,23 @@ public sealed class FireSupportServerConfigService(
 			out error);
 	}
 
-	private static void RepairInvalidExtractionTimings(
+	private static bool TryValidateCargoTiming(
+		RaidOpsFireSupportServerConfig.CargoSettings settings,
+		string path,
+		out string error)
+	{
+		return CargoTimingPolicy.TryValidate(
+			ToCargoTimingValues(settings),
+			path,
+			out error);
+	}
+
+	private static void RepairInvalidServiceTimings(
 		RaidOpsFireSupportServerConfig config)
 	{
 		RaidOpsFireSupportServerConfig defaults = CreateDefaultConfig();
 		RepairExtractionTiming(config.Extraction, defaults.Extraction);
-		RepairExtractionTiming(config.PriorityExfil, defaults.PriorityExfil);
+		RepairCargoTiming(config.PriorityExfil, defaults.PriorityExfil);
 		int requiredPendingTimeout = GetRequiredPendingUseTimeoutSeconds();
 		if (config.PurchasePersistence?.Enabled == true &&
 		    config.PurchasePersistence.PendingUseTimeoutSeconds <
@@ -1998,8 +2007,30 @@ public sealed class FireSupportServerConfigService(
 		settings.SpeedMultiplier = repaired.SpeedMultiplier;
 	}
 
+	private static void RepairCargoTiming(
+		RaidOpsFireSupportServerConfig.CargoSettings settings,
+		RaidOpsFireSupportServerConfig.CargoSettings defaults)
+	{
+		ExtractionTimingValues repaired = CargoTimingPolicy.Repair(
+			ToCargoTimingValues(settings),
+			ToCargoTimingValues(defaults));
+		settings.DispatchDelaySeconds = repaired.DispatchDelaySeconds;
+		settings.WaitTimeSeconds = repaired.WaitTimeSeconds;
+		settings.SpeedMultiplier = repaired.SpeedMultiplier;
+	}
+
 	private static ExtractionTimingValues ToExtractionTimingValues(
 		RaidOpsFireSupportServerConfig.ExtractionSettings settings)
+	{
+		return new ExtractionTimingValues(
+			settings.DispatchDelaySeconds,
+			settings.WaitTimeSeconds,
+			settings.ExtractTimeSeconds,
+			settings.SpeedMultiplier);
+	}
+
+	private static ExtractionTimingValues ToCargoTimingValues(
+		RaidOpsFireSupportServerConfig.CargoSettings settings)
 	{
 		return new ExtractionTimingValues(
 			settings.DispatchDelaySeconds,
@@ -2248,7 +2279,7 @@ public sealed class FireSupportServerConfigService(
 				ExtractTimeSeconds = 10f,
 				SpeedMultiplier = 1f
 			},
-			PriorityExfil = new RaidOpsFireSupportServerConfig.ExtractionSettings
+			PriorityExfil = new RaidOpsFireSupportServerConfig.CargoSettings
 			{
 				DispatchDelaySeconds = 3f,
 				WaitTimeSeconds = 20,

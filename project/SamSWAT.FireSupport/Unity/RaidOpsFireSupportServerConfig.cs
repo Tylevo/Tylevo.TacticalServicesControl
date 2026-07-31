@@ -30,7 +30,7 @@ public sealed class RaidOpsFireSupportServerConfig
 	public UavSettings Uav { get; set; } = new();
 	public UavSettings FocusedSweep { get; set; } = new();
 	public ExtractionSettings Extraction { get; set; } = new();
-	public ExtractionSettings PriorityExfil { get; set; } = new();
+	public CargoSettings PriorityExfil { get; set; } = new();
 	public A10Settings A10 { get; set; } = new();
 	public A10Settings DoublePass { get; set; } = new();
 	public PurchasePersistenceSettings PurchasePersistence { get; set; } = new();
@@ -61,6 +61,18 @@ public sealed class RaidOpsFireSupportServerConfig
 	{
 		public float DispatchDelaySeconds { get; set; }
 		public int WaitTimeSeconds { get; set; }
+		public float ExtractTimeSeconds { get; set; }
+		public float SpeedMultiplier { get; set; }
+	}
+
+	public sealed class CargoSettings
+	{
+		public float DispatchDelaySeconds { get; set; }
+		public int WaitTimeSeconds { get; set; }
+		/// <summary>
+		/// Dormant released-schema value retained only so existing config files
+		/// round-trip without data loss. Cargo runtime never consumes it.
+		/// </summary>
 		public float ExtractTimeSeconds { get; set; }
 		public float SpeedMultiplier { get; set; }
 	}
@@ -142,4 +154,27 @@ public sealed class FireSupportPurchaseResponse
 	/// </summary>
 	public bool AuthorizationsIncluded { get; set; }
 	public Dictionary<string, int> Authorizations { get; set; } = new();
+}
+
+/// <summary>
+/// Authenticated transaction request for the native UH-60 cargo-transfer
+/// handling fee. The HTTP session is authoritative; <see cref="ProfileId"/>
+/// is only a required anti-confusion hint and must match that session.
+/// </summary>
+public sealed class FireSupportUh60TransferFeeRequest
+{
+	public string Action { get; set; } = string.Empty;
+	public string ProfileId { get; set; } = string.Empty;
+	public string TransactionId { get; set; } = string.Empty;
+	public int AmountRoubles { get; set; }
+}
+
+public sealed class FireSupportUh60TransferFeeResponse
+{
+	public bool Ok { get; set; }
+	public string Reason { get; set; } = string.Empty;
+	public string State { get; set; } = string.Empty;
+	public string TransactionId { get; set; } = string.Empty;
+	public int AmountRoubles { get; set; }
+	public int StashRoubleBalance { get; set; } = -1;
 }

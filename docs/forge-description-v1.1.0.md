@@ -19,7 +19,7 @@ TSC is a derivative rework and expansion of SamSWAT's Fire Support and Arys Relo
 ### Services
 
 - **A-10 Strafe** and **A-10 Double Pass** with aircraft, GAU-8 audio, tracers, and impact effects.
-- **UH-60 Black Hawk Extraction** and **Priority Exfil** with separate timing controls.
+- **UH-60 Black Hawk Extraction** and **UH-60 Cargo Transfer** with separate timing controls. Cargo Transfer sends selected loot through post-raid delivery and never extracts the PMC.
 - **UAV Recon** and **Focused Sweep** with a requester-only radar.
 
 ### Buy Before A Raid
@@ -40,8 +40,8 @@ The store never spends carried raid cash. Its **DASHBOARD** button opens the act
 
 1. Bring the **TerraGroup TSC Uplink** into the raid.
 2. Press `U` to open purchase mode.
-3. Press `1`, `2`, or `3` to open Extraction, Fire Support, or UAV Recon.
-4. Press `1` for the standard service or `2` for its upgraded option.
+3. Press `1`, `2`, or `3` to open UH-60 Services, Fire Support, or UAV Recon.
+4. Press `1` for the standard service or `2` for its alternate option.
 5. Press `Enter` on the confirmation screen to authorize payment.
 6. Press `K` when ready to deploy an owned authorization.
 7. Press `1`-`6` to select an owned service, then use `LMB` or `Enter` to deploy it.
@@ -94,7 +94,10 @@ Server and gameplay settings are managed from:
 
 `https://127.0.0.1:6969/tsc/admin`
 
-The dashboard controls prices, currency, payment sources, authorization limits, service availability, UAV contracts, extraction timing, and support behavior. It is localhost-only by default. Do not expose or port-forward it to the public internet.
+The dashboard controls prices, currency, payment sources, authorization
+limits, service availability, UAV contracts, standard-Extraction timing,
+extraction-free Cargo timing, and support behavior. It is localhost-only by
+default. Do not expose or port-forward it to the public internet.
 
 ### Fika
 

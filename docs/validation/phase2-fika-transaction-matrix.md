@@ -29,7 +29,8 @@ installed on every participant.
 
 This matrix validates that a TSC authorization is finalized from an explicit
 authority outcome rather than from packet transport. It applies to A-10
-Strafe, A-10 Double Pass, UH-60 Extraction, UH-60 Priority Exfil, UAV Recon,
+Strafe, A-10 Double Pass, UH-60 Extraction, UH-60 Cargo Transfer (legacy
+`PriorityExfil` wire identity), UAV Recon,
 and UAV Focused Sweep.
 
 ## Test-Set Safety
@@ -111,7 +112,7 @@ the matched Fika or dedicated-headless cases.
 | P2-01 | Solo SPT | Deploy each of the six services once. | The local path executes once and the authorization commits once. No Fika handler is required. |
 | P2-02 | Human Fika host | Request each service as the host. | The original human-host gameplay path executes once and each authorization commits once. |
 | P2-03 | Fika client -> human host | Request each service as a client. | The client waits for authority acceptance; the host executes once; shared A-10/UH-60 world presentation appears once on applicable peers; private UAV feed/UI appears only for the requester; the requester's ledger commits once. |
-| P2-04 | Fika client -> dedicated headless | Request each supported service, including A-10 with headless A-10 enabled. Capture the selected target's health and damage events before and after the A-10 pass. | The headless authority accepts once. A-10 damage starts only after accepted delivery is published, buffered tracers play once, and target-health evidence shows one intended damage sequence rather than ballistic-plus-fallback double damage. |
+| P2-04 | Fika client -> dedicated headless | Request each supported service, including A-10 with headless A-10 enabled. Run separate nonlethal and lethal strikes against a headless-owned bot, then a remote human. Capture health, damage, death/downed, AI-brain, corpse, and observer events before and after each pass. | The headless authority accepts once. A-10 damage starts only after accepted delivery is published, buffered tracers play once, and target-health evidence shows one intended damage sequence rather than ballistic-plus-fallback double damage. A lethal bot enters one native Fika death, stops AI, and becomes one lootable corpse on every peer with no upright half-dead actor. A remote human applies damage only on its owning client and publishes exactly one native corpse sync, or exactly one native downed state when Fika revival is enabled. |
 | P2-05 | Disabled/unavailable executor (injected) | Reserve while enabled, then change authority state before validation, or inject a valid packet after disabling the authority service. Separately disable dedicated-headless A-10. | The authority returns a stable rejection, no accepted event or gameplay effect occurs, and an existing pending authorization refunds once. The normal UI's pre-send service check is not this test. |
 | P2-06 | Duplicate request | Deliver the same request ID and identical payload at least twice before and after completion. | One authority execution occurs. Replays return the cached outcome and do not consume, commit, refund, or present twice. |
 | P2-07 | Conflicting replay | Reuse one request ID with a changed service, pass, requester, or geometry. | The authority rejects the conflict and never executes the changed payload. The original outcome remains authoritative. |

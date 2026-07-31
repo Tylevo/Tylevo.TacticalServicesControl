@@ -80,7 +80,8 @@ public static class FireSupportRuntime
 		CancellationToken cancellationToken,
 		int passIndex = 0,
 		HelicopterTimingSnapshot? helicopterTimingSnapshot = null,
-		bool allowLocalHelicopterExtraction = true)
+		bool allowLocalHelicopterServicePoint = true,
+		string supportRequestId = "")
 	{
 		FireSupportBehaviour leasedBehaviour = null;
 		bool requestStarted = false;
@@ -98,7 +99,8 @@ public static class FireSupportRuntime
 				leasedBehaviour,
 				supportType,
 				helicopterTimingSnapshot,
-				allowLocalHelicopterExtraction);
+				allowLocalHelicopterServicePoint,
+				supportRequestId);
 			cancellationToken.ThrowIfCancellationRequested();
 			leasedBehaviour.ProcessRequest(
 				position,
@@ -136,6 +138,9 @@ public static class FireSupportRuntime
 
 	private static ESupportType GetPooledSupportType(ESupportType supportType)
 	{
+		// Cargo reuses the released UH-60 prefab stored under the Extract asset
+		// key. This maps assets only; the leased behavior creates a distinct
+		// cargo or extraction service point from the requested support type.
 		return supportType switch
 		{
 			ESupportType.DoubleStrafe => ESupportType.Strafe,
@@ -148,14 +153,16 @@ public static class FireSupportRuntime
 		IFireSupportBehaviour behaviour,
 		ESupportType requestedSupportType,
 		HelicopterTimingSnapshot? helicopterTimingSnapshot,
-		bool allowLocalHelicopterExtraction)
+		bool allowLocalHelicopterServicePoint,
+		string supportRequestId)
 	{
 		if (behaviour is UH60Behaviour uh60Behaviour)
 		{
 			uh60Behaviour.SetRequestTiming(
 				requestedSupportType,
 				helicopterTimingSnapshot,
-				allowLocalHelicopterExtraction);
+				allowLocalHelicopterServicePoint,
+				supportRequestId);
 		}
 	}
 

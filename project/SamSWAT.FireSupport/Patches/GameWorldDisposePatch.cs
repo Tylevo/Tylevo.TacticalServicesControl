@@ -23,6 +23,7 @@ public class GameWorldDisposePatch : ModulePatch
 		UavDeviceActivationController.ResetForRaidBoundary("raid disposed");
 		UavReconOverlay.Deactivate("raid disposed");
 		UavAircraftLoiterController.ResetAll("raid disposed");
+		FireSupportItemTransfer.ResetForRaidBoundary("raid disposed");
 		FireSupportAuthorizations.Reset();
 		FireSupportServerConfigClient.OnRaidEnded();
 

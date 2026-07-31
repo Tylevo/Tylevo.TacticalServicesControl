@@ -11,7 +11,6 @@ public static class FireSupportTuningSettings
 	private static float? _syncedHelicopterSpeedMultiplier;
 	private static float? _syncedPriorityExfilDispatchDelay;
 	private static int? _syncedPriorityExfilHelicopterWaitTime;
-	private static float? _syncedPriorityExfilHelicopterExtractTime;
 	private static float? _syncedPriorityExfilHelicopterSpeedMultiplier;
 	private static int? _syncedRequestCooldown;
 	private static float? _serverDoubleStrafeSecondPassDelay;
@@ -21,7 +20,6 @@ public static class FireSupportTuningSettings
 	private static float? _serverHelicopterSpeedMultiplier;
 	private static float? _serverPriorityExfilDispatchDelay;
 	private static int? _serverPriorityExfilHelicopterWaitTime;
-	private static float? _serverPriorityExfilHelicopterExtractTime;
 	private static float? _serverPriorityExfilHelicopterSpeedMultiplier;
 	private static int? _serverRequestCooldown;
 
@@ -33,7 +31,6 @@ public static class FireSupportTuningSettings
 		_syncedHelicopterSpeedMultiplier.HasValue ||
 		_syncedPriorityExfilDispatchDelay.HasValue ||
 		_syncedPriorityExfilHelicopterWaitTime.HasValue ||
-		_syncedPriorityExfilHelicopterExtractTime.HasValue ||
 		_syncedPriorityExfilHelicopterSpeedMultiplier.HasValue ||
 		_syncedRequestCooldown.HasValue;
 
@@ -45,7 +42,6 @@ public static class FireSupportTuningSettings
 		_serverHelicopterSpeedMultiplier.HasValue ||
 		_serverPriorityExfilDispatchDelay.HasValue ||
 		_serverPriorityExfilHelicopterWaitTime.HasValue ||
-		_serverPriorityExfilHelicopterExtractTime.HasValue ||
 		_serverPriorityExfilHelicopterSpeedMultiplier.HasValue ||
 		_serverRequestCooldown.HasValue;
 
@@ -57,7 +53,6 @@ public static class FireSupportTuningSettings
 		float helicopterSpeedMultiplier,
 		float priorityExfilDispatchDelay,
 		int priorityExfilHelicopterWaitTime,
-		float priorityExfilHelicopterExtractTime,
 		float priorityExfilHelicopterSpeedMultiplier,
 		int requestCooldown)
 	{
@@ -68,13 +63,12 @@ public static class FireSupportTuningSettings
 		_syncedHelicopterSpeedMultiplier = helicopterSpeedMultiplier;
 		_syncedPriorityExfilDispatchDelay = priorityExfilDispatchDelay;
 		_syncedPriorityExfilHelicopterWaitTime = priorityExfilHelicopterWaitTime;
-		_syncedPriorityExfilHelicopterExtractTime = priorityExfilHelicopterExtractTime;
 		_syncedPriorityExfilHelicopterSpeedMultiplier = priorityExfilHelicopterSpeedMultiplier;
 		_syncedRequestCooldown = requestCooldown;
 		TscDiagnostics.LogFika(
 			$"Using host TSC tuning: doublePassDelay={doubleStrafeSecondPassDelay:0.##}s, " +
-			$"extraction=dispatch:{helicopterDispatchDelay:0.##}/wait:{helicopterWaitTime}/extract:{helicopterExtractTime:0.##}s, " +
-			$"priority=dispatch:{priorityExfilDispatchDelay:0.##}/wait:{priorityExfilHelicopterWaitTime}/extract:{priorityExfilHelicopterExtractTime:0.##}s, " +
+			$"extraction=dispatch:{helicopterDispatchDelay:0.##}/wait:{helicopterWaitTime}/extract:{helicopterExtractTime:0.##}/speed:{helicopterSpeedMultiplier:0.##}, " +
+			$"cargo=dispatch:{priorityExfilDispatchDelay:0.##}/wait:{priorityExfilHelicopterWaitTime}/speed:{priorityExfilHelicopterSpeedMultiplier:0.##}, " +
 			$"cooldown={requestCooldown}s");
 	}
 
@@ -88,7 +82,6 @@ public static class FireSupportTuningSettings
 		_syncedHelicopterSpeedMultiplier = null;
 		_syncedPriorityExfilDispatchDelay = null;
 		_syncedPriorityExfilHelicopterWaitTime = null;
-		_syncedPriorityExfilHelicopterExtractTime = null;
 		_syncedPriorityExfilHelicopterSpeedMultiplier = null;
 		_syncedRequestCooldown = null;
 		if (hadSyncedTuning)
@@ -105,7 +98,6 @@ public static class FireSupportTuningSettings
 		float helicopterSpeedMultiplier,
 		float priorityExfilDispatchDelay,
 		int priorityExfilHelicopterWaitTime,
-		float priorityExfilHelicopterExtractTime,
 		float priorityExfilHelicopterSpeedMultiplier,
 		int requestCooldown,
 		int revision)
@@ -117,13 +109,12 @@ public static class FireSupportTuningSettings
 		_serverHelicopterSpeedMultiplier = helicopterSpeedMultiplier;
 		_serverPriorityExfilDispatchDelay = priorityExfilDispatchDelay;
 		_serverPriorityExfilHelicopterWaitTime = priorityExfilHelicopterWaitTime;
-		_serverPriorityExfilHelicopterExtractTime = priorityExfilHelicopterExtractTime;
 		_serverPriorityExfilHelicopterSpeedMultiplier = priorityExfilHelicopterSpeedMultiplier;
 		_serverRequestCooldown = requestCooldown;
 		TscDiagnostics.LogDashboard(
 			$"Using server URL TSC tuning revision={revision}: doublePassDelay={doubleStrafeSecondPassDelay:0.##}s, " +
-			$"extraction=dispatch:{helicopterDispatchDelay:0.##}/wait:{helicopterWaitTime}/extract:{helicopterExtractTime:0.##}s, " +
-			$"priority=dispatch:{priorityExfilDispatchDelay:0.##}/wait:{priorityExfilHelicopterWaitTime}/extract:{priorityExfilHelicopterExtractTime:0.##}s, " +
+			$"extraction=dispatch:{helicopterDispatchDelay:0.##}/wait:{helicopterWaitTime}/extract:{helicopterExtractTime:0.##}/speed:{helicopterSpeedMultiplier:0.##}, " +
+			$"cargo=dispatch:{priorityExfilDispatchDelay:0.##}/wait:{priorityExfilHelicopterWaitTime}/speed:{priorityExfilHelicopterSpeedMultiplier:0.##}, " +
 			$"cooldown={requestCooldown}s");
 	}
 
@@ -137,7 +128,6 @@ public static class FireSupportTuningSettings
 		_serverHelicopterSpeedMultiplier = null;
 		_serverPriorityExfilDispatchDelay = null;
 		_serverPriorityExfilHelicopterWaitTime = null;
-		_serverPriorityExfilHelicopterExtractTime = null;
 		_serverPriorityExfilHelicopterSpeedMultiplier = null;
 		_serverRequestCooldown = null;
 		if (hadServerTuning)
@@ -232,24 +222,14 @@ public static class FireSupportTuningSettings
 
 	public static float GetHelicopterExtractTime()
 	{
-		return GetHelicopterExtractTime(ESupportType.Extract);
-	}
-
-	public static float GetHelicopterExtractTime(ESupportType supportType)
-	{
-		return supportType == ESupportType.PriorityExfil
-			? _syncedPriorityExfilHelicopterExtractTime ?? _serverPriorityExfilHelicopterExtractTime ?? GetConfiguredPriorityExfilHelicopterExtractTime()
-			: _syncedHelicopterExtractTime ?? _serverHelicopterExtractTime ?? GetConfiguredHelicopterExtractTime();
+		return _syncedHelicopterExtractTime ??
+		       _serverHelicopterExtractTime ??
+		       GetConfiguredHelicopterExtractTime();
 	}
 
 	public static float GetConfiguredHelicopterExtractTime()
 	{
 		return PluginSettings.HelicopterExtractTime.Value;
-	}
-
-	public static float GetConfiguredPriorityExfilHelicopterExtractTime()
-	{
-		return PluginSettings.PriorityExfilHelicopterExtractTime.Value;
 	}
 
 	public static float GetHelicopterSpeedMultiplier(ESupportType supportType)
@@ -275,14 +255,19 @@ public static class FireSupportTuningSettings
 			supportType == ESupportType.PriorityExfil
 				? ESupportType.PriorityExfil
 				: ESupportType.Extract;
-		return ExtractionTimingPolicy.CreateRuntimeSnapshot(
-			effectiveSupportType,
-			new ExtractionTimingValues(
-				GetHelicopterDispatchDelay(effectiveSupportType),
-				GetHelicopterWaitTime(effectiveSupportType),
-				GetHelicopterExtractTime(effectiveSupportType),
-				GetHelicopterSpeedMultiplier(effectiveSupportType)),
-			message => FireSupportPlugin.LogSource?.LogWarning(message));
+		var timing = new ExtractionTimingValues(
+			GetHelicopterDispatchDelay(effectiveSupportType),
+			GetHelicopterWaitTime(effectiveSupportType),
+			effectiveSupportType == ESupportType.Extract
+				? GetHelicopterExtractTime()
+				: 0f,
+			GetHelicopterSpeedMultiplier(effectiveSupportType));
+		return effectiveSupportType == ESupportType.PriorityExfil
+			? CargoTimingPolicy.CreateRuntimeSnapshot(timing)
+			: ExtractionTimingPolicy.CreateRuntimeSnapshot(
+				effectiveSupportType,
+				timing,
+				message => FireSupportPlugin.LogSource?.LogWarning(message));
 	}
 
 	public static int GetRequestCooldown()

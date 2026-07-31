@@ -31,6 +31,8 @@ public record ServerModMetadata : AbstractModMetadata
 public class ServerMod(
 	CustomItemServiceExtended customItemService,
 	FireSupportServerConfigService fireSupportServerConfigService,
+	FireSupportUh60DeliveryService uh60DeliveryService,
+	FireSupportUh60TransferFeeService uh60TransferFeeService,
 	ModHelper modHelper,
 	WTTServerCommonLib.WTTServerCommonLib wttCommon) : IOnLoad
 {
@@ -45,6 +47,8 @@ public class ServerMod(
 		await wttCommon.CustomAssortSchemeService.CreateCustomAssortSchemes(assembly);
 
 		fireSupportServerConfigService.Initialize(pathToMod);
+		uh60DeliveryService.Initialize(pathToMod);
+		uh60TransferFeeService.Initialize(pathToMod);
 		AddCustomItems();
 	}
 

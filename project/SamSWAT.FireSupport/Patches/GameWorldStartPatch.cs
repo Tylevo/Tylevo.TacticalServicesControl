@@ -23,6 +23,7 @@ public class GameWorldStartPatch : ModulePatch
 		UavDeviceActivationController.ResetForRaidBoundary("raid started");
 		UavReconOverlay.Deactivate("raid started");
 		UavAircraftLoiterController.ResetAll("raid started");
+		FireSupportItemTransfer.ResetForRaidBoundary("raid started");
 		MainMenuPurchaseController.CloseForRaidStart();
 		FireSupportAuthorizations.Reset();
 		FireSupportServerConfigClient.OnRaidStarted();

@@ -46,7 +46,7 @@ Re-query GitHub at the start of Phase 0 and Phase 7. If local documentation or t
 | 1A | P1 | Add a session-authenticated pre-raid authorization store |
 | 2 | P1 | Make Fika request acceptance, consumption, commit, and refund transactional |
 | 3 | P1 | Complete the physical-phone UAV live acceptance matrix |
-| 4 | P2 | Correct Extraction and Priority Exfil timing configuration |
+| 4 | P2 | Correct standard Extraction timing and isolate Cargo timing from extraction |
 | 5 | P2 | Add regression coverage and complete build integration |
 | 6 | Release safety | Reconcile versions, documentation, configuration, and the working tree |
 | 7 | Release gate | Produce and validate a clean release candidate |
@@ -366,7 +366,7 @@ live acceptance.
 - [ ] Lost or duplicate acceptance packets converge on one final state.
 - [ ] Unavailable or disabled dedicated-headless execution rejects and refunds cleanly.
 - [ ] Requester disconnect, death, or raid teardown cannot strand a pending authorization.
-- [ ] A-10 single pass, A-10 double pass, both extraction services, UAV Recon, and Focused Sweep follow the intended lifecycle.
+- [ ] A-10 single pass, A-10 double pass, standard Extraction, Cargo Transfer, UAV Recon, and Focused Sweep follow their intended lifecycles.
 
 ### Exit Gate
 
@@ -484,109 +484,112 @@ not mark any live Phase 2 or Phase 3 row complete.
 - Requester isolation holds for human-host, client, and dedicated-headless sessions.
 - Recon timing is server/host-authoritative and does not drift between the phone and aircraft.
 
-## Phase 4 - Extraction Timing Configuration
+## Phase 4 - Standard Extraction And Cargo Timing Isolation
 
 ### Goal
 
-Make the dashboard contract match runtime behavior for standard Extraction and Priority Exfil.
+Make the dashboard and runtime contracts match the two distinct UH-60
+products:
+
+- standard Extraction owns dispatch, wait, extraction countdown, speed, and
+  Fika extraction completion;
+- Cargo Transfer owns dispatch, wait, speed, and requester-local item loading,
+  but never owns a countdown or extraction completion.
 
 ### Product Decision
 
-The current dashboard promises separate extraction-zone countdowns. Unless the product intentionally wants one shared hold time, implement separate values. If a shared value is intentional, remove the dead priority field and label the remaining setting as common.
+Wire value `10` and the released `PriorityExfil` configuration/authorization
+slot now identify **UH-60 Cargo Transfer**. The key, enum value, credits, and
+existing artwork remain stable for upgrade compatibility. The persisted
+`priorityExfil.extractTimeSeconds` member remains readable and round-trippable
+legacy data only; it is not an active Cargo setting.
 
 ### Implementation Tasks
 
-- [x] Make extraction-zone countdown tuning support-type-aware.
-- [x] Pass both `extraction.extractTimeSeconds` and `priorityExfil.extractTimeSeconds` through the server-config client.
-- [x] Carry both countdowns through the Fika settings packet and its serialization.
-- [x] Account for packet compatibility or require a matched client set for the new protocol.
-- [x] Initialize `HeliExfiltrationPoint` with `Extract` or `PriorityExfil`.
-- [x] Use the matching countdown when the player enters or re-enters the zone.
-- [x] Wire `extraction.dispatchDelaySeconds`, currently represented in the dashboard but hardcoded to eight seconds at runtime, or remove the misleading field.
-- [x] Preserve the already-correct per-service helicopter wait windows and animation-speed multipliers.
-- [x] Validate `waitTimeSeconds >= ceil(extractTimeSeconds + 1)` and return an actionable dashboard/config error for invalid combinations.
-- [x] Replace fixed completion estimates with lifecycle/event-driven completion, or make the estimate account for configured animation speed.
+- [x] Wire standard `extraction.dispatchDelaySeconds` into runtime.
+- [x] Keep standard Extraction on the
+  `waitTimeSeconds >= ceil(extractTimeSeconds + 1)` safety contract.
+- [x] Give Cargo independent dispatch, wait, and speed validation.
+- [x] Remove Cargo extraction-time input from active tuning, runtime snapshots,
+  Fika authority comparisons, countdown creation, and extraction completion.
+- [x] Preserve the legacy Cargo float in existing persisted/wire layouts only
+  where compatibility requires the slot.
+- [x] Keep server dashboard labels Cargo-specific and do not expose a Cargo
+  extraction-time control.
+- [x] Use matched-package service-semantics versioning so legacy wire value
+  `10` cannot execute with retired Priority Exfil meaning.
+- [x] Keep requester-only functional service points: extraction for standard,
+  loading for Cargo.
+- [x] Replace fixed completion estimates with timing derived from each active
+  service snapshot.
 
-### Implementation Evidence - 2026-07-27
+### Implementation Evidence - 2026-07-27 And Cargo Conversion
 
-- Standard Extraction and Priority Exfil now capture separate immutable
-  dispatch, wait, extraction-countdown, and animation-speed values in one
-  `HelicopterTimingSnapshot`. The server-config client, local fallback, Fika
-  settings packet, support request, authority result, accepted broadcast, and
-  UH-60 runtime all preserve that service identity.
-- Solo waits the captured dispatch delay before starting the local runtime.
-  Fika submits immediately to the authority; the host rejects a stale timing
-  contract, owns the dispatch wait, stamps the canonical timing revision, and
-  publishes acceptance only after the execution-start guard succeeds.
-- Dedicated headless authority validates and times extraction without loading
-  client audio, camera, helicopter pools, or a functional extraction point.
-  Each non-headless peer renders one local visual, while only the requesting
-  profile creates a functional point/countdown.
-- Zone occupancy is local-player and collider-ref-counted. Boundary jitter or
-  multi-collider entry cannot restart the timer, leaving all colliders resets
-  it, and destroyed colliders, cancellation, death, disconnect, raid teardown,
-  or pool reuse cannot complete a stale extraction.
-- Active and pooled helicopter state is generation-guarded and idempotent.
-  Canceled arrival continuations cannot affect a reused object; leased objects
-  are returned once; teardown invalidates in-progress asset loading and removes
-  active helicopters, triggers, audio, and late bundle state.
-- Config schema 2 makes the formerly dead standard dispatch field active.
-  Every schema-less standard value migrates to the historical effective
-  eight-second delay; a schema-2 explicit zero remains an intentional immediate
-  dispatch. Fresh defaults are standard `8` and priority `3`.
-- Dashboard/API/reload updates reject invalid or non-finite timing instead of
-  silently normalizing it. Startup repairs an unsafe existing file while
-  preserving valid dispatch/speed values. The safe relationship is
+- The historical Phase 4 checkpoint `ae02516`
+  (`feat: enforce extraction timing contracts`) established standard
+  Extraction dispatch/countdown validation, Fika timing revisioning,
+  requester-only extraction points, lifecycle cleanup, and config migration.
+  Its retired Priority Exfil countdown behavior is provenance only.
+- Standard Extraction captures one immutable dispatch, wait, extraction-time,
+  and speed snapshot. Solo honors the captured dispatch; Fika authority rejects
+  stale timing, owns dispatch, stamps the canonical revision, and publishes
+  acceptance after the execution-start guard.
+- Standard zone occupancy is local-player and collider-ref-counted. Leaving all
+  colliders resets the countdown; cancellation, death, disconnect, teardown,
+  and pool reuse cannot complete stale extraction state.
+- Cargo conversion retains the released `PriorityExfil` identity while
+  replacing its product behavior with requester-local transfer. Cargo validates
+  only dispatch, wait, and speed, and cannot start a timer, route through Fika
+  extraction, or end the raid.
+- Cargo active timing is immutable per accepted request. Keeping the transfer
+  screen open pauses its landed wait window without creating extraction state.
+- A successful paid native item move short-circuits only the remaining Cargo
+  wait and uses the successful-pickup departure. Cancelled or rejected
+  submissions resume the captured wait, while a reliable request-ID-bound Fika
+  event mirrors success to observer-only UH-60 visuals.
+- Non-host Fika Cargo requests fail closed; solo and a requesting human host
+  remain the supported paths until native item-dependent pricing is
+  synchronized authoritatively.
+- Config schema 2 made the formerly dead standard dispatch field active.
+  Schema-less standard values migrate to the historical effective eight-second
+  delay; schema-2 explicit zero remains intentional immediate dispatch.
+- Dashboard/API/reload rejects invalid active timing rather than partially
+  normalizing it. Standard Extraction alone applies
   `wait >= ceil(extract + 1)`.
-- Persistent authorization timeout is at least `155` seconds: the supported
-  `120`-second dispatch maximum plus the existing `35`-second authority/client
-  settlement window. This also protects local BepInEx timing fallback.
-- The post-dispatch completion estimate now accounts for animation speed as
-  `35 / speedMultiplier + waitTimeSeconds`.
-- Three independent final reviews found no remaining P0-P2 issue in the timing
-  contract, config/migration, Fika authority, runtime lifecycle, or validation
-  matrix. `git diff --check` passes.
-- Deploy-suppressed final rebuilds pass with 0 errors: Core has 28 existing
-  warnings, Server has 9 existing warnings, and Fika Interop plus Fika
-  bootstrap have 0 warnings.
-- The reviewed implementation and executable matrix are recorded in commit
-  `ae02516` (`feat: enforce extraction timing contracts`).
-- Build-output and installed SHA-256 values are Core
-  `904C09978ADFD456B87FAE1EC6B43750E351A65F9D503CE8BBB901446A40EF08`,
-  Fika bootstrap
-  `B6049B9E12D27E4366119EA1154F910E7C9FA7B222B1188E1A0DEBA21721052A`,
-  Fika Interop
-  `3D3FBBCEA0BEB48F8E545D6C00BD11B0C8125F49BE19A6E08C767B9183573B3B`,
-  and Server
-  `3C27753AE1C478F0427DD58FDEEDC56ADBA80D5E124727353C9BD95510801A63`.
-- After confirming SPT, EFT, the launcher, and Fika/headless were stopped, the
-  four DLLs were installed into the live test instance as one matched set and verified
-  byte-for-byte. The replaced Phase 3 DLLs and exact pre-start config are
-  backed up at
-  `<workspace>/backups/TSC-live-pre-phase4-ae02516-20260727-135504`.
-- Installation changed no profile, authorization ledger, stored purchase,
-  config, asset, or release artifact. On the next server start, the schema-less
-  live config will gain `configSchemaVersion: 2` and its previously dead
-  standard dispatch value will migrate from `0` to the historical effective
-  `8`; its existing `180`-second pending timeout is already safe.
-- The executable checklist is
+- Persistent authorization timeout remains at least `155` seconds: the
+  supported `120`-second dispatch maximum plus the `35`-second settlement
+  window.
+- The executable standard-Extraction checklist is
   [`validation/phase4-extraction-timing-matrix.md`](validation/phase4-extraction-timing-matrix.md).
-  Every live row remains open. Phase 2 and Phase 3 remain separately open.
+  Cargo timing and extraction-isolation checks are in
+  [`validation/helicopter-item-transfer-matrix.md`](validation/helicopter-item-transfer-matrix.md).
+  Every live row remains open; Phase 2 and Phase 3 remain separately open.
 
 ### Validation Matrix
 
-- [ ] Standard and priority countdowns can be configured to visibly different values in solo.
-- [ ] Standard and priority countdowns remain distinct for a Fika client receiving host settings.
-- [ ] Leaving and re-entering the zone resets the correct service-specific value.
-- [ ] Standard and priority dispatch delays match their configured values.
-- [ ] Invalid wait/countdown combinations are rejected before a paid service becomes impossible.
-- [ ] Default behavior remains unchanged unless an intentional migration is documented.
+- [ ] Standard Extraction dispatch, wait, countdown, and speed match one
+  immutable solo snapshot.
+- [ ] Standard timing remains host-authoritative for human-host and
+  dedicated-headless Fika.
+- [ ] Leaving and re-entering standard Extraction resets only its countdown.
+- [ ] Invalid standard wait/countdown combinations reject before payment can
+  produce an unusable request.
+- [ ] Cargo dispatch, wait, and speed match their Cargo snapshot in solo and
+  for a requesting human host.
+- [ ] Changing legacy `priorityExfil.extractTimeSeconds` cannot change Cargo
+  behavior.
+- [ ] Cargo never creates a countdown, completes extraction, or enters Fika
+  extraction routing.
+- [ ] Default and upgrade behavior match the documented compatibility contract.
 
 ### Exit Gate
 
-- Every exposed extraction timing field either affects gameplay as labeled or has been removed.
-- Priority Exfil cannot silently inherit the standard extraction countdown.
-- A valid configuration cannot make the helicopter leave before the extraction countdown can complete.
+- Every exposed standard-Extraction timing field affects gameplay as labeled.
+- Cargo has no active extraction-time field or extraction completion path.
+- The legacy `PriorityExfil` identity remains compatible without reviving
+  retired Priority Exfil behavior.
+- A valid standard configuration cannot make the helicopter leave before its
+  extraction countdown can complete.
 
 ## Phase 5 - Regression Coverage and Build Integration
 
@@ -599,7 +602,8 @@ Turn the repaired behavior into repeatable checks so later phone, Fika, payment,
 - [x] Add focused tests for authorization-response presence semantics.
 - [x] Add ledger lifecycle tests covering purchase, limit denial, begin, commit, refund, reconnect, and two-profile isolation.
 - [x] Add request-state-machine tests for acceptance, rejection, timeout, duplicate packets, and teardown.
-- [x] Add Fika settings-packet round-trip tests, including both extraction timers and dispatch values.
+- [x] Add Fika settings-packet round-trip tests for standard Extraction and
+  Cargo’s compatibility-preserving wire layout.
 - [x] Add tuning-precedence tests for local, server, and host-synchronized values.
 - [x] Add extraction-trigger timer initialization/reset tests.
 - [x] Add config validation tests for wait/countdown combinations.
@@ -616,8 +620,8 @@ Turn the repaired behavior into repeatable checks so later phone, Fika, payment,
   presence, client finalization first-wins behavior, disk-backed ledger
   purchase/limit/consume/commit/refund/expiry/reconnect/profile isolation,
   request acceptance/rejection/timeout/deduplication/cancellation/teardown,
-  Fika settings serialization, tuning precedence, extraction timing policy,
-  and countdown initialization/reset.
+  Fika settings serialization, tuning precedence, standard-Extraction timing
+  policy, Cargo timing isolation, and countdown initialization/reset.
 - Six coordinated race cases cover competing request terminal outcomes,
   authority cancel-versus-execution and completion, client commit-versus-refund,
   concurrent ledger grants at the storage limit, and persisted ledger
@@ -630,10 +634,12 @@ Turn the repaired behavior into repeatable checks so later phone, Fika, payment,
   accepted-event, and authority-execution transition primitives. The existing
   lock ordering, irreversible execution-start boundary, terminal-outcome
   replay, and teardown completion model were preserved.
-- Server validation/repair and client runtime capture now use one shared
-  extraction timing policy. `HeliExfiltrationPoint` keeps its Unity collider
-  and extraction glue but delegates duration, reset, remaining time, and
-  one-shot completion to the tested countdown clock.
+- Server validation/repair and client runtime capture use the standard
+  Extraction timing policy for countdown behavior and a separate Cargo policy
+  for dispatch, wait, and speed. `HeliExfiltrationPoint` keeps its Unity
+  collider and standard extraction glue but delegates standard duration,
+  reset, remaining time, and one-shot completion to the tested countdown
+  clock; Cargo never advances that clock.
 - The normal solution contains Core, Server, Fika Interop, the Fika bootstrap,
   and the regression runner. Fika Interop's ordinary `Release` mapping no
   longer builds `Debug`.
@@ -710,8 +716,8 @@ Convert the accumulated work into an intentional, reviewable next-release state.
   v1.1.0 release-note and Forge drafts are explicitly marked unpublished.
 - The handoff and user docs now describe the pre-raid store, confirmation,
   main-menu placement, multi-currency payments, scanner-only HUD, transactional
-  Fika lifecycle, extraction timing, and the exact automated/live-validation
-  boundary.
+  Fika lifecycle, standard-Extraction/Cargo timing isolation, and the exact
+  automated/live-validation boundary.
 - At the Phase 6 checkpoint, package manifest schema 2 distinguished archive
   roots from install roots. It established the allowed top-level set as exactly
   `BepInEx/` plus `SPT/`, with no root-level documents, and checked that set
@@ -821,7 +827,8 @@ Produce a reproducible release candidate from a clean source state and prove tha
 - [ ] Repeat the Phase 1 persistent-authorization matrix.
 - [ ] Repeat the Phase 2 authority/commit/refund matrix.
 - [ ] Repeat the critical Phase 3 UAV requester and teardown matrix.
-- [ ] Repeat the Phase 4 standard/priority extraction timing matrix.
+- [ ] Repeat the Phase 4 standard-Extraction timing matrix and the Cargo
+  timing/extraction-isolation rows in the item-transfer matrix.
 - [ ] Verify clean server and client logs for startup, purchase, deployment, extraction, teardown, and repeated raids.
 - [ ] Confirm upgrade behavior from the published 1.0.8 configuration and ledger format.
 

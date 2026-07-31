@@ -2,6 +2,7 @@ using Fika.Core.Networking.LiteNetLib.Utils;
 using SamSWAT.FireSupport.ArysReloaded;
 using SamSWAT.FireSupport.ArysReloaded.Fika;
 using SamSWAT.FireSupport.ArysReloaded.Unity;
+using System.Reflection;
 
 internal static class ExtractionSettingsRegressionTests
 {
@@ -28,13 +29,16 @@ internal static class ExtractionSettingsRegressionTests
 		var writer = new NetDataWriter();
 		packet.Serialize(writer);
 		byte[] legacyBytes = writer.ToArray();
-		Array.Resize(ref legacyBytes, legacyBytes.Length - sizeof(int));
+		Array.Resize(ref legacyBytes, legacyBytes.Length - 2 * sizeof(int));
 
 		var legacy = new FireSupportSettingsPacket();
 		var legacyReader = new NetDataReader(legacyBytes);
 		legacy.Deserialize(legacyReader);
 
 		AssertEx.Equal(PaymentCurrency.RUB, legacy.PaymentCurrency);
+		AssertEx.Equal(
+			FireSupportServiceSemantics.LegacyVersion,
+			legacy.ServiceSemanticsVersion);
 		AssertEx.Equal(0, legacyReader.AvailableBytes);
 		AssertEx.Near(
 			packet.ExtractionDispatchDelaySeconds,
@@ -47,6 +51,27 @@ internal static class ExtractionSettingsRegressionTests
 			packet.PriorityExfilExtractTimeSeconds,
 			legacy.PriorityExfilExtractTimeSeconds,
 			0.0001f);
+	}
+
+	[RegressionTest]
+	private static void FikaSettingsPacketAcceptsLegacyServiceSemanticsTail()
+	{
+		FireSupportSettingsPacket packet = CreateSettingsPacket();
+		packet.PaymentCurrency = PaymentCurrency.USD;
+		var writer = new NetDataWriter();
+		packet.Serialize(writer);
+		byte[] legacyBytes = writer.ToArray();
+		Array.Resize(ref legacyBytes, legacyBytes.Length - sizeof(int));
+
+		var legacy = new FireSupportSettingsPacket();
+		var legacyReader = new NetDataReader(legacyBytes);
+		legacy.Deserialize(legacyReader);
+
+		AssertEx.Equal(PaymentCurrency.USD, legacy.PaymentCurrency);
+		AssertEx.Equal(
+			FireSupportServiceSemantics.LegacyVersion,
+			legacy.ServiceSemanticsVersion);
+		AssertEx.Equal(0, legacyReader.AvailableBytes);
 	}
 
 	[RegressionTest]
@@ -64,7 +89,7 @@ internal static class ExtractionSettingsRegressionTests
 	}
 
 	[RegressionTest]
-	private static void TuningPrecedenceKeepsStandardAndPriorityDistinct()
+	private static void TuningPrecedenceKeepsStandardAndCargoDistinct()
 	{
 		FireSupportTuningSettings.ClearSyncedTuning();
 		FireSupportTuningSettings.ClearServerConfigTuning();
@@ -72,13 +97,13 @@ internal static class ExtractionSettingsRegressionTests
 		{
 			SetLocalTuning(
 				standard: new ExtractionTimingValues(9f, 45, 14f, 0.8f),
-				priority: new ExtractionTimingValues(2f, 20, 5f, 1.8f));
+				priority: new ExtractionTimingValues(2f, 5, 60f, 1.8f));
 
 			AssertTiming(
 				new ExtractionTimingValues(9f, 45, 14f, 0.8f),
 				FireSupportTuningSettings.CaptureHelicopterTiming(ESupportType.Extract));
 			AssertTiming(
-				new ExtractionTimingValues(2f, 20, 5f, 1.8f),
+				new ExtractionTimingValues(2f, 5, 0f, 1.8f),
 				FireSupportTuningSettings.CaptureHelicopterTiming(ESupportType.PriorityExfil));
 
 			FireSupportTuningSettings.SetServerConfigTuning(
@@ -89,7 +114,6 @@ internal static class ExtractionSettingsRegressionTests
 				helicopterSpeedMultiplier: 0.9f,
 				priorityExfilDispatchDelay: 3f,
 				priorityExfilHelicopterWaitTime: 21,
-				priorityExfilHelicopterExtractTime: 6f,
 				priorityExfilHelicopterSpeedMultiplier: 1.7f,
 				requestCooldown: 222,
 				revision: 10);
@@ -97,7 +121,7 @@ internal static class ExtractionSettingsRegressionTests
 				new ExtractionTimingValues(11f, 46, 15f, 0.9f),
 				FireSupportTuningSettings.CaptureHelicopterTiming(ESupportType.Extract));
 			AssertTiming(
-				new ExtractionTimingValues(3f, 21, 6f, 1.7f),
+				new ExtractionTimingValues(3f, 21, 0f, 1.7f),
 				FireSupportTuningSettings.CaptureHelicopterTiming(ESupportType.PriorityExfil));
 
 			FireSupportTuningSettings.SetSyncedTuning(
@@ -108,7 +132,6 @@ internal static class ExtractionSettingsRegressionTests
 				helicopterSpeedMultiplier: 1.1f,
 				priorityExfilDispatchDelay: 4f,
 				priorityExfilHelicopterWaitTime: 22,
-				priorityExfilHelicopterExtractTime: 7f,
 				priorityExfilHelicopterSpeedMultiplier: 1.6f,
 				requestCooldown: 111);
 			HelicopterTimingSnapshot captured =
@@ -117,7 +140,7 @@ internal static class ExtractionSettingsRegressionTests
 				new ExtractionTimingValues(13f, 47, 16f, 1.1f),
 				captured);
 			AssertTiming(
-				new ExtractionTimingValues(4f, 22, 7f, 1.6f),
+				new ExtractionTimingValues(4f, 22, 0f, 1.6f),
 				FireSupportTuningSettings.CaptureHelicopterTiming(ESupportType.PriorityExfil));
 			AssertEx.Equal(111, FireSupportTuningSettings.GetRequestCooldown());
 
@@ -125,12 +148,18 @@ internal static class ExtractionSettingsRegressionTests
 			AssertTiming(
 				new ExtractionTimingValues(11f, 46, 15f, 0.9f),
 				FireSupportTuningSettings.CaptureHelicopterTiming(ESupportType.Extract));
+			AssertTiming(
+				new ExtractionTimingValues(3f, 21, 0f, 1.7f),
+				FireSupportTuningSettings.CaptureHelicopterTiming(ESupportType.PriorityExfil));
 			AssertEx.Equal(222, FireSupportTuningSettings.GetRequestCooldown());
 
 			FireSupportTuningSettings.ClearServerConfigTuning();
 			AssertTiming(
 				new ExtractionTimingValues(9f, 45, 14f, 0.8f),
 				FireSupportTuningSettings.CaptureHelicopterTiming(ESupportType.Extract));
+			AssertTiming(
+				new ExtractionTimingValues(2f, 5, 0f, 1.8f),
+				FireSupportTuningSettings.CaptureHelicopterTiming(ESupportType.PriorityExfil));
 
 			// A request snapshot must remain immutable when later authority
 			// layers are cleared or replaced.
@@ -146,6 +175,49 @@ internal static class ExtractionSettingsRegressionTests
 	}
 
 	[RegressionTest]
+	private static void RuntimeTuningHasNoPriorityExtractionStateOrArguments()
+	{
+		Type tuningType = typeof(FireSupportTuningSettings);
+		string[] forbiddenState =
+		[
+			"_syncedPriorityExfilHelicopterExtractTime",
+			"_serverPriorityExfilHelicopterExtractTime"
+		];
+		FieldInfo[] fields = tuningType.GetFields(
+			BindingFlags.Static |
+			BindingFlags.NonPublic |
+			BindingFlags.Public);
+		foreach (string fieldName in forbiddenState)
+		{
+			AssertEx.False(
+				fields.Any(field => field.Name == fieldName),
+				$"Cargo runtime tuning must not retain extraction state '{fieldName}'.");
+		}
+
+		foreach (string methodName in new[]
+		         {
+			         nameof(FireSupportTuningSettings.SetSyncedTuning),
+			         nameof(FireSupportTuningSettings.SetServerConfigTuning)
+		         })
+		{
+			MethodInfo method = tuningType.GetMethod(
+				methodName,
+				BindingFlags.Static |
+				BindingFlags.Public) ??
+				throw new RegressionAssertionException(
+					$"Required tuning method was not found: {methodName}");
+			AssertEx.False(
+				method.GetParameters().Any(
+					parameter =>
+						string.Equals(
+							parameter.Name,
+							"priorityExfilHelicopterExtractTime",
+							StringComparison.Ordinal)),
+				$"{methodName} must not accept the dormant PriorityExfil extraction value.");
+		}
+	}
+
+	[RegressionTest]
 	private static void TimingPolicyEnforcesBoundsAndExactSafetyMargin()
 	{
 		AssertEx.True(ExtractionTimingPolicy.TryValidate(
@@ -155,7 +227,7 @@ internal static class ExtractionSettingsRegressionTests
 			minimumError);
 		AssertEx.True(ExtractionTimingPolicy.TryValidate(
 			new ExtractionTimingValues(120f, 300, 60f, 3f),
-			"priorityExfil",
+			"extraction",
 			out string maximumError),
 			maximumError);
 
@@ -170,12 +242,12 @@ internal static class ExtractionSettingsRegressionTests
 			out _));
 		AssertEx.False(ExtractionTimingPolicy.TryValidate(
 			new ExtractionTimingValues(2f, 11, 10.5f, 1.5f),
-			"priorityExfil",
+			"extraction",
 			out string fractionalError));
-		AssertEx.Contains("priorityExfil.extractTimeSeconds (10.5)", fractionalError);
+		AssertEx.Contains("extraction.extractTimeSeconds (10.5)", fractionalError);
 		AssertEx.True(ExtractionTimingPolicy.TryValidate(
 			new ExtractionTimingValues(2f, 12, 10.5f, 1.5f),
-			"priorityExfil",
+			"extraction",
 			out _));
 
 		AssertEx.False(ExtractionTimingPolicy.TryValidate(
@@ -205,6 +277,103 @@ internal static class ExtractionSettingsRegressionTests
 	}
 
 	[RegressionTest]
+	private static void CargoTimingPolicyIgnoresLegacyExtractCountdown()
+	{
+		var independentCargoTiming =
+			new ExtractionTimingValues(
+				dispatchDelaySeconds: 120f,
+				waitTimeSeconds: 5,
+				extractTimeSeconds: 987.25f,
+				speedMultiplier: 3f);
+		AssertEx.True(
+			CargoTimingPolicy.TryValidate(
+				independentCargoTiming,
+				"priorityExfil",
+				out string independentError),
+			independentError);
+
+		HelicopterTimingSnapshot directRuntime =
+			CargoTimingPolicy.CreateRuntimeSnapshot(independentCargoTiming);
+		AssertEx.Equal(ESupportType.PriorityExfil, directRuntime.SupportType);
+		AssertTiming(
+			new ExtractionTimingValues(120f, 5, 0f, 3f),
+			directRuntime);
+
+		HelicopterTimingSnapshot clampedActiveFields =
+			CargoTimingPolicy.CreateRuntimeSnapshot(
+				new ExtractionTimingValues(-2f, 0, -77f, -3f));
+		AssertEx.Near(0f, clampedActiveFields.DispatchDelaySeconds, 0.0001f);
+		AssertEx.Equal(1, clampedActiveFields.WaitTimeSeconds);
+		AssertEx.Near(0f, clampedActiveFields.ExtractTimeSeconds, 0.0001f);
+		AssertEx.Near(
+			ExtractionTimingPolicy.RuntimeMinSpeedMultiplier,
+			clampedActiveFields.SpeedMultiplier,
+			0.0001f);
+
+		AssertEx.False(
+			CargoTimingPolicy.TryValidate(
+				new ExtractionTimingValues(float.NaN, 20, 10f, 1.35f),
+				"priorityExfil",
+				out string dispatchError));
+		AssertEx.Contains("priorityExfil.dispatchDelaySeconds", dispatchError);
+
+		AssertEx.False(
+			CargoTimingPolicy.TryValidate(
+				new ExtractionTimingValues(3f, 4, 10f, 1.35f),
+				"priorityExfil",
+				out string waitError));
+		AssertEx.Contains("priorityExfil.waitTimeSeconds", waitError);
+
+		AssertEx.False(
+			CargoTimingPolicy.TryValidate(
+				new ExtractionTimingValues(
+					3f,
+					20,
+					10f,
+					float.PositiveInfinity),
+				"priorityExfil",
+				out string speedError));
+		AssertEx.Contains("priorityExfil.speedMultiplier", speedError);
+	}
+
+	[RegressionTest]
+	private static void ExtractionTimingPolicyNeverProducesCargoSnapshots()
+	{
+		HelicopterTimingSnapshot runtime =
+			ExtractionTimingPolicy.CreateRuntimeSnapshot(
+				ESupportType.PriorityExfil,
+				new ExtractionTimingValues(2f, 20, 5f, 1.8f));
+
+		AssertEx.Equal(
+			ESupportType.Extract,
+			runtime.SupportType,
+			"ExtractionTimingPolicy must remain standard-Extraction-only even when a legacy caller passes PriorityExfil.");
+		AssertEx.Near(5f, runtime.ExtractTimeSeconds, 0.0001f);
+	}
+
+	[RegressionTest]
+	private static void CargoTimingRepairPreservesLegacyExtractValue()
+	{
+		var defaults = new ExtractionTimingValues(3f, 20, 10f, 1.35f);
+		ExtractionTimingValues repaired = CargoTimingPolicy.Repair(
+			new ExtractionTimingValues(-1f, 301, 987.25f, 4f),
+			defaults);
+
+		AssertEx.Near(defaults.DispatchDelaySeconds, repaired.DispatchDelaySeconds, 0.0001f);
+		AssertEx.Equal(defaults.WaitTimeSeconds, repaired.WaitTimeSeconds);
+		AssertEx.Near(987.25f, repaired.ExtractTimeSeconds, 0.0001f);
+		AssertEx.Near(defaults.SpeedMultiplier, repaired.SpeedMultiplier, 0.0001f);
+
+		ExtractionTimingValues independent = CargoTimingPolicy.Repair(
+			new ExtractionTimingValues(2f, 5, 60f, 1.5f),
+			defaults);
+		AssertEx.Near(2f, independent.DispatchDelaySeconds, 0.0001f);
+		AssertEx.Equal(5, independent.WaitTimeSeconds);
+		AssertEx.Near(60f, independent.ExtractTimeSeconds, 0.0001f);
+		AssertEx.Near(1.5f, independent.SpeedMultiplier, 0.0001f);
+	}
+
+	[RegressionTest]
 	private static void TimingPolicyRepairsUnsafeValuesWithoutChangingValidFields()
 	{
 		var defaults = new ExtractionTimingValues(8f, 30, 10f, 1f);
@@ -225,9 +394,9 @@ internal static class ExtractionSettingsRegressionTests
 		AssertEx.Near(defaults.SpeedMultiplier, rangeRepair.SpeedMultiplier, 0.0001f);
 
 		HelicopterTimingSnapshot runtime = ExtractionTimingPolicy.CreateRuntimeSnapshot(
-			ESupportType.PriorityExfil,
+			ESupportType.Extract,
 			new ExtractionTimingValues(-5f, 1, -2f, -3f));
-		AssertEx.Equal(ESupportType.PriorityExfil, runtime.SupportType);
+		AssertEx.Equal(ESupportType.Extract, runtime.SupportType);
 		AssertEx.Near(0f, runtime.DispatchDelaySeconds, 0.0001f);
 		AssertEx.Equal(2, runtime.WaitTimeSeconds);
 		AssertEx.Near(0.1f, runtime.ExtractTimeSeconds, 0.0001f);
@@ -260,18 +429,14 @@ internal static class ExtractionSettingsRegressionTests
 	}
 
 	[RegressionTest]
-	private static void CountdownClampsInvalidDurationAndKeepsServiceDurationsDistinct()
+	private static void CountdownClampsInvalidDurationForStandardExtraction()
 	{
 		var standard = new ExtractionCountdownClock();
-		var priority = new ExtractionCountdownClock();
 		standard.Initialize(14f);
-		priority.Initialize(5f);
 		AssertEx.Near(14f, standard.RemainingSeconds, 0.0001f);
-		AssertEx.Near(5f, priority.RemainingSeconds, 0.0001f);
 
-		priority.Advance(4f);
-		priority.Reset();
-		AssertEx.Near(5f, priority.RemainingSeconds, 0.0001f);
+		standard.Advance(4f);
+		standard.Reset();
 		AssertEx.Near(14f, standard.RemainingSeconds, 0.0001f);
 
 		var clamped = new ExtractionCountdownClock();
@@ -321,7 +486,8 @@ internal static class ExtractionSettingsRegressionTests
 			PaymentMode = PaymentMode.Hybrid,
 			PaymentSource = PaymentSource.PreferStashThenCarried,
 			ServerConfigUrl = "http://127.0.0.1:6969/tsc/config",
-			PaymentCurrency = PaymentCurrency.EUR
+			PaymentCurrency = PaymentCurrency.EUR,
+			ServiceSemanticsVersion = FireSupportServiceSemantics.CurrentVersion
 		};
 	}
 
@@ -386,6 +552,7 @@ internal static class ExtractionSettingsRegressionTests
 		AssertEx.Equal(expected.PaymentSource, actual.PaymentSource);
 		AssertEx.Equal(expected.ServerConfigUrl, actual.ServerConfigUrl);
 		AssertEx.Equal(expected.PaymentCurrency, actual.PaymentCurrency);
+		AssertEx.Equal(expected.ServiceSemanticsVersion, actual.ServiceSemanticsVersion);
 	}
 
 	private static void SetLocalTuning(

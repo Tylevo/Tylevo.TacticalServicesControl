@@ -43,7 +43,9 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 		new(ESupportType.Strafe, "A10", "A-10 STRAFE"),
 		new(ESupportType.DoubleStrafe, "DoublePass", "A-10 DOUBLE PASS"),
 		new(ESupportType.Extract, "Extraction", "UH-60 EXTRACTION"),
-		new(ESupportType.PriorityExfil, "PriorityExfil", "UH-60 PRIORITY EXFIL"),
+		// PriorityExfil remains the persisted service key so released
+		// authorizations carry forward one-for-one as Cargo Transfer credits.
+		new(ESupportType.PriorityExfil, "PriorityExfil", "UH-60 CARGO TRANSFER"),
 		new(ESupportType.Uav, "Uav", "UAV RECON"),
 		new(ESupportType.FocusedSweep, "FocusedSweep", "UAV FOCUSED SWEEP")
 	];
@@ -1143,17 +1145,22 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 		_purchaseConfirmationTitle.text = retryAmbiguousPurchase
 			? "CONFIRM PURCHASE RETRY"
 			: "CONFIRM PURCHASE";
+		string cargoDisclosure =
+			supportType == ESupportType.PriorityExfil
+				? "\n\nCARGO ONLY: This service does not extract your PMC. " +
+				  "The item handling fee is calculated separately when cargo is loaded."
+				: string.Empty;
 		_purchaseConfirmationBody.text = retryAmbiguousPurchase
 			? $"{descriptor.DisplayName}\n\n" +
 			  "This reuses the original request ID and cannot create a second completed charge.\n" +
 			  $"{(recoveredPreparedQuote ? "Original prepared price" : "Current list price")}: " +
 			  $"{PaymentCurrencyInfo.Format(price, currency)}\n\n" +
-			  "Continue purchase recovery?"
+			  $"Continue purchase recovery?{cargoDisclosure}"
 			: $"{descriptor.DisplayName}\n\n" +
 			  $"UNIT PRICE: {PaymentCurrencyInfo.Format(price, currency)}\n" +
 			  $"STASH BEFORE: {PaymentCurrencyInfo.Format(balance, currency)}\n" +
 			  $"STASH AFTER: {FormatProjectedBalance(balance, price, currency)}\n\n" +
-			  "Purchase one persistent pre-raid authorization?";
+			  $"Purchase one persistent pre-raid authorization?{cargoDisclosure}";
 		_purchaseConfirmationConfirmButton.GetComponentInChildren<Text>().text =
 			retryAmbiguousPurchase ? "CONFIRM RETRY" : "CONFIRM BUY";
 		_purchaseConfirmationRoot.SetActive(true);
@@ -1374,6 +1381,14 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 			return false;
 		}
 
+		if (!FireSupportServiceAvailability.IsLocalUseAllowed(supportType))
+		{
+			SetStatus(
+				FireSupportServiceAvailability.GetLocalRestrictionReason(supportType),
+				false);
+			return false;
+		}
+
 		string authenticatedSessionKey =
 			FireSupportServerConfigClient.GetAuthenticatedSessionKey();
 		if (string.IsNullOrWhiteSpace(authenticatedSessionKey) ||
@@ -1584,18 +1599,29 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 			}
 
 			bool hasSnapshot = _snapshot != null;
-			bool enabled = hasSnapshot && GetEnabled(_snapshot, service.ConfigKey);
+			bool locallyAvailable =
+				FireSupportServiceAvailability.IsLocalUseAllowed(service.Type);
+			bool enabled =
+				hasSnapshot &&
+				locallyAvailable &&
+				GetEnabled(_snapshot, service.ConfigKey);
 			int owned = hasSnapshot ? GetOwned(_snapshot, service.ConfigKey) : 0;
 			int price = hasSnapshot ? GetPrice(_snapshot, service.ConfigKey) : -1;
 			bool atLimit = hasSnapshot && maximum > 0 && owned >= maximum;
 			bool pending = _purchasePending && _pendingType == service.Type;
 			bool hasAmbiguousPurchase = !string.IsNullOrWhiteSpace(_ambiguousRequestId);
 			bool retryAmbiguousPurchase =
-				hasAmbiguousPurchase && _ambiguousType == service.Type;
+				locallyAvailable &&
+				hasAmbiguousPurchase &&
+				_ambiguousType == service.Type;
+			string localRestrictionStatus =
+				FireSupportServiceAvailability.GetLocalRestrictionStatus(service.Type);
 
 			row.State.text = retryAmbiguousPurchase
 				? "OUTCOME UNKNOWN"
-				: !hasSnapshot ? "--" : enabled ? "AVAILABLE" : "DISABLED";
+				: !locallyAvailable
+					? localRestrictionStatus
+					: !hasSnapshot ? "--" : enabled ? "AVAILABLE" : "DISABLED";
 			row.State.color = retryAmbiguousPurchase
 				? s_amberHigh
 				: enabled

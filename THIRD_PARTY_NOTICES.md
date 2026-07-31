@@ -9,7 +9,10 @@ Tylevo's Tactical Services Control is a derivative rework of SamSWAT's original 
 
 This project is distributed as a separate derivative/continuation project with upstream permission recorded by the maintainer. TSC retains visible credit to SamSWAT and Arys in the README, Forge page, source repository, release archive, and this notice file.
 
-TSC-specific additions include the TerraGroup TSC Uplink, phone authorization flow, stash/carry payment support, Fika sync work, dashboard configuration, UAV Recon, Focused Sweep, Priority Exfil, Double Pass, phone UI assets, and release maintenance.
+TSC-specific additions include the TerraGroup TSC Uplink, phone authorization
+flow, stash/carry payment support, Fika sync work, dashboard configuration, UAV
+Recon, Focused Sweep, Cargo Transfer (released `PriorityExfil` compatibility
+slot), Double Pass, phone UI assets, and release maintenance.
 
 ## Project License
 

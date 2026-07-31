@@ -30,9 +30,22 @@ internal enum UavRadarHudPosition
 
 internal static class PluginSettings
 {
+	private sealed class ConfigurationManagerAttributes
+	{
+		public bool? Browsable;
+	}
+
 	private static ConfigDescription HiddenDescription(string description, AcceptableValueBase acceptableValues = null)
 	{
 		return new ConfigDescription(description, acceptableValues);
+	}
+
+	private static ConfigDescription PersistentHiddenDescription(string description)
+	{
+		return new ConfigDescription(
+			description,
+			null,
+			new ConfigurationManagerAttributes { Browsable = false });
 	}
 
 	internal static ConfigEntry<bool> Enabled { get; private set; }
@@ -122,6 +135,10 @@ internal static class PluginSettings
 	internal static ConfigEntry<float> PriorityExfilHelicopterExtractTime { get; private set; }
 	internal static ConfigEntry<float> HelicopterSpeedMultiplier { get; private set; }
 	internal static ConfigEntry<float> PriorityExfilHelicopterSpeedMultiplier { get; private set; }
+	internal static ConfigEntry<bool> EnableHelicopterItemTransfer { get; private set; }
+	internal static ConfigEntry<HelicopterTransferFeeSource> HelicopterTransferFeeSource { get; private set; }
+	internal static ConfigEntry<string> Uh60TransferFeeRecoveryJournal { get; private set; }
+	internal static ConfigEntry<string> Uh60TransferFeeRecoveryQuarantine { get; private set; }
 	internal static ConfigEntry<int> RequestCooldown { get; private set; }
 	internal static ConfigEntry<int> VoiceoverVolume { get; private set; }
 	internal static ConfigEntry<bool> VerbosePhoneLogs { get; private set; }
@@ -224,9 +241,11 @@ internal static class PluginSettings
 				new AcceptableValueRange<int>(0, 10000000)));
 		PriorityExfilRequestCostRoubles = config.Bind(
 			"Main Settings",
+			// Legacy config key retained so existing operator values continue
+			// to price the replacement Cargo Transfer authorization.
 			"Priority exfil cost",
 			450000,
-			new ConfigDescription("Selected currency units required to request an expedited UH-60 extraction authorization",
+			new ConfigDescription("Selected currency units required to dispatch the UH-60 Cargo Transfer service",
 				new AcceptableValueRange<int>(0, 10000000)));
 		UavRequestCostRoubles = config.Bind(
 			"Main Settings",
@@ -242,9 +261,10 @@ internal static class PluginSettings
 				new AcceptableValueRange<int>(0, 10000000)));
 		EnablePriorityExfil = config.Bind(
 			"Main Settings",
+			// Legacy config key retained for released configurations.
 			"Enable Priority Exfil",
 			true,
-			HiddenDescription("Allows TerraGroup phone purchases for the expedited UH-60 extraction authorization"));
+			HiddenDescription("Allows TerraGroup phone purchases for the UH-60 Cargo Transfer authorization"));
 		EnableDoublePass = config.Bind(
 			"Main Settings",
 			"Enable A-10 Double Pass",
@@ -364,6 +384,32 @@ internal static class PluginSettings
 			global::SamSWAT.FireSupport.ArysReloaded.UavRadarHudPosition.BottomRight,
 			new ConfigDescription(
 				"Screen corner used in HUD mode. This setting has no effect in Phone mode."));
+		EnableHelicopterItemTransfer = config.Bind(
+			"Helicopter Cargo",
+			"Enable mid-raid item transfer",
+			true,
+			new ConfigDescription(
+				"Enables the UH-60 Cargo Transfer service and its requester-only loading interaction in solo raids and for a human Fika host. Turning this off also blocks Cargo purchase and deployment so an authorization cannot be spent on an unusable helicopter. Standard Extraction helicopters never offer cargo. The native EFT transfer screen and delivery ledger are used; transferred items are returned through the native delivery message after the raid. Non-host Fika clients remain fail-closed until native transfer pricing can be synchronized with the host."));
+		EnableHelicopterItemTransfer.SettingChanged +=
+			OnHelicopterItemTransferSettingChanged;
+		HelicopterTransferFeeSource = config.Bind(
+			"Helicopter Cargo",
+			"Transfer fee source",
+			global::SamSWAT.FireSupport.ArysReloaded.HelicopterTransferFeeSource.Carried,
+			new ConfigDescription(
+				"Chooses where EFT's native RUB handling fee is paid when cargo is sent. Carried preserves EFT's original carried-cash purchase. Stash debits the authenticated PMC stash through the TSC server, while leaving the native item-delivery and messenger flow unchanged. Stash mode fails closed when the server does not support its idempotent transfer-fee endpoint."));
+		Uh60TransferFeeRecoveryJournal = config.Bind(
+			"Internal",
+			"UH-60 transfer fee recovery journal",
+			"[]",
+			PersistentHiddenDescription(
+				"Internal durable recovery journal for UH-60 stash-fee commit/refund intents."));
+		Uh60TransferFeeRecoveryQuarantine = config.Bind(
+			"Internal",
+			"UH-60 transfer fee recovery quarantine",
+			string.Empty,
+			PersistentHiddenDescription(
+				"Internal fail-safe backup of a corrupt UH-60 transfer-fee recovery journal."));
 
 		OpenUplinkKey = config.Bind(
 			"TerraGroup Phone",
@@ -604,9 +650,10 @@ internal static class PluginSettings
 				new AcceptableValueRange<int>(10, 300)));
 		PriorityExfilHelicopterWaitTime = config.Bind(
 			"Helicopter Extraction Settings",
+			// The legacy key now controls the Cargo Transfer landing window.
 			"Priority exfil helicopter wait time",
 			20,
-			HiddenDescription("Priority exfil helicopter wait time on extraction location (seconds)",
+			HiddenDescription("UH-60 Cargo Transfer wait time at the marked loading zone (seconds)",
 				new AcceptableValueRange<int>(5, 300)));
 		HelicopterDispatchDelay = config.Bind(
 			"Helicopter Extraction Settings",
@@ -618,7 +665,7 @@ internal static class PluginSettings
 			"Helicopter Extraction Settings",
 			"Priority exfil dispatch delay",
 			3f,
-			HiddenDescription("Seconds before the priority exfil helicopter is dispatched after target confirmation",
+			HiddenDescription("Seconds before the UH-60 Cargo Transfer helicopter is dispatched after target confirmation",
 				new AcceptableValueRange<float>(0f, 30f)));
 		HelicopterExtractTime = config.Bind(
 			"Helicopter Extraction Settings",
@@ -630,7 +677,7 @@ internal static class PluginSettings
 			"Helicopter Extraction Settings",
 			"Priority exfil extraction time",
 			10f,
-			HiddenDescription("How long you will need to stay in the priority exfil zone before extraction (seconds)",
+			HiddenDescription("Legacy compatibility value retained in the PriorityExfil config slot. Cargo Transfer never extracts the PMC.",
 				new AcceptableValueRange<float>(1f, 30f)));
 		HelicopterSpeedMultiplier = config.Bind(
 			"Helicopter Extraction Settings",
@@ -642,7 +689,7 @@ internal static class PluginSettings
 			"Helicopter Extraction Settings",
 			"Priority exfil helicopter speed multiplier",
 			1.35f,
-			new ConfigDescription("How fast the priority exfil helicopter arrival animation will be played",
+			new ConfigDescription("How fast the UH-60 Cargo Transfer arrival animation will be played",
 				new AcceptableValueRange<float>(0.8f, 2f)));
 
 		VoiceoverVolume = config.Bind(
@@ -961,6 +1008,14 @@ internal static class PluginSettings
 
 	private static void OnEffectiveSettingChanged(object sender, System.EventArgs args)
 	{
+		FireSupportPayment.NotifySettingsChanged(sender);
+	}
+
+	private static void OnHelicopterItemTransferSettingChanged(
+		object sender,
+		System.EventArgs args)
+	{
+		FireSupportItemTransfer.RefreshInteractionAvailability();
 		FireSupportPayment.NotifySettingsChanged(sender);
 	}
 }

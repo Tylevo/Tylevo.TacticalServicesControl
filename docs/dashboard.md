@@ -27,10 +27,13 @@ The dashboard reads and writes TSC server config. Payment currency is server-aut
 
 Changing currency does not convert saved service prices. Review all prices in the same dashboard session before saving a different currency.
 
-The dashboard constrains normal inputs to supported UI ranges. Extraction
-settings are also validated server-side: dispatch delay must be 0-120 seconds,
+The dashboard constrains normal inputs to supported UI ranges. Standard
+Extraction is validated server-side: dispatch delay must be 0-120 seconds,
 wait time 5-300 seconds, extraction countdown 1-60 seconds, speed multiplier
 0.5-3, and the wait window must be at least the countdown plus one second.
+Cargo Transfer separately validates dispatch delay, landed wait time, and speed
+multiplier; it has no extraction-countdown setting or wait/countdown
+relationship.
 Double Pass delay is 6-45 seconds. Persistent-use timeout must cover the
 maximum dispatch delay plus settlement margin.
 

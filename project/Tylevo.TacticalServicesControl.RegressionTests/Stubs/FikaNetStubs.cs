@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace Fika.Core.Networking.LiteNetLib.Utils;
@@ -27,6 +28,12 @@ public sealed class NetDataWriter
 	public void Put(int value) => _writer.Write(value);
 	public void Put(float value) => _writer.Write(value);
 	public void Put(string value) => _writer.Write(value ?? string.Empty);
+	public void PutUnmanaged<T>(T value) where T : unmanaged
+	{
+		byte[] bytes = new byte[Marshal.SizeOf<T>()];
+		MemoryMarshal.Write(bytes.AsSpan(), in value);
+		_writer.Write(bytes);
+	}
 
 	public byte[] CopyData()
 	{
@@ -68,6 +75,17 @@ public sealed class NetDataReader
 	public int GetInt() => _reader.ReadInt32();
 	public float GetFloat() => _reader.ReadSingle();
 	public string GetString() => _reader.ReadString();
+	public T GetUnmanaged<T>() where T : unmanaged
+	{
+		int size = Marshal.SizeOf<T>();
+		byte[] bytes = _reader.ReadBytes(size);
+		if (bytes.Length != size)
+		{
+			throw new EndOfStreamException();
+		}
+
+		return MemoryMarshal.Read<T>(bytes);
+	}
 
 	private static BinaryReader CreateReader(Stream stream)
 	{
