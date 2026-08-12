@@ -1,8 +1,10 @@
 using Comfort.Common;
 using Cysharp.Threading.Tasks;
 using EFT;
+using EFT.Communications;
 using EFT.InventoryLogic;
 using EFT.UI;
+using EFT.UI.Insurance;
 using EFT.UI.Screens;
 using System;
 using System.Collections.Generic;
@@ -18,7 +20,7 @@ namespace SamSWAT.FireSupport.ArysReloaded.Unity;
 ///
 /// The screen must use one of the GameWorld-owned transfer controllers. Those
 /// are the only controllers serialized by EFT and synchronized by Fika. A
-/// standalone TransferItemsControllerAbstractClass looks functional but drops
+/// standalone TransferItemsController looks functional but drops
 /// its staged cargo at raid end.
 /// </summary>
 internal static class FireSupportItemTransfer
@@ -41,8 +43,8 @@ internal static class FireSupportItemTransfer
 	private static Player s_activePlayer;
 	private static HeliCargoTransferPoint s_sessionPoint;
 	private static Player s_sessionPlayer;
-	private static TransferItemsControllerAbstractClass s_transferController;
-	private static TransferItemsInRaidScreen.GClass3893 s_screenController;
+	private static TransferItemsController s_transferController;
+	private static TransferItemsInRaidScreen.TransferItemsInRaidScreenController s_screenController;
 	private static LocalPlayer s_servicePlayer;
 	private static Profile.TraderInfo s_serviceTraderInfo;
 	private static ETraderServiceType s_serviceType = ETraderServiceType.None;
@@ -160,7 +162,7 @@ internal static class FireSupportItemTransfer
 		GameWorld gameWorld = Singleton<GameWorld>.Instance;
 		if (!TryResolveCanonicalController(
 			    gameWorld,
-			    out TransferItemsControllerAbstractClass transferController,
+			    out TransferItemsController transferController,
 			    out string controllerName))
 		{
 			FailOpen(
@@ -211,11 +213,11 @@ internal static class FireSupportItemTransfer
 					$"Trader service {transferController.ServiceType} was unavailable.");
 			}
 
-			var insurance = new InsuranceCompanyClass(null, player.Profile);
-			var screenController = new TransferItemsInRaidScreen.GClass3893(
+			var insurance = new InsuranceCompany(null, player.Profile);
+			var screenController = new TransferItemsInRaidScreen.TransferItemsInRaidScreenController(
 				player.Profile,
 				player.InventoryController,
-				player.AbstractQuestControllerClass,
+				player.QuestController,
 				insurance,
 				transferController);
 
@@ -273,7 +275,7 @@ internal static class FireSupportItemTransfer
 	internal static bool TryInterceptTraderServicePurchase(
 		InventoryController inventoryController,
 		ETraderServiceType serviceType,
-		AbstractQuestControllerClass questController,
+		EFT.Quests.QuestController questController,
 		string subServiceId,
 		out Task<bool> purchaseTask)
 	{
@@ -282,7 +284,7 @@ internal static class FireSupportItemTransfer
 		    PluginSettings.HelicopterTransferFeeSource?.Value !=
 		    HelicopterTransferFeeSource.Stash ||
 		    questController !=
-		    (s_sessionPlayer as LocalPlayer)?.AbstractQuestControllerClass ||
+		    (s_sessionPlayer as LocalPlayer)?.QuestController ||
 		    !IsExactActiveCargoPurchase(
 			    inventoryController,
 			    serviceType))
@@ -300,8 +302,8 @@ internal static class FireSupportItemTransfer
 
 	internal static void ApplyStashFeeTransferButtonState(
 		InventoryController inventoryController,
-		StashItemClass temporaryStash,
-		TransferItemsControllerAbstractClass transferController,
+		Stash temporaryStash,
+		TransferItemsController transferController,
 		DefaultUIButton transferButton)
 	{
 		if (PluginSettings.HelicopterTransferFeeSource?.Value !=
@@ -324,7 +326,7 @@ internal static class FireSupportItemTransfer
 				temporaryStash.Id,
 				player.ProfileId,
 				StringComparison.Ordinal) &&
-			transferController.List_0?.Contains(temporaryStash) == true;
+			transferController._transferContainers?.Contains(temporaryStash) == true;
 		if (!ownsTemporaryStash)
 		{
 			return;
@@ -336,7 +338,7 @@ internal static class FireSupportItemTransfer
 		transferButton.Interactable = hasItems;
 		if (hasItems)
 		{
-			// method_1 may have just applied EFT's carried-cash warning. The
+			// UpdateCounters may have just applied EFT's carried-cash warning. The
 			// stash path performs an authoritative balance check at Prepare, so
 			// carried money must not leave a stale disabled tooltip behind.
 			transferButton.SetDisabledTooltip(
@@ -365,7 +367,7 @@ internal static class FireSupportItemTransfer
 	private static async Task<bool> PurchaseCargoTransferWithStashFeeAsync(
 		InventoryController inventoryController,
 		ETraderServiceType serviceType,
-		AbstractQuestControllerClass questController,
+		EFT.Quests.QuestController questController,
 		string subServiceId)
 	{
 		if (s_stashFeePurchaseInFlight)
@@ -606,13 +608,13 @@ internal static class FireSupportItemTransfer
 			return false;
 		}
 
-		if (!Singleton<BackendConfigSettingsClass>.Instantiated ||
-		    Singleton<BackendConfigSettingsClass>.Instance?.ServicesData ==
+		if (!Singleton<GlobalConfiguration>.Instantiated ||
+		    Singleton<GlobalConfiguration>.Instance?.ServicesData ==
 		    null ||
-		    !Singleton<BackendConfigSettingsClass>.Instance.ServicesData
+		    !Singleton<GlobalConfiguration>.Instance.ServicesData
 			    .TryGetValue(
 				    serviceType,
-				    out BackendConfigSettingsClass.ServiceData
+				    out GlobalConfiguration.ServiceData
 					    serviceData) ||
 		    serviceData?.ServiceItemCost == null ||
 		    serviceData.ServiceItemCost.Count != 1 ||
@@ -625,8 +627,8 @@ internal static class FireSupportItemTransfer
 			return false;
 		}
 
-		StashItemClass temporaryStash =
-			s_transferController?.List_0?.FirstOrDefault(
+		Stash temporaryStash =
+			s_transferController?._transferContainers?.FirstOrDefault(
 				stash =>
 					stash != null &&
 					string.Equals(
@@ -654,16 +656,16 @@ internal static class FireSupportItemTransfer
 	private static Task<bool> StartNativePurchaseWithZeroRubCost(
 		InventoryController inventoryController,
 		ETraderServiceType serviceType,
-		AbstractQuestControllerClass questController,
+		EFT.Quests.QuestController questController,
 		string subServiceId)
 	{
-		if (!Singleton<BackendConfigSettingsClass>.Instantiated ||
-		    Singleton<BackendConfigSettingsClass>.Instance?.ServicesData ==
+		if (!Singleton<GlobalConfiguration>.Instantiated ||
+		    Singleton<GlobalConfiguration>.Instance?.ServicesData ==
 		    null ||
-		    !Singleton<BackendConfigSettingsClass>.Instance.ServicesData
+		    !Singleton<GlobalConfiguration>.Instance.ServicesData
 			    .TryGetValue(
 				    serviceType,
-				    out BackendConfigSettingsClass.ServiceData
+				    out GlobalConfiguration.ServiceData
 					    serviceData) ||
 		    serviceData?.ServiceItemCost == null)
 		{
@@ -830,7 +832,7 @@ internal static class FireSupportItemTransfer
 			// MoveItemsFromTempStashToTransferStash call. Capture only the items
 			// staged in this TSC screen, then wait until EFT proves those exact
 			// IDs reached its persistent raid-delivery grid before tagging them.
-			TransferItemsControllerAbstractClass controller =
+			TransferItemsController controller =
 				s_transferController;
 			string profileId = player.ProfileId;
 			HashSet<string> stagedItemIds =
@@ -862,11 +864,11 @@ internal static class FireSupportItemTransfer
 	}
 
 	private static HashSet<string> CollectTemporaryTransferItemIds(
-		TransferItemsControllerAbstractClass controller,
+		TransferItemsController controller,
 		string profileId)
 	{
-		StashItemClass temporaryStash =
-			controller?.List_0?.FirstOrDefault(
+		Stash temporaryStash =
+			controller?._transferContainers?.FirstOrDefault(
 				stash =>
 					stash != null &&
 					string.Equals(
@@ -879,10 +881,10 @@ internal static class FireSupportItemTransfer
 	}
 
 	private static HashSet<string> CollectPersistentTransferItemIds(
-		TransferItemsControllerAbstractClass controller,
+		TransferItemsController controller,
 		string profileId)
 	{
-		StashGridClass playerGrid =
+		Grid playerGrid =
 			controller?.Stash?.Grids?.FirstOrDefault(
 				grid =>
 					grid != null &&
@@ -947,7 +949,7 @@ internal static class FireSupportItemTransfer
 	}
 
 	private static async UniTaskVoid MarkVerifiedUh60TransferAsync(
-		TransferItemsControllerAbstractClass controller,
+		TransferItemsController controller,
 		string profileId,
 		HashSet<string> stagedItemIds,
 		HeliCargoTransferPoint point,
@@ -1042,7 +1044,7 @@ internal static class FireSupportItemTransfer
 
 	private static bool TryResolveCanonicalController(
 		GameWorld gameWorld,
-		out TransferItemsControllerAbstractClass controller,
+		out TransferItemsController controller,
 		out string controllerName)
 	{
 		controller = gameWorld?.TransitController?.TransferItemsController;
@@ -1065,7 +1067,7 @@ internal static class FireSupportItemTransfer
 	}
 
 	private static bool IsUsableCanonicalController(
-		TransferItemsControllerAbstractClass controller)
+		TransferItemsController controller)
 	{
 		return controller?.Stash != null &&
 		       (controller.ServiceType == ETraderServiceType.TransitItemsDelivery ||
@@ -1073,7 +1075,7 @@ internal static class FireSupportItemTransfer
 	}
 
 	private static bool HasPlayerTransferGrid(
-		TransferItemsControllerAbstractClass controller,
+		TransferItemsController controller,
 		string profileId)
 	{
 		return controller?.Stash?.Grids != null &&
@@ -1087,7 +1089,7 @@ internal static class FireSupportItemTransfer
 	}
 
 	private static bool TryEnsurePlayerTransferGrid(
-		TransferItemsControllerAbstractClass controller,
+		TransferItemsController controller,
 		Player player,
 		out string error)
 	{
@@ -1134,16 +1136,16 @@ internal static class FireSupportItemTransfer
 		ETraderServiceType serviceType)
 	{
 		if (player?.Profile?.TradersInfo == null ||
-		    !Singleton<BackendConfigSettingsClass>.Instantiated)
+		    !Singleton<GlobalConfiguration>.Instantiated)
 		{
 			return false;
 		}
 
-		BackendConfigSettingsClass backend = Singleton<BackendConfigSettingsClass>.Instance;
+		GlobalConfiguration backend = Singleton<GlobalConfiguration>.Instance;
 		if (backend?.ServicesData == null ||
 		    !backend.ServicesData.TryGetValue(
 			    serviceType,
-			    out BackendConfigSettingsClass.ServiceData serviceData) ||
+			    out GlobalConfiguration.ServiceData serviceData) ||
 		    !player.Profile.TradersInfo.TryGetValue(
 			    serviceData.TraderId,
 			    out Profile.TraderInfo traderInfo))
@@ -1165,7 +1167,7 @@ internal static class FireSupportItemTransfer
 		s_previousServiceAvailability =
 			traderInfo.IsServiceAvailableForPurchase(serviceType);
 		s_previousPurchasedInRaid =
-			traderInfo.AlreadyPurchasedServices.Contains(serviceType);
+			traderInfo.IsServiceAlreadyPurchased(serviceType);
 		s_previousLocalServiceAvailability =
 			localServiceAvailability.Contains(serviceType);
 		s_servicePurchaseObserved = false;
@@ -1228,7 +1230,7 @@ internal static class FireSupportItemTransfer
 
 	private static void ForceClose(string reason)
 	{
-		TransferItemsInRaidScreen.GClass3893 screenController =
+		TransferItemsInRaidScreen.TransferItemsInRaidScreenController screenController =
 			s_screenController;
 		bool hadSession =
 			screenController != null ||
@@ -1302,7 +1304,7 @@ internal static class FireSupportItemTransfer
 		bool purchaseObserved =
 			s_servicePurchaseObserved ||
 			(traderInfo != null &&
-			 traderInfo.AlreadyPurchasedServices.Contains(serviceType) !=
+			 traderInfo.IsServiceAlreadyPurchased(serviceType) !=
 			 previousPurchased);
 
 		s_servicePlayer = null;
@@ -1342,7 +1344,7 @@ internal static class FireSupportItemTransfer
 
 	private static void FailOpen(string message)
 	{
-		NotificationManagerClass.DisplayWarningNotification(
+		NotificationManager.DisplayWarningNotification(
 			message,
 			EFT.Communications.ENotificationDurationType.Long);
 	}

@@ -12,7 +12,7 @@ namespace SamSWAT.FireSupport.ArysReloaded;
 [BepInPlugin("com.tylevo.tacticalservicescontrol", "Tylevo-TacticalServicesControl", ModMetadata.VERSION)]
 [BepInDependency("com.SPT.core", ModMetadata.TARGET_SPT_VERSION)]
 [BepInDependency("com.arys.unitytoolkit", "2.0.1")]
-[BepInDependency("com.wtt.commonlib")]
+[BepInDependency("com.wtt.commonlib", "3.0.0")]
 // TSC is a derivative replacement for Arys' Fire Support and shares its
 // assembly identity for bundle compatibility; running both corrupts type and
 // bundle resolution, so BepInEx must never load them together.

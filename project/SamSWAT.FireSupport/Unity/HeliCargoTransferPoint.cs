@@ -12,7 +12,7 @@ namespace SamSWAT.FireSupport.ArysReloaded.Unity;
 /// has no countdown, extraction override, or session-stop capability.
 /// </summary>
 public class HeliCargoTransferPoint
-	: MonoBehaviour, IPhysicsTrigger, GInterface177
+	: MonoBehaviour, IPhysicsTrigger, IInteractive
 {
 	private readonly HashSet<Collider> _localColliders = new();
 	private GameWorld _gameWorld;

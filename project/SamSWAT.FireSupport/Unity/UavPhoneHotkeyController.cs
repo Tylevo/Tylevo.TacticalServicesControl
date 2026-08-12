@@ -116,7 +116,7 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 			TscDiagnostics.LogPhone("TSC UAV radar hold pressed.");
 			if (!UavReconOverlay.IsReconActive)
 			{
-				NotificationManagerClass.DisplayWarningNotification(
+				NotificationManager.DisplayWarningNotification(
 					"No active UAV recon link.",
 					ENotificationDurationType.Default);
 				return true;
@@ -327,7 +327,7 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 		if (launchMode != UavPhoneLaunchMode.UavRadarMonitor &&
 		    paymentMode == PaymentMode.DirectRadial)
 		{
-			NotificationManagerClass.DisplayWarningNotification(
+			NotificationManager.DisplayWarningNotification(
 				"Set payment mode to PhoneAuthorizations or Hybrid.",
 				ENotificationDurationType.Long);
 			return;
@@ -337,7 +337,7 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 		if (uplinkItem == null)
 		{
 			TscDiagnostics.LogPhone("TSC Uplink ignored: no carried TerraGroup TSC Uplink item was found.");
-			NotificationManagerClass.DisplayWarningNotification(
+			NotificationManager.DisplayWarningNotification(
 				"TerraGroup TSC Uplink not found in carried inventory.",
 				ENotificationDurationType.Long);
 			return;

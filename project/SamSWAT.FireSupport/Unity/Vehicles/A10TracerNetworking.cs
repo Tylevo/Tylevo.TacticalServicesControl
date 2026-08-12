@@ -255,7 +255,7 @@ public static class A10TracerNetworking
 				$"{message} requestId={A10AuthorityDiagnostics.ShortId(supportRequestId)} pass={passIndex} seed={visualSeed} center={A10AuthorityDiagnostics.FormatVector(centerPosition)}");
 			try
 			{
-				NotificationManagerClass.DisplayWarningNotification(message, ENotificationDurationType.Long);
+				NotificationManager.DisplayWarningNotification(message, ENotificationDurationType.Long);
 			}
 			catch
 			{

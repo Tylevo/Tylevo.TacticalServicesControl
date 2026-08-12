@@ -6,7 +6,7 @@ param(
     [Parameter(Mandatory)]
     [string] $SptSharedAssembliesDir,
 
-    [string] $Configuration = "SPT-4.0 Release",
+    [string] $Configuration = "SPT-4.1 Release",
 
     [string] $EvidencePath
 )
@@ -175,9 +175,56 @@ function Resolve-DirectoryWithTrailingSeparator {
     return (Resolve-Path -LiteralPath $Value).Path.TrimEnd("\", "/") + [IO.Path]::DirectorySeparatorChar
 }
 
+function Invoke-MsBuildReferenceQuery {
+    param(
+        [Parameter(Mandatory)]
+        [string] $ProjectPath
+    )
+
+    $resultPath = [IO.Path]::GetTempFileName()
+    $arguments = @(
+        "msbuild",
+        $ProjectPath,
+        "-nologo",
+        "-verbosity:quiet",
+        "-restore",
+        "-target:ResolveReferences",
+        "-getItem:Reference",
+        "-getItem:ReferencePath",
+        "-getResultOutputFile:$resultPath",
+        "-property:Configuration=$Configuration",
+        "-property:Platform=AnyCPU",
+        "-property:SptDir=$msbuildSptDir",
+        "-property:SptSharedAssembliesDir=$msbuildSharedAssemblies",
+        "-property:SkipTscDeploy=true",
+        "-property:ContinuousIntegrationBuild=true",
+        "-property:BuildProjectReferences=false"
+    )
+
+    try {
+        Write-Host "> dotnet $($arguments -join ' ')"
+        $commandOutput = Invoke-Captured -FilePath "dotnet" -Arguments $arguments
+        if (-not [string]::IsNullOrWhiteSpace($commandOutput)) {
+            Write-Host $commandOutput
+        }
+
+        try {
+            return Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json
+        }
+        catch {
+            throw "Could not parse evaluated MSBuild references for '$ProjectPath': $($_.Exception.Message)"
+        }
+    }
+    finally {
+        if (Test-Path -LiteralPath $resultPath) {
+            Remove-Item -LiteralPath $resultPath -Force
+        }
+    }
+}
+
 if ($evidenceMode) {
-    if ($Configuration -ne "SPT-4.0 Release") {
-        throw "Release evidence mode requires configuration 'SPT-4.0 Release'; found '$Configuration'."
+    if ($Configuration -ne "SPT-4.1 Release") {
+        throw "Release evidence mode requires configuration 'SPT-4.1 Release'; found '$Configuration'."
     }
 
     $resolvedEvidencePath = Resolve-NewExternalEvidencePath -Value $EvidencePath
@@ -246,19 +293,6 @@ $resolvedSptDir = Resolve-DirectoryWithTrailingSeparator -Value $SptDir -Descrip
 $resolvedSharedAssemblies = Resolve-DirectoryWithTrailingSeparator -Value $SptSharedAssembliesDir -Description "SPT shared assemblies directory"
 $msbuildSptDir = $resolvedSptDir.Replace("\", "/")
 $msbuildSharedAssemblies = $resolvedSharedAssemblies.Replace("\", "/")
-$targetSptVersion = switch ($Configuration) {
-    "SPT-3.10 Release" { "310x"; break }
-    "SPT-3.11 Release" { "311x"; break }
-    default { "400x" }
-}
-
-$propertyValues = @{
-    '$(SptDir)' = $resolvedSptDir
-    '$(SptSharedAssembliesDir)' = $resolvedSharedAssemblies
-    '$(SptVersion)' = $targetSptVersion
-    '$(SptBepInExPluginsDir)' = Join-Path $resolvedSptDir "BepInEx\plugins\"
-    '$(SptServerModsDir)' = Join-Path $resolvedSptDir "SPT\user\mods\"
-}
 
 $runtimeProjects = @(
     "project\SamSWAT.FireSupport\SamSWAT.FireSupport.Core.csproj",
@@ -267,45 +301,210 @@ $runtimeProjects = @(
     "project\SamSWAT.FireSupport.Fika\SamSWAT.FireSupport.Fika.csproj"
 )
 
-Write-Host "Checking local proprietary/dependency references without copying them."
-$missingReferences = [Collections.Generic.List[string]]::new()
+Write-Host "Resolving and attesting local proprietary/dependency references without copying them."
 $resolvedReferences = @{}
 foreach ($relativeProject in $runtimeProjects) {
-    [xml] $projectXml = Get-Content -LiteralPath (Join-Path $repositoryRoot $relativeProject) -Raw
-    foreach ($reference in @($projectXml.SelectNodes("//Reference[HintPath]"))) {
-        $expandedPath = [string] $reference.HintPath
-        foreach ($property in $propertyValues.GetEnumerator()) {
-            $expandedPath = $expandedPath.Replace([string] $property.Key, [string] $property.Value)
-        }
+    $projectPath = Join-Path $repositoryRoot $relativeProject
+    $projectDirectory = Split-Path $projectPath -Parent
+    $query = Invoke-MsBuildReferenceQuery -ProjectPath $projectPath
+    $referenceItemsProperty = $query.Items.PSObject.Properties["Reference"]
+    $referencePathItemsProperty = $query.Items.PSObject.Properties["ReferencePath"]
+    if ($null -eq $referenceItemsProperty -or $null -eq $referencePathItemsProperty) {
+        throw "MSBuild did not return both Reference and ReferencePath items for '$relativeProject'."
+    }
 
-        if ($expandedPath.Contains('$(')) {
-            throw "Could not expand reference path '$($reference.HintPath)' in '$relativeProject'."
-        }
+    $explicitReferences = @(
+        $referenceItemsProperty.Value |
+            Where-Object {
+                $hintPathProperty = $_.PSObject.Properties["HintPath"]
+                $null -ne $hintPathProperty -and
+                    -not [string]::IsNullOrWhiteSpace([string] $hintPathProperty.Value)
+            }
+    )
+    $resolvedReferencePaths = @($referencePathItemsProperty.Value)
+    if ($explicitReferences.Count -eq 0) {
+        throw "MSBuild returned no explicit HintPath references for '$relativeProject'."
+    }
 
-        if (-not (Test-Path -LiteralPath $expandedPath -PathType Leaf)) {
-            $missingReferences.Add("$relativeProject -> $expandedPath")
+    foreach ($resolvedReference in $resolvedReferencePaths) {
+        $fullPathProperty = $resolvedReference.PSObject.Properties["FullPath"]
+        if ($null -eq $fullPathProperty -or
+            [string]::IsNullOrWhiteSpace([string] $fullPathProperty.Value)) {
             continue
         }
 
-        if ($evidenceMode) {
-            $resolvedReferencePath = (Resolve-Path -LiteralPath $expandedPath).Path
-            if (-not $resolvedReferences.ContainsKey($resolvedReferencePath)) {
-                $resolvedReferences[$resolvedReferencePath] = [pscustomobject] @{
-                    Path = $resolvedReferencePath
-                    Projects = New-OrdinalIgnoreCaseSet
-                    ReferenceNames = New-OrdinalIgnoreCaseSet
+        $candidatePath = [IO.Path]::GetFullPath([string] $fullPathProperty.Value)
+        if ($candidatePath -match '(?i)[\\/]Build[\\/](?:Debug|SPT-4\.0)(?:[\\/]|$)') {
+            throw "Stale reference resolution is forbidden for '$relativeProject': '$candidatePath'."
+        }
+    }
+
+    foreach ($reference in $explicitReferences) {
+        $referenceName = [string] $reference.Identity
+        $hintPath = [string] $reference.HintPath
+        $expectedPath = if ([IO.Path]::IsPathRooted($hintPath)) {
+            [IO.Path]::GetFullPath($hintPath)
+        }
+        else {
+            [IO.Path]::GetFullPath((Join-Path $projectDirectory $hintPath))
+        }
+
+        if (-not (Test-Path -LiteralPath $expectedPath -PathType Leaf)) {
+            throw "Missing required local reference for '$relativeProject': '$expectedPath'."
+        }
+
+        $matches = @(
+            $resolvedReferencePaths |
+                Where-Object {
+                    $originalItemSpecProperty = $_.PSObject.Properties["OriginalItemSpec"]
+                    $null -ne $originalItemSpecProperty -and
+                        ([string] $originalItemSpecProperty.Value).Equals(
+                            $referenceName,
+                            [StringComparison]::OrdinalIgnoreCase
+                        )
                 }
+        )
+        if ($matches.Count -ne 1) {
+            throw (
+                "Explicit reference '$referenceName' in '$relativeProject' resolved " +
+                "$($matches.Count) times; expected exactly once."
+            )
+        }
+
+        $match = $matches[0]
+        $resolvedFromProperty = $match.PSObject.Properties["ResolvedFrom"]
+        $resolvedFrom = if ($null -eq $resolvedFromProperty) {
+            ""
+        }
+        else {
+            [string] $resolvedFromProperty.Value
+        }
+        if ($resolvedFrom -cne "{HintPathFromItem}") {
+            throw (
+                "Explicit reference '$referenceName' in '$relativeProject' resolved from " +
+                "'$resolvedFrom'; expected '{HintPathFromItem}'."
+            )
+        }
+
+        $fullPathProperty = $match.PSObject.Properties["FullPath"]
+        if ($null -eq $fullPathProperty -or
+            [string]::IsNullOrWhiteSpace([string] $fullPathProperty.Value)) {
+            throw "Resolved reference '$referenceName' in '$relativeProject' has no FullPath."
+        }
+
+        $actualPath = [IO.Path]::GetFullPath([string] $fullPathProperty.Value)
+        if (-not $actualPath.Equals($expectedPath, [StringComparison]::OrdinalIgnoreCase)) {
+            throw (
+                "Explicit reference '$referenceName' in '$relativeProject' resolved to " +
+                "'$actualPath'; expected exact HintPath '$expectedPath'."
+            )
+        }
+
+        if (-not $resolvedReferences.ContainsKey($actualPath)) {
+            $resolvedReferences[$actualPath] = [pscustomobject] @{
+                Path = $actualPath
+                Projects = New-OrdinalIgnoreCaseSet
+                ReferenceNames = New-OrdinalIgnoreCaseSet
+                ResolvedFrom = $resolvedFrom
+                ExpectedPathMatches = $true
             }
 
-            $referenceRecord = $resolvedReferences[$resolvedReferencePath]
-            [void] $referenceRecord.Projects.Add($relativeProject.Replace("\", "/"))
-            [void] $referenceRecord.ReferenceNames.Add([string] $reference.Include)
         }
+
+        $referenceRecord = $resolvedReferences[$actualPath]
+        if ($referenceRecord.ResolvedFrom -cne $resolvedFrom -or
+            $referenceRecord.ExpectedPathMatches -ne $true) {
+            throw "Reference provenance was inconsistent for '$actualPath'."
+        }
+
+        [void] $referenceRecord.Projects.Add($relativeProject.Replace("\", "/"))
+        [void] $referenceRecord.ReferenceNames.Add($referenceName)
     }
 }
 
-if ($missingReferences.Count -gt 0) {
-    throw "Missing required local references:`n - $($missingReferences -join "`n - ")"
+if ($Configuration -eq "SPT-4.1 Release") {
+    $manifestPath = Join-Path $PSScriptRoot "package-layout.allowlist.json"
+    try {
+        $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    }
+    catch {
+        throw "Could not parse critical reference pins from '$manifestPath': $($_.Exception.Message)"
+    }
+
+    $pinsProperty = $manifest.PSObject.Properties["criticalReferencePins"]
+    if ($null -eq $pinsProperty -or -not ($pinsProperty.Value -is [Array])) {
+        throw "Package manifest criticalReferencePins must be one JSON array."
+    }
+
+    $criticalReferencePins = @($pinsProperty.Value)
+    $expectedCriticalFiles = @(
+        "hollowed.dll",
+        "WTT-ClientCommonLib.dll",
+        "WTT-ServerCommonLib.dll",
+        "Fika.Core.dll",
+        "UnityToolkit.dll"
+    )
+    if ($criticalReferencePins.Count -ne $expectedCriticalFiles.Count) {
+        throw (
+            "Package manifest contains $($criticalReferencePins.Count) critical reference pins; " +
+            "expected exactly $($expectedCriticalFiles.Count)."
+        )
+    }
+
+    $pinnedFileNames = New-OrdinalIgnoreCaseSet
+    foreach ($pin in $criticalReferencePins) {
+        $pinPropertyNames = @($pin.PSObject.Properties.Name | Sort-Object)
+        if ($pinPropertyNames.Count -ne 2 -or
+            $pinPropertyNames[0] -cne "fileName" -or
+            $pinPropertyNames[1] -cne "sha256") {
+            throw "Every critical reference pin must contain exactly fileName and sha256."
+        }
+
+        $fileName = [string] $pin.fileName
+        $sha256 = [string] $pin.sha256
+        if ([string]::IsNullOrWhiteSpace($fileName) -or
+            [IO.Path]::IsPathRooted($fileName) -or
+            [IO.Path]::GetFileName($fileName) -cne $fileName -or
+            -not $pinnedFileNames.Add($fileName)) {
+            throw "Critical reference pin has an unsafe, empty, or duplicate fileName: '$fileName'."
+        }
+
+        if ($sha256 -cnotmatch '^[0-9A-F]{64}$') {
+            throw "Critical reference pin '$fileName' must declare one uppercase SHA-256."
+        }
+    }
+
+    foreach ($expectedFile in $expectedCriticalFiles) {
+        if (-not $pinnedFileNames.Contains($expectedFile)) {
+            throw "Package manifest is missing critical reference pin '$expectedFile'."
+        }
+    }
+
+    foreach ($pin in $criticalReferencePins) {
+        $matchingReferences = @(
+            $resolvedReferences.Values |
+                Where-Object {
+                    ([IO.Path]::GetFileName([string] $_.Path)).Equals(
+                        [string] $pin.fileName,
+                        [StringComparison]::OrdinalIgnoreCase
+                    )
+                }
+        )
+        if ($matchingReferences.Count -ne 1) {
+            throw (
+                "Critical reference '$($pin.fileName)' resolved to " +
+                "$($matchingReferences.Count) distinct paths; expected exactly one."
+            )
+        }
+
+        $actualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $matchingReferences[0].Path).Hash
+        if ($actualHash -cne [string] $pin.sha256) {
+            throw (
+                "Critical reference '$($pin.fileName)' SHA-256 mismatch: " +
+                "expected $($pin.sha256); found $actualHash."
+            )
+        }
+    }
 }
 
 $referenceEvidence = @()
@@ -317,6 +516,8 @@ if ($evidenceMode) {
                 Path = $binary.Path
                 Projects = @($referenceRecord.Projects | Sort-Object)
                 ReferenceNames = @($referenceRecord.ReferenceNames | Sort-Object)
+                ResolvedFrom = $referenceRecord.ResolvedFrom
+                ExpectedPathMatches = [bool] $referenceRecord.ExpectedPathMatches
                 Sha256 = $binary.Sha256
                 Size = $binary.Size
                 AssemblyName = $binary.AssemblyName
@@ -355,7 +556,7 @@ $expectedOutputs = @(
         ProjectDirectory = "project\SamSWAT.FireSupport"
         Project = "project/SamSWAT.FireSupport/SamSWAT.FireSupport.Core.csproj"
         FileName = "SamSWAT.FireSupport.ArysReloaded.Core.dll"
-        TargetRelativePath = "project\SamSWAT.FireSupport\Build\SPT-4.0\netstandard2.1\SamSWAT.FireSupport.ArysReloaded.Core.dll"
+        TargetRelativePath = "project\SamSWAT.FireSupport\Build\SPT-4.1\netstandard2.1\SamSWAT.FireSupport.ArysReloaded.Core.dll"
         StagedFileName = "Tylevo.TacticalServicesControl.Core.dll"
         ExpectedAssemblyName = "SamSWAT.FireSupport.ArysReloaded.Core"
     },
@@ -363,7 +564,7 @@ $expectedOutputs = @(
         ProjectDirectory = "project\SamSWAT.FireSupport.Server"
         Project = "project/SamSWAT.FireSupport.Server/SamSWAT.FireSupport.Server.csproj"
         FileName = "Tylevo.TacticalServicesControl.Server.dll"
-        TargetRelativePath = "project\SamSWAT.FireSupport.Server\Build\SPT-4.0\net9.0\Tylevo.TacticalServicesControl.Server.dll"
+        TargetRelativePath = "project\SamSWAT.FireSupport.Server\Build\SPT-4.1\net10.0\Tylevo.TacticalServicesControl.Server.dll"
         StagedFileName = "Tylevo.TacticalServicesControl.Server.dll"
         ExpectedAssemblyName = "Tylevo.TacticalServicesControl.Server"
     },
@@ -371,7 +572,7 @@ $expectedOutputs = @(
         ProjectDirectory = "project\SamSWAT.FireSupport.Fika.Interop"
         Project = "project/SamSWAT.FireSupport.Fika.Interop/SamSWAT.FireSupport.Fika.Interop.csproj"
         FileName = "Tylevo.TacticalServicesControl.Fika.Interop.dll"
-        TargetRelativePath = "project\SamSWAT.FireSupport.Fika.Interop\Build\SPT-4.0\netstandard2.1\Tylevo.TacticalServicesControl.Fika.Interop.dll"
+        TargetRelativePath = "project\SamSWAT.FireSupport.Fika.Interop\Build\SPT-4.1\netstandard2.1\Tylevo.TacticalServicesControl.Fika.Interop.dll"
         StagedFileName = "Tylevo.TacticalServicesControl.Fika.Interop.dll"
         ExpectedAssemblyName = "Tylevo.TacticalServicesControl.Fika.Interop"
     },
@@ -379,7 +580,7 @@ $expectedOutputs = @(
         ProjectDirectory = "project\SamSWAT.FireSupport.Fika"
         Project = "project/SamSWAT.FireSupport.Fika/SamSWAT.FireSupport.Fika.csproj"
         FileName = "SamSWAT.FireSupport.ArysReloaded.Fika.dll"
-        TargetRelativePath = "project\SamSWAT.FireSupport.Fika\Build\SPT-4.0\netstandard2.1\SamSWAT.FireSupport.ArysReloaded.Fika.dll"
+        TargetRelativePath = "project\SamSWAT.FireSupport.Fika\Build\SPT-4.1\netstandard2.1\SamSWAT.FireSupport.ArysReloaded.Fika.dll"
         StagedFileName = "Tylevo.TacticalServicesControl.Fika.dll"
         ExpectedAssemblyName = "SamSWAT.FireSupport.ArysReloaded.Fika"
     }

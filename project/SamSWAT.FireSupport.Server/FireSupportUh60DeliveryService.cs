@@ -17,12 +17,14 @@ namespace SamSWAT.FireSupport.ArysReloaded;
 [Injectable(InjectionType.Singleton)]
 public sealed class FireSupportUh60DeliveryService(
 	ISptLogger<FireSupportUh60DeliveryService> logger,
-	DatabaseService databaseService,
+	TemplateTable templateTable,
+	TradersTable tradersTable,
+	LocaleTable localeTable,
 	ProfileHelper profileHelper,
 	MailSendService mailSendService,
 	SaveServer saveServer,
 	TimeUtil timeUtil,
-	ConfigServer configServer,
+	TraderConfig traderConfig,
 	ICloner cloner)
 {
 	public const string MessengerTraderId = "66f51f3a0000000000000a60";
@@ -36,8 +38,6 @@ public sealed class FireSupportUh60DeliveryService(
 	private const string PriorityExfilArtworkPath =
 		"assets/content/ui/phone/icons/amber_512/priority_exfil.png";
 
-	private readonly TraderConfig _traderConfig =
-		configServer.GetConfig<TraderConfig>();
 	private readonly FireSupportUh60TransferMarkerStore _markerStore = new();
 
 	private byte[]? _messengerAvatar;
@@ -248,7 +248,7 @@ public sealed class FireSupportUh60DeliveryService(
 		string receiptToken)
 	{
 		if (!_messengerReady ||
-		    databaseService.GetTrader(MessengerTraderId) == null)
+		    tradersTable.GetTrader(MessengerTraderId) == null)
 		{
 			throw new InvalidOperationException(
 				"The TSC UH-60 Pilot messenger identity is unavailable.");
@@ -266,8 +266,8 @@ public sealed class FireSupportUh60DeliveryService(
 			MessageType.BtrItemsDelivery,
 			BuildDeliveryMessage(receiptToken),
 			items,
-			timeUtil.GetHoursAsSeconds(
-				_traderConfig.Fence.BtrDeliveryExpireHours));
+				timeUtil.GetHoursAsSeconds(
+					traderConfig.Fence.BtrDeliveryExpireHours));
 	}
 
 	public bool TryValidateItemTemplates(
@@ -275,20 +275,9 @@ public sealed class FireSupportUh60DeliveryService(
 		out string missingTemplate)
 	{
 		missingTemplate = string.Empty;
-		Dictionary<MongoId, TemplateItem> itemTemplates;
-		try
-		{
-			itemTemplates = databaseService.GetItems();
-		}
-		catch (Exception exception)
-		{
-			missingTemplate = $"database unavailable ({exception.Message})";
-			return false;
-		}
-
 		foreach (Item item in items ?? [])
 		{
-			if (!itemTemplates.ContainsKey(item.Template))
+			if (!templateTable.Items.ContainsKey(item.Template))
 			{
 				missingTemplate = item.Template.ToString();
 				return false;
@@ -448,7 +437,7 @@ public sealed class FireSupportUh60DeliveryService(
 	{
 		try
 		{
-			Dictionary<MongoId, Trader> traders = databaseService.GetTraders();
+			Dictionary<MongoId, Trader> traders = tradersTable;
 			Trader? pilot;
 			if (traders.TryGetValue(MessengerTraderId, out Trader? existing))
 			{
@@ -465,7 +454,7 @@ public sealed class FireSupportUh60DeliveryService(
 			}
 			else
 			{
-				Trader? btrDriver = databaseService.GetTrader(BtrTraderId);
+				Trader? btrDriver = tradersTable.GetTrader(BtrTraderId);
 				if (btrDriver == null)
 				{
 					logger.Warning(
@@ -616,7 +605,7 @@ public sealed class FireSupportUh60DeliveryService(
 
 	private void AddMessengerLocales()
 	{
-		foreach (var (_, lazyLocales) in databaseService.GetLocales().Global)
+		foreach (var (_, lazyLocales) in localeTable.Global)
 		{
 			lazyLocales.AddTransformer(localeData =>
 			{

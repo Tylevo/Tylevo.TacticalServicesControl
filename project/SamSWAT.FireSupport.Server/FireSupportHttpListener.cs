@@ -35,14 +35,18 @@ public sealed class FireSupportHttpListener(
 		WriteIndented = false
 	};
 
-	public bool CanHandle(MongoId sessionId, HttpContext httpContext)
+	public bool CanHandle(HttpContext httpContext)
 	{
 		string? path = httpContext.Request.Path.Value;
 		return IsRouteRoot(path, PublicRoot) || IsRouteRoot(path, LegacyRoot);
 	}
 
-	public async Task Handle(MongoId sessionId, HttpContext httpContext)
+	public async Task HandleAsync(
+		MongoId sessionId,
+		HttpContext httpContext,
+		CancellationToken cancellationToken = default)
 	{
+		cancellationToken.ThrowIfCancellationRequested();
 		string path = NormalizeRoutePath(httpContext.Request.Path.Value);
 		string method = httpContext.Request.Method;
 

@@ -8,7 +8,7 @@ public sealed class A10HeadlessDamageCommand
 	public string SupportRequestId { get; set; } = string.Empty;
 	public string TargetProfileId { get; set; } = string.Empty;
 	public int TargetNetId { get; set; }
-	public DamageInfoStruct DamageInfo { get; set; }
+	public DamageInfo DamageInfo { get; set; }
 	public EBodyPart BodyPart { get; set; }
 	public EBodyPartColliderType ColliderType { get; set; }
 	public EArmorPlateCollider ArmorPlateCollider { get; set; }

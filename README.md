@@ -2,6 +2,13 @@
 
 A BepInEx mod that reworks SamSWAT's Fire Support / Arys Reloaded into a TerraGroup-style tactical support system for SPT and Fika.
 
+> **SPT 4.1.2 tester port:** v1.1.0 is being ported against the clean SPT
+> 4.1.2 / EFT 0.16.9.5.40743 release. The expected test artifact is
+> `Tylevo.TacticalServicesControl-v1.1.0-SPT4.1.2-TESTER.zip`. The exact pinned
+> five-project build, local verification, and disposable server-bootstrap
+> smoke now pass. Menu load, raid behavior, and Fika behavior remain separate
+> manual gates and are not implied by compilation.
+
 This mod adds a **TerraGroup TSC Uplink** phone that lets you buy support authorizations in raid, then deploy them later from the same device. The phone handles service selection and camera-based target designation, so the rangefinder and YY gesture wheel are no longer required for the primary workflow.
 
 Currently available support options:
@@ -17,10 +24,19 @@ This project is derivative of SamSWAT's original Fire Support and SamSWAT's Fire
 
 ## Requirements
 
-- SPT 4.0.13.
-- UnityToolkit v2.0.1.
-- WTT Client Common Lib and WTT Server Common Lib, installed separately as required dependencies.
-- Project Fika, optional and only for multiplayer/Fika use. Single-player installs do not need Fika; TSC detects it at runtime.
+- SPT 4.1.2.
+- The SPT 4.1.2 rebuild of UnityToolkit 2.0.1 pinned in the port log. The old
+  unmodified v2.0.1/4.0 binary is not a valid substitute.
+- WTT Client CommonLib and WTT Server CommonLib 3.0.3, installed separately
+  as required dependencies, including its serialization prepatcher.
+- Project Fika client 2.4.1 with its compatible server line, optional and
+  required only for multiplayer/Fika use. Single-player installs do not need
+  Fika; TSC detects it at runtime.
+
+The exact dependency commits, assembly versions, and SHA-256 values used for a
+tester are recorded in `docs/port/SPT-4.1-PORT-LOG.md`. Use those exact pins
+for acceptance testing; compiler compatibility with a different dependency
+build is not runtime evidence.
 
 TSC does not bundle WTT Common Lib. The client and server projects reference the installed WTT dependency DLLs at runtime/build time, so WTT should be listed as a dependency on Forge rather than redistributed inside the TSC package.
 
@@ -33,7 +49,7 @@ Do not install the old SamSWAT Fire Support or Arys Reloaded mod alongside TSC. 
 3. Extract the release ZIP directly into your SPT root.
 4. Confirm these folders exist after extraction:
    - `BepInEx/plugins/Tylevo.TacticalServicesControl/`
-   - `SPT/user/mods/Tylevo.TacticalServicesControl/`
+   - `SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/`
 5. Start SPT normally.
 
 Do not place the ZIP contents inside an extra nested folder.
@@ -131,6 +147,12 @@ See `docs/dashboard.md`, `PRIVACY.md`, and `SECURITY.md`.
 
 ## Known Issues
 
+- SPT 4.1.2 compilation and local verification pass with the pinned
+  dependencies, and the disposable server-bootstrap smoke reaches a listening
+  SPT server whose public TSC health route returns valid JSON. Final-package
+  boot cleanliness, dashboard schema/config/authentication exercise, menu,
+  solo-raid, and Fika acceptance remain in progress; see
+  `docs/port/SPT-4.1-PORT-LOG.md` for each gate.
 - Phone inventory inspect model may still need polish.
 - Mortar/artillery support is planned but not included.
 - Dedicated-headless Fika A-10 damage is experimental and remains separately gated from the original single-player/human-host path.

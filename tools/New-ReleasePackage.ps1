@@ -259,7 +259,10 @@ function Get-RequiredXmlValue {
 function Assert-BuildEvidenceReferences {
     param(
         [Parameter(Mandatory)]
-        [object] $Evidence
+        [object] $Evidence,
+
+        [Parameter(Mandatory)]
+        [object] $CriticalReferencePins
     )
 
     $buildProperty = $Evidence.PSObject.Properties["Build"]
@@ -294,6 +297,8 @@ function Assert-BuildEvidenceReferences {
             "Path",
             "Projects",
             "ReferenceNames",
+            "ResolvedFrom",
+            "ExpectedPathMatches",
             "Sha256",
             "Size",
             "AssemblyName",
@@ -318,6 +323,24 @@ function Assert-BuildEvidenceReferences {
         $normalizedPath = [IO.Path]::GetFullPath($path)
         if (-not $paths.Add($normalizedPath)) {
             throw "Build evidence contains a duplicate reference Path: '$path'."
+        }
+
+        if (-not ([string] $reference.ResolvedFrom).Equals(
+            "{HintPathFromItem}",
+            [StringComparison]::Ordinal
+        )) {
+            throw (
+                "Build-evidence reference '$path' must prove resolution from " +
+                "'{HintPathFromItem}'."
+            )
+        }
+
+        if (-not ($reference.ExpectedPathMatches -is [bool]) -or
+            $reference.ExpectedPathMatches -ne $true) {
+            throw (
+                "Build-evidence reference '$path' must prove its actual resolved path " +
+                "exactly matched its expected path."
+            )
         }
 
         if (-not (($reference.Size -is [int]) -or ($reference.Size -is [long])) -or
@@ -386,6 +409,77 @@ function Assert-BuildEvidenceReferences {
                     }
                 }
             }
+        }
+    }
+
+    if (-not ($CriticalReferencePins -is [Array]) -or $CriticalReferencePins.Count -eq 0) {
+        throw "Package allowlist criticalReferencePins must be one nonempty JSON array."
+    }
+
+    $pinFileNames = [Collections.Generic.HashSet[string]]::new(
+        [StringComparer]::OrdinalIgnoreCase
+    )
+    $pinHashes = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($pin in $CriticalReferencePins) {
+        $pinPropertyNames = [string[]] @($pin.PSObject.Properties.Name)
+        if ($pinPropertyNames.Count -ne 2 -or
+            -not ($pinPropertyNames -ccontains "fileName") -or
+            -not ($pinPropertyNames -ccontains "sha256")) {
+            throw (
+                "Every criticalReferencePins entry must contain exactly 'fileName' " +
+                "and 'sha256'."
+            )
+        }
+
+        $fileName = [string] $pin.fileName
+        if ([string]::IsNullOrWhiteSpace($fileName) -or
+            -not ([IO.Path]::GetFileName($fileName)).Equals(
+                $fileName,
+                [StringComparison]::Ordinal
+            ) -or -not [IO.Path]::GetExtension($fileName).Equals(
+                ".dll",
+                [StringComparison]::OrdinalIgnoreCase
+            )) {
+            throw "Critical-reference pin fileName must be one DLL leaf name: '$fileName'."
+        }
+
+        if (-not $pinFileNames.Add($fileName)) {
+            throw "Package allowlist contains a duplicate critical-reference fileName: '$fileName'."
+        }
+
+        $pinSha256 = [string] $pin.sha256
+        if ($pinSha256 -notmatch "^[0-9A-F]{64}$") {
+            throw "Critical-reference pin '$fileName' must declare one uppercase SHA-256."
+        }
+
+        if (-not $pinHashes.Add($pinSha256)) {
+            throw "Package allowlist contains a duplicate critical-reference SHA-256: '$pinSha256'."
+        }
+
+        $matchingReferences = @(
+            $references |
+                Where-Object {
+                    [IO.Path]::GetFileName([string] $_.Path).Equals(
+                        $fileName,
+                        [StringComparison]::OrdinalIgnoreCase
+                    )
+                }
+        )
+        if ($matchingReferences.Count -ne 1) {
+            throw (
+                "Build evidence must contain exactly one reference whose Path leaf is " +
+                "critical pinned file '$fileName'; found $($matchingReferences.Count)."
+            )
+        }
+
+        if (-not ([string] $matchingReferences[0].Sha256).Equals(
+            $pinSha256,
+            [StringComparison]::Ordinal
+        )) {
+            throw (
+                "Build-evidence SHA-256 for critical reference '$fileName' does not " +
+                "match its package allowlist pin."
+            )
         }
     }
 }
@@ -474,11 +568,18 @@ function Get-BaselineEntryMap {
 
     $expectedPaths = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     foreach ($specification in $Specifications) {
+        $sourcePathProperty = $specification.PSObject.Properties["sourcePath"]
+        $sourcePath = if ($null -eq $sourcePathProperty) {
+            [string] $specification.path
+        }
+        else {
+            [string] $sourcePathProperty.Value
+        }
         $path = Normalize-RelativePath `
-            -Value ([string] $specification.path) `
-            -Description "Baseline bundle path"
+            -Value $sourcePath `
+            -Description "Baseline archive bundle path"
         if (-not $expectedPaths.Add($path)) {
-            throw "Baseline bundle inventory contains a duplicate or case collision: '$path'."
+            throw "Baseline archive bundle inventory contains a duplicate or case collision: '$path'."
         }
     }
 
@@ -498,10 +599,27 @@ function Get-BaselineEntryMap {
         $declaredPath = @(
             $Specifications |
                 Where-Object {
-                    ([string] $_.path).Equals($entryPath, [StringComparison]::OrdinalIgnoreCase)
+                    $candidateSourcePathProperty = $_.PSObject.Properties["sourcePath"]
+                    $candidateSourcePath = if ($null -eq $candidateSourcePathProperty) {
+                        [string] $_.path
+                    }
+                    else {
+                        [string] $candidateSourcePathProperty.Value
+                    }
+                    $candidateSourcePath.Equals(
+                        $entryPath,
+                        [StringComparison]::OrdinalIgnoreCase
+                    )
                 }
-        )[0].path
-        if (-not $entryPath.Equals([string] $declaredPath, [StringComparison]::Ordinal)) {
+        )[0]
+        $declaredSourcePathProperty = $declaredPath.PSObject.Properties["sourcePath"]
+        $declaredSourcePath = if ($null -eq $declaredSourcePathProperty) {
+            [string] $declaredPath.path
+        }
+        else {
+            [string] $declaredSourcePathProperty.Value
+        }
+        if (-not $entryPath.Equals($declaredSourcePath, [StringComparison]::Ordinal)) {
             throw "Baseline archive bundle path has unexpected casing: '$entryPath'."
         }
 
@@ -835,11 +953,11 @@ if (-not ([string] $buildEvidence.Repository.Head).Equals(
 }
 
 if (-not ([string] $buildEvidence.Build.Configuration).Equals(
-    "SPT-4.0 Release",
+    "SPT-4.1 Release",
     [StringComparison]::Ordinal
 ) -or -not ($buildEvidence.Build.SkipTscDeploy -is [bool]) -or
     $buildEvidence.Build.SkipTscDeploy -ne $true) {
-    throw "Build evidence must come from SPT-4.0 Release with SkipTscDeploy=true."
+    throw "Build evidence must come from SPT-4.1 Release with SkipTscDeploy=true."
 }
 
 if (-not ([string] $buildEvidence.Build.DotnetSdkVersion).Equals(
@@ -858,7 +976,14 @@ if (-not ([string] $buildEvidence.Build.DotnetSdkVersion).Equals(
     throw "Build evidence SDK or release-version identity does not match the packaging commit."
 }
 
-Assert-BuildEvidenceReferences -Evidence $buildEvidence
+$criticalReferencePinsProperty = $manifest.PSObject.Properties["criticalReferencePins"]
+if ($null -eq $criticalReferencePinsProperty) {
+    throw "Package allowlist has no criticalReferencePins array."
+}
+
+Assert-BuildEvidenceReferences `
+    -Evidence $buildEvidence `
+    -CriticalReferencePins $criticalReferencePinsProperty.Value
 
 $buildEvidenceOutputs = @($buildEvidence.Build.Outputs)
 if ($buildEvidenceOutputs.Count -ne [int] $manifest.exactCounts.".dll") {
@@ -1067,13 +1192,23 @@ try {
         -Specifications $baselineSpecifications
 
     foreach ($specification in $baselineSpecifications) {
-        $path = Normalize-RelativePath `
+        $sourcePathProperty = $specification.PSObject.Properties["sourcePath"]
+        $sourcePath = if ($null -eq $sourcePathProperty) {
+            [string] $specification.path
+        }
+        else {
+            [string] $sourcePathProperty.Value
+        }
+        $sourcePath = Normalize-RelativePath `
+            -Value $sourcePath `
+            -Description "Baseline archive bundle path"
+        $packagePath = Normalize-RelativePath `
             -Value ([string] $specification.path) `
-            -Description "Baseline bundle path"
-        $entry = $baselineEntries[$path]
+            -Description "Baseline package bundle path"
+        $entry = $baselineEntries[$sourcePath]
         if ($entry.Length -ne [long] $specification.length) {
             throw (
-                "Baseline bundle '$path' has length $($entry.Length); " +
+                "Baseline bundle '$sourcePath' for '$packagePath' has length $($entry.Length); " +
                 "expected $($specification.length)."
             )
         }
@@ -1088,14 +1223,14 @@ try {
 
         $expectedHash = ([string] $specification.sha256).ToUpperInvariant()
         if ($actualHash -cne $expectedHash) {
-            throw "Baseline bundle '$path' SHA-256 mismatch: expected $expectedHash; found $actualHash."
+            throw "Baseline bundle '$sourcePath' for '$packagePath' SHA-256 mismatch: expected $expectedHash; found $actualHash."
         }
     }
 
     Assert-NewEmptyOutputDirectory -Path $resolvedOutputDirectory
     [void] [IO.Directory]::CreateDirectory($resolvedOutputDirectory)
 
-    $archiveName = "$solutionName-v$version-SPT$targetSptVersion.zip"
+    $archiveName = "$solutionName-v$version-SPT$targetSptVersion-TESTER.zip"
     $StagePath = Join-Path $resolvedOutputDirectory "stage"
     $extractPath = Join-Path $resolvedOutputDirectory "verify-extracted"
     $archivePath = Join-Path $resolvedOutputDirectory $archiveName
@@ -1138,10 +1273,20 @@ try {
     }
 
     foreach ($specification in $baselineSpecifications) {
+        $sourcePathProperty = $specification.PSObject.Properties["sourcePath"]
+        $sourcePath = if ($null -eq $sourcePathProperty) {
+            [string] $specification.path
+        }
+        else {
+            [string] $sourcePathProperty.Value
+        }
+        $sourcePath = Normalize-RelativePath `
+            -Value $sourcePath `
+            -Description "Baseline archive bundle path"
         $path = Normalize-RelativePath `
             -Value ([string] $specification.path) `
-            -Description "Baseline bundle path"
-        $entry = $baselineEntries[$path]
+            -Description "Baseline package bundle path"
+        $entry = $baselineEntries[$sourcePath]
         $destination = Get-PathUnderRoot `
             -Root $StagePath `
             -RelativePath $path `

@@ -18,10 +18,10 @@ internal sealed class UavDeviceSetInHandsPatch : ModulePatch
 	}
 
 	[PatchPrefix]
-	private static bool Prefix(Player __instance, Item __0, Callback<GInterface202> __1)
+	private static bool Prefix(Player __instance, Item __0, Callback<IUsableItemController> __1)
 	{
 		Item item = __0;
-		Callback<GInterface202> callback = __1;
+		Callback<IUsableItemController> callback = __1;
 
 		if (item is not UavDeviceItem)
 		{
@@ -55,7 +55,7 @@ internal sealed class UavDeviceSetInHandsPatch : ModulePatch
 			// EFT's caller waits on this callback; leaving it uninvoked freezes
 			// the player in the interaction state.
 			FireSupportPlugin.LogSource.LogWarning($"TSC Uplink usable item equip failed. {ex}");
-			callback?.Invoke(new Result<GInterface202>(null, ex.Message, 0));
+			callback?.Invoke(new Result<IUsableItemController>(null, ex.Message, 0));
 		}
 
 		return false;

@@ -13,7 +13,7 @@ public class VehicleWeapon
 	private readonly BallisticsCalculator _ballisticsCalculator;
 
 	private readonly Weapon _weapon;
-	private readonly AmmoItemClass _ammoItem;
+	private readonly Ammo _ammoItem;
 
 	public readonly int fireRate;
 	public readonly float timeBetweenShots;
@@ -27,12 +27,12 @@ public class VehicleWeapon
 		}
 
 		_playerProfileId = playerProfileId;
-		ItemFactoryClass itemFactory = Singleton<ItemFactoryClass>.Instance
-			?? throw new NullReferenceException("ItemFactoryClass is null");
+		ItemFactory itemFactory = Singleton<ItemFactory>.Instance
+			?? throw new NullReferenceException("ItemFactory is null");
 		_ballisticsCalculator = (BallisticsCalculator)gameWorld.SharedBallisticsCalculator;
 
 		_weapon = (Weapon)itemFactory.CreateItem(MongoID.Generate(), weaponTpl, null);
-		_ammoItem = (AmmoItemClass)itemFactory.CreateItem(MongoID.Generate(), ammoTpl, null);
+		_ammoItem = (Ammo)itemFactory.CreateItem(MongoID.Generate(), ammoTpl, null);
 		fireRate = _weapon.FireRate;
 		timeBetweenShots = 1f / (fireRate / 60f);
 	}
@@ -41,7 +41,7 @@ public class VehicleWeapon
 	{
 		// fireIndex seems to be related to player statistics - counting the number of shots player has fired
 		// Leave fireIndex at -1 because we don't want vehicle weapon shots inflating player statistics
-		EftBulletClass bullet = _ballisticsCalculator.CreateShot(_ammoItem, origin, direction, -1, _playerProfileId,
+		Shot bullet = _ballisticsCalculator.CreateShot(_ammoItem, origin, direction, -1, _playerProfileId,
 			_weapon, _weapon.SpeedFactor);
 		_ballisticsCalculator.Shoot(bullet);
 	}

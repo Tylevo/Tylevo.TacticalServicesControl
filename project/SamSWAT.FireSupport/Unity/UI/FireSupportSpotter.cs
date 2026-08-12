@@ -45,7 +45,7 @@ public class FireSupportSpotter : ScriptableObject
 	{
 		_inputManager = InputManagerUtil.GetInputManager().gameObject;
 		_player = Singleton<GameWorld>.Instance.MainPlayer;
-		_layerMask = LayerMaskClass.TerrainLowPoly;
+		_layerMask = LayersMaskController.TerrainLowPoly;
 
 		_spotterPositionObj = Instantiate(spotterParticles[0]);
 		_colliderCheckerObj = _spotterPositionObj.GetComponentInChildren<ColliderReporter>();

@@ -21,18 +21,20 @@ internal sealed class HelicopterItemTransferActionsPatch : ModulePatch
 {
 	protected override MethodBase GetTargetMethod()
 	{
-		return AccessTools.FirstMethod(
-			typeof(GetActionsClass),
-			method =>
-				method.Name == nameof(GetActionsClass.GetAvailableActions) &&
-				method.GetParameters().Length >= 2 &&
-				method.GetParameters()[0].Name == "owner");
+		return AccessTools.Method(
+			typeof(InteractionContextHelper),
+			nameof(InteractionContextHelper.GetAvailableActions),
+			new[]
+			{
+				typeof(GamePlayerOwner),
+				typeof(IInteractive)
+			});
 	}
 
 	[PatchPrefix]
 	private static bool Prefix(
 		object[] __args,
-		ref ActionsReturnClass __result)
+		ref AvailableInteractionState __result)
 	{
 		if (__args == null ||
 		    __args.Length < 2 ||
@@ -50,9 +52,9 @@ internal sealed class HelicopterItemTransferActionsPatch : ModulePatch
 			return false;
 		}
 
-		__result = new ActionsReturnClass
+		__result = new AvailableInteractionState
 		{
-			Actions = new List<ActionsTypesClass>
+			Actions = new List<InteractionAction>
 			{
 				new()
 				{
@@ -101,8 +103,8 @@ internal sealed class HelicopterItemTransferInteractionStatePatch : ModulePatch
 			return;
 		}
 
-		ActionsReturnClass actions =
-			GetActionsClass.GetAvailableActions(__instance, point);
+		AvailableInteractionState actions =
+			InteractionContextHelper.GetAvailableActions(__instance, point);
 		actions?.InitSelected();
 		__instance.AvailableInteractionState.Value = actions;
 	}
@@ -150,7 +152,7 @@ internal sealed class HelicopterItemTransferStashFeePurchasePatch : ModulePatch
 			new[]
 			{
 				typeof(ETraderServiceType),
-				typeof(AbstractQuestControllerClass),
+				typeof(EFT.Quests.QuestController),
 				typeof(string)
 			});
 	}
@@ -159,7 +161,7 @@ internal sealed class HelicopterItemTransferStashFeePurchasePatch : ModulePatch
 	private static bool Prefix(
 		InventoryController __instance,
 		ETraderServiceType serviceType,
-		AbstractQuestControllerClass questController,
+		EFT.Quests.QuestController questController,
 		string subServiceId,
 		ref Task<bool> __result)
 	{
@@ -191,21 +193,20 @@ internal sealed class HelicopterItemTransferStashFeeButtonPatch : ModulePatch
 	{
 		return AccessTools.Method(
 			typeof(TransferItemsPanel),
-			"method_1");
+			nameof(TransferItemsPanel.UpdateCounters));
 	}
 
 	[PatchPostfix]
 	private static void Postfix(
-		InventoryController ___inventoryController_0,
-		StashItemClass ___stashItemClass,
-		TransferItemsControllerAbstractClass
-			___transferItemsControllerAbstractClass,
+		InventoryController ____inventoryController,
+		Stash ____item,
+		TransferItemsController ____transferItemsController,
 		DefaultUIButton ____transferButton)
 	{
 		FireSupportItemTransfer.ApplyStashFeeTransferButtonState(
-			___inventoryController_0,
-			___stashItemClass,
-			___transferItemsControllerAbstractClass,
+			____inventoryController,
+			____item,
+			____transferItemsController,
 			____transferButton);
 	}
 }

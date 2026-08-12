@@ -308,10 +308,10 @@ internal static class UavDeviceHandsService
 				return;
 			}
 
-			PoolManagerClass poolManager = Singleton<PoolManagerClass>.Instance;
+			ObjectsFactory poolManager = Singleton<ObjectsFactory>.Instance;
 			if (poolManager == null)
 			{
-				throw new InvalidOperationException("PoolManagerClass singleton was null.");
+				throw new InvalidOperationException("ObjectsFactory singleton was null.");
 			}
 
 			if (manual)
@@ -358,7 +358,7 @@ internal static class UavDeviceHandsService
 				TscDiagnostics.LogPhone("TSC activation device initializing controller.");
 			}
 
-			Player.UsableItemController.smethod_8<UavDeviceController>(controller, player);
+			Player.UsableItemController.Setup<UavDeviceController>(controller, player);
 
 			if (manual)
 			{

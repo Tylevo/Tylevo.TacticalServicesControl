@@ -1,5 +1,6 @@
 using Comfort.Common;
 using EFT;
+using EFT.CameraControl;
 using EFT.InventoryLogic;
 using System;
 using System.Collections;
@@ -7,7 +8,7 @@ using UnityEngine;
 
 namespace SamSWAT.FireSupport.ArysReloaded.Unity;
 
-public sealed class UavDeviceController : Player.UsableItemController, IOnHandsUseCallback
+public sealed class UavDeviceController : Player.UsableItemController, IQuickUseItem
 {
 	private const int HandsLayer = 1;
 	private const float TapAudioDelaySeconds = 7f / 30f;
@@ -38,7 +39,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 	private ESupportType _selectedSupportType = ESupportType.Uav;
 	private bool _authorizationSessionActive;
 	private bool _authorizationInputLocked;
-	private Callback<IOnHandsUseCallback> _onUsedCallback;
+	private Callback<IQuickUseItem> _onUsedCallback;
 	private bool _handsUseCallbackCompleted;
 	private event Action<UavDeviceController, bool> _authorizationSessionFinished;
 	private bool _finishNotified;
@@ -140,7 +141,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 		}
 	}
 
-	public void SetOnUsedCallback(Callback<IOnHandsUseCallback> callback)
+	public void SetOnUsedCallback(Callback<IQuickUseItem> callback)
 	{
 		_onUsedCallback = callback;
 		if (_finishPending)
@@ -149,7 +150,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 		}
 	}
 
-	public Callback<IOnHandsUseCallback> GetOnUsedCallback()
+	public Callback<IQuickUseItem> GetOnUsedCallback()
 	{
 		return _onUsedCallback;
 	}
@@ -159,7 +160,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 		TscDiagnostics.LogPhone($"TSC Uplink controller awake on '{gameObject.name}'.");
 	}
 
-	public override void vmethod_0(Player player, WeaponPrefab weaponPrefab)
+	public override void InitializeController(Player player, WeaponPrefab weaponPrefab)
 	{
 		TscDiagnostics.LogPhone(
 			$"TSC Uplink controller binding prefab '{(weaponPrefab == null ? "<null>" : weaponPrefab.gameObject.name)}'. {DescribeItem(Item)}");
@@ -167,7 +168,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 		try
 		{
 			_ownerPlayer = player;
-			base.vmethod_0(player, weaponPrefab);
+			base.InitializeController(player, weaponPrefab);
 			ApplyPhoneZoom();
 
 			if (weaponPrefab == null)
@@ -2445,7 +2446,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 		_handsUseCallbackCompleted = true;
 		try
 		{
-			_onUsedCallback.Invoke(new Result<IOnHandsUseCallback>(this));
+			_onUsedCallback.Invoke(new Result<IQuickUseItem>(this));
 		}
 		catch (Exception ex)
 		{
@@ -2500,15 +2501,15 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 		    _phoneFramingApplied ||
 		    PluginSettings.PhoneAutoZoomEnabled?.Value != true ||
 		    _ownerPlayer?.IsYourPlayer != true ||
-		    !CameraClass.Exist ||
-		    CameraClass.Instance == null)
+		    !CameraManager.Exist ||
+		    CameraManager.Instance == null)
 		{
 			return;
 		}
 
 		try
 		{
-			CameraClass cameraClass = CameraClass.Instance;
+			CameraManager cameraClass = CameraManager.Instance;
 			if (s_phoneZoomOwner == null)
 			{
 				s_phoneZoomOriginalFov = cameraClass.Fov;
@@ -2632,9 +2633,9 @@ public sealed class UavDeviceController : Player.UsableItemController, IOnHandsU
 					s_phoneFramingOriginalOffset;
 			}
 
-			if (restoreFov && CameraClass.Exist && CameraClass.Instance != null)
+			if (restoreFov && CameraManager.Exist && CameraManager.Instance != null)
 			{
-				CameraClass.Instance.SetFov(s_phoneZoomOriginalFov, PhoneZoomRestoreSeconds, true);
+				CameraManager.Instance.SetFov(s_phoneZoomOriginalFov, PhoneZoomRestoreSeconds, true);
 				TscDiagnostics.LogPhone(
 					$"TSC Uplink phone zoom restored. fov={s_phoneZoomOriginalFov:F1}.");
 			}

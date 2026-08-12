@@ -613,7 +613,7 @@ public static class FireSupportPayment
 
 		if (notifySuccess)
 		{
-			NotificationManagerClass.DisplayMessageNotification(
+			NotificationManager.DisplayMessageNotification(
 				$"Paid {FormatCurrency(cost)} for {GetSupportName(supportType)}.",
 				ENotificationDurationType.Default,
 				ENotificationIconType.Default,
@@ -685,7 +685,7 @@ public static class FireSupportPayment
 			if (FireSupportAuthorizations.TryConsumeForDeployment(supportType, out consumedAuthorizationType))
 			{
 				consumedAuthorization = true;
-				NotificationManagerClass.DisplayMessageNotification(
+				NotificationManager.DisplayMessageNotification(
 					$"Used prepaid {GetSupportName(consumedAuthorizationType)} authorization.",
 					ENotificationDurationType.Default,
 					ENotificationIconType.Default,
@@ -738,7 +738,7 @@ public static class FireSupportPayment
 			// unusable. Consume them purely client-side.
 			if (!serverBacked)
 			{
-				NotificationManagerClass.DisplayMessageNotification(
+				NotificationManager.DisplayMessageNotification(
 					$"Used prepaid {GetSupportName(consumedType)} authorization.",
 					ENotificationDurationType.Default,
 					ENotificationIconType.Default,
@@ -776,7 +776,7 @@ public static class FireSupportPayment
 
 				if (response.Ok)
 				{
-					NotificationManagerClass.DisplayMessageNotification(
+					NotificationManager.DisplayMessageNotification(
 						$"Used TerraGroup {GetSupportName(consumedType)} authorization.",
 						ENotificationDurationType.Default,
 						ENotificationIconType.Default,
@@ -1675,7 +1675,7 @@ public static class FireSupportPayment
 			? $"Paid {FormatCurrency(cost)}. {supportName} authorization ready. Press [{deployKey}] to deploy from the Uplink."
 			: $"{supportName} authorization ready. Press [{deployKey}] to deploy from the Uplink.";
 
-		NotificationManagerClass.DisplayMessageNotification(
+		NotificationManager.DisplayMessageNotification(
 			message,
 			ENotificationDurationType.Default,
 			ENotificationIconType.Default,
@@ -1705,7 +1705,7 @@ public static class FireSupportPayment
 		{
 			int held = GetAuthorizationCount(response ?? _lastPurchaseDenial, supportType);
 			string countText = held > 0 ? $" You already hold {held}." : string.Empty;
-			NotificationManagerClass.DisplayWarningNotification(
+			NotificationManager.DisplayWarningNotification(
 				$"{GetSupportName(supportType)} authorization limit reached.{countText} Deploy one from the Uplink before buying more.",
 				ENotificationDurationType.Long);
 			return;
@@ -1714,7 +1714,7 @@ public static class FireSupportPayment
 		if (!IsInsufficientFundsReason(reason) &&
 		    !string.IsNullOrWhiteSpace(reason))
 		{
-			NotificationManagerClass.DisplayWarningNotification(
+			NotificationManager.DisplayWarningNotification(
 				$"{GetSupportName(supportType)} authorization denied: {GetLastPurchaseDenialDetail(supportType)}",
 				ENotificationDurationType.Long);
 			return;
@@ -1733,7 +1733,7 @@ public static class FireSupportPayment
 	{
 		string localRestriction =
 			FireSupportServiceAvailability.GetLocalRestrictionReason(supportType);
-		NotificationManagerClass.DisplayWarningNotification(
+		NotificationManager.DisplayWarningNotification(
 			string.IsNullOrWhiteSpace(localRestriction)
 				? $"{GetSupportName(supportType)} is unavailable in the host's FireSupport settings."
 				: localRestriction,
@@ -1742,7 +1742,7 @@ public static class FireSupportPayment
 
 	public static void NotifyServerConfigUnavailable(ESupportType supportType)
 	{
-		NotificationManagerClass.DisplayWarningNotification(
+		NotificationManager.DisplayWarningNotification(
 			$"{GetSupportName(supportType)} is unavailable: TerraGroup server config is not synced.",
 			ENotificationDurationType.Long);
 	}
@@ -2066,27 +2066,27 @@ public static class FireSupportPayment
 	{
 		if (availableBalance < 0)
 		{
-			NotificationManagerClass.DisplayWarningNotification(
+			NotificationManager.DisplayWarningNotification(
 				$"Fire support requires {FormatCurrency(cost)}. {GetEffectiveBalanceLabel()} are still syncing.",
 				ENotificationDurationType.Long);
 			return;
 		}
 
-		NotificationManagerClass.DisplayWarningNotification(
+		NotificationManager.DisplayWarningNotification(
 			$"Fire support requires {FormatCurrency(cost)}. {GetEffectiveBalanceLabel()}: {FormatCurrency(availableBalance)}.",
 			ENotificationDurationType.Long);
 	}
 
 	private static void NotifyServerPaymentRequired(ESupportType supportType)
 	{
-		NotificationManagerClass.DisplayWarningNotification(
+		NotificationManager.DisplayWarningNotification(
 			$"{GetSupportName(supportType)} requires TerraGroup server payment confirmation.",
 			ENotificationDurationType.Long);
 	}
 
 	private static void NotifyAuthorizationRequired(ESupportType supportType)
 	{
-		NotificationManagerClass.DisplayWarningNotification(
+		NotificationManager.DisplayWarningNotification(
 			$"{GetSupportName(supportType)} requires a TerraGroup phone authorization.",
 			ENotificationDurationType.Long);
 	}

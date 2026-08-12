@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
@@ -12,16 +12,16 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <Reference Include="SPTarkov.Common">
-      <HintPath>$(SptDir)SPT\SPTarkov.Common.dll</HintPath>
+      <HintPath>$(SptServerRuntimeDir)SPTarkov.Common.dll</HintPath>
     </Reference>
     <Reference Include="SPTarkov.DI">
-      <HintPath>$(SptDir)SPT\SPTarkov.DI.dll</HintPath>
+      <HintPath>$(SptServerRuntimeDir)SPTarkov.DI.dll</HintPath>
     </Reference>
     <Reference Include="SPTarkov.Server.Core">
-      <HintPath>$(SptDir)SPT\SPTarkov.Server.Core.dll</HintPath>
+      <HintPath>$(SptServerRuntimeDir)SPTarkov.Server.Core.dll</HintPath>
     </Reference>
     <Reference Include="SemanticVersioning">
-      <HintPath>$(SptDir)SPT\SemanticVersioning.dll</HintPath>
+      <HintPath>$(SptServerRuntimeDir)SemanticVersioning.dll</HintPath>
     </Reference>
     <Reference Include="WTT-ServerCommonLib">
       <HintPath>$(SptServerModsDir)WTT-ServerCommonLib\WTT-ServerCommonLib.dll</HintPath>

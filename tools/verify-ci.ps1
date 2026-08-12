@@ -188,19 +188,24 @@ foreach ($expectedProject in $expectedProjects) {
     }
 }
 
+$coreGuid = "7090B555-280C-4839-A367-C874414EC11F"
+$serverGuid = "0C20B0FC-EC60-40AD-8BA9-6FFF5C084849"
 $interopGuid = "FC4AB935-71F3-48C2-A7A6-B2396E39BF41"
 $bootstrapGuid = "E3D5AAB7-5B3B-4F3B-918F-93ECDA9EAA45"
 $testsGuid = "2A1C7E6D-8D6F-4B81-A625-3DC7E3E0D44C"
 
+Assert-SolutionMapping -SolutionText $solutionText -ProjectGuid $coreGuid -SolutionConfiguration "SPT-4.1 Release" -ProjectConfiguration "SPT-4.1 Release"
+Assert-SolutionMapping -SolutionText $solutionText -ProjectGuid $serverGuid -SolutionConfiguration "SPT-4.1 Release" -ProjectConfiguration "SPT-4.1 Release"
 Assert-SolutionMapping -SolutionText $solutionText -ProjectGuid $interopGuid -SolutionConfiguration "Release" -ProjectConfiguration "Release"
 Assert-SolutionMapping -SolutionText $solutionText -ProjectGuid $interopGuid -SolutionConfiguration "SPT-4.0 Release" -ProjectConfiguration "SPT-4.0 Release"
-foreach ($configuration in @("Debug", "SPT-3.10 Release", "SPT-3.11 Release", "SPT-4.0 Release", "Release")) {
+Assert-SolutionMapping -SolutionText $solutionText -ProjectGuid $interopGuid -SolutionConfiguration "SPT-4.1 Release" -ProjectConfiguration "SPT-4.1 Release"
+foreach ($configuration in @("Debug", "SPT-3.10 Release", "SPT-3.11 Release", "SPT-4.0 Release", "SPT-4.1 Release", "Release")) {
     Assert-SolutionMapping -SolutionText $solutionText -ProjectGuid $bootstrapGuid -SolutionConfiguration $configuration -ProjectConfiguration $configuration
 }
 
 Assert-SolutionMapping -SolutionText $solutionText -ProjectGuid $testsGuid -SolutionConfiguration "Debug" -ProjectConfiguration "Debug"
 Assert-SolutionMapping -SolutionText $solutionText -ProjectGuid $testsGuid -SolutionConfiguration "Release" -ProjectConfiguration "Release"
-foreach ($configuration in @("SPT-3.10 Release", "SPT-3.11 Release", "SPT-4.0 Release")) {
+foreach ($configuration in @("SPT-3.10 Release", "SPT-3.11 Release", "SPT-4.0 Release", "SPT-4.1 Release")) {
     Assert-SolutionMapping -SolutionText $solutionText -ProjectGuid $testsGuid -SolutionConfiguration $configuration -ProjectConfiguration "Release"
 }
 
@@ -271,6 +276,14 @@ foreach ($relativeBuildDefinition in $trackedBuildDefinitions) {
 }
 
 Write-Host "Validating production wiring into proprietary-free regression seams."
+$globalUsingsSourcePath = "project\SamSWAT.FireSupport\GlobalUsings.cs"
+$globalUsingsSource = Get-NormalizedCSharpSource -RelativePath $globalUsingsSourcePath
+Assert-SourceWiring `
+    -RelativePath $globalUsingsSourcePath `
+    -NormalizedSource $globalUsingsSource `
+    -Pattern 'global\s+using\s+IBattleUIScreenController\s*=\s*EFT\.UI\.IBattleUIScreenController\s*;' `
+    -Expectation "The battle-screen compatibility alias must target EFT.UI.IBattleUIScreenController."
+
 $paymentSourcePath = "project\SamSWAT.FireSupport\Unity\FireSupportPayment.cs"
 $paymentSource = Get-NormalizedCSharpSource -RelativePath $paymentSourcePath
 Assert-SourceWiring `

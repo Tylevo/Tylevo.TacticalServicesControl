@@ -23,7 +23,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 9.0.314
+          dotnet-version: 10.0.201
 
       - name: Set up Node.js
         uses: actions/setup-node@v4

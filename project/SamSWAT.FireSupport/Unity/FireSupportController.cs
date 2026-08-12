@@ -239,7 +239,7 @@ public class FireSupportController : UIInputNode
 			{
 				FireSupportPlugin.LogSource.LogInfo(
 					$"TSC deploy request blocked: support unavailable (cooldown={_cooldownTimer}, canCall={_canCallSupport}).");
-				NotificationManagerClass.DisplayWarningNotification(
+				NotificationManager.DisplayWarningNotification(
 					"Support station is busy. Wait for the current request or cooldown to finish.",
 					ENotificationDurationType.Default);
 				return;
@@ -248,7 +248,7 @@ public class FireSupportController : UIInputNode
 			if (!service.IsRequestAvailable())
 			{
 				FireSupportPlugin.LogSource.LogInfo($"TSC deploy request blocked: no request available for {supportType}.");
-				NotificationManagerClass.DisplayWarningNotification(
+				NotificationManager.DisplayWarningNotification(
 					$"{FireSupportPayment.GetSupportName(supportType)} is not available right now.",
 					ENotificationDurationType.Default);
 				return;

@@ -158,7 +158,7 @@ public static class FireSupportAuthorizations
 			Grant(type, 1);
 		}
 
-		NotificationManagerClass.DisplayMessageNotification(
+		NotificationManager.DisplayMessageNotification(
 			$"{GetSupportName(type)} authorization refunded.",
 			ENotificationDurationType.Default,
 			ENotificationIconType.Default,

@@ -20,34 +20,35 @@ namespace SamSWAT.FireSupport.ArysReloaded;
 /// </summary>
 [Injectable(
 	InjectionType.Singleton,
-	TypeOverride = typeof(BtrDeliveryCallbacks),
-	TypePriority = OnUpdateOrder.BtrDeliveryCallbacks)]
+	TypePriority = OnUpdateOrder.BtrDeliveryCallbacks + 1)]
 public sealed class FireSupportUh60DeliveryCallbacks(
 	ISptLogger<FireSupportUh60DeliveryCallbacks> logger,
 	FireSupportUh60DeliveryService uh60DeliveryService,
 	BtrDeliveryService btrDeliveryService,
 	TimeUtil timeUtil,
-	ConfigServer configServer,
+	BtrDeliveryConfig btrDeliveryConfig,
 	SaveServer saveServer) : IOnUpdate
 {
-	private readonly BtrDeliveryConfig _btrDeliveryConfig =
-		configServer.GetConfig<BtrDeliveryConfig>();
-
-	public async Task<bool> OnUpdate(long secondsSinceLastRun)
+	public async Task<bool> OnUpdateAsync(
+		long secondsSinceLastRun,
+		CancellationToken cancellationToken)
 	{
-		if (secondsSinceLastRun < _btrDeliveryConfig.RunIntervalSeconds)
+		cancellationToken.ThrowIfCancellationRequested();
+		if (secondsSinceLastRun < btrDeliveryConfig.RunIntervalSeconds)
 		{
 			return false;
 		}
 
-		await ProcessDeliveriesAsync();
+		await ProcessDeliveriesAsync(cancellationToken);
 		return true;
 	}
 
-	private async Task ProcessDeliveriesAsync()
+	private async Task ProcessDeliveriesAsync(
+		CancellationToken cancellationToken)
 	{
 		foreach (var (sessionId, _) in saveServer.GetProfiles())
 		{
+			cancellationToken.ThrowIfCancellationRequested();
 			if (saveServer.IsProfileInvalidOrUnloadable(sessionId))
 			{
 				continue;
@@ -66,14 +67,18 @@ public sealed class FireSupportUh60DeliveryCallbacks(
 					         currentTime >= package.ScheduledTime)
 				         .ToList())
 			{
-				await ProcessPackageAsync(sessionId, package);
+				await ProcessPackageAsync(
+					sessionId,
+					package,
+					cancellationToken);
 			}
 		}
 	}
 
 	private async Task ProcessPackageAsync(
 		MongoId sessionId,
-		BtrDelivery package)
+		BtrDelivery package,
+		CancellationToken cancellationToken)
 	{
 		if (package.Items == null || package.Items.Count == 0)
 		{

@@ -1,6 +1,8 @@
 # Forge Main Description Draft
 
-> v1.1.0 release-candidate draft. Do not publish until the final acceptance and package gates pass.
+> v1.1.0 SPT 4.1.2 tester draft. Do not publish as a stable release until the
+> build, server, client, raid, multiplayer, and package gates pass. Expected
+> artifact: `Tylevo.TacticalServicesControl-v1.1.0-SPT4.1.2-TESTER.zip`.
 
 ## Short Description
 
@@ -115,9 +117,12 @@ Install the exact same TSC build on the server, human host, every client, and an
 
 ### Installation
 
-1. Install **UnityToolkit v2.0.1**.
-2. Install **WTT Client Common Lib** and **WTT Server Common Lib**.
-3. Install Project Fika only when using multiplayer.
+1. Install the exact verified **SPT 4.1-compatible UnityToolkit** build named
+   in the tester's port log. Do not substitute the old v2.0.1/4.0 binary.
+2. Install the matching **WTT Client Common Lib 3.x** and **WTT Server Common
+   Lib 3.x** builds named in the tester's port log.
+3. Install the matching SPT 4.1 Project Fika client/server pair only when using
+   multiplayer.
 4. Back up profiles and existing TSC config/storage.
 5. Close the server, launcher, game, all clients, and any headless process.
 6. Extract the TSC ZIP directly into the SPT root.
@@ -126,13 +131,15 @@ After extraction, these folders should exist:
 
 `BepInEx/plugins/Tylevo.TacticalServicesControl/`
 
-`SPT/user/mods/Tylevo.TacticalServicesControl/`
+`SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/`
 
 Do not install SamSWAT Fire Support or Arys Reloaded alongside TSC. TSC is their derivative replacement and the packages conflict.
 
 ### Compatibility And Known Limitations
 
-- Built for **SPT 4.0.13**.
+- Tester target: **SPT 4.1.2 / EFT 0.16.9.5.40743**. This remains a tester,
+  not a stable compatibility claim, until every applicable acceptance gate is
+  recorded.
 - Project Fika integration is optional and remains beta for the v1.1.0 transaction, UAV, extraction, and headless changes until the live matrices pass.
 - Dedicated-headless A-10 damage is separately gated and experimental.
 - If both authority-acceptance result paths and cancellation settlement are lost beyond their bounded waits, an executed service can still be refunded.

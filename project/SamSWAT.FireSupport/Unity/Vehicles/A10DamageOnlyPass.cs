@@ -897,7 +897,7 @@ public static class A10DamageOnlyPass
 			float damage = CalculateDirectFallbackDamage(candidate.Distance);
 			EBodyPart bodyPart = EBodyPart.Chest;
 			EBodyPartColliderType colliderType = EBodyPartColliderType.RibcageUp;
-			DamageInfoStruct damageInfo = BuildDirectDamageInfo(
+			DamageInfo damageInfo = BuildDirectDamageInfo(
 				request,
 				candidate,
 				damageOrigin,
@@ -961,7 +961,7 @@ public static class A10DamageOnlyPass
 		return string.Empty;
 	}
 
-	private static DamageInfoStruct BuildDirectDamageInfo(
+	private static DamageInfo BuildDirectDamageInfo(
 		A10StrikeRequest request,
 		HitCandidateSnapshot candidate,
 		Vector3 damageOrigin,
@@ -979,7 +979,7 @@ public static class A10DamageOnlyPass
 			direction.Normalize();
 		}
 
-		return new DamageInfoStruct
+		return new DamageInfo
 		{
 			DamageType = EFT.EDamageType.Artillery,
 			Damage = damage,
