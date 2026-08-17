@@ -7,10 +7,10 @@ namespace SamSWAT.FireSupport.ArysReloaded.Unity;
 // family so the icon shows the orange SPEC tag like the R1500. Deliberately
 // NOT the rangefinder classes: the phone must never match rangefinder checks
 // (the spotter flow requires the real rangefinder).
-[CustomParent(UavDeviceConstants.UavDeviceParentTpl, typeof(UavDeviceItem), typeof(SpecItemTemplateClass))]
-public sealed class UavDeviceItem : SpecItemItemClass
+[CustomParent(UavDeviceConstants.UavDeviceParentTpl, typeof(UavDeviceItem), typeof(SpecItemTemplate))]
+public sealed class UavDeviceItem : SpecItem
 {
-	public UavDeviceItem(string id, SpecItemTemplateClass template) : base(id, template)
+	public UavDeviceItem(string id, SpecItemTemplate template) : base(id, template)
 	{
 	}
 }

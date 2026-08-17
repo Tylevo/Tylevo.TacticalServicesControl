@@ -25,6 +25,7 @@ public class FireSupportController : UIInputNode
 	[NonSerialized] private readonly FireSupportServiceMappings _services = new(new SupportTypeComparer());
 
 	[NonSerialized] private bool _canCallSupport = true;
+	[NonSerialized] private bool _initialized;
 	[NonSerialized] private int _cooldownTimer;
 
 	private static int s_creationGeneration;
@@ -32,6 +33,7 @@ public class FireSupportController : UIInputNode
 	public static FireSupportController Instance { get; private set; }
 
 	public int CooldownSecondsRemaining => _cooldownTimer;
+	public bool IsInitialized => _initialized;
 
 	public static async UniTask<FireSupportController> Create(GesturesMenu gesturesMenu)
 	{
@@ -87,7 +89,7 @@ public class FireSupportController : UIInputNode
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public bool IsSupportAvailable()
 	{
-		return _cooldownTimer == 0 && _canCallSupport;
+		return _initialized && _cooldownTimer == 0 && _canCallSupport;
 	}
 
 	private async UniTask Initialize(GesturesMenu gesturesMenu, int generation)
@@ -148,6 +150,8 @@ public class FireSupportController : UIInputNode
 
 		_ui = loadedUi;
 		_ui.SupportRequested += OnSupportRequested;
+		_initialized = true;
+		FireSupportPlugin.LogSource.LogInfo("TSC fire-support controller ready.");
 	}
 
 	private bool IsCreationCurrent(int generation)
@@ -168,6 +172,7 @@ public class FireSupportController : UIInputNode
 
 	private void OnDestroy()
 	{
+		_initialized = false;
 		bool ownsCurrentController = ReferenceEquals(Instance, this);
 
 		if (_ui != null)
@@ -239,7 +244,7 @@ public class FireSupportController : UIInputNode
 			{
 				FireSupportPlugin.LogSource.LogInfo(
 					$"TSC deploy request blocked: support unavailable (cooldown={_cooldownTimer}, canCall={_canCallSupport}).");
-				NotificationManagerClass.DisplayWarningNotification(
+				NotificationManager.DisplayWarningNotification(
 					"Support station is busy. Wait for the current request or cooldown to finish.",
 					ENotificationDurationType.Default);
 				return;
@@ -248,7 +253,7 @@ public class FireSupportController : UIInputNode
 			if (!service.IsRequestAvailable())
 			{
 				FireSupportPlugin.LogSource.LogInfo($"TSC deploy request blocked: no request available for {supportType}.");
-				NotificationManagerClass.DisplayWarningNotification(
+				NotificationManager.DisplayWarningNotification(
 					$"{FireSupportPayment.GetSupportName(supportType)} is not available right now.",
 					ENotificationDurationType.Default);
 				return;

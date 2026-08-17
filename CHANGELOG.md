@@ -4,8 +4,18 @@
 
 Beta 1 tester prerelease: `v1.1.0-beta.1`, published 2026-07-31.
 
+SPT 4.1.2 port tester: in progress. The candidate filename is
+`Tylevo.TacticalServicesControl-v1.1.0-SPT4.1.2-TESTER.zip`; this does not
+declare build, server-boot, client, raid, or Fika acceptance.
+
 ### Added
 
+- Added a curated SPT 4.1 native config-editor provider. It delegates apply and
+  save to TSC's canonical validation, revision-conflict, normalization, and
+  atomic persistence path while excluding security and profile-specific state.
+- Added one-time in-raid targeting guidance for the safe middle-mouse/Enter
+  confirmation controls, and made the F12 dashboard address follow the active
+  SPT backend host and port.
 - Added an authenticated pre-raid authorization store to the main menu. **TSC UPLINK** is placed below **Records**, with a fallback below **Character**, and shows the active PMC stash balance, server prices, service availability, and persistent authorization counts.
 - Added an explicit pre-raid purchase confirmation showing the selected service, authoritative price, and projected balance. Cancelling creates no request, while duplicate delivery of a confirmed request cannot charge or grant twice.
 - Added a dashboard shortcut derived from the active SPT backend connection instead of a hard-coded host.
@@ -16,6 +26,23 @@ Beta 1 tester prerelease: `v1.1.0-beta.1`, published 2026-07-31.
 
 ### Fixed
 
+- Repaired the Uplink container's SPT 4.1 animation metadata: the serialized
+  default-state list now matches its two animator layers and the `OutUse` event
+  carries the exact nonzero function hash. Packaging overlays only the
+  deterministic, hash-pinned reviewed repair while retaining the immutable
+  v1.0.8 archive as provenance.
+- Missing UH-60 Pilot artwork now preserves the cloned native BTR Driver avatar
+  instead of requesting a guessed, stale 4.1 file route that could break trader
+  avatar presentation.
+- SPT 4.1 targeting now resolves the exact four-parameter
+  `InputManager.Create(KeyGroup[], AxisGroup[], float, bool)` overload instead
+  of relying on an ambiguous name-only match. Patch initialization throws if
+  that signature disappears, and spotter readiness fails after five seconds if
+  no input manager is captured.
+- Main-menu placement now derives one row from trusted adjacent native rows
+  before considering the potentially multi-row Play-to-Character gap. Adjacent
+  measurements are capped at 160 pixels and the ambiguous fallback at 90
+  pixels, preventing one wide gap from being repeated below **TSC UPLINK**.
 - Persistent authorization hydration now distinguishes omitted state from an authoritative empty ledger, updates an already-open deploy menu, and does not depend on the retired server-URL toggle.
 - Persistent use now follows one server-backed begin, accept, commit, or refund lifecycle instead of decrementing only the client mirror.
 - Networked support requests now wait for raid-authority acceptance. Rejections, timeouts, cancellation, and executor-start failures converge on one idempotent refund/settlement result.
@@ -30,19 +57,40 @@ Beta 1 tester prerelease: `v1.1.0-beta.1`, published 2026-07-31.
 
 ### Changed
 
+- Retargeted the active tester contract to SPT 4.1.2 / EFT
+  0.16.9.5.40743, .NET SDK 10.0.201, the `SPT-4.1 Release` build
+  configuration, and the SPT 4.1 server runtime layout.
+- The SPT 4.1.2 tester archive now has exactly two top-level roots,
+  `BepInEx/` and `SPT_Runtime/`, and installs the server half below
+  `SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/`.
+- The SPT 4.1 port requires a pinned WTT CommonLib 3.x pair and a verified
+  4.1-compatible UnityToolkit build. Fika remains optional but must use one
+  coherent 4.1 client/server pair when multiplayer is tested.
 - Beta 1 aligns its package, plugin, server, assembly, and file versions on one `1.1.0` identity and is published separately under prerelease tag `v1.1.0-beta.1`, leaving `v1.1.0` available for the final release. All four DLLs must be installed as one matched set.
-- The release archive contract is exactly two top-level roots, `BepInEx/` and `SPT/`, extracted directly into the SPT installation root.
+- The published v1.0.8/4.0.13 archive remains the immutable asset baseline;
+  its name, size, SHA-256, contents, and historical layout are preserved.
 - The redundant legacy `raidops-firesupport.json` template is no longer shipped. Existing installs using that filename still migrate to `tsc-config.json`.
 - The mutable `tsc-config.json` is no longer shipped in the installer, preventing overlay upgrades from replacing custom settings. Clean installs create current defaults on first server start.
 - **UH-60 Cargo Transfer** replaces Priority Exfil in the released `PriorityExfil` authorization/config slot. Existing authorizations carry forward one-for-one, while the legacy key, enum value, and existing Priority artwork remain intact for compatibility.
 
 ### Validation Status
 
-- The current 101-test regression suite passes, including dedicated guards for
-  Fika ownership-safe A-10 damage routing, and the full deploy-suppressed
-  solution build passes for Core, Server, Fika Interop, Fika bootstrap, and the
-  regression project.
-- Solo SPT and the main-menu purchase flow have user-reported smoke coverage.
+- The pre-port 4.0.13 baseline's 101-test regression suite passed, including
+  dedicated guards for Fika ownership-safe A-10 damage routing, and its full
+  deploy-suppressed solution build passed for Core, Server, Fika Interop, Fika
+  bootstrap, and the regression project.
+- The pre-port solo SPT and main-menu purchase flow have user-reported smoke
+  coverage; those reports are not 4.1.2 evidence.
+- The current SPT 4.1.2 CI-safe suite passes 109/109 tests; the exact
+  five-project solution builds with 0 errors and two obsolete Core
+  inventory-API warnings. Exact server boot and dashboard shell smoke pass.
+- One SPT 4.1.2 client session reached the menu and a solo raid but remains
+  partial/failing evidence: it exposed the now-fixed input overload and menu
+  row-spacing defects. The corrected Core DLL is installed but has not yet been
+  manually relaunched, so menu and solo-raid acceptance remain open.
+- The Uplink animator default-state/layer mismatch and its serialized zero-hash
+  `OutUse` event are repaired in the package override. Corrected equip/stow
+  runtime acceptance remains open.
 - Matched-version human-host, Fika-client, and dedicated-headless live acceptance remains open. Dedicated-headless A-10 damage is separately gated and experimental.
 
 ## 0.9.8 - Public Beta (released as v1.0.8)

@@ -10,6 +10,8 @@ internal static class Uh60DeliveryServerTests
 
 	private const string CallbackPath =
 		"project/SamSWAT.FireSupport.Server/FireSupportUh60DeliveryCallbacks.cs";
+	private const string DiRegistrationPath =
+		"project/SamSWAT.FireSupport.Server/FireSupportDiRegistration.cs";
 	private const string DeliveryServicePath =
 		"project/SamSWAT.FireSupport.Server/FireSupportUh60DeliveryService.cs";
 	private const string MarkerStorePath =
@@ -283,14 +285,20 @@ internal static class Uh60DeliveryServerTests
 	private static void ServerRoutingPreservesStockFallbackAndIsolatedSender()
 	{
 		string callback = ReadProductionSource(CallbackPath);
+		string diRegistration = ReadProductionSource(DiRegistrationPath);
 		string service = ReadProductionSource(DeliveryServicePath);
 		string markerStore = ReadProductionSource(MarkerStorePath);
 		string listener = ReadProductionSource(HttpListenerPath);
 		string serverMod = ReadProductionSource(ServerModPath);
 
-		AssertEx.Contains(
-			"TypeOverride = typeof(BtrDeliveryCallbacks)",
-			callback);
+		AssertEx.Contains(": IOnDIConstruct", diRegistration);
+		AssertEx.Contains("ReferencesStockBtrCallbacks", diRegistration);
+		AssertEx.Contains("stockDescriptors.Length != 2", diRegistration);
+		AssertEx.Contains("typeof(BtrDeliveryCallbacks)", diRegistration);
+		AssertEx.Contains("serviceCollection.Remove(descriptor)", diRegistration);
+		AssertEx.False(
+			callback.Contains("TypeOverride", StringComparison.Ordinal),
+			"SPT 4.1 removed Injectable.TypeOverride; the DI construction hook must own stock callback replacement.");
 		AssertEx.Contains("if (!hasMessengerItems)", callback);
 		AssertEx.Contains(
 			"btrDeliveryService.SendBTRDelivery",
@@ -365,6 +373,17 @@ internal static class Uh60DeliveryServerTests
 			"cloner.Clone(btrDriver)",
 			service);
 		AssertEx.Contains(
+			"string inheritedAvatar = btrDriver.Base.Avatar",
+			service);
+		AssertEx.Contains(
+			": inheritedAvatar",
+			service);
+		AssertEx.False(
+			service.Contains(
+				"/files/trader/avatar/5935c25fb3acc3127c3d8cd9.png",
+				StringComparison.Ordinal),
+			"The missing-artwork fallback must preserve the native BTR Driver avatar rather than guessing a stale route.");
+		AssertEx.Contains(
 			"traders[MessengerTraderId] = pilot",
 			service);
 		AssertEx.Contains(
@@ -388,7 +407,7 @@ internal static class Uh60DeliveryServerTests
 			"Manifest {normalizedToken}",
 			service);
 		AssertEx.Contains(
-			"databaseService.GetItems()",
+			"templateTable.Items",
 			service);
 		AssertEx.Contains(
 			"MessageContainsExpectedItems",

@@ -168,7 +168,7 @@ Assert-Condition `
     -Message "FileVersion must derive from Version; found '$fileVersion'."
 
 $expectedArchiveTemplate =
-    '$(DistributionDir)$(SolutionName)-v$(Version)-SPT$(TargetSptVersion).zip'
+    '$(DistributionDir)$(SolutionName)-v$(Version)-SPT$(TargetSptVersion)-TESTER.zip'
 Assert-Condition `
     -Condition ($releaseArchiveTemplate -eq $expectedArchiveTemplate) `
     -Message (
@@ -181,7 +181,7 @@ $releaseArchiveName = $releaseArchiveTemplate.
     Replace('$(SolutionName)', $solutionName).
     Replace('$(Version)', $version).
     Replace('$(TargetSptVersion)', $targetSptVersion)
-$expectedArchiveName = "$solutionName-v$version-SPT$targetSptVersion.zip"
+$expectedArchiveName = "$solutionName-v$version-SPT$targetSptVersion-TESTER.zip"
 Assert-Condition `
     -Condition ($releaseArchiveName -eq $expectedArchiveName) `
     -Message "Derived archive name '$releaseArchiveName' does not equal '$expectedArchiveName'."
@@ -243,10 +243,42 @@ $serverModText =
 Assert-TextMatch `
     -Text $serverModText `
     -Pattern (
-        'public\s+override\s+Version\s+Version\s*\{[^}]*\}\s*=\s*' +
+        'public\s+(?:override\s+)?Version\s+Version\s*\{[^}]*\}\s*=\s*' +
         'new\s*\(\s*ModMetadata\.VERSION\s*\)\s*;'
     ) `
     -Description "the server mod version must consume ModMetadata.VERSION"
+Assert-TextMatch `
+    -Text $serverModText `
+    -Pattern (
+        'public\s+(?:override\s+)?Range\s+SptVersion\s*\{[^}]*\}\s*=\s*' +
+        'new\s*\(\s*\$?"~\{ModMetadata\.TARGET_SPT_VERSION\}"\s*\)\s*;'
+    ) `
+    -Description "the server SPT range must consume ModMetadata.TARGET_SPT_VERSION"
+Assert-TextMatch `
+    -Text $serverModText `
+    -Pattern (
+        'public\s+(?:override\s+)?bool\s+HasPrepatcher\s*\{[^}]*\}' +
+        '(?:\s*=\s*false\s*;)?(?!\s*=)'
+    ) `
+    -Description "the SPT 4.1 server metadata must declare HasPrepatcher=false"
+Assert-TextMatch `
+    -Text $serverModText `
+    -Pattern '"com\.wtt\.commonlib"[\s\S]{0,250}"~3\.0\.0"' `
+    -Description "the SPT 4.1 server metadata must require the WTT CommonLib 3.0 line"
+
+$packagerText = Get-RequiredFileText -RelativePath "tools/New-ReleasePackage.ps1"
+Assert-TextMatch `
+    -Text $packagerText `
+    -Pattern '"SPT-4\.1 Release"' `
+    -Description "the release packager must require SPT-4.1 Release build evidence"
+Assert-Condition `
+    -Condition (
+        $packagerText.IndexOf(
+            '$archiveName = "$solutionName-v$version-SPT$targetSptVersion-TESTER.zip"',
+            [StringComparison]::Ordinal
+        ) -ge 0
+    ) `
+    -Message "The release packager must create the exact versioned SPT tester archive name."
 
 $changelogText = Get-RequiredFileText -RelativePath "CHANGELOG.md"
 $changelogHeadings = @(

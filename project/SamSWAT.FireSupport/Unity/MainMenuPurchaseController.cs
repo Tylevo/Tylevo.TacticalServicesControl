@@ -6,6 +6,7 @@ using HarmonyLib;
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -23,6 +24,7 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 	private const float LayoutScanIntervalSeconds = 0.5f;
 	private const float LayoutDriftCheckIntervalSeconds = 1f;
 	private const float ButtonSlotHeight = 60f;
+	private const float DefaultTaskBarSlotWidth = 150f;
 
 	// Restrained subset of the dashboard palette. The storefront intentionally
 	// keeps its original simple layout and built-in Unity font.
@@ -68,6 +70,8 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 	private readonly Dictionary<ESupportType, RowView> _rows = new();
 	private MenuScreen _menuScreen;
 	private DefaultUIButton _menuButton;
+	private AnimatedToggle _taskBarButton;
+	private Transform _taskBarParent;
 	private Transform _menuStackParent;
 	private RectTransform _menuStackAnchor;
 	private string _menuStackAnchorButtonName = string.Empty;
@@ -187,7 +191,16 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 			return;
 		}
 
-		if (_menuButton != null)
+		if (_taskBarButton != null)
+		{
+			bool shouldShow = PluginSettings.Enabled?.Value == true;
+			if (_taskBarButton.gameObject.activeSelf != shouldShow)
+			{
+				_taskBarButton.gameObject.SetActive(shouldShow);
+				PositionTaskBarButton(FindTaskBarPlayerToggle(_menuScreen, out _));
+			}
+		}
+		else if (_menuButton != null)
 		{
 			bool shouldShow = PluginSettings.Enabled?.Value == true;
 			if (_menuButton.gameObject.activeSelf != shouldShow)
@@ -211,6 +224,19 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 		}
 
 		_nextLayoutScanAt = Time.unscaledTime + LayoutDriftCheckIntervalSeconds;
+		AnimatedToggle taskBarTemplate =
+			FindTaskBarPlayerToggle(_menuScreen, out _);
+		if (taskBarTemplate != null)
+		{
+			if (_taskBarButton == null ||
+			    _taskBarButton.transform.parent != taskBarTemplate.transform.parent ||
+			    HasTaskBarPlacementDrifted(taskBarTemplate))
+			{
+				EnsureMenuButton();
+			}
+			return;
+		}
+
 		DefaultUIButton template = FindCharacterButton(_menuScreen);
 		if (template == null)
 		{
@@ -235,6 +261,15 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 			return;
 		}
 
+		AnimatedToggle taskBarTemplate =
+			FindTaskBarPlayerToggle(_menuScreen, out _);
+		if (taskBarTemplate != null && taskBarTemplate.transform.parent != null)
+		{
+			EnsureTaskBarButton(taskBarTemplate);
+			return;
+		}
+
+		RetireTaskBarButton();
 		DefaultUIButton template = FindCharacterButton(_menuScreen);
 		if (template == null || template.transform.parent == null)
 		{
@@ -298,6 +333,151 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 		_menuButton.OnMouseOut?.RemoveAllListeners();
 		EnsureUsable(_menuButton.gameObject);
 		PositionMenuButton(template);
+	}
+
+	private void EnsureTaskBarButton(AnimatedToggle template)
+	{
+		Transform parent = template.transform.parent;
+		if (_menuButton != null)
+		{
+			RestoreMenuStackPositions();
+			DefaultUIButton verticalButton = _menuButton;
+			_menuButton = null;
+			RetireMenuButton(verticalButton);
+		}
+
+		if (_taskBarButton != null && _taskBarButton.transform.parent != parent)
+		{
+			RetireTaskBarButton();
+		}
+
+		AnimatedToggle canonical = _taskBarButton;
+		for (int index = parent.childCount - 1; index >= 0; index--)
+		{
+			Transform child = parent.GetChild(index);
+			if (child == null || child.name != ButtonName)
+			{
+				continue;
+			}
+
+			AnimatedToggle candidate = child.GetComponent<AnimatedToggle>();
+			if (canonical == null && candidate != null)
+			{
+				canonical = candidate;
+				continue;
+			}
+			if (candidate == null || candidate != canonical)
+			{
+				RetireTaskBarButton(candidate, child.gameObject);
+			}
+		}
+
+		_taskBarButton = canonical;
+		if (_taskBarButton == null)
+		{
+			GameObject clone = Instantiate(template.gameObject, parent);
+			clone.name = ButtonName;
+			_taskBarButton = clone.GetComponent<AnimatedToggle>();
+		}
+		if (_taskBarButton == null)
+		{
+			return;
+		}
+
+		_taskBarParent = parent;
+		_taskBarButton.group = null;
+		_taskBarButton.onValueChanged.RemoveAllListeners();
+		_taskBarButton.onValueChanged.AddListener(HandleTaskBarToggle);
+		_taskBarButton.ToggleSilent(false);
+		_taskBarButton.interactable = true;
+		SetTaskBarButtonText(_taskBarButton.gameObject);
+		EnsureUsable(_taskBarButton.gameObject);
+		_taskBarButton.gameObject.SetActive(PluginSettings.Enabled?.Value == true);
+		PositionTaskBarButton(template);
+	}
+
+	private void HandleTaskBarToggle(bool selected)
+	{
+		if (!selected)
+		{
+			return;
+		}
+
+		OpenPage();
+		_taskBarButton?.ToggleSilent(false);
+	}
+
+	private static void SetTaskBarButtonText(GameObject root)
+	{
+		foreach (LocalizedText localizedText in
+		         root.GetComponentsInChildren<LocalizedText>(true))
+		{
+			localizedText.FormattedText = "TSC UPLINK";
+			localizedText.enabled = false;
+		}
+		foreach (TMP_Text label in root.GetComponentsInChildren<TMP_Text>(true))
+		{
+			label.text = "TSC UPLINK";
+		}
+	}
+
+	private void PositionTaskBarButton(AnimatedToggle playerTemplate)
+	{
+		RectTransform target = _taskBarButton?.GetComponent<RectTransform>();
+		RectTransform player = playerTemplate?.GetComponent<RectTransform>();
+		Transform parent = player?.parent;
+		if (target == null || player == null || parent == null)
+		{
+			return;
+		}
+
+		AnimatedToggle tradeTemplate = FindTaskBarToggle(_menuScreen, EMenuType.Trade);
+		RectTransform trade = tradeTemplate?.GetComponent<RectTransform>();
+		float slotStepX = trade != null && trade.parent == parent
+			? trade.localPosition.x - player.localPosition.x
+			: DefaultTaskBarSlotWidth;
+		if (Mathf.Abs(slotStepX) < 40f || Mathf.Abs(slotStepX) > 400f)
+		{
+			slotStepX = DefaultTaskBarSlotWidth;
+		}
+
+		CopyRect(target, player);
+		LayoutElement layoutElement = target.GetComponent<LayoutElement>() ??
+			target.gameObject.AddComponent<LayoutElement>();
+		layoutElement.ignoreLayout = true;
+		target.localPosition = new Vector3(
+			player.localPosition.x - slotStepX,
+			player.localPosition.y,
+			player.localPosition.z);
+		int playerIndex = player.GetSiblingIndex();
+		target.SetSiblingIndex(Mathf.Max(0, playerIndex -
+			(target.GetSiblingIndex() < playerIndex ? 1 : 0)));
+	}
+
+	private bool HasTaskBarPlacementDrifted(AnimatedToggle playerTemplate)
+	{
+		RectTransform target = _taskBarButton?.GetComponent<RectTransform>();
+		RectTransform player = playerTemplate?.GetComponent<RectTransform>();
+		if (target == null || player == null || target.parent != player.parent)
+		{
+			return true;
+		}
+
+		AnimatedToggle tradeTemplate = FindTaskBarToggle(_menuScreen, EMenuType.Trade);
+		RectTransform trade = tradeTemplate?.GetComponent<RectTransform>();
+		float slotStepX = trade != null && trade.parent == player.parent
+			? trade.localPosition.x - player.localPosition.x
+			: DefaultTaskBarSlotWidth;
+		if (Mathf.Abs(slotStepX) < 40f || Mathf.Abs(slotStepX) > 400f)
+		{
+			slotStepX = DefaultTaskBarSlotWidth;
+		}
+		Vector3 expected = new(
+			player.localPosition.x - slotStepX,
+			player.localPosition.y,
+			player.localPosition.z);
+		return (target.localPosition - expected).sqrMagnitude > 0.01f ||
+		       !RectGeometryMatches(target, player);
 	}
 
 	private void PositionMenuButton(DefaultUIButton template)
@@ -578,58 +758,34 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 		RectTransform target,
 		RectTransform character)
 	{
-		RectTransform play = FindActiveSiblingRect(parent, "PlayButton", target);
-		if (TryResolveSlotStep(play, character, out float slotStepY))
-		{
-			_menuStackSlotStepY = slotStepY;
-			_hasMenuStackSlotStep = true;
-			return slotStepY;
-		}
-
-		if (_hasMenuStackSlotStep)
-		{
-			return _menuStackSlotStepY;
-		}
-
 		RectTransform trade = FindActiveSiblingRect(parent, "TradeButton", target);
 		RectTransform hideout = FindActiveSiblingRect(parent, "HideoutButton", target);
-		if (!TryResolveSlotStep(trade, hideout, out slotStepY))
-		{
-			RectTransform exit =
-				FindActiveSiblingRect(parent, "ExitButtonGroup", target);
-			TryResolveSlotStep(hideout, exit, out slotStepY);
-		}
+		RectTransform exit = FindActiveSiblingRect(parent, "ExitButtonGroup", target);
+		RectTransform play = FindActiveSiblingRect(parent, "PlayButton", target);
+		float slotStepY = MainMenuSlotStepPolicy.Resolve(
+			MeasureSlotStep(trade, hideout),
+			MeasureSlotStep(hideout, exit),
+			_hasMenuStackSlotStep ? _menuStackSlotStepY : null,
+			MeasureSlotStep(play, character),
+			-ButtonSlotHeight);
 
-		if (!IsPlausibleSlotStep(slotStepY))
-		{
-			slotStepY = -ButtonSlotHeight;
-		}
 		_menuStackSlotStepY = slotStepY;
 		_hasMenuStackSlotStep = true;
 		return slotStepY;
 	}
 
-	private static bool TryResolveSlotStep(
+	private static float? MeasureSlotStep(
 		RectTransform upper,
-		RectTransform lower,
-		out float slotStepY)
+		RectTransform lower)
 	{
-		slotStepY = 0f;
 		if (upper == null ||
 		    lower == null ||
 		    upper.parent != lower.parent)
 		{
-			return false;
+			return null;
 		}
 
-		slotStepY = lower.localPosition.y - upper.localPosition.y;
-		return IsPlausibleSlotStep(slotStepY);
-	}
-
-	private static bool IsPlausibleSlotStep(float slotStepY)
-	{
-		float magnitude = Mathf.Abs(slotStepY);
-		return magnitude >= 20f && magnitude <= 160f;
+		return lower.localPosition.y - upper.localPosition.y;
 	}
 
 	private static bool RectGeometryMatches(
@@ -1882,6 +2038,7 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 			_menuButton = null;
 			RetireMenuButton(staleButton);
 		}
+		RetireTaskBarButton();
 		if (_pageRoot != null)
 		{
 			GameObject stalePage = _pageRoot;
@@ -1906,6 +2063,33 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 		}
 
 		button?.OnClick.RemoveAllListeners();
+		staleButton.name =
+			$"{ButtonName}_Retired_{staleButton.GetInstanceID()}";
+		staleButton.SetActive(false);
+		Destroy(staleButton);
+	}
+
+	private void RetireTaskBarButton()
+	{
+		AnimatedToggle button = _taskBarButton;
+		_taskBarButton = null;
+		_taskBarParent = null;
+		RetireTaskBarButton(button);
+	}
+
+	private static void RetireTaskBarButton(
+		AnimatedToggle button,
+		GameObject fallback = null)
+	{
+		GameObject staleButton = button != null
+			? button.gameObject
+			: fallback;
+		if (staleButton == null)
+		{
+			return;
+		}
+
+		button?.onValueChanged.RemoveAllListeners();
 		staleButton.name =
 			$"{ButtonName}_Retired_{staleButton.GetInstanceID()}";
 		staleButton.SetActive(false);
@@ -1965,6 +2149,10 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 			DefaultUIButton ownedButton = _menuButton;
 			_menuButton = null;
 			RetireMenuButton(ownedButton);
+		}
+		if (ownsCurrentUi)
+		{
+			RetireTaskBarButton();
 		}
 		if (_pageRoot != null)
 		{
@@ -2112,6 +2300,81 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 		}
 
 		return fallback ?? reflectedButton;
+	}
+
+	private static AnimatedToggle FindTaskBarPlayerToggle(
+		MenuScreen menuScreen,
+		out MenuTaskBar taskBar)
+	{
+		taskBar = FindTaskBar(menuScreen);
+		return FindTaskBarToggle(taskBar, EMenuType.Player);
+	}
+
+	private static AnimatedToggle FindTaskBarToggle(
+		MenuScreen menuScreen,
+		EMenuType menuType)
+	{
+		return FindTaskBarToggle(FindTaskBar(menuScreen), menuType);
+	}
+
+	private static AnimatedToggle FindTaskBarToggle(
+		MenuTaskBar taskBar,
+		EMenuType menuType)
+	{
+		if (taskBar == null)
+		{
+			return null;
+		}
+
+		try
+		{
+			Dictionary<EMenuType, AnimatedToggle> toggles =
+				Traverse.Create(taskBar)
+					.Field("_toggleButtons")
+					.GetValue<Dictionary<EMenuType, AnimatedToggle>>();
+			if (toggles != null &&
+			    toggles.TryGetValue(menuType, out AnimatedToggle toggle) &&
+			    toggle != null)
+			{
+				return toggle;
+			}
+		}
+		catch
+		{
+			// The scoped hierarchy fallback below remains safe if the field changes.
+		}
+		return null;
+	}
+
+	private static MenuTaskBar FindTaskBar(MenuScreen menuScreen)
+	{
+		if (menuScreen == null)
+		{
+			return null;
+		}
+
+		Canvas canvas = menuScreen.GetComponentInParent<Canvas>();
+		if (canvas != null)
+		{
+			foreach (MenuTaskBar candidate in
+			         canvas.GetComponentsInChildren<MenuTaskBar>(true))
+			{
+				if (candidate != null && candidate.gameObject.activeInHierarchy)
+				{
+					return candidate;
+				}
+			}
+		}
+
+		foreach (MenuTaskBar candidate in
+		         menuScreen.GetComponentsInChildren<MenuTaskBar>(true))
+		{
+			if (candidate != null && candidate.gameObject.activeInHierarchy)
+			{
+				return candidate;
+			}
+		}
+		return null;
 	}
 
 	private RectTransform FindPreferredRecordsAnchor(

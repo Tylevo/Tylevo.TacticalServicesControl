@@ -13,7 +13,16 @@ internal class InputManagerUtil : ModulePatch
 
 	protected override MethodBase GetTargetMethod()
 	{
-		return AccessTools.DeclaredMethod(typeof(InputManager), nameof(InputManager.Create));
+		return AccessTools.DeclaredMethod(
+			typeof(InputManager),
+			nameof(InputManager.Create),
+			[
+				typeof(KeyGroup[]),
+				typeof(AxisGroup[]),
+				typeof(float),
+				typeof(bool)
+			]) ?? throw new System.MissingMethodException(
+				"SPT InputManager.Create(KeyGroup[], AxisGroup[], float, bool) was not found.");
 	}
 
 	[PatchPostfix]

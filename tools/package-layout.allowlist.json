@@ -1,12 +1,34 @@
 {
   "schemaVersion": 3,
+  "criticalReferencePins": [
+    {
+      "fileName": "hollowed.dll",
+      "sha256": "E40F6E470CD3C09E827900EFE98BB490920E97CAE962880DCA23DDF2A78E501C"
+    },
+    {
+      "fileName": "WTT-ClientCommonLib.dll",
+      "sha256": "6C5B99E752D1AA614DA6E14B5FE56BBC1BCC0772C388DA57458F382DE3C34453"
+    },
+    {
+      "fileName": "WTT-ServerCommonLib.dll",
+      "sha256": "30164AE02D6F39B9E02CBC569115C494954E4D187406D89E7A4E998AEDF5D754"
+    },
+    {
+      "fileName": "Fika.Core.dll",
+      "sha256": "EB754C63F061B65B2F167109F9704F93E61C14F96D86A5AC192CFF21C83D5A7E"
+    },
+    {
+      "fileName": "UnityToolkit.dll",
+      "sha256": "DBA886D4C8B118C389795B1196EC13742DA42771C50D190209C370F69C416E75"
+    }
+  ],
   "archiveRoots": [
     "BepInEx",
-    "SPT"
+    "SPT_Runtime"
   ],
   "installRoots": [
     "BepInEx/plugins/Tylevo.TacticalServicesControl",
-    "SPT/user/mods/Tylevo.TacticalServicesControl"
+    "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl"
   ],
   "mirrors": [
     {
@@ -165,7 +187,7 @@
     },
     {
       "source": "project/SamSWAT.FireSupport.Server/CopyToOutput",
-      "destination": "SPT/user/mods/Tylevo.TacticalServicesControl",
+      "destination": "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl",
       "files": [
         "bundles.json",
         "database/ammo_30x173_gau8_avenger.json",
@@ -182,23 +204,23 @@
   ],
   "buildArtifacts": [
     {
-      "source": "project/SamSWAT.FireSupport/Build/SPT-4.0/netstandard2.1/SamSWAT.FireSupport.ArysReloaded.Core.dll",
+      "source": "project/SamSWAT.FireSupport/Build/SPT-4.1/netstandard2.1/SamSWAT.FireSupport.ArysReloaded.Core.dll",
       "destination": "BepInEx/plugins/Tylevo.TacticalServicesControl/Tylevo.TacticalServicesControl.Core.dll",
       "assemblyName": "SamSWAT.FireSupport.ArysReloaded.Core"
     },
     {
-      "source": "project/SamSWAT.FireSupport.Fika/Build/SPT-4.0/netstandard2.1/SamSWAT.FireSupport.ArysReloaded.Fika.dll",
+      "source": "project/SamSWAT.FireSupport.Fika/Build/SPT-4.1/netstandard2.1/SamSWAT.FireSupport.ArysReloaded.Fika.dll",
       "destination": "BepInEx/plugins/Tylevo.TacticalServicesControl/Tylevo.TacticalServicesControl.Fika.dll",
       "assemblyName": "SamSWAT.FireSupport.ArysReloaded.Fika"
     },
     {
-      "source": "project/SamSWAT.FireSupport.Fika.Interop/Build/SPT-4.0/netstandard2.1/Tylevo.TacticalServicesControl.Fika.Interop.dll",
+      "source": "project/SamSWAT.FireSupport.Fika.Interop/Build/SPT-4.1/netstandard2.1/Tylevo.TacticalServicesControl.Fika.Interop.dll",
       "destination": "BepInEx/plugins/Tylevo.TacticalServicesControl/Tylevo.TacticalServicesControl.Fika.Interop.dll",
       "assemblyName": "Tylevo.TacticalServicesControl.Fika.Interop"
     },
     {
-      "source": "project/SamSWAT.FireSupport.Server/Build/SPT-4.0/net9.0/Tylevo.TacticalServicesControl.Server.dll",
-      "destination": "SPT/user/mods/Tylevo.TacticalServicesControl/Tylevo.TacticalServicesControl.Server.dll",
+      "source": "project/SamSWAT.FireSupport.Server/Build/SPT-4.1/net10.0/Tylevo.TacticalServicesControl.Server.dll",
+      "destination": "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/Tylevo.TacticalServicesControl.Server.dll",
       "assemblyName": "Tylevo.TacticalServicesControl.Server"
     }
   ],
@@ -209,7 +231,7 @@
     },
     {
       "source": "THIRD_PARTY_NOTICES.md",
-      "destination": "SPT/user/mods/Tylevo.TacticalServicesControl/THIRD_PARTY_NOTICES.md"
+      "destination": "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/THIRD_PARTY_NOTICES.md"
     }
   ],
   "baselineAssetArchive": {
@@ -248,12 +270,17 @@
         "sha256": "A2336CF5D251C69E7D27E1E5C818E432B6719BE4671F255EBA20E5A22BEF1803"
       },
       {
-        "path": "SPT/user/mods/Tylevo.TacticalServicesControl/bundles/raidops/uav_uplink_container.bundle",
+        "path": "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/bundles/raidops/uav_uplink_container.bundle",
+        "sourcePath": "SPT/user/mods/Tylevo.TacticalServicesControl/bundles/raidops/uav_uplink_container.bundle",
         "length": 1181738,
-        "sha256": "F496805B01B0CBEC699435DE0B651BFED9F35595BE34312398A91DB600B66425"
+        "sha256": "F496805B01B0CBEC699435DE0B651BFED9F35595BE34312398A91DB600B66425",
+        "overrideSource": "tools/assets/spt-4.1.2/uav_uplink_container.bundle",
+        "overrideLength": 1167863,
+        "overrideSha256": "8C9F8D8878076D4FFCB2687D62609F606552B3E9F3529FBE584DF79E43365861"
       },
       {
-        "path": "SPT/user/mods/Tylevo.TacticalServicesControl/bundles/raidops/uav_uplink_loot.bundle",
+        "path": "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/bundles/raidops/uav_uplink_loot.bundle",
+        "sourcePath": "SPT/user/mods/Tylevo.TacticalServicesControl/bundles/raidops/uav_uplink_loot.bundle",
         "length": 600863,
         "sha256": "5C3F63D03EECE824FEA12FE25783D782EE76992F0AAFE41405D3BE863FD34068"
       }
@@ -269,12 +296,12 @@
     "BepInEx/plugins/Tylevo.TacticalServicesControl/assets/content/ui/uav_radarhud.bundle",
     "BepInEx/plugins/Tylevo.TacticalServicesControl/assets/content/vehicles/a10_warthog.bundle",
     "BepInEx/plugins/Tylevo.TacticalServicesControl/assets/content/vehicles/uh60_blackhawk.bundle",
-    "SPT/user/mods/Tylevo.TacticalServicesControl/Tylevo.TacticalServicesControl.Server.dll",
-    "SPT/user/mods/Tylevo.TacticalServicesControl/bundles/raidops/uav_uplink_container.bundle",
-    "SPT/user/mods/Tylevo.TacticalServicesControl/bundles/raidops/uav_uplink_loot.bundle",
-    "SPT/user/mods/Tylevo.TacticalServicesControl/web/app.mjs",
-    "SPT/user/mods/Tylevo.TacticalServicesControl/web/index.html",
-    "SPT/user/mods/Tylevo.TacticalServicesControl/web/styles.css"
+    "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/Tylevo.TacticalServicesControl.Server.dll",
+    "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/bundles/raidops/uav_uplink_container.bundle",
+    "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/bundles/raidops/uav_uplink_loot.bundle",
+    "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/web/app.mjs",
+    "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/web/index.html",
+    "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/web/styles.css"
   ],
   "exactCounts": {
     ".dll": 4,
@@ -301,8 +328,8 @@
     ".github",
     ".vs",
     "BepInEx/config",
-    "SPT/user/cache",
-    "SPT/user/profiles",
+    "SPT_Runtime/user/cache",
+    "SPT_Runtime/user/profiles",
     "obj",
     "storage"
   ],
@@ -313,6 +340,7 @@
     "^BepInEx(?:\\..+)?\\.dll$",
     "^Comfort\\.dll$",
     "^Fika\\.Core\\.dll$",
+    "^hollowed\\.dll$",
     "^Newtonsoft\\.Json\\.dll$",
     "^SemanticVersioning\\.dll$",
     "^SPTarkov\\..+\\.dll$",

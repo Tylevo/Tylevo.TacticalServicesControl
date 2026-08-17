@@ -1,5 +1,6 @@
 using EFT;
 using EFT.UI;
+using EFT.UI.Matchmaker;
 using HarmonyLib;
 using JetBrains.Annotations;
 using SamSWAT.FireSupport.ArysReloaded.Unity;
@@ -22,7 +23,7 @@ internal sealed class MainMenuPurchasePatch : ModulePatch
 			nameof(MenuScreen.Show),
 			[
 				typeof(Profile),
-				typeof(MatchmakerPlayerControllerClass),
+				typeof(MatchmakerPlayersController),
 				typeof(ESessionMode)
 			]);
 	}

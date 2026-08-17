@@ -25,7 +25,7 @@ public sealed class UavReconService(
 		if (UavReconOverlay.TryGetSessionSnapshot(out UavReconOverlay.ReconSessionSnapshot activeRecon))
 		{
 			int secondsRemaining = Mathf.CeilToInt(activeRecon.RemainingSeconds);
-			NotificationManagerClass.DisplayWarningNotification(
+			NotificationManager.DisplayWarningNotification(
 				$"RECON LINK ACTIVE - {secondsRemaining / 60:00}:{secondsRemaining % 60:00} remaining.",
 				ENotificationDurationType.Default);
 			return;
@@ -197,7 +197,7 @@ public sealed class UavReconService(
 						cancellationToken);
 				}
 
-				NotificationManagerClass.DisplayMessageNotification(
+				NotificationManager.DisplayMessageNotification(
 					$"{FireSupportPayment.GetSupportName(effectiveSupportType)} active for {acceptedDurationSeconds:0.#}s.",
 					ENotificationDurationType.Default,
 					ENotificationIconType.Default,

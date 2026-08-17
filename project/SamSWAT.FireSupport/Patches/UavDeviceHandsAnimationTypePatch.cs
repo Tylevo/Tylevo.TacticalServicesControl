@@ -12,22 +12,23 @@ internal sealed class UavDeviceHandsAnimationTypePatch : ModulePatch
 
 	protected override MethodBase GetTargetMethod()
 	{
-		return typeof(HandsControllerClass).GetMethod(
-			"method_49",
-			BindingFlags.Public | BindingFlags.Instance);
+		return AccessTools.DeclaredMethod(
+			typeof(Player),
+			nameof(Player.GetWeaponAnimationType),
+			new[] { typeof(Player.AbstractHandsController) });
 	}
 
 	[PatchPrefix]
 	private static bool Prefix(
 		ref PlayerAnimator.EWeaponAnimationType __result,
-		HandsControllerClass __instance)
+		Player.AbstractHandsController __0)
 	{
-		if (__instance.ItemInHands is not UavDeviceItem)
+		if (__0?.Item is not UavDeviceItem)
 		{
-			if (UavDeviceConstants.IsUavDeviceTemplate(__instance.ItemInHands))
+			if (UavDeviceConstants.IsUavDeviceTemplate(__0?.Item))
 			{
 				FireSupportPlugin.LogSource.LogWarning(
-					$"TerraGroup TSC Uplink hands animation not forced: runtime item type is {__instance.ItemInHands.GetType().FullName}, expected {typeof(UavDeviceItem).FullName}.");
+					$"TerraGroup TSC Uplink hands animation not forced: runtime item type is {__0.Item.GetType().FullName}, expected {typeof(UavDeviceItem).FullName}.");
 			}
 
 			return true;

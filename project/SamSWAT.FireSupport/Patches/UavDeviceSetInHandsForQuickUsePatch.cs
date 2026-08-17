@@ -23,10 +23,10 @@ internal sealed class UavDeviceSetInHandsForQuickUsePatch : ModulePatch
 	}
 
 	[PatchPrefix]
-	private static bool Prefix(Player __instance, Item __0, Callback<IOnHandsUseCallback> __1)
+	private static bool Prefix(Player __instance, Item __0, Callback<IQuickUseItem> __1)
 	{
 		Item item = __0;
-		Callback<IOnHandsUseCallback> callback = __1;
+		Callback<IQuickUseItem> callback = __1;
 
 		if (UavDeviceController.ShouldSuppressQuickUse(__instance) &&
 		    !UavDeviceConstants.IsUavDeviceTemplate(item))
@@ -37,7 +37,7 @@ internal sealed class UavDeviceSetInHandsForQuickUsePatch : ModulePatch
 			// caller waits on it, and an uninvoked callback freezes the player in
 			// the interaction state. This froze quick-use of OTHER items (meds,
 			// grenades, ground pickups) while the phone session was active.
-			callback?.Invoke(new Result<IOnHandsUseCallback>(null, "TSC Uplink session is active.", 0));
+			callback?.Invoke(new Result<IQuickUseItem>(null, "TSC Uplink session is active.", 0));
 			return false;
 		}
 
@@ -65,7 +65,7 @@ internal sealed class UavDeviceSetInHandsForQuickUsePatch : ModulePatch
 		TscDiagnostics.LogPhone(
 			$"TerraGroup TSC Uplink quick-use forwarding to SetInHandsUsableItem. item={item.Id}, tpl={item.TemplateId}, type={item.GetType().FullName}.");
 
-		Callback<GInterface202> wrappedCallback = result =>
+		Callback<IUsableItemController> wrappedCallback = result =>
 		{
 			if (callback == null)
 			{
@@ -74,19 +74,19 @@ internal sealed class UavDeviceSetInHandsForQuickUsePatch : ModulePatch
 
 			if (result.Failed)
 			{
-				callback.Invoke(new Result<IOnHandsUseCallback>(null, result.Error, result.ErrorCode));
+				callback.Invoke(new Result<IQuickUseItem>(null, result.Error, result.ErrorCode));
 				return;
 			}
 
-			if (result.Value is IOnHandsUseCallback quickUseController)
+			if (result.Value is IQuickUseItem quickUseController)
 			{
-				callback.Invoke(new Result<IOnHandsUseCallback>(quickUseController));
+				callback.Invoke(new Result<IQuickUseItem>(quickUseController));
 				return;
 			}
 
-			callback.Invoke(new Result<IOnHandsUseCallback>(
+			callback.Invoke(new Result<IQuickUseItem>(
 				null,
-				"TerraGroup TSC Uplink controller did not implement IOnHandsUseCallback.",
+				"TerraGroup TSC Uplink controller did not implement IQuickUseItem.",
 				0));
 		};
 
@@ -99,7 +99,7 @@ internal sealed class UavDeviceSetInHandsForQuickUsePatch : ModulePatch
 			// EFT's caller waits on this callback; leaving it uninvoked freezes
 			// the player in the interaction state.
 			FireSupportPlugin.LogSource.LogWarning($"TSC Uplink quick-use equip failed. {ex}");
-			callback?.Invoke(new Result<IOnHandsUseCallback>(null, ex.Message, 0));
+			callback?.Invoke(new Result<IQuickUseItem>(null, ex.Message, 0));
 		}
 
 		return false;

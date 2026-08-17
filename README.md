@@ -2,6 +2,17 @@
 
 A BepInEx mod that reworks SamSWAT's Fire Support / Arys Reloaded into a TerraGroup-style tactical support system for SPT and Fika.
 
+> **SPT 4.1.2 tester port:** v1.1.0 is being ported against the clean SPT
+> 4.1.2 / EFT 0.16.9.5.40743 release. The expected test artifact is
+> `Tylevo.TacticalServicesControl-v1.1.0-SPT4.1.2-TESTER.zip`. The exact pinned
+> current CI-safe suite, exact five-project build, and live installed
+> server/dashboard shell smoke pass. A prior full local verification also
+> passed, but final-candidate evidence must be refreshed after the latest
+> hardening. A prior client run reached the menu and one raid but is
+> retained as partial/failing evidence because it exposed input-targeting and
+> menu-spacing defects. Their corrected Core DLL is installed but has not yet
+> been manually relaunched; solo acceptance and Fika remain separate gates.
+
 This mod adds a **TerraGroup TSC Uplink** phone that lets you buy support authorizations in raid, then deploy them later from the same device. The phone handles service selection and camera-based target designation, so the rangefinder and YY gesture wheel are no longer required for the primary workflow.
 
 Currently available support options:
@@ -17,10 +28,19 @@ This project is derivative of SamSWAT's original Fire Support and SamSWAT's Fire
 
 ## Requirements
 
-- SPT 4.0.13.
-- UnityToolkit v2.0.1.
-- WTT Client Common Lib and WTT Server Common Lib, installed separately as required dependencies.
-- Project Fika, optional and only for multiplayer/Fika use. Single-player installs do not need Fika; TSC detects it at runtime.
+- SPT 4.1.2.
+- The SPT 4.1.2 rebuild of UnityToolkit 2.0.1 pinned in the port log. The old
+  unmodified v2.0.1/4.0 binary is not a valid substitute.
+- WTT Client CommonLib and WTT Server CommonLib 3.0.3, installed separately
+  as required dependencies, including its serialization prepatcher.
+- Project Fika client 2.4.1 with its compatible server line, optional and
+  required only for multiplayer/Fika use. Single-player installs do not need
+  Fika; TSC detects it at runtime.
+
+The exact dependency commits, assembly versions, and SHA-256 values used for a
+tester are recorded in `docs/port/SPT-4.1-PORT-LOG.md`. Use those exact pins
+for acceptance testing; compiler compatibility with a different dependency
+build is not runtime evidence.
 
 TSC does not bundle WTT Common Lib. The client and server projects reference the installed WTT dependency DLLs at runtime/build time, so WTT should be listed as a dependency on Forge rather than redistributed inside the TSC package.
 
@@ -33,7 +53,7 @@ Do not install the old SamSWAT Fire Support or Arys Reloaded mod alongside TSC. 
 3. Extract the release ZIP directly into your SPT root.
 4. Confirm these folders exist after extraction:
    - `BepInEx/plugins/Tylevo.TacticalServicesControl/`
-   - `SPT/user/mods/Tylevo.TacticalServicesControl/`
+   - `SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/`
 5. Start SPT normally.
 
 Do not place the ZIP contents inside an extra nested folder.
@@ -70,6 +90,14 @@ https://127.0.0.1:6969/tsc/admin
 ```
 
 The dashboard is localhost-only by default. Do not port-forward it.
+
+SPT 4.1.2's native mod-config editor also lists a curated **Tactical Services
+Control** entry. It exposes service prices, availability, payment behavior,
+cooldowns, persistence limits, UAV timing/range, UH-60 timing, and double-pass
+delay. Security, player balances, authorizations, recovery records, and dormant
+compatibility fields remain available only through TSC's purpose-built flow and
+are intentionally not exposed by the generic editor. Both editors use the same
+validated, revision-checked, atomic `tsc-config.json` save path.
 
 ## Features
 
@@ -131,6 +159,27 @@ See `docs/dashboard.md`, `PRIVACY.md`, and `SECURITY.md`.
 
 ## Known Issues
 
+- SPT 4.1.2 compilation and an earlier full local verification pass with the
+  pinned dependencies. A live installed smoke reaches the TSC health route,
+  dashboard shell, and static assets without changing the existing config. The
+  current CI-safe suite passes 109/109 tests, and the exact five-project
+  solution builds with 0 errors and two obsolete Core inventory-API warnings.
+  Dashboard schema/config/authentication exercise, refreshed final build
+  evidence, final-package cleanliness, corrected client relaunch, solo-raid
+  acceptance, and Fika acceptance remain in progress; see
+  `docs/port/SPT-4.1-PORT-LOG.md` for each gate.
+- The SPT 4.1 client hardening targets the exact four-parameter
+  `InputManager.Create(KeyGroup[], AxisGroup[], float, bool)` overload and
+  fails readiness after five seconds if the manager is not captured. Main-menu
+  placement now prefers measured adjacent rows, accepting trusted adjacent
+  spacing up to 160 pixels while accepting the ambiguous Play-to-Character gap
+  only up to 90 pixels. Both changes compile and are regression-covered, but
+  the installed corrected DLL still needs a manual relaunch.
+- The SPT 4.1.2 package now overlays a fail-closed, hash-pinned Uplink bundle
+  repair: its two-layer controller has two default-state entries and the
+  serialized `OutUse` event has the exact nonzero 4.1 hash. The repair changes
+  only those two reviewed Unity objects; a corrected equip/stow runtime replay
+  remains a final acceptance gate.
 - Phone inventory inspect model may still need polish.
 - Mortar/artillery support is planned but not included.
 - Dedicated-headless Fika A-10 damage is experimental and remains separately gated from the original single-player/human-host path.

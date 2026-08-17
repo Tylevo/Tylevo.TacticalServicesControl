@@ -2,7 +2,14 @@
 
 > Separate tester prerelease published as GitHub tag `v1.1.0-beta.1`. This does not consume the final `v1.1.0` tag.
 
-Target: SPT 4.0.13. This update follows the published v1.0.8 build.
+Target: **SPT 4.1.2 / EFT 0.16.9.5.40743 tester**. This port follows the
+published v1.0.8/4.0.13 build, whose archive remains the immutable asset
+baseline. The expected artifact is
+`Tylevo.TacticalServicesControl-v1.1.0-SPT4.1.2-TESTER.zip`.
+
+This target declaration is not a compatibility claim. SPT 4.1.2 build,
+server-boot, menu, raid, and Fika acceptance must be recorded separately in
+`docs/port/SPT-4.1-PORT-LOG.md`.
 
 ## Highlights
 
@@ -80,7 +87,9 @@ Target: SPT 4.0.13. This update follows the published v1.0.8 build.
   stash-fee recovery, and ownership-safe headless A-10 damage routing.
 - Added CI-safe repository, JSON, JavaScript, solution, deployment-guard, and package-layout checks that require no proprietary game assemblies.
 - Added one deploy-disabled local verification path for Core, Server, Fika Interop, Fika bootstrap, and the regression runner.
-- The full local release build completed with 0 errors. Its 17 warnings are existing nullable/obsolete-API warnings.
+- The pre-port SPT 4.0.13 local release build completed with 0 errors and 17
+  existing nullable/obsolete-API warnings. That result does not validate the
+  SPT 4.1.2 port.
 
 ## Updating
 
@@ -88,6 +97,10 @@ Target: SPT 4.0.13. This update follows the published v1.0.8 build.
 2. Close the SPT server, launcher, game, every Fika client, and any headless process.
 3. Extract the release ZIP into the SPT root.
 4. Install the exact same TSC build on the server, human host, every client, and any dedicated headless host.
+
+After extraction, the client files belong under
+`BepInEx/plugins/Tylevo.TacticalServicesControl/` and the server files belong
+under `SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/`.
 
 The ZIP intentionally does not contain `config/tsc-config.json`, so extracting
 an upgrade cannot replace custom settings with release defaults. A clean
@@ -97,11 +110,18 @@ to RUB. The authorization ledger migrates to schema 5. Downgrading only the
 Server DLL after the ledger upgrade is unsupported; restore the matching
 pre-upgrade storage backup with the older DLL set.
 
-Required dependencies are not bundled: UnityToolkit v2.0.1, WTT Client Common Lib, and WTT Server Common Lib. Project Fika is optional and required only for multiplayer.
+Required dependencies are not bundled: use a verified SPT 4.1-compatible
+UnityToolkit build and matching WTT Client/Server CommonLib 3.x builds.
+Project Fika is optional and required only for multiplayer; use one matching
+SPT 4.1 client/server pair. Exact commits, versions, and hashes must be pinned
+in the port log before distributing a tester. Do not reuse 4.0 dependency
+binaries merely because they load.
 
 ## Validation Status And Known Limitations
 
-- Solo SPT has been reported healthy, but the complete persistent-purchase, recon, standard-Extraction, and Cargo-transfer acceptance matrices are not yet recorded.
+- Prior-version solo SPT has been reported healthy, but no such report is an
+  SPT 4.1.2 acceptance result. The complete 4.1.2 persistent-purchase, recon,
+  standard-Extraction, and Cargo-transfer matrices remain open.
 - The new human-host, Fika-client, two-client, and dedicated-headless transaction, recon, standard-Extraction, and Cargo-transfer matrices remain open. Do not treat automated tests or a successful build as live multiplayer acceptance.
 - No current headless tester has yet verified that the experimental A-10 executor applies damage once and settles the matching authorization correctly in a real raid. The previous direct health-controller fallback has been removed: headless-owned bots now use Fika's player damage lifecycle and remote humans use Fika's explosive damage-packet wrapper, but the lethal corpse/downed matrix remains open until tested live.
 - If both accepted-result paths and cancellation settlement are lost beyond the bounded wait, an authority-executed service can still be refunded. A late acceptance remains deduplicated, but the service may become free.

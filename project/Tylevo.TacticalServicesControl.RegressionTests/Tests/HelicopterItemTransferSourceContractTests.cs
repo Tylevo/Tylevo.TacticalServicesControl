@@ -103,7 +103,7 @@ internal static class HelicopterItemTransferSourceContractTests
 		AssertEx.Contains("TryEnsurePlayerTransferGrid", open);
 		AssertEx.Contains("TryBeginItemTransfer", open);
 		AssertEx.Contains(
-			"new TransferItemsInRaidScreen.GClass3893",
+			"new TransferItemsInRaidScreen.TransferItemsInRaidScreenController",
 			open);
 		AssertEx.Contains("screenController.OnClose +=", open);
 		AssertEx.Contains(
@@ -123,7 +123,7 @@ internal static class HelicopterItemTransferSourceContractTests
 		AssertBefore(
 			open,
 			"TryBeginItemTransfer",
-			"new TransferItemsInRaidScreen.GClass3893",
+			"new TransferItemsInRaidScreen.TransferItemsInRaidScreenController",
 			"The point must enter its paused state before the native screen is shown.");
 		AssertEx.False(
 			open.Contains(

@@ -384,3 +384,4 @@ mod/Exported/
 WIP/
 .idea/
 *.bundle
+!tools/assets/spt-4.1.2/uav_uplink_container.bundle
