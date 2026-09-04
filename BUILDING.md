@@ -6,24 +6,22 @@ This repository does not include proprietary EFT or SPT assemblies. Provide loca
 
 - .NET SDK 10.0.201, pinned by `global.json` and the CI workflow with SDK
   roll-forward disabled.
-- SPT 4.1.2 reference assemblies from a clean installation.
-- WTT Client CommonLib and WTT Server CommonLib `3.0.3`, installed separately
-  as dependencies. The verified binaries come from tag `v3.0.3`, commit
-  `d3f588d611774ab15f2b358760ac76ab3cb06efd`.
-- UnityToolkit `2.0.1` rebuilt for SPT 4.1.2 from tag/commit
+- SPT 4.1.4 reference assemblies from a clean installation.
+- WTT Client CommonLib and WTT Server CommonLib `3.0.6`, installed separately
+  from the official `v3.0.6` release, including its serialization prepatcher.
+- UnityToolkit `2.0.1` rebuilt for SPT 4.1 from tag/commit
   `3c27a9798dc4396ca0b3dc765448a4221ff3007b` with the documented SPT 4.1
   configuration, reference, deploy-guard, and player-loop target adaptations.
   The unmodified pre-4.1 binary is not a substitute.
-- Project Fika client `2.4.1` when building the optional Fika interop. The
-  verified client checkout is
-  `c89e28e41700093eb874589c440d3d8c77a25add` (the `v2.4.1` code tag is
-  `fbd3814a`); its compatible server line reports `2.4.0` and is pinned at
-  `2547995894e269f058b967da6b838f1506377f27`.
+- Project Fika client `2.4.2` from the official `v2.4.2` release when building
+  the optional Fika interop. Multiplayer validation also requires its
+  compatible server component.
 
 Exact dependency assembly identities, byte lengths, and SHA-256 values are in
-`docs/port/SPT-4.1-PORT-LOG.md`. Those pins produced a passing full local
-verification; changing any dependency requires new compile and runtime
-evidence.
+`docs/port/SPT-4.1.4-PORT-LOG.md`. The initial UnityToolkit input is the existing
+SPT 4.1.2 rebuild; its 4.1.4 compatibility still needs validation. Historical
+4.1.2 pins and results remain in `docs/port/SPT-4.1-PORT-LOG.md`; fresh 4.1.4
+compile and runtime evidence is required.
 
 TSC references WTT Common Lib from the local SPT dependency install. Do not copy WTT Common Lib source or binaries into the TSC source tree or release archive.
 
@@ -31,21 +29,17 @@ TSC references WTT Common Lib from the local SPT dependency install. Do not copy
 
 Create a local `Shared.User.props` or pass MSBuild properties:
 
-- `SptDir`: path to a local SPT 4.1.2 root used for reference lookup and
+- `SptDir`: path to a local SPT 4.1.4 root used for reference lookup and
   optional post-build output. The server runtime is below `SPT_Runtime/`.
 - `SptSharedAssembliesDir`: folder containing the versioned SPT reference
   assemblies. For `SPT-4.1 Release`, `410x/hollowed.dll` is the compile-only
   `Assembly-CSharp` reference produced by the matching SPT.Modules
   `Shared/Hollowed` project. It must match the exact EFT build and must never be
-  shipped in the mod. The pinned file is 8,696,320 bytes with SHA-256
-  `E40F6E470CD3C09E827900EFE98BB490920E97CAE962880DCA23DDF2A78E501C`.
-  It was obtained byte-identically from the tracked
-  `References/hollowed.dll` in the Fika checkout above (Git blob
-  `1cb3df593f3079a976b65d97f3da7557f6207d39`). That checkout documents the
-  file as SPT.Modules `project/Shared/Hollowed` output. The corresponding raw
-  EFT `Assembly-CSharp.dll` SHA-256 is
-  `43A539F5AD00FCCD87EE54A084D8DBE1C5F63D12F8D855C8A392D68B3A1DEAF9`.
-  No unverified SPT.Modules commit is asserted.
+  shipped in the mod. SPT 4.1.4 changes serialized fields despite retaining
+  EFT build 40743, so the old 4.1.2 reference cannot certify this update.
+  Record the exact 4.1.4 assembly identities, provenance, and SHA-256 values in
+  `docs/port/SPT-4.1.4-PORT-LOG.md`. Historical reference hashes remain in
+  `docs/port/SPT-4.1-PORT-LOG.md`.
 
 Use forward slashes or quote paths carefully when paths contain spaces.
 
@@ -92,14 +86,42 @@ Interop, the Fika bootstrap, and the regression runner. The build always passes
 the supplied SPT installation. Use `-Configuration` only when intentionally
 checking another configured target.
 
-The SPT 4.1.2 port has passed this command end to end against the exact pinned
+The historical SPT 4.1.2 port passed this command end to end against its pinned
 reference/dependency root: CI-safe checks, release metadata, package-source
 inventory, 160/160 regression tests, the five-project solution, and all four
 fresh runtime outputs. This is compile and static-verification evidence only;
 the disposable exact-version server bootstrap and public health-route smoke
 also pass. Dashboard schema/config/authentication exercise, final-package boot
 cleanliness, client load, solo raids, and Fika sessions remain separate gates
-in `docs/port/SPT-4.1-PORT-LOG.md`.
+in `docs/port/SPT-4.1-PORT-LOG.md`. These results do not validate SPT 4.1.4.
+The initial exact-version SPT 4.1.4 five-project build passes with 0 errors and
+four existing warnings, and the combined regression suite passes 168/168.
+Final clean-commit build evidence, complete CI/package checks, server bootstrap,
+and client/raid/Fika acceptance remain in
+`docs/port/SPT-4.1.4-PORT-LOG.md`.
+
+### SPT 4.1 client and server contracts
+
+`InputManagerUtil` resolves only the public four-parameter
+`InputManager.Create(KeyGroup[], AxisGroup[], float, bool)` overload. A missing
+overload fails patch initialization, and `FireSupportSpotter.Load` times out
+after five seconds if the manager is not captured.
+
+`MainMenuSlotStepPolicy` prefers measured adjacent native rows, then a cached
+row interval, accepting those trusted measurements up to 160 pixels. The
+ambiguous Play-to-Character gap is a later fallback capped at 90 pixels. Keep
+the Seasonal Modifiers menu handoff when applying these placement rules.
+
+`FireSupportServerConfigService` and `FireSupportAuthorizationLedger` must
+remain explicit DI singletons: their paths, revision, and transaction state
+are shared by load callbacks, HTTP handlers, and purchase consumers. The native
+SPT config editor uses the same validation and atomic save path as the TSC
+dashboard.
+
+Historical SPT 4.1.2 client runs exposed the repaired input/menu issues and the
+Uplink animator layer/default-state mismatch. The earlier corrected DLL
+deployment was not a completed client acceptance run; its hashes and smoke
+details remain in `docs/port/SPT-4.1-PORT-LOG.md`.
 
 The A-10 regression seam now verifies the deterministic 50-round impact plan,
 per-shot muzzle movement at the aircraft strafe speed, shared fire timing, and
@@ -187,10 +209,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\New-ReleasePackage.p
   -BuildEvidencePath "C:\External\TSC\v1.3.0-build-evidence.json"
 ```
 
-The baseline archive is an explicit input because the eight Unity bundles are
-not tracked source files. The packager requires the verified public v1.0.8 ZIP
-SHA-256 recorded in the manifest, then verifies each allowlisted bundle's byte
-length and SHA-256 and extracts only those eight entries. It never accepts or
+The baseline archive is an explicit input for the eight historical Unity
+bundles. The packager requires the verified public v1.0.8 ZIP SHA-256 recorded
+in the manifest and verifies every baseline entry. Seven bundles are staged
+unchanged. The Uplink container is replaced by the tracked, reviewed SPT 4.1
+repair at `tools/assets/spt-4.1.2/uav_uplink_container.bundle`; the historical
+directory name records the repair's origin. Its length and SHA-256 are pinned
+independently in the manifest. It never accepts or
 reads a live SPT directory as package content.
 
 The baseline ZIP remains immutable: its required name is
@@ -199,9 +224,17 @@ The baseline ZIP remains immutable: its required name is
 `C3C0390CC6641E5F82C99C3E57D8AEDA358FD0278E667E6616E53963EB2FCB8D`.
 Its two server-side bundle entries retain their historical
 `SPT/user/mods/...` source paths in the allowlist. The packager verifies those
-exact entries and stages their unchanged bytes at the 4.1.2
-`SPT_Runtime/user/mods/...` destinations; it does not rewrite the baseline
-archive or its recorded history.
+exact entries and stages them at the 4.1.4 `SPT_Runtime/user/mods/...`
+destinations. The Uplink container uses the separately pinned override, while
+the loot bundle stays byte-identical. The baseline archive and its recorded
+history are never rewritten.
+
+`tools/Repair-UplinkBundle.py` reproduces the override from the exact baseline
+ZIP with UnityPy 1.25.0. It repairs the two-layer controller's default states
+and the nonzero `OutUse` animation-event hash. It rejects source/output drift,
+overwrites, changes outside the two approved Unity objects, or changed streamed
+resource bytes. The 4.1.4 serialized-field audit and equip/stow acceptance are
+separate checks recorded in `docs/port/SPT-4.1.4-PORT-LOG.md`.
 
 The four DLLs come only from the fixed project build-output paths recorded in
 the manifest. All four must have the reviewed assembly name,
@@ -226,8 +259,8 @@ working-tree bytes, and the clean HEAD/tree identity is checked again before
 success.
 
 For this port the generated archive name is exactly
-`Tylevo.TacticalServicesControl-v1.3.0-SPT4.1.2-TESTER.zip`. The `TESTER`
-suffix must remain until the 4.1.2 runtime acceptance gates are complete.
+`Tylevo.TacticalServicesControl-v1.3.0-SPT4.1.4-TESTER.zip`. The `TESTER`
+suffix must remain until the 4.1.4 runtime acceptance gates are complete.
 
 The command also writes a new external `*.content-evidence.json` sidecar with
 the source HEAD/tree, manifest identity, verified baseline archive, complete

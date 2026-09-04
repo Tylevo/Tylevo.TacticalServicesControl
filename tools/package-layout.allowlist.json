@@ -3,19 +3,19 @@
   "criticalReferencePins": [
     {
       "fileName": "hollowed.dll",
-      "sha256": "E40F6E470CD3C09E827900EFE98BB490920E97CAE962880DCA23DDF2A78E501C"
+      "sha256": "8E29BF643BA75530C82BD749D2814F3A45487257D4E9C544754C46E3A12D532D"
     },
     {
       "fileName": "WTT-ClientCommonLib.dll",
-      "sha256": "6C5B99E752D1AA614DA6E14B5FE56BBC1BCC0772C388DA57458F382DE3C34453"
+      "sha256": "40B345CDC5D509028023989EFA8D96DD7DD4753257338D1F9D37A024FE9A1A3C"
     },
     {
       "fileName": "WTT-ServerCommonLib.dll",
-      "sha256": "30164AE02D6F39B9E02CBC569115C494954E4D187406D89E7A4E998AEDF5D754"
+      "sha256": "DC765A67977C97315CE776D1042980894520FA02DDE35C67DBE80DE8CF4B15E8"
     },
     {
       "fileName": "Fika.Core.dll",
-      "sha256": "EB754C63F061B65B2F167109F9704F93E61C14F96D86A5AC192CFF21C83D5A7E"
+      "sha256": "7EBC9A97EF51719075CB2B888C54934E0AE47B1908CDAEB0A3656E6F415BD015"
     },
     {
       "fileName": "UnityToolkit.dll",
@@ -273,7 +273,10 @@
         "path": "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/bundles/raidops/uav_uplink_container.bundle",
         "sourcePath": "SPT/user/mods/Tylevo.TacticalServicesControl/bundles/raidops/uav_uplink_container.bundle",
         "length": 1181738,
-        "sha256": "F496805B01B0CBEC699435DE0B651BFED9F35595BE34312398A91DB600B66425"
+        "sha256": "F496805B01B0CBEC699435DE0B651BFED9F35595BE34312398A91DB600B66425",
+        "overrideSource": "tools/assets/spt-4.1.2/uav_uplink_container.bundle",
+        "overrideLength": 1167863,
+        "overrideSha256": "8C9F8D8878076D4FFCB2687D62609F606552B3E9F3529FBE584DF79E43365861"
       },
       {
         "path": "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/bundles/raidops/uav_uplink_loot.bundle",

@@ -5,7 +5,7 @@ using System.Text.Json;
 
 namespace SamSWAT.FireSupport.ArysReloaded;
 
-[Injectable]
+[Injectable(InjectionType.Singleton)]
 public sealed class FireSupportAuthorizationLedger(
 	ISptLogger<FireSupportAuthorizationLedger> logger)
 {

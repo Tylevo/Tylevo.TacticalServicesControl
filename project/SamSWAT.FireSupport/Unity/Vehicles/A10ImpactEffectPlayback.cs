@@ -15,7 +15,7 @@ public static class A10ImpactEffectPlayback
 	private const float EndpointProbeDistance = 14f;
 	private const float EndpointProbeRadius = 1.5f;
 	private const float SoloGau8ExplosionVolume = 1f;
-	private const string NamedEffectsFieldName = "dictionary_1";
+	private const string NamedEffectsFieldName = "_names";
 	private static bool s_failureLogged;
 	private static bool s_soloImpactPathLogged;
 	private static bool s_soloImpactUnavailableLogged;

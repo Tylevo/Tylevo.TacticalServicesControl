@@ -936,6 +936,13 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 				ShowDeployScreen();
 				return;
 			}
+			if (FireSupportController.Instance?.IsInitialized != true)
+			{
+				FireSupportPlugin.LogSource.LogWarning(
+					$"TSC deploy phone kept open: fire-support controller is not ready for {selected}.");
+				ShowDeployScreen();
+				return;
+			}
 
 			PendingDeployment = selected;
 			PlayDeployTapAudio();

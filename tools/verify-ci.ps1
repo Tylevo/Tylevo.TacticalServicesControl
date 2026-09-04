@@ -276,6 +276,22 @@ foreach ($relativeBuildDefinition in $trackedBuildDefinitions) {
 }
 
 Write-Host "Validating production wiring into proprietary-free regression seams."
+$inputManagerSourcePath = "project\SamSWAT.FireSupport\Utils\InputManagerUtil.cs"
+$inputManagerSource = Get-NormalizedCSharpSource -RelativePath $inputManagerSourcePath
+Assert-SourceWiring `
+    -RelativePath $inputManagerSourcePath `
+    -NormalizedSource $inputManagerSource `
+    -Pattern 'AccessTools\s*\.\s*DeclaredMethod\s*\(\s*typeof\s*\(\s*InputManager\s*\)\s*,\s*nameof\s*\(\s*InputManager\s*\.\s*Create\s*\)\s*,\s*\[\s*typeof\s*\(\s*KeyGroup\s*\[\s*\]\s*\)\s*,\s*typeof\s*\(\s*AxisGroup\s*\[\s*\]\s*\)\s*,\s*typeof\s*\(\s*float\s*\)\s*,\s*typeof\s*\(\s*bool\s*\)\s*\]\s*\)' `
+    -Expectation "The SPT 4.1 input-manager patch must select the exact four-parameter Create overload instead of performing an ambiguous name-only lookup."
+
+$mainMenuControllerSourcePath = "project\SamSWAT.FireSupport\Unity\MainMenuPurchaseController.cs"
+$mainMenuControllerSource = Get-NormalizedCSharpSource -RelativePath $mainMenuControllerSourcePath
+Assert-SourceWiring `
+    -RelativePath $mainMenuControllerSourcePath `
+    -NormalizedSource $mainMenuControllerSource `
+    -Pattern 'MainMenuSlotStepPolicy\s*\.\s*Resolve\s*\(' `
+    -Expectation "Main-menu placement must use the regression-tested row-spacing policy instead of applying the ambiguous Play-to-Character gap to every lower row."
+
 $globalUsingsSourcePath = "project\SamSWAT.FireSupport\GlobalUsings.cs"
 $globalUsingsSource = Get-NormalizedCSharpSource -RelativePath $globalUsingsSourcePath
 Assert-SourceWiring `
@@ -498,6 +514,20 @@ if ($tuningSource -match
 
 $serverConfigSourcePath = "project\SamSWAT.FireSupport.Server\FireSupportServerConfigService.cs"
 $serverConfigSource = Get-NormalizedCSharpSource -RelativePath $serverConfigSourcePath
+Assert-SourceWiring `
+    -RelativePath $serverConfigSourcePath `
+    -NormalizedSource $serverConfigSource `
+    -Pattern '\[\s*Injectable\s*\(\s*InjectionType\s*\.\s*Singleton\s*\)\s*\]\s*public\s+sealed\s+class\s+FireSupportServerConfigService\b' `
+    -Expectation "The server config service must be a singleton so startup initialization and HTTP requests share the same config and dashboard paths."
+
+$authorizationLedgerSourcePath = "project\SamSWAT.FireSupport.Server\FireSupportAuthorizationLedger.cs"
+$authorizationLedgerSource = Get-NormalizedCSharpSource -RelativePath $authorizationLedgerSourcePath
+Assert-SourceWiring `
+    -RelativePath $authorizationLedgerSourcePath `
+    -NormalizedSource $authorizationLedgerSource `
+    -Pattern '\[\s*Injectable\s*\(\s*InjectionType\s*\.\s*Singleton\s*\)\s*\]\s*public\s+sealed\s+class\s+FireSupportAuthorizationLedger\b' `
+    -Expectation "The authorization ledger must remain a singleton so all request handlers share one initialized persistent state."
+
 $serverWiringChecks = @(
     @{
         Pattern = 'NormalizeConfig\s*\([^)]*\)\s*\{.{0,700}?FireSupportServerConfigMigration\s*\.\s*NormalizePersistedFields\s*\('
@@ -727,11 +757,27 @@ $textExtensions = @(
     ".yaml",
     ".yml"
 )
+$reviewedUplinkOverride = "tools/assets/spt-4.1.2/uav_uplink_container.bundle"
+$reviewedUplinkOverrideLength = 1167863
+$reviewedUplinkOverrideSha256 =
+    "8C9F8D8878076D4FFCB2687D62609F606552B3E9F3529FBE584DF79E43365861"
 
 foreach ($trackedFile in $trackedFiles) {
     $lowerTrackedFile = $trackedFile.ToLowerInvariant()
     foreach ($extension in $forbiddenTrackedExtensions) {
         if ($lowerTrackedFile.EndsWith($extension, [StringComparison]::Ordinal)) {
+            if ($trackedFile.Equals($reviewedUplinkOverride, [StringComparison]::Ordinal)) {
+                $reviewedPath = Join-Path $repositoryRoot $trackedFile
+                $reviewedFile = Get-Item -LiteralPath $reviewedPath
+                $reviewedHash = (Get-FileHash -LiteralPath $reviewedPath -Algorithm SHA256).Hash.ToUpperInvariant()
+                if ($reviewedFile.Length -ne $reviewedUplinkOverrideLength -or
+                    $reviewedHash -cne $reviewedUplinkOverrideSha256) {
+                    throw "Reviewed SPT 4.1.2 Uplink override pin mismatch: '$trackedFile'."
+                }
+
+                break
+            }
+
             throw "Proprietary/generated binary archive is tracked: '$trackedFile'."
         }
     }

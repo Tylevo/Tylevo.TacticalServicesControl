@@ -331,6 +331,47 @@ foreach ($baselineFile in $manifest.baselineAssetArchive.files) {
         throw "Baseline asset '$entry' must declare an exact SHA-256 and positive byte length."
     }
 
+    $overrideSourceProperty = $baselineFile.PSObject.Properties["overrideSource"]
+    $overrideLengthProperty = $baselineFile.PSObject.Properties["overrideLength"]
+    $overrideHashProperty = $baselineFile.PSObject.Properties["overrideSha256"]
+    $overridePropertyCount = @(
+        $overrideSourceProperty,
+        $overrideLengthProperty,
+        $overrideHashProperty |
+            Where-Object { $null -ne $_ }
+    ).Count
+    if ($overridePropertyCount -ne 0 -and $overridePropertyCount -ne 3) {
+        throw "Baseline asset '$entry' must declare overrideSource, overrideLength, and overrideSha256 together."
+    }
+
+    if ($overridePropertyCount -eq 3) {
+        $overrideSource = Normalize-PackagePath -Value ([string] $overrideSourceProperty.Value) -Description "Bundle override source"
+        $overrideLength = [long] $overrideLengthProperty.Value
+        $overrideHash = ([string] $overrideHashProperty.Value).ToUpperInvariant()
+        if (-not $overrideSource.EndsWith(".bundle", [StringComparison]::OrdinalIgnoreCase) -or
+            $overrideLength -le 0 -or
+            $overrideHash -notmatch "^[0-9A-F]{64}$") {
+            throw "Bundle override for '$entry' must be a pinned .bundle file."
+        }
+
+        if ($ValidateSourceInputs) {
+            $overridePath = Join-Path $resolvedSourceRoot $overrideSource.Replace("/", [IO.Path]::DirectorySeparatorChar)
+            if (-not (Test-Path -LiteralPath $overridePath -PathType Leaf)) {
+                throw "Bundle override source was not found: '$overrideSource'."
+            }
+
+            $overrideFile = Get-Item -LiteralPath $overridePath
+            $actualOverrideHash = (Get-FileHash -LiteralPath $overridePath -Algorithm SHA256).Hash.ToUpperInvariant()
+            if ($overrideFile.Length -ne $overrideLength -or $actualOverrideHash -cne $overrideHash) {
+                throw "Bundle override source pin mismatch: '$overrideSource'."
+            }
+
+            if (-not $trackedSourceFiles.Contains($overrideSource)) {
+                throw "Bundle override source is not tracked: '$overrideSource'."
+            }
+        }
+    }
+
     if (-not (Test-IsUnderPackageRoot -Entry $entry -Roots $installRoots)) {
         throw "Baseline asset '$entry' is outside the declared install roots."
     }

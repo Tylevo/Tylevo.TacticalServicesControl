@@ -2,9 +2,9 @@
 
 ## 1.3.0 - Public Beta (unreleased)
 
-SPT 4.1.2 warning-and-Uplink integration release for Tylevo Seasonal
+SPT 4.1.4 warning-and-Uplink integration release for Tylevo Seasonal
 Modifiers. The candidate filename is
-`Tylevo.TacticalServicesControl-v1.3.0-SPT4.1.2-TESTER.zip`.
+`Tylevo.TacticalServicesControl-v1.3.0-SPT4.1.4-TESTER.zip`.
 
 ### Added
 
@@ -27,6 +27,10 @@ Modifiers. The candidate filename is
 
 ### Changed
 
+- Retargeted the v1.3.0 tester to SPT 4.1.4 / EFT 0.16.9.5.40743, with WTT
+  CommonLib 3.0.6 and optional Fika client 2.4.2. UnityToolkit remains the
+  existing SPT 4.1 rebuild of 2.0.1. The published 4.1.4 serialized-field
+  renames have no matching TSC source references.
 - Manual TSC services still recognize a carried Uplink outside slot 4. Only the
   90-second Danger Close advance notice requires the dedicated slot.
 - Ambient A-10 shots use a validated real EFT player bridge so impact handling
@@ -52,11 +56,16 @@ Modifiers. The candidate filename is
 
 ### Validation Status
 
-- Local verification passes 160 regression tests. The user-supplied ringtone
-  remains excluded from public release archives pending redistribution rights.
-- All four runtime projects compile against the pinned SPT 4.1.2, Fika 2.4.1,
-  and WTT references with deployment disabled. Live solo and Fika warning,
-  migration UI, and in-raid ballistic acceptance remain manual release gates.
+- Historical SPT 4.1.2 local verification passed 160 regression tests. The
+  user-supplied ringtone remains excluded from public release archives pending
+  redistribution rights.
+- All four runtime projects compiled against the historical SPT 4.1.2, Fika
+  2.4.1, and WTT pins with deployment disabled.
+- The combined SPT 4.1.4 candidate passes 168/168 regression tests and its
+  exact-version five-project build with 0 errors and four existing warnings.
+  Final package, server bootstrap, solo and Fika warning, migration UI, and
+  in-raid ballistic acceptance are pending in
+  `docs/port/SPT-4.1.4-PORT-LOG.md`.
 
 ## 1.2.0 - Public Beta (unreleased)
 
@@ -104,6 +113,10 @@ declare build, server-boot, client, raid, or Fika acceptance.
 
 ### Added
 
+- Added a curated native SPT config-editor provider using TSC's canonical
+  validation, revision-conflict checks, normalization, and atomic save path.
+- Added one-time targeting guidance for middle-mouse/Enter confirmation and
+  made the F12 dashboard address follow the active SPT host and port.
 - Added an authenticated pre-raid authorization store to the main menu. **TSC UPLINK** is placed below **Records**, with a fallback below **Character**, and shows the active PMC stash balance, server prices, service availability, and persistent authorization counts.
 - Added an explicit pre-raid purchase confirmation showing the selected service, authoritative price, and projected balance. Cancelling creates no request, while duplicate delivery of a confirmed request cannot charge or grant twice.
 - Added a dashboard shortcut derived from the active SPT backend connection instead of a hard-coded host.
@@ -114,6 +127,15 @@ declare build, server-boot, client, raid, or Fika acceptance.
 
 ### Fixed
 
+- Repaired the Uplink container's serialized default-state list and `OutUse`
+  event hash. Packaging overlays only the reviewed, hash-pinned repair while
+  retaining the immutable v1.0.8 asset archive as provenance.
+- Missing UH-60 Pilot artwork preserves the cloned native BTR Driver avatar
+  instead of requesting a guessed 4.1 file route.
+- Targeting resolves the exact four-parameter `InputManager.Create` overload
+  and fails readiness after five seconds if no manager is captured.
+- Main-menu placement prefers measured adjacent rows over the potentially
+  multi-row Play-to-Character gap, with bounded spacing fallbacks.
 - Persistent authorization hydration now distinguishes omitted state from an authoritative empty ledger, updates an already-open deploy menu, and does not depend on the retired server-URL toggle.
 - Persistent use now follows one server-backed begin, accept, commit, or refund lifecycle instead of decrementing only the client mirror.
 - Networked support requests now wait for raid-authority acceptance. Rejections, timeouts, cancellation, and executor-start failures converge on one idempotent refund/settlement result.
@@ -152,8 +174,13 @@ declare build, server-boot, client, raid, or Fika acceptance.
   bootstrap, and the regression project.
 - The pre-port solo SPT and main-menu purchase flow have user-reported smoke
   coverage; those reports are not 4.1.2 evidence.
-- SPT 4.1.2 compile, server boot, menu load, solo raid, second-raid, Fika
-  host/client, and headless validation have not yet been recorded as passed.
+- The later SPT 4.1.2 CI-safe suite passed 109/109 tests; the exact five-project
+  solution built with 0 errors and two obsolete Core inventory-API warnings.
+  Exact server boot and dashboard shell smoke passed.
+- A client session reached the menu and a solo raid but exposed input/menu
+  defects. Corrected DLL deployment and the repaired Uplink bundle still
+  needed an equip/stow, menu, and solo-raid acceptance run. These historical
+  findings do not certify the SPT 4.1.4 candidate.
 - Matched-version human-host, Fika-client, and dedicated-headless live acceptance remains open. Dedicated-headless A-10 damage is separately gated and experimental.
 
 ## 0.9.8 - Public Beta (released as v1.0.8)

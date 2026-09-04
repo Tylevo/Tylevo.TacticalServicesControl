@@ -1,7 +1,10 @@
 ﻿using Comfort.Common;
 using Cysharp.Threading.Tasks;
 using EFT;
+using EFT.Communications;
 using SamSWAT.FireSupport.ArysReloaded.Utils;
+using System;
+using System.Diagnostics;
 using System.Threading;
 using UnityEngine;
 
@@ -27,18 +30,33 @@ public class FireSupportSpotter : ScriptableObject
 	{
 		var instance =
 			await AssetLoader.LoadAssetAsync<FireSupportSpotter>("assets/content/ui/firesupport_spotter.bundle");
-		cancellationToken.ThrowIfCancellationRequested();
-
-		while (InputManagerUtil.GetInputManager() == null)
+		try
 		{
-			await UniTask.Yield();
 			cancellationToken.ThrowIfCancellationRequested();
+			var inputManagerWait = Stopwatch.StartNew();
+			while (InputManagerUtil.GetInputManager() == null)
+			{
+				if (inputManagerWait.Elapsed >= TimeSpan.FromSeconds(5))
+				{
+					throw new InvalidOperationException(
+						"TSC input manager was not captured within five seconds; targeting cannot initialize.");
+				}
+
+				await UniTask.Yield();
+				cancellationToken.ThrowIfCancellationRequested();
+			}
+
+			instance.Initialize();
+			return instance;
 		}
-
-		cancellationToken.ThrowIfCancellationRequested();
-		instance.Initialize();
-
-		return instance;
+		catch
+		{
+			if (instance != null)
+			{
+				DestroyImmediate(instance);
+			}
+			throw;
+		}
 	}
 
 	private void Initialize()
@@ -63,6 +81,11 @@ public class FireSupportSpotter : ScriptableObject
 	public async UniTask<SetLocationResult> SetLocation(bool checkSpace, CancellationToken cancellationToken)
 	{
 		await UniTask.WaitForSeconds(0.1f, cancellationToken: cancellationToken);
+		NotificationManager.DisplayMessageNotification(
+			"TSC TARGETING: Confirm with Middle Mouse or Enter. Cancel with Backspace.",
+			ENotificationDurationType.Long,
+			ENotificationIconType.Default,
+			null);
 
 		_spotterPositionObj.SetActive(true);
 
@@ -122,6 +145,11 @@ public class FireSupportSpotter : ScriptableObject
 		CancellationToken cancellationToken)
 	{
 		await UniTask.WaitForSeconds(0.1f, cancellationToken: cancellationToken);
+		NotificationManager.DisplayMessageNotification(
+			"TSC DIRECTION: Move the mouse, then confirm with Middle Mouse or Enter.",
+			ENotificationDurationType.Long,
+			ENotificationIconType.Default,
+			null);
 
 		_spotterRotationObj.transform.SetPositionAndRotation(_spotterPositionObj.transform.position, Quaternion.identity);
 		_spotterRotationObj.SetActive(true);

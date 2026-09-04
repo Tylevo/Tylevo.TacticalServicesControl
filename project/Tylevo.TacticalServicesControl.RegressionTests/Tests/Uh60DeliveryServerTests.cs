@@ -373,6 +373,17 @@ internal static class Uh60DeliveryServerTests
 			"cloner.Clone(btrDriver)",
 			service);
 		AssertEx.Contains(
+			"string inheritedAvatar = btrDriver.Base.Avatar",
+			service);
+		AssertEx.Contains(
+			": inheritedAvatar",
+			service);
+		AssertEx.False(
+			service.Contains(
+				"/files/trader/avatar/5935c25fb3acc3127c3d8cd9.png",
+				StringComparison.Ordinal),
+			"The missing-artwork fallback must preserve the native BTR Driver avatar rather than guessing a stale route.");
+		AssertEx.Contains(
 			"traders[MessengerTraderId] = pilot",
 			service);
 		AssertEx.Contains(

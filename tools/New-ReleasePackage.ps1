@@ -1225,6 +1225,27 @@ try {
         if ($actualHash -cne $expectedHash) {
             throw "Baseline bundle '$sourcePath' for '$packagePath' SHA-256 mismatch: expected $expectedHash; found $actualHash."
         }
+
+        $overrideSourceProperty = $specification.PSObject.Properties["overrideSource"]
+        if ($null -ne $overrideSourceProperty) {
+            $overrideSource = Normalize-RelativePath `
+                -Value ([string] $overrideSourceProperty.Value) `
+                -Description "Bundle override source"
+            $overridePath = Get-PathUnderRoot `
+                -Root $ResolvedRepositoryRoot `
+                -RelativePath $overrideSource `
+                -Description "Bundle override source"
+            if (-not (Test-Path -LiteralPath $overridePath -PathType Leaf)) {
+                throw "Bundle override source was not found: '$overrideSource'."
+            }
+
+            $overrideFile = Get-Item -LiteralPath $overridePath
+            $overrideHash = (Get-FileHash -LiteralPath $overridePath -Algorithm SHA256).Hash.ToUpperInvariant()
+            if ($overrideFile.Length -ne [long] $specification.overrideLength -or
+                $overrideHash -cne ([string] $specification.overrideSha256).ToUpperInvariant()) {
+                throw "Bundle override source pin mismatch: '$overrideSource'."
+            }
+        }
     }
 
     Assert-NewEmptyOutputDirectory -Path $resolvedOutputDirectory
@@ -1286,7 +1307,6 @@ try {
         $path = Normalize-RelativePath `
             -Value ([string] $specification.path) `
             -Description "Baseline package bundle path"
-        $entry = $baselineEntries[$sourcePath]
         $destination = Get-PathUnderRoot `
             -Root $StagePath `
             -RelativePath $path `
@@ -1295,20 +1315,35 @@ try {
             throw "Staging attempted to overwrite package path with baseline bundle: '$path'."
         }
 
-        [void] [IO.Directory]::CreateDirectory((Split-Path $destination -Parent))
-        $sourceStream = $entry.Open()
-        $destinationStream = [IO.File]::Open(
-            $destination,
-            [IO.FileMode]::CreateNew,
-            [IO.FileAccess]::Write,
-            [IO.FileShare]::None
-        )
-        try {
-            $sourceStream.CopyTo($destinationStream)
+        $overrideSourceProperty = $specification.PSObject.Properties["overrideSource"]
+        if ($null -ne $overrideSourceProperty) {
+            $overrideSource = Normalize-RelativePath `
+                -Value ([string] $overrideSourceProperty.Value) `
+                -Description "Bundle override source"
+            $overridePath = Get-PathUnderRoot `
+                -Root $ResolvedRepositoryRoot `
+                -RelativePath $overrideSource `
+                -Description "Bundle override source"
+            [void] [IO.Directory]::CreateDirectory((Split-Path $destination -Parent))
+            [IO.File]::Copy($overridePath, $destination, $false)
         }
-        finally {
-            $destinationStream.Dispose()
-            $sourceStream.Dispose()
+        else {
+            $entry = $baselineEntries[$sourcePath]
+            [void] [IO.Directory]::CreateDirectory((Split-Path $destination -Parent))
+            $sourceStream = $entry.Open()
+            $destinationStream = [IO.File]::Open(
+                $destination,
+                [IO.FileMode]::CreateNew,
+                [IO.FileAccess]::Write,
+                [IO.FileShare]::None
+            )
+            try {
+                $sourceStream.CopyTo($destinationStream)
+            }
+            finally {
+                $destinationStream.Dispose()
+                $sourceStream.Dispose()
+            }
         }
     }
 }
@@ -1449,18 +1484,45 @@ $bundleEvidence = @(
                 }
         )[0]
         $stagedEntry = $stageEntries[$bundlePath]
-        if ([long] $specification.length -ne [long] $stagedEntry.size -or
-            -not ([string] $specification.sha256).Equals(
+        $expectedLength = if ($null -ne $specification.PSObject.Properties["overrideLength"]) {
+            [long] $specification.overrideLength
+        }
+        else {
+            [long] $specification.length
+        }
+        $expectedHash = if ($null -ne $specification.PSObject.Properties["overrideSha256"]) {
+            ([string] $specification.overrideSha256).ToUpperInvariant()
+        }
+        else {
+            ([string] $specification.sha256).ToUpperInvariant()
+        }
+        if ($expectedLength -ne [long] $stagedEntry.size -or
+            -not $expectedHash.Equals(
                 [string] $stagedEntry.sha256,
                 [StringComparison]::Ordinal
             )) {
             throw "Staged bundle content differs from its manifest pin: '$bundlePath'."
         }
 
+        $overrideSourceProperty = $specification.PSObject.Properties["overrideSource"]
+        $sourcePathProperty = $specification.PSObject.Properties["sourcePath"]
+        $evidenceSourcePath = if ($null -ne $overrideSourceProperty) {
+            [string] $overrideSourceProperty.Value
+        }
+        elseif ($null -ne $sourcePathProperty) {
+            [string] $sourcePathProperty.Value
+        }
+        else {
+            [string] $specification.path
+        }
+
         [PSCustomObject] [ordered] @{
             path = $bundlePath
-            size = [long] $specification.length
-            sha256 = ([string] $specification.sha256).ToUpperInvariant()
+            size = $expectedLength
+            sha256 = $expectedHash
+            sourceKind = if ($null -ne $overrideSourceProperty) { "trackedOverride" } else { "baselineArchive" }
+            sourcePath = $evidenceSourcePath
+            baselineSha256 = ([string] $specification.sha256).ToUpperInvariant()
         }
     }
 )

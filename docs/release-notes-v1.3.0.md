@@ -1,7 +1,14 @@
 # Tylevo's Tactical Services Control v1.3.0 Public Beta
 
-This SPT 4.1.2 tester keeps TSC fully standalone while adding the optional
+This SPT 4.1.4 tester keeps TSC fully standalone while adding the optional
 Danger Close API v3 integration used by Tylevo Seasonal Modifiers.
+
+The compatibility update retains TSC v1.3.0, targets EFT 0.16.9.5.40743, and
+uses WTT CommonLib 3.0.6 and optional Fika client 2.4.2. UnityToolkit remains
+the existing SPT 4.1 rebuild of 2.0.1. The source audit found no direct or
+string-based references to the fields renamed by SPT 4.1.4; bundle and
+exact-version build validation are tracked in
+`docs/port/SPT-4.1.4-PORT-LOG.md`.
 
 TSC now adds a dedicated `SpecialSlot4` to both supported pockets templates.
 Only the TerraGroup TSC Uplink fits there. The slot does not grant, force, or
@@ -37,7 +44,10 @@ and TSC removes its separate **TSC UPLINK** row. The native menu spacing is
 restored, while all in-raid Uplink, UAV, UH-60, and Danger Close behavior remains
 available. Standalone TSC installs retain the pre-raid storefront.
 
-The proprietary-free suite passes 160 regression tests, and all four runtime
-projects compile against the pinned SPT 4.1.2, Fika, WTT, and UnityToolkit
-references with deployment disabled. Live solo/Fika warnings, profile UI, and
-raid impact behavior remain tester acceptance gates.
+Historical SPT 4.1.2 verification passed 160 regression tests and compiled all
+four runtime projects against its pinned references with deployment disabled;
+that evidence remains in `docs/port/SPT-4.1-PORT-LOG.md`. The combined SPT 4.1.4
+candidate now passes 168/168 regression tests and its exact-version five-project
+build with 0 errors and four existing warnings. Final package validation,
+server bootstrap, live solo/Fika warnings, profile UI, and raid impact behavior
+remain pending tester acceptance gates.

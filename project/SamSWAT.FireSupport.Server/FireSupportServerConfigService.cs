@@ -15,7 +15,7 @@ using IOPath = System.IO.Path;
 
 namespace SamSWAT.FireSupport.ArysReloaded;
 
-[Injectable]
+[Injectable(InjectionType.Singleton)]
 public sealed class FireSupportServerConfigService(
 	ISptLogger<FireSupportServerConfigService> logger,
 	ProfileHelper profileHelper,
@@ -192,6 +192,14 @@ public sealed class FireSupportServerConfigService(
 				preparedPurchaseDetails ??
 				new Dictionary<string, FireSupportPreparedPurchaseQuote>(
 					StringComparer.OrdinalIgnoreCase));
+	}
+
+	public RaidOpsFireSupportServerConfig GetConfigSnapshot()
+	{
+		lock (_gate)
+		{
+			return CloneConfig(_config);
+		}
 	}
 
 	public async Task<FireSupportPurchaseResponse> TryPurchaseAsync(
@@ -1098,7 +1106,10 @@ public sealed class FireSupportServerConfigService(
 		};
 	}
 
-	public bool TryUpdateConfig(RaidOpsFireSupportServerConfig incoming, out string error)
+	public bool TryUpdateConfig(
+		RaidOpsFireSupportServerConfig incoming,
+		out string error,
+		int? expectedRevision = null)
 	{
 		error = string.Empty;
 		try
@@ -1111,6 +1122,20 @@ public sealed class FireSupportServerConfigService(
 
 			lock (_gate)
 			{
+				if (ConfigsEquivalentExceptRevision(incoming, _config))
+				{
+					incoming.Revision = _config.Revision;
+					return true;
+				}
+
+				if (expectedRevision.HasValue && expectedRevision.Value != _config.Revision)
+				{
+					error =
+						$"Config revision changed from {expectedRevision.Value} to {_config.Revision}. " +
+						"Reload the editor before saving.";
+					return false;
+				}
+
 				incoming.Revision = Math.Max(incoming.Revision, _config.Revision + 1);
 				_config = CloneConfig(incoming);
 				SaveConfig(_config);
@@ -1317,6 +1342,20 @@ public sealed class FireSupportServerConfigService(
 
 		pmc = sessionProfile;
 		return true;
+	}
+
+	private static bool ConfigsEquivalentExceptRevision(
+		RaidOpsFireSupportServerConfig first,
+		RaidOpsFireSupportServerConfig second)
+	{
+		RaidOpsFireSupportServerConfig firstCopy = CloneConfig(first);
+		RaidOpsFireSupportServerConfig secondCopy = CloneConfig(second);
+		firstCopy.Revision = 0;
+		secondCopy.Revision = 0;
+		return string.Equals(
+			JsonSerializer.Serialize(firstCopy, s_jsonOptions),
+			JsonSerializer.Serialize(secondCopy, s_jsonOptions),
+			StringComparison.Ordinal);
 	}
 
 	private bool TryResolveProfileForPurchase(

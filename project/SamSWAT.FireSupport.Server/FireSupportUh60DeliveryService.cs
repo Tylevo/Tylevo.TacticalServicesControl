@@ -31,8 +31,6 @@ public sealed class FireSupportUh60DeliveryService(
 	public const string MessengerAvatarRoute = "/tsc/assets/uh60-pilot.png";
 
 	private const string BtrTraderId = "656f0f98d80a697f855d34b1";
-	private const string FallbackAvatar =
-		"/files/trader/avatar/5935c25fb3acc3127c3d8cd9.png";
 	private const string DeliveryMessagePrefix =
 		"Cargo delivered. Your transferred items are ready for collection.";
 	private const string PriorityExfilArtworkPath =
@@ -438,6 +436,16 @@ public sealed class FireSupportUh60DeliveryService(
 		try
 		{
 			Dictionary<MongoId, Trader> traders = tradersTable;
+			Trader? btrDriver = tradersTable.GetTrader(BtrTraderId);
+			if (btrDriver == null || string.IsNullOrWhiteSpace(btrDriver.Base.Avatar))
+			{
+				logger.Warning(
+					"TSC UH-60 Pilot identity could not inherit the native BTR Driver avatar; " +
+					"stock BTR delivery will remain active.");
+				return;
+			}
+
+			string inheritedAvatar = btrDriver.Base.Avatar;
 			Trader? pilot;
 			if (traders.TryGetValue(MessengerTraderId, out Trader? existing))
 			{
@@ -454,14 +462,6 @@ public sealed class FireSupportUh60DeliveryService(
 			}
 			else
 			{
-				Trader? btrDriver = tradersTable.GetTrader(BtrTraderId);
-				if (btrDriver == null)
-				{
-					logger.Warning(
-						"TSC UH-60 Pilot identity could not be created; stock BTR delivery will remain active.");
-					return;
-				}
-
 				pilot = cloner.Clone(btrDriver);
 				if (pilot == null)
 				{
@@ -484,7 +484,7 @@ public sealed class FireSupportUh60DeliveryService(
 			pilot.Base.IsCanTransferItemsFromPve = false;
 			pilot.Base.Avatar = _messengerAvatar is { Length: > 0 }
 				? MessengerAvatarRoute
-				: FallbackAvatar;
+				: inheritedAvatar;
 			pilot.Assort.Items.Clear();
 			pilot.Assort.BarterScheme.Clear();
 			pilot.Assort.LoyalLevelItems.Clear();

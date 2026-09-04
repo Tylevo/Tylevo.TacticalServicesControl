@@ -1,5 +1,6 @@
 using BepInEx.Configuration;
 using SamSWAT.FireSupport.ArysReloaded.Unity;
+using System;
 using UnityEngine;
 
 namespace SamSWAT.FireSupport.ArysReloaded;
@@ -728,11 +729,29 @@ internal static class PluginSettings
 		DashboardConfigInfo = config.Bind(
 			"TSC Dashboard",
 			"Configure TSC at",
-			"https://127.0.0.1:6969/tsc/admin",
+			GetDashboardUrl(),
 			new ConfigDescription("TSC server, payment, UAV, helicopter, and support pricing settings are managed by the local web dashboard. Localhost-only by default; do not port-forward it."));
 
 		HideFileOnlySettings(config);
 		SubscribeEffectiveSettingChanges();
+	}
+
+	private static string GetDashboardUrl()
+	{
+		string host = SPT.Common.Http.RequestHandler.Host;
+		if (!string.IsNullOrWhiteSpace(host) &&
+		    Uri.TryCreate(host, UriKind.Absolute, out Uri hostUri) &&
+		    (hostUri.Scheme == Uri.UriSchemeHttp || hostUri.Scheme == Uri.UriSchemeHttps))
+		{
+			return new UriBuilder(hostUri)
+			{
+				Path = "/tsc/admin",
+				Query = string.Empty,
+				Fragment = string.Empty
+			}.Uri.AbsoluteUri;
+		}
+
+		return "https://127.0.0.1:6969/tsc/admin";
 	}
 
 	private static void HideFileOnlySettings(ConfigFile config)

@@ -20,6 +20,9 @@
     <Reference Include="SPTarkov.Server.Core">
       <HintPath>$(SptServerRuntimeDir)SPTarkov.Server.Core.dll</HintPath>
     </Reference>
+    <Reference Include="SPTarkov.Server.Web">
+      <HintPath>$(SptServerRuntimeDir)SPTarkov.Server.Web.dll</HintPath>
+    </Reference>
     <Reference Include="SemanticVersioning">
       <HintPath>$(SptServerRuntimeDir)SemanticVersioning.dll</HintPath>
     </Reference>
