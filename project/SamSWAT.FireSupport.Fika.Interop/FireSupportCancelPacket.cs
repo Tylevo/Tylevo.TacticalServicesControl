@@ -14,6 +14,7 @@ public sealed class FireSupportCancelPacket : INetSerializable
 	public ESupportType SupportType;
 	public int PassIndex;
 	public string RequesterProfileId = string.Empty;
+	public FireSupportRequestOrigin RequestOrigin = FireSupportRequestOrigin.Manual;
 
 	public FireSupportCancelPacket()
 	{
@@ -25,6 +26,7 @@ public sealed class FireSupportCancelPacket : INetSerializable
 		SupportType = request?.SupportType ?? ESupportType.Strafe;
 		PassIndex = request?.PassIndex ?? 0;
 		RequesterProfileId = request?.RequesterProfileId ?? string.Empty;
+		RequestOrigin = request?.RequestOrigin ?? FireSupportRequestOrigin.Manual;
 	}
 
 	public void Serialize(NetDataWriter writer)
@@ -33,6 +35,7 @@ public sealed class FireSupportCancelPacket : INetSerializable
 		writer.Put((int)SupportType);
 		writer.Put(PassIndex);
 		writer.Put(RequesterProfileId ?? string.Empty);
+		writer.Put((int)RequestOrigin);
 	}
 
 	public void Deserialize(NetDataReader reader)
@@ -41,5 +44,8 @@ public sealed class FireSupportCancelPacket : INetSerializable
 		SupportType = (ESupportType)reader.GetInt();
 		PassIndex = reader.GetInt();
 		RequesterProfileId = reader.GetString() ?? string.Empty;
+		RequestOrigin = reader.AvailableBytes >= sizeof(int)
+			? (FireSupportRequestOrigin)reader.GetInt()
+			: FireSupportRequestOrigin.Manual;
 	}
 }

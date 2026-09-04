@@ -1,5 +1,99 @@
 # Changelog
 
+## 1.3.0 - Public Beta (unreleased)
+
+SPT 4.1.2 warning-and-Uplink integration release for Tylevo Seasonal
+Modifiers. The candidate filename is
+`Tylevo.TacticalServicesControl-v1.3.0-SPT4.1.2-TESTER.zip`.
+
+### Added
+
+- Raised the optional Danger Close client bridge and server marker to API v3.
+  Host-authored advance, cancellation, and accepted inbound alerts use one
+  replay-protected opportunity identity.
+- Added reliable ordered Fika warning delivery. Each peer independently checks
+  its own Uplink equipment for the advance notice; the accepted inbound alert
+  remains universal.
+- Added a bounded incoming Danger Close call for eligible peers. The configured
+  UAV-radar key answers it, the existing upright phone pose shows A-10 ETA and
+  cover guidance, and subsequent presses stow or reopen the countdown through
+  its original ETA. The local ringtone stops on answer, timeout, stand-down,
+  accepted inbound, or raid/network reset without changing strike timing.
+- Added a data-driven, Uplink-only `SpecialSlot4` to the standard and Unheard
+  pockets templates. The device is never granted, forced, or locked in place.
+- Added an idempotent profile migration that moves one directly equipped legacy
+  Uplink from slots 1-3 into slot 4, while leaving stash/backpack devices and
+  ambiguous or occupied destinations untouched.
+
+### Changed
+
+- Manual TSC services still recognize a carried Uplink outside slot 4. Only the
+  90-second Danger Close advance notice requires the dedicated slot.
+- Ambient A-10 shots use a validated real EFT player bridge so impact handling
+  remains functional; the request retains its separate Seasonal origin and
+  bypasses payment, authorizations, and manual service controls.
+
+### Fixed
+
+- Re-decode the local Danger Close ringtone for every incoming call and release
+  its runtime clip when ringing stops. This prevents a disposed, process-cached
+  Unity audio clip from making later raids silently ring without sound.
+- Restored the soft main-menu handoff to Seasonal Modifiers. When its client
+  plugin is loaded, TSC removes its redundant **TSC UPLINK** row, restores the
+  native menu stack, and stops its layout scanner; standalone and in-raid TSC
+  behavior is unchanged.
+- Corrected A-10 GAU-8 shot origins in solo and human-host raids. The first
+  round now starts at the visible muzzle instead of a point 515 metres ahead,
+  and every later origin advances with the aircraft at the same strafe speed.
+- Fika headless visual replay and authoritative damage now derive from one
+  deterministic intended-impact plan. The gated headless executor retains its
+  shorter experimental damage origin, so this aligns impact intent rather than
+  claiming exact ballistic-path or replay-arrival parity.
+
+### Validation Status
+
+- Local verification passes 160 regression tests. The user-supplied ringtone
+  remains excluded from public release archives pending redistribution rights.
+- All four runtime projects compile against the pinned SPT 4.1.2, Fika 2.4.1,
+  and WTT references with deployment disabled. Live solo and Fika warning,
+  migration UI, and in-raid ballistic acceptance remain manual release gates.
+
+## 1.2.0 - Public Beta (unreleased)
+
+SPT 4.1.2 integration release for Tylevo Seasonal Modifiers. The candidate
+filename is `Tylevo.TacticalServicesControl-v1.2.0-SPT4.1.2-TESTER.zip`.
+
+### Added
+
+- Added a versioned, optional Seasonal Modifiers bridge and matching server
+  capability marker. TSC remains fully usable when Seasonal Modifiers is not
+  installed.
+- Added host-authoritative ambient A-10 dispatch with explicit packet origin,
+  replay fingerprints, peer-spoof rejection, and one-pass-at-a-time lifecycle
+  tracking. Ambient passes retain their distinct Seasonal origin while using a
+  validated real-player ballistic owner required by EFT 4.1 impact processing.
+- Added source-leased Danger Close state so independent integrations cannot
+  release each other's A-10 tasking lock.
+- Raised the Danger Close bridge and server marker to API v2 and added an
+  optional ambient-dispatch acknowledgement callback so integration
+  callers commit strike caps and success feedback only after the authority or
+  local executor accepts the pass, not merely when the async request is queued.
+
+### Changed
+
+- While Danger Close is active, manual A-10 Strafe and Double Pass entries are
+  visibly locked. UAV Recon, Focused Sweep, UH-60 Extraction, and UH-60 Cargo
+  Transfer remain available.
+- Hardened A-10 teardown so temporary flares, audio, particles, reservations,
+  and pooled aircraft state are cleaned up across cancellation and raid exit.
+
+### Validation Status
+
+- Proprietary-free verification passes 111 regression tests.
+- All four runtime projects compile against the pinned SPT 4.1.2, Fika 2.4.1,
+  and WTT references with deployment disabled. Solo/listen-host and Fika
+  behavior still require live raid acceptance before a stable release.
+
 ## 1.1.0 - Public Beta
 
 Beta 1 tester prerelease: `v1.1.0-beta.1`, published 2026-07-31.

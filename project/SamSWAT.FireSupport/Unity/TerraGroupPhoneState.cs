@@ -13,5 +13,6 @@ public enum TerraGroupPhoneState
 	Denied,
 	DeploySelect,
 	DeployBoot,
-	UavRadarLive
+	UavRadarLive,
+	DangerCloseWarning
 }

@@ -30,14 +30,31 @@ internal static class FikaServiceSemanticsPacketTests
 			current.ServiceSemanticsVersion);
 		AssertEx.Equal(0, currentReader.AvailableBytes);
 
-		Array.Resize(ref currentBytes, currentBytes.Length - sizeof(int));
+		byte[] withoutOriginBytes = currentBytes.ToArray();
+		Array.Resize(ref withoutOriginBytes, withoutOriginBytes.Length - sizeof(int));
+		var withoutOrigin = new FireSupportRequestPacket();
+		var withoutOriginReader = new NetDataReader(withoutOriginBytes);
+		withoutOrigin.Deserialize(withoutOriginReader);
+		AssertRequestEqual(expected, withoutOrigin, compareOrigin: false);
+		AssertEx.Equal(
+			FireSupportServiceSemantics.CurrentVersion,
+			withoutOrigin.ServiceSemanticsVersion);
+		AssertEx.Equal(FireSupportRequestOrigin.Manual, withoutOrigin.RequestOrigin);
+		AssertEx.Equal(0, withoutOriginReader.AvailableBytes);
+
+		Array.Resize(ref currentBytes, currentBytes.Length - sizeof(int) * 2);
 		var legacy = new FireSupportRequestPacket();
 		var legacyReader = new NetDataReader(currentBytes);
 		legacy.Deserialize(legacyReader);
-		AssertRequestEqual(expected, legacy, compareSemantics: false);
+		AssertRequestEqual(
+			expected,
+			legacy,
+			compareSemantics: false,
+			compareOrigin: false);
 		AssertEx.Equal(
 			FireSupportServiceSemantics.LegacyVersion,
 			legacy.ServiceSemanticsVersion);
+		AssertEx.Equal(FireSupportRequestOrigin.Manual, legacy.RequestOrigin);
 		AssertEx.Equal(0, legacyReader.AvailableBytes);
 	}
 
@@ -110,17 +127,61 @@ internal static class FikaServiceSemanticsPacketTests
 			FireSupportServiceSemantics.CurrentVersion,
 			rehydrated.ServiceSemanticsVersion);
 
-		Array.Resize(ref currentBytes, currentBytes.Length - sizeof(int));
+		byte[] withoutOriginBytes = currentBytes.ToArray();
+		Array.Resize(ref withoutOriginBytes, withoutOriginBytes.Length - sizeof(int));
+		var withoutOrigin = new FireSupportAuthorityResultPacket();
+		var withoutOriginReader = new NetDataReader(withoutOriginBytes);
+		withoutOrigin.Deserialize(withoutOriginReader);
+		AssertResultEqual(expected, withoutOrigin, compareOrigin: false);
+		AssertEx.Equal(
+			FireSupportServiceSemantics.CurrentVersion,
+			withoutOrigin.ServiceSemanticsVersion);
+		AssertEx.Equal(FireSupportRequestOrigin.Manual, withoutOrigin.RequestOrigin);
+		AssertEx.Equal(0, withoutOriginReader.AvailableBytes);
+
+		Array.Resize(ref currentBytes, currentBytes.Length - sizeof(int) * 2);
 		var legacy = new FireSupportAuthorityResultPacket();
 		var legacyReader = new NetDataReader(currentBytes);
 		legacy.Deserialize(legacyReader);
-		AssertResultEqual(expected, legacy, compareSemantics: false);
+		AssertResultEqual(
+			expected,
+			legacy,
+			compareSemantics: false,
+			compareOrigin: false);
 		AssertEx.Equal(
 			FireSupportServiceSemantics.LegacyVersion,
 			legacy.ServiceSemanticsVersion);
 		AssertEx.Equal(
 			FireSupportServiceSemantics.LegacyVersion,
 			legacy.ToSupportRequest().ServiceSemanticsVersion);
+		AssertEx.Equal(FireSupportRequestOrigin.Manual, legacy.RequestOrigin);
+		AssertEx.Equal(0, legacyReader.AvailableBytes);
+	}
+
+	[RegressionTest]
+	private static void CancelPacketCarriesOriginAndDefaultsLegacyToManual()
+	{
+		FireSupportRequestPacket request = CreateRequest();
+		var expected = new FireSupportCancelPacket(request);
+		var writer = new NetDataWriter();
+		expected.Serialize(writer);
+		byte[] bytes = writer.ToArray();
+
+		var current = new FireSupportCancelPacket();
+		var currentReader = new NetDataReader(bytes);
+		current.Deserialize(currentReader);
+		AssertEx.Equal(expected.SupportRequestId, current.SupportRequestId);
+		AssertEx.Equal(expected.SupportType, current.SupportType);
+		AssertEx.Equal(expected.PassIndex, current.PassIndex);
+		AssertEx.Equal(expected.RequesterProfileId, current.RequesterProfileId);
+		AssertEx.Equal(FireSupportRequestOrigin.SeasonalAmbient, current.RequestOrigin);
+		AssertEx.Equal(0, currentReader.AvailableBytes);
+
+		Array.Resize(ref bytes, bytes.Length - sizeof(int));
+		var legacy = new FireSupportCancelPacket();
+		var legacyReader = new NetDataReader(bytes);
+		legacy.Deserialize(legacyReader);
+		AssertEx.Equal(FireSupportRequestOrigin.Manual, legacy.RequestOrigin);
 		AssertEx.Equal(0, legacyReader.AvailableBytes);
 	}
 
@@ -194,6 +255,7 @@ internal static class FikaServiceSemanticsPacketTests
 		// Simulate a legacy type-10 sender. New runtime constructors zero this
 		// field for Cargo, but readers/writers must retain its positional slot.
 		packet.HelicopterExtractTimeSeconds = 8.25f;
+		packet.RequestOrigin = FireSupportRequestOrigin.SeasonalAmbient;
 		return packet;
 	}
 
@@ -214,7 +276,8 @@ internal static class FikaServiceSemanticsPacketTests
 	private static void AssertRequestEqual(
 		FireSupportRequestPacket expected,
 		FireSupportRequestPacket actual,
-		bool compareSemantics = true)
+		bool compareSemantics = true,
+		bool compareOrigin = true)
 	{
 		AssertEx.Equal(expected.SupportType, actual.SupportType);
 		AssertEx.Equal(expected.Position, actual.Position);
@@ -249,18 +312,24 @@ internal static class FikaServiceSemanticsPacketTests
 				expected.ServiceSemanticsVersion,
 				actual.ServiceSemanticsVersion);
 		}
+		if (compareOrigin)
+		{
+			AssertEx.Equal(expected.RequestOrigin, actual.RequestOrigin);
+		}
 	}
 
 	private static void AssertResultEqual(
 		FireSupportAuthorityResultPacket expected,
 		FireSupportAuthorityResultPacket actual,
-		bool compareSemantics = true)
+		bool compareSemantics = true,
+		bool compareOrigin = true)
 	{
 		AssertEx.Equal(expected.Accepted, actual.Accepted);
 		AssertEx.Equal(expected.Reason, actual.Reason);
 		AssertRequestEqual(
 			expected.ToSupportRequest(),
 			actual.ToSupportRequest(),
-			compareSemantics);
+			compareSemantics,
+			compareOrigin);
 	}
 }

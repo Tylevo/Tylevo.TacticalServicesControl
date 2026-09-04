@@ -81,7 +81,8 @@ public static class FireSupportRuntime
 		int passIndex = 0,
 		HelicopterTimingSnapshot? helicopterTimingSnapshot = null,
 		bool allowLocalHelicopterServicePoint = true,
-		string supportRequestId = "")
+		string supportRequestId = "",
+		A10RuntimeRequestContext a10RequestContext = null)
 	{
 		FireSupportBehaviour leasedBehaviour = null;
 		bool requestStarted = false;
@@ -100,7 +101,8 @@ public static class FireSupportRuntime
 				supportType,
 				helicopterTimingSnapshot,
 				allowLocalHelicopterServicePoint,
-				supportRequestId);
+				supportRequestId,
+				a10RequestContext);
 			cancellationToken.ThrowIfCancellationRequested();
 			leasedBehaviour.ProcessRequest(
 				position,
@@ -154,8 +156,14 @@ public static class FireSupportRuntime
 		ESupportType requestedSupportType,
 		HelicopterTimingSnapshot? helicopterTimingSnapshot,
 		bool allowLocalHelicopterServicePoint,
-		string supportRequestId)
+		string supportRequestId,
+		A10RuntimeRequestContext a10RequestContext)
 	{
+		if (behaviour is A10Behaviour a10Behaviour)
+		{
+			a10Behaviour.SetRequestContext(a10RequestContext);
+		}
+
 		if (behaviour is UH60Behaviour uh60Behaviour)
 		{
 			uh60Behaviour.SetRequestTiming(

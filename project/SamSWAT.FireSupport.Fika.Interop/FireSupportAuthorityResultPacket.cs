@@ -30,6 +30,7 @@ public sealed class FireSupportAuthorityResultPacket : INetSerializable
 	public float HelicopterExtractTimeSeconds;
 	public float HelicopterSpeedMultiplier;
 	public int ServiceSemanticsVersion = FireSupportServiceSemantics.CurrentVersion;
+	public FireSupportRequestOrigin RequestOrigin = FireSupportRequestOrigin.Manual;
 
 	public FireSupportAuthorityResultPacket()
 	{
@@ -62,6 +63,7 @@ public sealed class FireSupportAuthorityResultPacket : INetSerializable
 				: request?.HelicopterExtractTimeSeconds ?? 0f;
 		HelicopterSpeedMultiplier = request?.HelicopterSpeedMultiplier ?? 0f;
 		ServiceSemanticsVersion = FireSupportServiceSemantics.CurrentVersion;
+		RequestOrigin = request?.RequestOrigin ?? FireSupportRequestOrigin.Manual;
 	}
 
 	public FireSupportRequestPacket ToSupportRequest()
@@ -87,6 +89,7 @@ public sealed class FireSupportAuthorityResultPacket : INetSerializable
 				: HelicopterExtractTimeSeconds;
 		request.HelicopterSpeedMultiplier = HelicopterSpeedMultiplier;
 		request.ServiceSemanticsVersion = ServiceSemanticsVersion;
+		request.RequestOrigin = RequestOrigin;
 		return request;
 	}
 
@@ -111,6 +114,7 @@ public sealed class FireSupportAuthorityResultPacket : INetSerializable
 		writer.Put(HelicopterExtractTimeSeconds);
 		writer.Put(HelicopterSpeedMultiplier);
 		writer.Put(ServiceSemanticsVersion);
+		writer.Put((int)RequestOrigin);
 	}
 
 	public void Deserialize(NetDataReader reader)
@@ -140,5 +144,8 @@ public sealed class FireSupportAuthorityResultPacket : INetSerializable
 		ServiceSemanticsVersion = reader.AvailableBytes >= sizeof(int)
 			? reader.GetInt()
 			: FireSupportServiceSemantics.LegacyVersion;
+		RequestOrigin = reader.AvailableBytes >= sizeof(int)
+			? (FireSupportRequestOrigin)reader.GetInt()
+			: FireSupportRequestOrigin.Manual;
 	}
 }

@@ -1,3 +1,5 @@
+using SamSWAT.FireSupport.ArysReloaded.Integration;
+
 namespace SamSWAT.FireSupport.ArysReloaded.Unity;
 
 public static class FireSupportServiceAvailability
@@ -70,13 +72,17 @@ public static class FireSupportServiceAvailability
 
 	public static bool IsServiceEnabled(ESupportType supportType)
 	{
+		if (!IsLocalUseAllowed(supportType))
+		{
+			return false;
+		}
+
 		return supportType switch
 		{
 			ESupportType.PriorityExfil =>
-				IsLocalUseAllowed(supportType) &&
-				(_syncedPriorityExfilEnabled ??
+				_syncedPriorityExfilEnabled ??
 				 _serverPriorityExfilEnabled ??
-				 GetConfiguredPriorityExfilEnabled()),
+				 GetConfiguredPriorityExfilEnabled(),
 			ESupportType.DoubleStrafe => _syncedDoublePassEnabled ?? _serverDoublePassEnabled ?? GetConfiguredDoublePassEnabled(),
 			ESupportType.FocusedSweep => _syncedFocusedSweepEnabled ?? _serverFocusedSweepEnabled ?? GetConfiguredFocusedSweepEnabled(),
 			_ => true
@@ -90,6 +96,11 @@ public static class FireSupportServiceAvailability
 
 	public static string GetLocalRestrictionReason(ESupportType supportType)
 	{
+		if (IsA10Type(supportType) && SeasonalModifiersBridge.IsDangerCloseActive)
+		{
+			return "A-10 tasking is unavailable while Danger Close autonomous air operations are active.";
+		}
+
 		if (supportType != ESupportType.PriorityExfil)
 		{
 			return string.Empty;
@@ -110,6 +121,11 @@ public static class FireSupportServiceAvailability
 
 	public static string GetLocalRestrictionStatus(ESupportType supportType)
 	{
+		if (IsA10Type(supportType) && SeasonalModifiersBridge.IsDangerCloseActive)
+		{
+			return "AUTONOMOUS OPS";
+		}
+
 		if (supportType != ESupportType.PriorityExfil)
 		{
 			return string.Empty;
@@ -137,5 +153,11 @@ public static class FireSupportServiceAvailability
 	public static bool GetConfiguredFocusedSweepEnabled()
 	{
 		return PluginSettings.EnableFocusedSweep?.Value ?? true;
+	}
+
+	private static bool IsA10Type(ESupportType supportType)
+	{
+		return supportType == ESupportType.Strafe ||
+		       supportType == ESupportType.DoubleStrafe;
 	}
 }

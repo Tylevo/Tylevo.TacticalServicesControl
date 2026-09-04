@@ -1,6 +1,6 @@
 # TSC SPT 4.1 Port Log
 
-Updated: 2026-08-12
+Updated: 2026-08-14
 
 Status: **active SPT 4.1.2 tester port; not ready for distribution**.
 
@@ -108,18 +108,22 @@ old unmodified 4.0-targeted binary. WTT must be installed as the complete
 | Core client compilation | Pass | Exact `hollowed.dll`, WTT 3.0.3, rebuilt UnityToolkit 2.0.1, and Fika 2.4.1 references; 0 errors. A focused standalone build reports 28 non-blocking warnings, including two obsolete inventory API calls and Unity serialized-field warnings |
 | Fika bootstrap/interop compilation | Pass | Both projects build as part of the exact five-project solution; runtime loading remains untested |
 | Full five-project solution | Pass | `SPT-4.1 Release`: 0 errors and four non-blocking warnings in the final clean build: two obsolete Core inventory-API calls and two regression-harness nullability warnings |
-| Zero-dependency regression suite | Pass | 101 passed, 0 failed against the integrated 4.1 source |
+| Zero-dependency regression suite | Pass | 160 passed, 0 failed against the integrated 4.1 source |
 | Disposable SPT server bootstrap | Pass (smoke) | Exact SPT 4.1.2 loaded TSC 1.1.0 and WTT Server CommonLib 3.0.3, completed database/startup callbacks and flea generation, initialized TSC config/dashboard/UH-60 messenger/fee journal, bound HTTPS/WSS on loopback port 6969, emitted `Server has started`, and accepted a TCP connection; the source install was untouched and the process stopped automatically |
 | Evidence-backed packaged-tree server boot | Pass (rehearsal) | An earlier validated package stage booted with WTT Server CommonLib 3.0.3, reached `Server has started`, returned HTTP 200 from `/tsc/health`, and emitted no missing-bundle or fatal startup errors; this validates the package/runtime path but does not identify the final rebuilt archive |
 | Dashboard public health route | Pass (smoke) | `GET https://127.0.0.1:6969/tsc/health` through the migrated `IHttpListener` returned HTTP 200 and valid JSON with `ok: true`, revision 1, and dashboard state |
 | Dashboard admin/schema/config routes | Not run | Authentication, admin health, schema, config read/write, rejection paths, persistence, and migration still require explicit exercise |
-| Client main-menu load without Fika | Not run | Use the pinned rebuilt UnityToolkit and complete WTT 3.0.3 install |
+| Client main-menu load without Fika | Not run | Verify standalone TSC places **TSC UPLINK** below Records/Character, while a co-installed Seasonal client suppresses that row and restores the native stack |
 | Solo raid and second consecutive raid | Not run | Manual GUI gate |
 | Fika human host/client | Not run | Must follow solo acceptance |
 | Fika dedicated headless | Not run | Final optional multiplayer gate; A-10 executor remains experimental |
 | Final tester ZIP creation and SHA-256 | Pending final rebuild | Freeze the exact release-branch candidate, rerun verification with a fresh external build-evidence file, and take the archive identity from the new external content-evidence sidecar |
 
-The 101/101 result above is a current SPT 4.1 source result. Historical 4.0.13
+The 160/160 result above is a current SPT 4.1 source result. It includes the
+deterministic 50-round A-10 impact plan, moving solo/human-host muzzle origins,
+and shared planner/timing contracts. Dedicated-headless Fika still uses its
+shorter experimental damage origin: visual replay and damage share intended
+impacts, not exact ballistic paths or arrival timing. Historical 4.0.13
 build/package evidence remains useful baseline history but is not used to
 claim 4.1.2 runtime compatibility.
 

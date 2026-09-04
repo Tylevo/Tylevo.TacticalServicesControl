@@ -263,6 +263,11 @@ public class FireSupportUI : UpdatableComponentBase, IPointerEnterHandler, IPoin
 
 	private string GetRequestDisplayText(ESupportType supportType, IFireSupportService service)
 	{
+		if (!FireSupportServiceAvailability.IsServiceEnabled(supportType))
+		{
+			return "LOCKED";
+		}
+
 		ESupportType displaySupportType = FireSupportDeploymentSelection.ResolveRadialRequest(
 			supportType,
 			_services,

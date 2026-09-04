@@ -26,7 +26,13 @@ public class VehicleWeapon
 			throw new NullReferenceException("GameWorld is null");
 		}
 
-		_playerProfileId = playerProfileId;
+		_playerProfileId = playerProfileId?.Trim() ?? string.Empty;
+		if (string.IsNullOrWhiteSpace(_playerProfileId) ||
+		    gameWorld.GetEverExistedBridgeByProfileID(_playerProfileId) == null)
+		{
+			throw new InvalidOperationException(
+				$"Ballistic owner profile '{_playerProfileId}' is not bound to a live or previously registered EFT player bridge.");
+		}
 		ItemFactory itemFactory = Singleton<ItemFactory>.Instance
 			?? throw new NullReferenceException("ItemFactory is null");
 		_ballisticsCalculator = (BallisticsCalculator)gameWorld.SharedBallisticsCalculator;

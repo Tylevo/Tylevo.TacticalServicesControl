@@ -5,5 +5,6 @@ public enum UavPhoneLaunchMode
 	ManualAuthorization,
 	InternalUavActivation,
 	DeployMenu,
-	UavRadarMonitor
+	UavRadarMonitor,
+	DangerCloseIncomingCall
 }

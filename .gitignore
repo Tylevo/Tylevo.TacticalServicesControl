@@ -372,6 +372,7 @@ dist/
 *.7z
 project/SamSWAT.FireSupport/CopyToOutput/assets/content/ui/phone/previews/
 project/SamSWAT.FireSupport/CopyToOutput/assets/content/ui/phone/optional_highres/
+project/SamSWAT.FireSupport/LocalOnly/danger-close-ringtone.mp3
 config/*token*.txt
 storage/raidops-firesupport-ledger*.json
 storage/raidops-firesupport-ledger*.tmp

@@ -229,6 +229,14 @@ public class FireSupportController : UIInputNode
 	{
 		try
 		{
+			if (!FireSupportServiceAvailability.IsServiceEnabled(supportType))
+			{
+				FireSupportPlugin.LogSource.LogInfo(
+					$"TSC deploy request blocked: service disabled for {supportType}.");
+				FireSupportPayment.NotifyServiceUnavailable(supportType);
+				return;
+			}
+
 			if (!_services.TryGetValue(supportType, out IFireSupportService service))
 			{
 				FireSupportPlugin.LogSource.LogWarning($"TSC deploy request had no service registered for {supportType}.");
@@ -277,6 +285,12 @@ public class FireSupportController : UIInputNode
 	{
 		try
 		{
+			if (!FireSupportServiceAvailability.IsServiceEnabled(supportType))
+			{
+				FireSupportPayment.NotifyServiceUnavailable(supportType);
+				return;
+			}
+
 			ESupportType requestedSupportType = supportType;
 			supportType = FireSupportDeploymentSelection.ResolveRadialRequest(
 				supportType,

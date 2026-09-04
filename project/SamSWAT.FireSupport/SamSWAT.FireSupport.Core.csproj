@@ -14,6 +14,7 @@
 
   <PropertyGroup>
     <CopyToOutputDir>$(MSBuildThisFileDirectory)CopyToOutput</CopyToOutputDir>
+    <DangerCloseLocalRingtone>$(MSBuildThisFileDirectory)LocalOnly\danger-close-ringtone.mp3</DangerCloseLocalRingtone>
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'SPT-3.10 Release|AnyCPU' ">
@@ -109,6 +110,12 @@
     <Reference Include="UnityEngine.UIElementsModule">
       <HintPath>$(SptSharedAssembliesDir)$(SptVersion)\UnityEngine.UIElementsModule.dll</HintPath>
     </Reference>
+    <Reference Include="UnityEngine.UnityWebRequestModule">
+      <HintPath>$(SptSharedAssembliesDir)$(SptVersion)\UnityEngine.UnityWebRequestModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.UnityWebRequestAudioModule">
+      <HintPath>$(SptSharedAssembliesDir)$(SptVersion)\UnityEngine.UnityWebRequestAudioModule.dll</HintPath>
+    </Reference>
     <Reference Include="UnityEngine.TextRenderingModule">
       <HintPath>$(SptSharedAssembliesDir)$(SptVersion)\UnityEngine.TextRenderingModule.dll</HintPath>
     </Reference>
@@ -146,5 +153,6 @@
   
   <Target Name="PostBuild" AfterTargets="PostBuildEvent" Condition=" '$(SkipTscDeploy)' != 'true' ">
     <Exec Command="if not exist &quot;$(SptBepInExPluginsDir)$(SolutionName)&quot; (&#xA;    mkdir &quot;$(SptBepInExPluginsDir)$(SolutionName)&quot;&#xA;)&#xA;&#xA;copy &quot;$(TargetPath)&quot; &quot;$(SptBepInExPluginsDir)$(SolutionName)\$(TargetFileName)&quot;&#xA;(robocopy &quot;$(CopyToOutputDir)&quot; &quot;$(SptBepInExPluginsDir)$(SolutionName)&quot; /E /XD previews optional_highres /XF .gitkeep WHY_V7_IS_COMPONENT_BASED.txt) ^&amp; if %ERRORLEVEL% leq 3 exit 0" />
+    <Exec Condition="Exists('$(DangerCloseLocalRingtone)')" Command="if not exist &quot;$(SptBepInExPluginsDir)$(SolutionName)\assets\content\ui\phone\audio&quot; mkdir &quot;$(SptBepInExPluginsDir)$(SolutionName)\assets\content\ui\phone\audio&quot;&#xA;copy /Y &quot;$(DangerCloseLocalRingtone)&quot; &quot;$(SptBepInExPluginsDir)$(SolutionName)\assets\content\ui\phone\audio\danger-close-ringtone.mp3&quot;" />
   </Target>
 </Project>

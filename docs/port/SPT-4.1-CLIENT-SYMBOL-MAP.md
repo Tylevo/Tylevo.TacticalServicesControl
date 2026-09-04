@@ -1,6 +1,6 @@
 # TSC SPT 4.1 Client Symbol Map
 
-Updated: 2026-08-12
+Updated: 2026-08-14
 
 Target evidence: SPT `4.1.2`, EFT `0.16.9.5.40743`, raw
 `Assembly-CSharp.dll` SHA-256
@@ -27,7 +27,7 @@ feature passed in game. Runtime/manual gates remain in
 | `HelicopterItemTransferPurchaseObservedPatch` | `LocalPlayer.ProcessTraderServicePurchase(ETraderServiceType)` | Same public method and enum | Compiled; cargo settlement pending |
 | `HelicopterItemTransferStashFeePurchasePatch` | Old abstract quest/controller aliases | `InventoryController.TryPurchaseTraderService(ETraderServiceType, EFT.Quests.QuestController, string) -> Task<bool>` | Compiled with the exact signature; carried/stash fee paths pending |
 | `HelicopterItemTransferStashFeeButtonPatch` | `TransferItemsPanel.method_1` and old injected-field names | `TransferItemsPanel.UpdateCounters()` with `____inventoryController`, `____item` (`Stash`), `____transferItemsController`, and `____transferButton` | Compiled; Harmony field binding and button state pending |
-| `MainMenuPurchasePatch` | `MatchmakerPlayerControllerClass` | `MenuScreen.Show(Profile, EFT.UI.Matchmaker.MatchmakerPlayersController, ESessionMode)` | Compiled with the exact overload; menu placement pending |
+| `MainMenuPurchasePatch` | `MatchmakerPlayerControllerClass` | `MenuScreen.Show(Profile, EFT.UI.Matchmaker.MatchmakerPlayersController, ESessionMode)` | Compiled with the exact overload; standalone placement and Seasonal-owned suppression remain live UI gates |
 | `UavDeviceClientUsableItemControllerPatch` | `ClientUsableItemController.smethod_11(ClientPlayer, string)` | `ClientUsableItemController.CreateAsync(ClientPlayer, string)`; TSC returns `ClientUsableItemController.Create(ClientPlayer, Item)` for the Uplink | Compiled; remote/client equip pending |
 | `UavDeviceHandsAnimationTypePatch` | `HandsControllerClass.method_49()` | `Player.GetWeaponAnimationType(Player.AbstractHandsController)`; inspect `__0.Item` and return `PlayerAnimator.EWeaponAnimationType.Pistol` for the Uplink | Compiled; first/third-person animation pending |
 | `UavDeviceSetInHandsForQuickUsePatch` | Old quick-use callback aliases | `Player.SetInHandsForQuickUse(Item, Callback<IQuickUseItem>)`, forwarded to `SetInHandsUsableItem` with a typed callback bridge | Compiled; quick-use, cancel, and prior-weapon restore pending |
@@ -56,7 +56,7 @@ feature passed in game. Runtime/manual gates remain in
 | `TransferItemsController._transferContainers` | Exact publicized member used directly by cargo staging/verification | Confirm staging and persistent-grid movement in a live transfer |
 | `Effects.dictionary_1` fallback probe | The reflection string is retained only as a best-effort named-effect probe; TSC falls back through `EffectsArray` and its built-in impact path when absent | Confirm `big_smoky_explosion` and fallback visuals; this lookup is not a compile blocker |
 | Profile ID fallback names `AccountId`, `Aid`, `AID`, `Id` | Bounded, null-safe runtime reflection | Verify authenticated identity in solo and Fika roles |
-| Main-menu `_playerButton` fallback | Private UI lookup used only for placement fallback | Confirm placement below Records or Character at the main menu |
+| Main-menu `_playerButton` fallback | Private UI lookup used only for placement fallback | Confirm standalone placement below Records/Character and native-stack restoration when Seasonal suppresses the TSC row |
 | Fika/player-wrapper reflection in A-10 routing | Compiled against pinned `Fika.Core.dll` 2.4.1 | Exercise human host/client and dedicated-headless ownership paths |
 
 ## Compile-Time Alias Migrations
@@ -92,6 +92,12 @@ decompiler-only `_E...`/`_F...` names are intentionally not referenced.
 damage construction uses `EFT.Ballistics.DamageInfo`. These paths compile but
 still require solo/Fika hit and ownership acceptance tests.
 
+The v1.3 A-10 planner starts solo and human-host projectiles at the visible
+muzzle and advances each round's origin with the moving aircraft. The
+dedicated-headless executor reuses the same deterministic intended impacts for
+damage and client replay but retains its shorter experimental damage origin;
+this is not exact ballistic-path or replay-arrival parity.
+
 ## Non-Patch API Changes
 
 - `FireSupportController.TranslateCommand`, `TranslateAxes`, and
@@ -115,7 +121,7 @@ four non-blocking warnings against the pinned reference/dependency root: two
 obsolete Core inventory-API calls and two regression-harness nullability
 warnings. A focused standalone Core build also has 0 errors and reports 28
 warnings because it includes Unity serialized-field diagnostics. The
-integrated zero-dependency regression suite passes 101/101.
+integrated zero-dependency regression suite passes 160/160.
 
 Before marking runtime rows complete:
 

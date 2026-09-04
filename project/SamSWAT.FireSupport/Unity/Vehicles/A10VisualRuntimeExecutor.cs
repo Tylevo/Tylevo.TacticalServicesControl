@@ -16,10 +16,10 @@ public sealed class A10VisualRuntimeExecutor : IA10StrikeExecutor
 			request.SupportRequestId,
 			$"requester={request.RequesterProfileId}");
 
-		A10TracerNetworking.PushSupportRequestContext(request.SupportRequestId, request.RequesterProfileId);
-		try
-		{
-			return await FireSupportRuntime.TryProcessRequest(
+		// SeasonalAmbient remains a distinct authority/payment semantic, but EFT
+		// 4.1 ballistics must resolve every live shot to a real player bridge.
+		string projectileOwnerProfileId = request.RequesterProfileId;
+		return await FireSupportRuntime.TryProcessRequest(
 				request.SupportType,
 				request.Position,
 				request.Direction,
@@ -27,13 +27,10 @@ public sealed class A10VisualRuntimeExecutor : IA10StrikeExecutor
 				request.VisualOnly,
 				request.VisualSeed,
 				cancellationToken,
-				request.PassIndex);
-		}
-		finally
-		{
-			// FireSupportRuntime starts the A10Behaviour coroutine immediately. Keep the
-			// context narrow to avoid stale attribution leaking into later requests.
-			A10TracerNetworking.PopSupportRequestContext(request.SupportRequestId);
-		}
+				request.PassIndex,
+				a10RequestContext: new A10RuntimeRequestContext(
+					request.SupportRequestId,
+					request.RequesterProfileId,
+					projectileOwnerProfileId));
 	}
 }

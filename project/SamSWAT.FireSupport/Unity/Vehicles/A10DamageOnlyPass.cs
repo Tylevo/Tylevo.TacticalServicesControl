@@ -59,14 +59,13 @@ public static class A10DamageOnlyPass
 
 		try
 		{
+			A10ProjectileOwnerMode ownerMode = GetProjectileOwnerMode(request);
 			int seed = request.VisualSeed != 0
 				? request.VisualSeed
 				: Environment.TickCount;
 			OwnerResolution owner = ResolveOwner(
 				gameWorld,
 				request.RequesterProfileId);
-			A10ProjectileOwnerMode ownerMode =
-				FireSupportTuningSettings.GetA10HeadlessProjectileOwnerMode();
 			string shotOwnerProfileId = ResolveShotOwnerProfileId(
 				gameWorld,
 				request,
@@ -79,13 +78,18 @@ public static class A10DamageOnlyPass
 			float timeBetweenShots = weapon?.timeBetweenShots > 0f
 				? weapon.timeBetweenShots
 				: FallbackTimeBetweenShots;
+			Vector3 aircraftForward = A10ShotPlanner.GetAircraftForward(request.Direction);
+			IReadOnlyList<Vector3> impactPlan = A10ShotPlanner.BuildImpactPlan(
+				request.Position,
+				aircraftForward,
+				seed);
 			Vector3 damageOrigin = A10ShotPlanner.GetHeadlessDamageOrigin(
 				request.Position,
 				request.Direction);
-			List<A10TracerSegment> damageShotPlan = A10ShotPlanner.Build(
+			List<A10TracerSegment> damageShotPlan = A10ShotPlanner.BuildMovingMuzzlePlan(
 				damageOrigin,
-				request.Position,
-				seed,
+				aircraftForward,
+				impactPlan,
 				timeBetweenShots);
 			if (!damageShotPlan.Any(static segment => segment.IsValid))
 			{
@@ -120,8 +124,10 @@ public static class A10DamageOnlyPass
 			return false;
 		}
 
-		OwnerResolution owner = ResolveOwner(gameWorld, request.RequesterProfileId);
-		A10ProjectileOwnerMode ownerMode = FireSupportTuningSettings.GetA10HeadlessProjectileOwnerMode();
+		A10ProjectileOwnerMode ownerMode = GetProjectileOwnerMode(request);
+		OwnerResolution owner = ResolveOwner(
+			gameWorld,
+			request.RequesterProfileId);
 		string shotOwnerProfileId = ResolveShotOwnerProfileId(gameWorld, request, owner, ownerMode);
 		LogOwnerResolution(request, seed, owner, ownerMode, shotOwnerProfileId);
 		if (string.IsNullOrWhiteSpace(shotOwnerProfileId))
@@ -143,10 +149,23 @@ public static class A10DamageOnlyPass
 		}
 
 		float timeBetweenShots = weapon?.timeBetweenShots > 0f ? weapon.timeBetweenShots : FallbackTimeBetweenShots;
-		Vector3 visualOrigin = A10ShotPlanner.GetOriginalGau8VisualOrigin(request.Position, request.Direction);
+		Vector3 aircraftForward = A10ShotPlanner.GetAircraftForward(request.Direction);
+		IReadOnlyList<Vector3> impactPlan = A10ShotPlanner.BuildImpactPlan(
+			request.Position,
+			aircraftForward,
+			seed);
+		Vector3 visualOrigin = A10ShotPlanner.GetAircraftPositionAtFire(request.Position, request.Direction);
 		Vector3 damageOrigin = A10ShotPlanner.GetHeadlessDamageOrigin(request.Position, request.Direction);
-		List<A10TracerSegment> visualShotPlan = A10ShotPlanner.BuildImpactAnchoredReplay(visualOrigin, request.Position, request.Direction, seed, timeBetweenShots);
-		List<A10TracerSegment> damageShotPlan = A10ShotPlanner.Build(damageOrigin, request.Position, seed, timeBetweenShots);
+		List<A10TracerSegment> visualShotPlan = A10ShotPlanner.BuildMovingMuzzlePlan(
+			visualOrigin,
+			aircraftForward,
+			impactPlan,
+			timeBetweenShots);
+		List<A10TracerSegment> damageShotPlan = A10ShotPlanner.BuildMovingMuzzlePlan(
+			damageOrigin,
+			aircraftForward,
+			impactPlan,
+			timeBetweenShots);
 		A10TracerSegment[] visualSegments = visualShotPlan.Where(static segment => segment.IsValid).ToArray();
 		A10TracerSegment[] damageSegments = damageShotPlan.Where(static segment => segment.IsValid).ToArray();
 		HitAccounting hitAccounting = ProbeHitCandidates(gameWorld, damageSegments, owner, request.Position, request.Direction);
@@ -155,7 +174,14 @@ public static class A10DamageOnlyPass
 		FireSupportPlugin.LogSource?.LogInfo(
 			$"TSC A-10 damage context role={request.Role} requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} requester={A10AuthorityDiagnostics.ShortId(owner.RequesterProfileId)} projectileOwnerMode={ownerMode} shotOwner={A10AuthorityDiagnostics.ShortId(shotOwnerProfileId)} resolvedOwner={owner.OwnerPlayer?.GetType().Name ?? "<none>"}:{A10AuthorityDiagnostics.ShortId(owner.OwnerProfileId)}");
 		FireSupportPlugin.LogSource?.LogInfo(
-			$"TSC A-10 shot plan role={request.Role} requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} pass={request.PassIndex} seed={seed} damageOnly=True visualReplayMode=MarkerAnchored shots={damageShotPlan.Count} visualSegments={visualSegments.Length} damageSegments={damageSegments.Length} colliderHits={hitAccounting.ColliderHitCount} ownerCandidatePlayers={hitAccounting.OwnerPlayerHitCount} nonOwnerCandidatePlayers={hitAccounting.NonOwnerPlayerHitCount} aliveOwnerCandidatePlayers={hitAccounting.AliveOwnerPlayerHitCount} aliveNonOwnerCandidatePlayers={hitAccounting.AliveNonOwnerPlayerHitCount} totalCandidatePlayersIncludingOwner={hitAccounting.TotalPlayerHitCount} colliderResolvedPlayers={hitAccounting.ColliderResolvedPlayerHitCount} geometricCandidatePlayers={hitAccounting.GeometricPlayerHitCount} unresolvedColliderHits={hitAccounting.UnresolvedColliderHitCount} visualOriginDistance={Vector3.Distance(visualOrigin, request.Position):0.0}m damageOriginDistance={Vector3.Distance(damageOrigin, request.Position):0.0}m damageApplications=unavailable damageConfirmed=unavailable");
+			$"TSC A-10 shot plan role={request.Role} requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} pass={request.PassIndex} seed={seed} damageOnly=True visualReplayMode=CorrelatedMovingMuzzle shots={damageShotPlan.Count} visualSegments={visualSegments.Length} damageSegments={damageSegments.Length} colliderHits={hitAccounting.ColliderHitCount} ownerCandidatePlayers={hitAccounting.OwnerPlayerHitCount} nonOwnerCandidatePlayers={hitAccounting.NonOwnerPlayerHitCount} aliveOwnerCandidatePlayers={hitAccounting.AliveOwnerPlayerHitCount} aliveNonOwnerCandidatePlayers={hitAccounting.AliveNonOwnerPlayerHitCount} totalCandidatePlayersIncludingOwner={hitAccounting.TotalPlayerHitCount} colliderResolvedPlayers={hitAccounting.ColliderResolvedPlayerHitCount} geometricCandidatePlayers={hitAccounting.GeometricPlayerHitCount} unresolvedColliderHits={hitAccounting.UnresolvedColliderHitCount} visualOriginDistance={Vector3.Distance(visualOrigin, request.Position):0.0}m damageOriginDistance={Vector3.Distance(damageOrigin, request.Position):0.0}m damageApplications=unavailable damageConfirmed=unavailable");
+		if (visualShotPlan.Count > 0 && damageShotPlan.Count > 0)
+		{
+			A10TracerSegment visualLast = visualShotPlan[visualShotPlan.Count - 1];
+			A10TracerSegment damageLast = damageShotPlan[damageShotPlan.Count - 1];
+			FireSupportPlugin.LogSource?.LogInfo(
+				$"TSC A-10 correlated paths requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} visualMuzzleFirst={A10AuthorityDiagnostics.FormatVector(visualShotPlan[0].ProjectileOrigin)} visualMuzzleLast={A10AuthorityDiagnostics.FormatVector(visualLast.ProjectileOrigin)} damageMuzzleFirst={A10AuthorityDiagnostics.FormatVector(damageShotPlan[0].ProjectileOrigin)} damageMuzzleLast={A10AuthorityDiagnostics.FormatVector(damageLast.ProjectileOrigin)} intendedImpactFirst={A10AuthorityDiagnostics.FormatVector(impactPlan[0])} intendedImpactLast={A10AuthorityDiagnostics.FormatVector(impactPlan[impactPlan.Count - 1])}");
+		}
 
 		if (hitAccounting.TotalPlayerHitCount == hitAccounting.OwnerPlayerHitCount && hitAccounting.OwnerPlayerHitCount > 0 && !FireSupportTuningSettings.IsA10HeadlessRequesterSelfDamageEnabled())
 		{
@@ -199,6 +225,7 @@ public static class A10DamageOnlyPass
 
 		int fired = 0;
 		int fireFailures = 0;
+		float ballisticFireStartTime = Time.time;
 		FireSupportPlugin.LogSource?.LogInfo(
 			$"TSC A-10 authoritative fire started role={request.Role} requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} pass={request.PassIndex} seed={seed} shots={damageShotPlan.Count} damageOrigin={A10AuthorityDiagnostics.FormatVector(damageOrigin)} damageOriginDistance={Vector3.Distance(damageOrigin, request.Position):0.0}m nonOwnerCandidates={hitAccounting.NonOwnerPlayerHitCount} ownerCandidates={hitAccounting.OwnerPlayerHitCount} damageConfirmed=unavailable");
 		try
@@ -208,6 +235,12 @@ public static class A10DamageOnlyPass
 				if (cancellationToken.IsCancellationRequested)
 				{
 					break;
+				}
+
+				float waitSeconds = ballisticFireStartTime + shot.DelaySeconds - Time.time;
+				if (waitSeconds > 0f)
+				{
+					await UniTask.WaitForSeconds(waitSeconds, cancellationToken: cancellationToken);
 				}
 
 				try
@@ -224,8 +257,6 @@ public static class A10DamageOnlyPass
 							$"TSC A-10 authoritative fire failed role={request.Role} requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} pass={request.PassIndex} seed={seed} shot={fired + fireFailures} origin={A10AuthorityDiagnostics.FormatVector(shot.ProjectileOrigin)} direction={A10AuthorityDiagnostics.FormatVector(shot.ProjectileDirection)}. {ex.Message}");
 					}
 				}
-
-				await UniTask.WaitForSeconds(timeBetweenShots, cancellationToken: cancellationToken);
 			}
 		}
 		catch (OperationCanceledException)
@@ -267,7 +298,15 @@ public static class A10DamageOnlyPass
 		return fired > 0;
 	}
 
-	private static OwnerResolution ResolveOwner(GameWorld gameWorld, string requesterProfileId)
+	private static A10ProjectileOwnerMode GetProjectileOwnerMode(A10StrikeRequest request)
+	{
+		return request.ProjectileOwnerModeOverride ??
+		       FireSupportTuningSettings.GetA10HeadlessProjectileOwnerMode();
+	}
+
+	private static OwnerResolution ResolveOwner(
+		GameWorld gameWorld,
+		string requesterProfileId)
 	{
 		string requestedProfileId = requesterProfileId?.Trim() ?? string.Empty;
 		Player mainPlayer = gameWorld.MainPlayer;
@@ -328,7 +367,7 @@ public static class A10DamageOnlyPass
 	{
 		return ownerMode switch
 		{
-			A10ProjectileOwnerMode.NeutralSupport => "TSC_A10_SUPPORT",
+			A10ProjectileOwnerMode.NeutralSupport => owner.OwnerProfileId ?? request.RequesterProfileId ?? string.Empty,
 			A10ProjectileOwnerMode.AuthorityProfile => gameWorld.MainPlayer?.ProfileId ?? owner.OwnerProfileId ?? request.RequesterProfileId ?? string.Empty,
 			_ => owner.OwnerProfileId ?? request.RequesterProfileId ?? string.Empty
 		};

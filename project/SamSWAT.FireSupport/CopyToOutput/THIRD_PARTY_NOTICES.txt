@@ -13,6 +13,9 @@ Project license posture: Creative Commons Attribution-NonCommercial 4.0 Internat
 
 Runtime dependencies not bundled: UnityToolkit, WTT Client Common Lib, WTT Server Common Lib, and Project Fika for multiplayer use. Install these dependencies separately.
 
+User-provided Danger Close ringtone (local/test builds only):
+project/SamSWAT.FireSupport/LocalOnly/danger-close-ringtone.mp3 was supplied by the maintainer and is copied to assets/content/ui/phone/audio/danger-close-ringtone.mp3 only during local deployment. No source or redistribution license has been documented, so it is excluded from release archives. Replace it with an original or explicitly licensed recording, or confirm redistribution rights, before any public release.
+
 UAV activation phone assets are adapted from Manimal Hacker Mod.
 Source: https://github.com/danauraborealis/ManimalHackerMod
 License: MIT License

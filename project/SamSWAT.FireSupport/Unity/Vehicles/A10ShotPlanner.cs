@@ -6,15 +6,13 @@ namespace SamSWAT.FireSupport.ArysReloaded.Unity;
 
 public static class A10ShotPlanner
 {
-	private const int ShotCount = 50;
-	private const float HorizontalSpreadMin = -0.007f;
-	private const float HorizontalSpreadMax = 0.007f;
-	private const float VerticalWalkPerShot = 0.00037f;
-	private const float OriginalAircraftDistance = 2650f;
-	private const float OriginalAircraftAltitude = 320f;
-	private const float Gau8ForwardOffset = 515f;
-	private const float OriginalStrafeSpeed = 150f;
-	private const float OriginalGunFireDelaySeconds = 8f;
+	public const int ShotCount = 50;
+	public const float AircraftDistance = 2650f;
+	public const float AircraftAltitude = 320f;
+	public const float StrafeSpeed = 150f;
+	public const float GunFireDelaySeconds = 8f;
+	public const float MaximumTracerDistance = 2200f;
+	public const float TracerSegmentLength = 42f;
 	private const float AnchoredReplayLongitudinalSpacing = 0.9f;
 	private const float AnchoredReplayLateralSpread = 7.5f;
 	private const float AnchoredReplayGroundProbeHeight = 140f;
@@ -23,74 +21,54 @@ public static class A10ShotPlanner
 	private const float DamageOnlyGroundProbeHeight = 500f;
 	private const float DamageOnlyGroundProbeDistance = 900f;
 
-	public static List<A10TracerSegment> Build(
-		Vector3 projectileOrigin,
+	public static IReadOnlyList<Vector3> BuildImpactPlan(
 		Vector3 targetPosition,
-		int seed,
-		float timeBetweenShots)
+		Vector3 aircraftForward,
+		int seed)
 	{
-		var random = new System.Random(seed != 0 ? seed : Environment.TickCount);
-		Vector3 projectileDirection = Vector3.Normalize(targetPosition - projectileOrigin);
-		if (projectileDirection.sqrMagnitude <= 0.0001f)
-		{
-			projectileDirection = Vector3.down;
-		}
-
-		Vector3 leftDirection = Vector3.Cross(projectileDirection, Vector3.up).normalized;
-		if (leftDirection.sqrMagnitude <= 0.0001f)
-		{
-			leftDirection = Vector3.right;
-		}
-
-		float shotDelay = 0f;
-		float safeTimeBetweenShots = Mathf.Max(0.001f, timeBetweenShots);
-		var plan = new List<A10TracerSegment>(ShotCount);
-		for (int index = 0; index < ShotCount; index++)
-		{
-			Vector3 leftRightSpread = leftDirection * NextSpread(random, HorizontalSpreadMin, HorizontalSpreadMax);
-			projectileDirection = Vector3.Normalize(projectileDirection + new Vector3(0, VerticalWalkPerShot, 0));
-			Vector3 shotDirection = Vector3.Normalize(projectileDirection + leftRightSpread);
-			plan.Add(A10Behaviour.BuildVisualTracerSegment(projectileOrigin, shotDirection, shotDelay));
-			shotDelay += safeTimeBetweenShots;
-		}
-
-		return plan;
-	}
-
-	public static List<A10TracerSegment> BuildImpactAnchoredReplay(
-		Vector3 projectileOrigin,
-		Vector3 targetPosition,
-		Vector3 strafeDirection,
-		int seed,
-		float timeBetweenShots)
-	{
-		var random = new System.Random(seed != 0 ? seed : Environment.TickCount);
-		Vector3 aircraftForward = -GetSafeStrafeDirection(strafeDirection);
-		aircraftForward.y = 0f;
-		if (aircraftForward.sqrMagnitude <= 0.0001f)
-		{
-			aircraftForward = Vector3.forward;
-		}
-
-		aircraftForward.Normalize();
-		Vector3 right = Vector3.Cross(Vector3.up, aircraftForward).normalized;
+		var random = new System.Random(seed);
+		Vector3 safeAircraftForward = NormalizeAircraftForward(aircraftForward);
+		Vector3 right = Vector3.Cross(Vector3.up, safeAircraftForward).normalized;
 		if (right.sqrMagnitude <= 0.0001f)
 		{
 			right = Vector3.right;
 		}
 
-		float shotDelay = 0f;
-		float safeTimeBetweenShots = Mathf.Max(0.001f, timeBetweenShots);
-		var plan = new List<A10TracerSegment>(ShotCount);
+		var plan = new List<Vector3>(ShotCount);
 		float centerIndex = (ShotCount - 1) * 0.5f;
 		for (int index = 0; index < ShotCount; index++)
 		{
 			float longitudinalOffset = (index - centerIndex) * AnchoredReplayLongitudinalSpacing;
 			float lateralOffset = NextSpread(random, -AnchoredReplayLateralSpread, AnchoredReplayLateralSpread);
 			Vector3 intendedImpact = targetPosition +
-			                         aircraftForward * longitudinalOffset +
+			                         safeAircraftForward * longitudinalOffset +
 			                         right * lateralOffset;
-			Vector3 impactPoint = ResolveImpactNearTarget(intendedImpact);
+			plan.Add(ResolveImpactNearTarget(intendedImpact));
+		}
+
+		return plan;
+	}
+
+	public static List<A10TracerSegment> BuildMovingMuzzlePlan(
+		Vector3 firstMuzzleOrigin,
+		Vector3 aircraftForward,
+		IReadOnlyList<Vector3> impactPlan,
+		float timeBetweenShots)
+	{
+		var plan = new List<A10TracerSegment>(impactPlan?.Count ?? 0);
+		if (impactPlan == null || impactPlan.Count == 0)
+		{
+			return plan;
+		}
+
+		Vector3 safeAircraftForward = NormalizeAircraftForward(aircraftForward);
+		float safeTimeBetweenShots = Mathf.Max(0.001f, timeBetweenShots);
+		for (int index = 0; index < impactPlan.Count; index++)
+		{
+			float shotDelay = index * safeTimeBetweenShots;
+			Vector3 projectileOrigin = firstMuzzleOrigin +
+			                           safeAircraftForward * StrafeSpeed * shotDelay;
+			Vector3 impactPoint = impactPlan[index];
 			Vector3 direction = Vector3.Normalize(impactPoint - projectileOrigin);
 			if (direction.sqrMagnitude <= 0.0001f)
 			{
@@ -101,44 +79,73 @@ public static class A10ShotPlanner
 			if (distance <= 1f)
 			{
 				plan.Add(A10TracerSegment.Invalid(projectileOrigin, direction, shotDelay));
-			}
-			else
-			{
-				float segmentLength = Mathf.Min(42f, distance);
-				Vector3 tracerStart = impactPoint - direction * segmentLength;
-				plan.Add(new A10TracerSegment(projectileOrigin, direction, tracerStart, impactPoint, shotDelay));
+				continue;
 			}
 
-			shotDelay += safeTimeBetweenShots;
+			Vector3 tracerEnd = ResolveFirstImpact(projectileOrigin, direction, distance, impactPoint);
+			float tracerDistance = Vector3.Distance(projectileOrigin, tracerEnd);
+			if (tracerDistance <= 1f)
+			{
+				plan.Add(A10TracerSegment.Invalid(projectileOrigin, direction, shotDelay));
+				continue;
+			}
+
+			float segmentLength = Mathf.Min(TracerSegmentLength, tracerDistance);
+			Vector3 tracerStart = tracerEnd - direction * segmentLength;
+			plan.Add(new A10TracerSegment(projectileOrigin, direction, tracerStart, tracerEnd, shotDelay));
 		}
 
 		return plan;
 	}
 
+	public static A10TracerSegment BuildRaycastTracerSegment(
+		Vector3 origin,
+		Vector3 direction,
+		float delaySeconds)
+	{
+		direction = direction.normalized;
+		float tracerDistance = MaximumTracerDistance;
+		if (Physics.Raycast(origin, direction, out RaycastHit hitInfo, tracerDistance, ~0, QueryTriggerInteraction.Ignore))
+		{
+			tracerDistance = hitInfo.distance;
+		}
+
+		if (tracerDistance <= 1f)
+		{
+			return A10TracerSegment.Invalid(origin, direction, delaySeconds);
+		}
+
+		float segmentLength = Mathf.Min(TracerSegmentLength, tracerDistance);
+		Vector3 tracerEnd = origin + direction * tracerDistance;
+		Vector3 tracerStart = tracerEnd - direction * segmentLength;
+		return new A10TracerSegment(origin, direction, tracerStart, tracerEnd, delaySeconds);
+	}
+
 	public static Vector3 GetOriginalAircraftOrigin(Vector3 targetPosition, Vector3 strafeDirection)
 	{
 		Vector3 safeDirection = GetSafeStrafeDirection(strafeDirection);
-		return targetPosition + safeDirection * OriginalAircraftDistance + Vector3.up * OriginalAircraftAltitude;
+		return targetPosition + safeDirection * AircraftDistance + Vector3.up * AircraftAltitude;
 	}
 
-	public static Vector3 GetOriginalGau8VisualOrigin(Vector3 targetPosition, Vector3 strafeDirection)
+	public static Vector3 GetAircraftPositionAtFire(Vector3 targetPosition, Vector3 strafeDirection)
 	{
 		Vector3 aircraftStart = GetOriginalAircraftOrigin(targetPosition, strafeDirection);
-		Vector3 horizontalHeading = targetPosition - aircraftStart;
-		horizontalHeading.y = 0f;
-		if (horizontalHeading.sqrMagnitude <= 0.0001f)
-		{
-			horizontalHeading = -GetSafeStrafeDirection(strafeDirection);
-		}
+		Vector3 forward = GetAircraftForward(strafeDirection);
+		float fireTravelDistance = StrafeSpeed * GunFireDelaySeconds;
+		return aircraftStart + forward * fireTravelDistance;
+	}
 
-		Vector3 forward = horizontalHeading.normalized;
-		if (forward.sqrMagnitude <= 0.0001f)
-		{
-			forward = Vector3.forward;
-		}
+	public static Vector3 GetAircraftForward(Vector3 strafeDirection)
+	{
+		return NormalizeAircraftForward(-GetSafeStrafeDirection(strafeDirection));
+	}
 
-		float fireTravelDistance = OriginalStrafeSpeed * OriginalGunFireDelaySeconds;
-		return aircraftStart + forward * (fireTravelDistance + Gau8ForwardOffset);
+	public static Vector3 NormalizeAircraftForward(Vector3 aircraftForward)
+	{
+		aircraftForward.y = 0f;
+		return aircraftForward.sqrMagnitude > 0.0001f
+			? aircraftForward.normalized
+			: Vector3.forward;
 	}
 
 	public static Vector3 GetHeadlessDamageOrigin(Vector3 targetPosition, Vector3 strafeDirection)
@@ -180,6 +187,26 @@ public static class A10ShotPlanner
 		Vector3 probeStart = intendedImpact + Vector3.up * AnchoredReplayGroundProbeHeight;
 		float probeDistance = AnchoredReplayGroundProbeHeight + AnchoredReplayGroundProbeDistance;
 		if (Physics.Raycast(probeStart, Vector3.down, out RaycastHit hit, probeDistance, ~0, QueryTriggerInteraction.Ignore))
+		{
+			return hit.point;
+		}
+
+		return intendedImpact;
+	}
+
+	private static Vector3 ResolveFirstImpact(
+		Vector3 origin,
+		Vector3 direction,
+		float intendedDistance,
+		Vector3 intendedImpact)
+	{
+		if (Physics.Raycast(
+			    origin,
+			    direction,
+			    out RaycastHit hit,
+			    intendedDistance + 0.5f,
+			    ~0,
+			    QueryTriggerInteraction.Ignore))
 		{
 			return hit.point;
 		}

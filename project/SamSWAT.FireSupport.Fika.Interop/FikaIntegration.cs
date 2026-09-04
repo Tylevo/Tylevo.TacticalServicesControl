@@ -11,6 +11,7 @@ using Fika.Core.Modding;
 using Fika.Core.Modding.Events;
 using Fika.Core.Networking;
 using Fika.Core.Networking.LiteNetLib;
+using SamSWAT.FireSupport.ArysReloaded.Integration;
 using SamSWAT.FireSupport.ArysReloaded.Unity;
 using System;
 using System.Collections.Generic;
@@ -83,6 +84,8 @@ public static class FikaIntegration
 		Uh60CargoDepartureNetworking.DeparturePublished +=
 			OnLocalUh60CargoDeparture;
 		A10TracerNetworking.TracerBurstCreated += OnA10TracerBurstCreated;
+		DangerCloseWarningNetworking.AuthorityPublished +=
+			OnAuthorityDangerCloseWarningPublished;
 		A10HeadlessDamageCommandDispatcher.Handler = TryRouteA10HeadlessDamageCommand;
 		UavA10LoiterNetworking.StartRequested += OnLocalUavLoiterRequested;
 		if (RemotePhoneVisualSyncEnabled)
@@ -107,6 +110,8 @@ public static class FikaIntegration
 		Uh60CargoDepartureNetworking.DeparturePublished -=
 			OnLocalUh60CargoDeparture;
 		A10TracerNetworking.TracerBurstCreated -= OnA10TracerBurstCreated;
+		DangerCloseWarningNetworking.AuthorityPublished -=
+			OnAuthorityDangerCloseWarningPublished;
 		A10HeadlessDamageCommandDispatcher.Handler = null;
 		UavA10LoiterNetworking.StartRequested -= OnLocalUavLoiterRequested;
 		if (RemotePhoneVisualSyncEnabled)
@@ -245,6 +250,8 @@ public static class FikaIntegration
 					client.RegisterPacket<Uh60CargoDeparturePacket>(
 						OnClientUh60CargoDeparture);
 					client.RegisterPacket<A10TracerBurstPacket>(OnClientA10TracerBurst);
+					client.RegisterPacket<DangerCloseWarningPacket>(
+						OnClientDangerCloseWarning);
 					if (RemotePhoneVisualSyncEnabled)
 					{
 						client.RegisterPacket<UavPhoneVisualPacket>(OnClientUavPhoneVisual);
@@ -335,6 +342,63 @@ public static class FikaIntegration
 		}
 	}
 
+	private static void OnAuthorityDangerCloseWarningPublished(
+		DangerCloseWarningPublication publication)
+	{
+		try
+		{
+			if (!FikaBackendUtils.IsServer)
+			{
+				// The core bridge rejects client publication before raising this
+				// event. This guard also fails closed if another mod invokes the
+				// transport event through unsupported reflection.
+				return;
+			}
+
+			FikaServer server = GetServer();
+			if (server == null)
+			{
+				s_logSource?.LogWarning(
+					$"TSC Fika Danger Close warning broadcast skipped; server unavailable kind={publication.Kind} opportunity={A10AuthorityDiagnostics.FormatRequestId(publication.OpportunityId)}.");
+				return;
+			}
+
+			var packet = new DangerCloseWarningPacket(publication);
+			server.SendData(
+				ref packet,
+				DeliveryMethod.ReliableOrdered,
+				broadcast: true);
+			TscDiagnostics.LogFika(
+				$"TSC Fika broadcast Danger Close warning kind={publication.Kind} opportunity={A10AuthorityDiagnostics.FormatRequestId(publication.OpportunityId)} seconds={publication.SecondsRemaining}.");
+		}
+		catch (Exception ex)
+		{
+			s_logSource?.LogWarning(
+				$"TSC Fika Danger Close warning broadcast failed kind={publication.Kind} opportunity={A10AuthorityDiagnostics.FormatRequestId(publication.OpportunityId)}. {ex}");
+		}
+	}
+
+	private static void OnClientDangerCloseWarning(
+		DangerCloseWarningPacket packet)
+	{
+		if (packet == null)
+		{
+			return;
+		}
+
+		if (!DangerCloseWarningNetworking.ApplyRemote(
+			    packet.ToPublication(),
+			    out string reason))
+		{
+			s_logSource?.LogWarning(
+				$"TSC Fika rejected Danger Close warning kind={packet.Kind} opportunity={A10AuthorityDiagnostics.FormatRequestId(packet.OpportunityId)} reason={reason}.");
+			return;
+		}
+
+		TscDiagnostics.LogFika(
+			$"TSC Fika applied Danger Close warning kind={packet.Kind} opportunity={A10AuthorityDiagnostics.FormatRequestId(packet.OpportunityId)} reason={reason}.");
+	}
+
 	private static void OnClientUh60CargoDeparture(
 		Uh60CargoDeparturePacket packet)
 	{
@@ -391,6 +455,7 @@ public static class FikaIntegration
 		int passIndex,
 		string supportRequestId,
 		HelicopterTimingSnapshot? helicopterTimingSnapshot,
+		FireSupportRequestOrigin requestOrigin,
 		CancellationToken cancellationToken)
 	{
 		if (!IsSupportedNetworkType(supportType))
@@ -439,7 +504,8 @@ public static class FikaIntegration
 				? UavReconSettings.GetRangeMeters(supportType)
 				: 0f,
 			effectiveHelicopterTiming,
-			helicopterTimingRevision);
+			helicopterTimingRevision,
+			requestOrigin);
 
 		if (isServer)
 		{
@@ -792,6 +858,18 @@ public static class FikaIntegration
 					requesterValidationReason);
 			}
 
+			if (request.RequestOrigin == FireSupportRequestOrigin.SeasonalAmbient &&
+			    entry.OriginPeer != null)
+			{
+				return AuthorityOutcome.Rejected(request, "AmbientAuthorityOnly");
+			}
+
+			if (request.RequestOrigin == FireSupportRequestOrigin.SeasonalAmbient &&
+			    !SeasonalModifiersBridge.IsDangerCloseActive)
+			{
+				return AuthorityOutcome.Rejected(request, "ModifierInactive");
+			}
+
 			if (!TryApplyHostAuthority(request, out string hostAuthorityReason))
 			{
 				return AuthorityOutcome.Rejected(
@@ -809,7 +887,8 @@ public static class FikaIntegration
 				return AuthorityOutcome.Rejected(request, "RaidUnavailable");
 			}
 
-			if (!FireSupportServiceAvailability.IsServiceEnabled(request.SupportType))
+			if (request.RequestOrigin == FireSupportRequestOrigin.Manual &&
+			    !FireSupportServiceAvailability.IsServiceEnabled(request.SupportType))
 			{
 				return AuthorityOutcome.Rejected(request, "ServiceDisabled");
 			}
@@ -2043,6 +2122,7 @@ public static class FikaIntegration
 		AuthorityRequestEntry entry)
 	{
 		CancellationToken cancellationToken = entry.CancellationToken;
+		A10StrikeLifecycle.Begin(packet?.SupportRequestId);
 		try
 		{
 			A10StrikeRequest request = CreateA10StrikeRequest(
@@ -2068,6 +2148,7 @@ public static class FikaIntegration
 		}
 		finally
 		{
+			A10StrikeLifecycle.Complete(packet?.SupportRequestId);
 			entry.MarkAuthorityWorkFinished();
 		}
 	}
@@ -2196,6 +2277,11 @@ public static class FikaIntegration
 			VisualSeed = packet.VisualSeed,
 			PassIndex = packet.PassIndex,
 			RequesterProfileId = packet.RequesterProfileId,
+			RequestOrigin = packet.RequestOrigin,
+			ProjectileOwnerModeOverride =
+				packet.RequestOrigin == FireSupportRequestOrigin.SeasonalAmbient
+					? A10ProjectileOwnerMode.RequesterProfile
+					: null,
 			VisualOnly = visualOnly,
 			Role = role
 		};
@@ -2443,6 +2529,14 @@ public static class FikaIntegration
 			return false;
 		}
 
+		if (!Enum.IsDefined(typeof(FireSupportRequestOrigin), packet.RequestOrigin) ||
+		    (packet.RequestOrigin == FireSupportRequestOrigin.SeasonalAmbient &&
+		     !IsA10Type(packet.SupportType)))
+		{
+			reason = "InvalidRequestOrigin";
+			return false;
+		}
+
 		if (!FireSupportServiceSemantics.CanExecute(
 			    packet.SupportType,
 			    packet.ServiceSemanticsVersion))
@@ -2627,6 +2721,7 @@ public static class FikaIntegration
 				: packet.HelicopterExtractTimeSeconds;
 		clone.HelicopterSpeedMultiplier = packet.HelicopterSpeedMultiplier;
 		clone.ServiceSemanticsVersion = packet.ServiceSemanticsVersion;
+		clone.RequestOrigin = packet.RequestOrigin;
 		return clone;
 	}
 
@@ -2645,7 +2740,8 @@ public static class FikaIntegration
 			RangeMeters = 0f,
 			PassIndex = packet.PassIndex,
 			RequesterProfileId = packet.RequesterProfileId ?? string.Empty,
-			SupportRequestId = packet.SupportRequestId ?? string.Empty
+			SupportRequestId = packet.SupportRequestId ?? string.Empty,
+			RequestOrigin = packet.RequestOrigin
 		};
 	}
 
@@ -2786,6 +2882,7 @@ public static class FikaIntegration
 		bool clearAuthorityOutcomes)
 	{
 		UavReconOverlay.Deactivate(reason);
+		DangerCloseWarningNetworking.ResetForNetworkBoundary(reason);
 
 		List<ClientPendingRequest> pendingClients;
 		List<AuthorityRequestEntry> authorityEntries = null;
@@ -3545,6 +3642,7 @@ public static class FikaIntegration
 		private readonly int _serviceSemanticsVersion;
 		private readonly int _passIndex;
 		private readonly string _requesterProfileId;
+		private readonly FireSupportRequestOrigin _requestOrigin;
 
 		public SupportRequestFingerprint(FireSupportRequestPacket packet)
 		{
@@ -3569,12 +3667,14 @@ public static class FikaIntegration
 					: FireSupportServiceSemantics.LegacyVersion;
 			_passIndex = packet.PassIndex;
 			_requesterProfileId = packet.RequesterProfileId ?? string.Empty;
+			_requestOrigin = packet.RequestOrigin;
 		}
 
 		public bool MatchesResult(FireSupportAuthorityResultPacket packet)
 		{
 			return packet != null &&
 			       _supportType == packet.SupportType &&
+			       _requestOrigin == packet.RequestOrigin &&
 			       (_supportType != ESupportType.PriorityExfil ||
 			        !packet.Accepted ||
 			        _serviceSemanticsVersion == packet.ServiceSemanticsVersion) &&
@@ -3589,6 +3689,7 @@ public static class FikaIntegration
 		{
 			return packet != null &&
 			       _supportType == packet.SupportType &&
+			       _requestOrigin == packet.RequestOrigin &&
 			       _passIndex == packet.PassIndex &&
 			       string.Equals(
 				       _requesterProfileId,
@@ -3611,6 +3712,7 @@ public static class FikaIntegration
 			       MatchesHelicopterTiming(packet) &&
 			       (_supportType != ESupportType.PriorityExfil ||
 			        _serviceSemanticsVersion == packet.ServiceSemanticsVersion) &&
+			       _requestOrigin == packet.RequestOrigin &&
 			       _passIndex == packet.PassIndex &&
 			       string.Equals(
 				       _requesterProfileId,
@@ -3658,6 +3760,7 @@ public static class FikaIntegration
 			       _helicopterExtractTimeSeconds.Equals(other._helicopterExtractTimeSeconds) &&
 			       _helicopterSpeedMultiplier.Equals(other._helicopterSpeedMultiplier) &&
 			       _serviceSemanticsVersion == other._serviceSemanticsVersion &&
+			       _requestOrigin == other._requestOrigin &&
 			       _passIndex == other._passIndex &&
 			       string.Equals(
 				       _requesterProfileId,
@@ -3687,6 +3790,7 @@ public static class FikaIntegration
 				hash = hash * 397 ^ _helicopterExtractTimeSeconds.GetHashCode();
 				hash = hash * 397 ^ _helicopterSpeedMultiplier.GetHashCode();
 				hash = hash * 397 ^ _serviceSemanticsVersion;
+				hash = hash * 397 ^ (int)_requestOrigin;
 				hash = hash * 397 ^ _passIndex;
 				hash = hash * 397 ^ StringComparer.Ordinal.GetHashCode(
 					_requesterProfileId ?? string.Empty);

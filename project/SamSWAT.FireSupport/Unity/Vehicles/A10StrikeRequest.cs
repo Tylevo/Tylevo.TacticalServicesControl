@@ -12,6 +12,8 @@ public sealed class A10StrikeRequest
 	public int VisualSeed { get; set; }
 	public int PassIndex { get; set; }
 	public string RequesterProfileId { get; set; } = string.Empty;
+	public FireSupportRequestOrigin RequestOrigin { get; set; } = FireSupportRequestOrigin.Manual;
+	public A10ProjectileOwnerMode? ProjectileOwnerModeOverride { get; set; }
 	public bool VisualOnly { get; set; }
 	public A10AuthorityRole Role { get; set; } = A10AuthorityRole.Singleplayer;
 }

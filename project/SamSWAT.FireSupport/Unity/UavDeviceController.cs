@@ -119,6 +119,13 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 	/// </summary>
 	public bool IsQuickUseSession => _onUsedCallback != null;
 
+	private static bool IsUprightPhoneMode(UavPhoneLaunchMode launchMode)
+	{
+		return launchMode == UavPhoneLaunchMode.DeployMenu ||
+		       launchMode == UavPhoneLaunchMode.UavRadarMonitor ||
+		       launchMode == UavPhoneLaunchMode.DangerCloseIncomingCall;
+	}
+
 	/// <summary>
 	/// Marks the end of EFT's SpawnController transaction for an upright phone session.
 	/// Radar expiry is allowed to request the outro only after this point;
@@ -126,8 +133,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 	/// </summary>
 	public void NotifyExternalEquipCompleted()
 	{
-		if (LaunchMode != UavPhoneLaunchMode.DeployMenu &&
-		    LaunchMode != UavPhoneLaunchMode.UavRadarMonitor)
+		if (!IsUprightPhoneMode(LaunchMode))
 		{
 			return;
 		}
@@ -138,6 +144,11 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 		    !UavReconOverlay.IsReconActive)
 		{
 			FinishRadarMonitorSession("recon link ended during phone equip");
+		}
+		else if (LaunchMode == UavPhoneLaunchMode.DangerCloseIncomingCall &&
+		         !UavPhoneHotkeyController.IsDangerCloseAnswerActive)
+		{
+			FinishDangerCloseWarningSession("warning ended during phone equip");
 		}
 	}
 
@@ -209,8 +220,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 				return;
 			}
 
-			if (LaunchMode == UavPhoneLaunchMode.DeployMenu ||
-			    LaunchMode == UavPhoneLaunchMode.UavRadarMonitor)
+			if (IsUprightPhoneMode(LaunchMode))
 			{
 				if (PhoneAnimator == null)
 				{
@@ -224,13 +234,18 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 					// must wait for EFT's equip to complete: pinning the
 					// animator from frame zero starves EFT's spawn callback and
 					// wedges the hand-swap state machine.
-					bool radarMonitor = LaunchMode == UavPhoneLaunchMode.UavRadarMonitor;
+					string context = LaunchMode switch
+					{
+						UavPhoneLaunchMode.UavRadarMonitor => "UavRadarMonitorBoot",
+						UavPhoneLaunchMode.DangerCloseIncomingCall => "DangerCloseIncomingCallBoot",
+						_ => "DeployMenuBoot"
+					};
 					StartPhoneScreen(
 						weaponPrefab,
 						TerraGroupPhoneState.DeployBoot,
-						radarMonitor ? "UavRadarMonitorBoot" : "DeployMenuBoot");
+						context);
 					SuppressUprightPresentationUntilVertical(weaponPrefab);
-					StartCoroutine(StartUprightPhoneSessionWhenEquipped(weaponPrefab, radarMonitor));
+					StartCoroutine(StartUprightPhoneSessionWhenEquipped(weaponPrefab, LaunchMode));
 				}
 
 				return;
@@ -318,6 +333,12 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 			return;
 		}
 
+		if (LaunchMode == UavPhoneLaunchMode.DangerCloseIncomingCall)
+		{
+			FinishDangerCloseWarningSession("session cancelled");
+			return;
+		}
+
 		if (_confirmationSequenceRunning && (_paymentAttempted || _restoreStarted))
 		{
 			TscDiagnostics.LogPhone("TSC phone cancel ignored: confirmation payment/restore is already committed.");
@@ -357,6 +378,22 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 			return;
 		}
 
+		if (LaunchMode == UavPhoneLaunchMode.DangerCloseIncomingCall &&
+		    _uprightEquipCompleted &&
+		    !UavPhoneHotkeyController.IsDangerCloseAnswerActive)
+		{
+			FinishDangerCloseWarningSession("warning display elapsed or ended");
+			return;
+		}
+
+		if (LaunchMode == UavPhoneLaunchMode.DangerCloseIncomingCall &&
+		    _uprightEquipCompleted &&
+		    _ownerPlayer?.IsInventoryOpened == true)
+		{
+			FinishDangerCloseWarningSession("inventory opened");
+			return;
+		}
+
 		if (LaunchMode == UavPhoneLaunchMode.UavRadarMonitor &&
 		    _uprightEquipCompleted &&
 		    _ownerPlayer?.IsInventoryOpened == true)
@@ -372,8 +409,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 			return;
 		}
 
-		if (LaunchMode == UavPhoneLaunchMode.DeployMenu ||
-		    LaunchMode == UavPhoneLaunchMode.UavRadarMonitor)
+		if (IsUprightPhoneMode(LaunchMode))
 		{
 			// EFT rewrites the hands animator speed after equip, so a frozen
 			// speed cannot hold the pose (the outro played through and stowed
@@ -389,6 +425,10 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 				if (LaunchMode == UavPhoneLaunchMode.UavRadarMonitor)
 				{
 					HandleRadarMonitorInput();
+				}
+				else if (LaunchMode == UavPhoneLaunchMode.DangerCloseIncomingCall)
+				{
+					HandleDangerCloseWarningInput();
 				}
 				else
 				{
@@ -611,9 +651,19 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 		}
 	}
 
-	private IEnumerator StartUprightPhoneSessionWhenEquipped(WeaponPrefab weaponPrefab, bool radarMonitor)
+	private IEnumerator StartUprightPhoneSessionWhenEquipped(
+		WeaponPrefab weaponPrefab,
+		UavPhoneLaunchMode launchMode)
 	{
-		string context = radarMonitor ? "UavRadarMonitor" : "DeployMenu";
+		bool radarMonitor = launchMode == UavPhoneLaunchMode.UavRadarMonitor;
+		bool dangerCloseWarning =
+			launchMode == UavPhoneLaunchMode.DangerCloseIncomingCall;
+		string context = launchMode switch
+		{
+			UavPhoneLaunchMode.UavRadarMonitor => "UavRadarMonitor",
+			UavPhoneLaunchMode.DangerCloseIncomingCall => "DangerCloseIncomingCall",
+			_ => "DeployMenu"
+		};
 		if (_phoneScreen == null && !StartPhoneScreen(weaponPrefab, TerraGroupPhoneState.DeployBoot, context))
 		{
 			NotifyAuthorizationFinished(success: false);
@@ -636,14 +686,15 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 		_restoreStarted = false;
 		_phoneVisualTerminalPhaseSent = false;
 		_confirmationSequenceCoroutine = null;
-		_deployEntries = radarMonitor ? null : FireSupportDeployMenu.GetOwnedEntries();
+		_deployEntries = radarMonitor || dangerCloseWarning
+			? null
+			: FireSupportDeployMenu.GetOwnedEntries();
 		_deploySelectionIndex = 0;
 		_deployPoseReady = false;
 		_deployPosePinned = false;
 		PendingDeployment = ESupportType.None;
-		FireSupportPlugin.LogSource.LogInfo(
-			radarMonitor ? "TSC UAV radar monitor phone session started." : "TSC deploy phone session started.");
-		if (!radarMonitor)
+		FireSupportPlugin.LogSource.LogInfo($"TSC {context} upright phone session started.");
+		if (!radarMonitor && !dangerCloseWarning)
 		{
 			PublishPhoneVisualPhase(UavPhoneVisualPhase.StartPurchasePhone, duration: 9.0f);
 		}
@@ -673,6 +724,10 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 			{
 				FinishRadarMonitorSession("phone equip timed out");
 			}
+			else if (dangerCloseWarning)
+			{
+				FinishDangerCloseWarningSession("phone equip timed out");
+			}
 			else
 			{
 				FinishDeploySession(success: false);
@@ -690,6 +745,13 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 		if (radarMonitor && !UavReconOverlay.IsReconActive)
 		{
 			FinishRadarMonitorSession("recon link ended while phone was raising");
+			yield break;
+		}
+
+		if (dangerCloseWarning &&
+		    !UavPhoneHotkeyController.IsDangerCloseAnswerActive)
+		{
+			FinishDangerCloseWarningSession("warning ended while phone was raising");
 			yield break;
 		}
 
@@ -720,6 +782,15 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 		if (radarMonitor)
 		{
 			ShowPhoneState(TerraGroupPhoneState.UavRadarLive);
+		}
+		else if (dangerCloseWarning)
+		{
+			ShowPhoneState(TerraGroupPhoneState.DangerCloseWarning);
+			if (!UavPhoneHotkeyController.NotifyDangerClosePhonePresented())
+			{
+				FinishDangerCloseWarningSession("warning ended before portrait reveal");
+				yield break;
+			}
 		}
 		else
 		{
@@ -758,6 +829,26 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 		FireSupportPlugin.LogSource.LogInfo(
 			$"TSC UAV radar monitor cancelled by input. escape={escape}, backspace={backspace}, rmb={rightMouse}.");
 		FinishRadarMonitorSession("cancel input");
+	}
+
+	private void HandleDangerCloseWarningInput()
+	{
+		if (!_uprightEquipCompleted || Time.unscaledTime < _deployInputArmedAt)
+		{
+			return;
+		}
+
+		bool escape = Input.GetKeyDown(KeyCode.Escape);
+		bool backspace = Input.GetKeyDown(KeyCode.Backspace);
+		bool rightMouse = Input.GetMouseButtonDown(1);
+		if (!escape && !backspace && !rightMouse)
+		{
+			return;
+		}
+
+		FireSupportPlugin.LogSource.LogInfo(
+			$"TSC Danger Close warning dismissed by input. escape={escape}, backspace={backspace}, rmb={rightMouse}.");
+		FinishDangerCloseWarningSession("dismiss input");
 	}
 
 	private void ShowDeployScreen()
@@ -834,6 +925,12 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 			if (!FireSupportAuthorizations.HasDeployable(selected))
 			{
 				FireSupportPlugin.LogSource.LogInfo($"TSC deploy phone entry no longer deployable: {selected}.");
+				if (!FireSupportServiceAvailability.IsServiceEnabled(selected))
+				{
+					FireSupportPayment.NotifyServiceUnavailable(selected);
+					ShowDeployScreen();
+					return;
+				}
 				_deployEntries = FireSupportDeployMenu.GetOwnedEntries();
 				_deploySelectionIndex = 0;
 				ShowDeployScreen();
@@ -1392,6 +1489,10 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 		{
 			FinishRadarMonitorSession(reason);
 		}
+		else if (LaunchMode == UavPhoneLaunchMode.DangerCloseIncomingCall)
+		{
+			FinishDangerCloseWarningSession(reason);
+		}
 		else
 		{
 			FinishDeploySession(success: false);
@@ -1646,13 +1747,27 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 
 	private void FinishRadarMonitorSession(string reason)
 	{
+		FinishLocalUprightPresentation("UAV radar monitor", reason);
+	}
+
+	private void FinishDangerCloseWarningSession(string reason)
+	{
+		FinishLocalUprightPresentation("Danger Close warning", reason);
+	}
+
+	private void FinishLocalUprightPresentation(
+		string presentationName,
+		string reason)
+	{
+		// Radar and warning views are presentation-only. Their outro must not
+		// publish purchase/cancel visual packets.
 		if (_finishNotified)
 		{
 			return;
 		}
 
 		FireSupportPlugin.LogSource.LogInfo(
-			$"TSC UAV radar monitor finishing. reason={reason}, outroPreplayed={_authorizationOutroPreplayed}.");
+			$"TSC {presentationName} phone finishing. reason={reason}, outroPreplayed={_authorizationOutroPreplayed}.");
 		_deployPoseReady = false;
 		_uprightRevealStartedAt = -1f;
 		_deployPosePinned = false;
@@ -1663,13 +1778,11 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 		_confirmationSequenceCoroutine = null;
 		_phoneScreen?.StopConfirmSwipeAnimation();
 
-		// This is a local presentation session, not an authorization event. Do
-		// not publish purchase/cancel visual packets when the player simply
-		// lowers the radar. Resume the already-started upright outro, or begin
-		// the normal success outro when release happened during the raise.
 		if (_authorizationOutroPreplayed)
 		{
-			SetPhoneAnimatorSpeed(GetConfirmOutroSpeedMultiplier(), "UAV radar monitor finish; resume outro");
+			SetPhoneAnimatorSpeed(
+				GetConfirmOutroSpeedMultiplier(),
+				$"{presentationName} finish; resume outro");
 		}
 		else
 		{
@@ -2325,6 +2438,15 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 
 	private UavPhoneScreenContext BuildPhoneContext()
 	{
+		if (LaunchMode == UavPhoneLaunchMode.DangerCloseIncomingCall)
+		{
+			return new UavPhoneScreenContext(
+				ESupportType.Strafe,
+				costRoubles: 0,
+				balanceRoubles: 0,
+				durationSeconds: UavPhoneHotkeyController.DangerCloseSecondsRemaining);
+		}
+
 		return new UavPhoneScreenContext(
 			_selectedSupportType,
 			FireSupportPayment.GetActiveCost(_selectedSupportType),
@@ -2393,8 +2515,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 		_finishPending = true;
 		_finishSuccess = success;
 
-		if (LaunchMode == UavPhoneLaunchMode.DeployMenu ||
-		    LaunchMode == UavPhoneLaunchMode.UavRadarMonitor)
+		if (IsUprightPhoneMode(LaunchMode))
 		{
 			CancelScheduledUprightPresentationReveal();
 			RestoreHiddenUprightEquipSpeed();
@@ -2522,9 +2643,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 
 			_phoneFramingApplied = _ownerPlayer?.ProceduralWeaponAnimation?.HandsContainer != null;
 
-			bool preserveRaidFov =
-				LaunchMode == UavPhoneLaunchMode.DeployMenu ||
-				LaunchMode == UavPhoneLaunchMode.UavRadarMonitor;
+			bool preserveRaidFov = IsUprightPhoneMode(LaunchMode);
 			float targetFov = s_phoneZoomOriginalFov;
 			if (!preserveRaidFov)
 			{

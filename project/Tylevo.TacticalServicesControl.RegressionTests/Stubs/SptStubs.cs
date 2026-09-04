@@ -10,6 +10,8 @@ namespace SPTarkov.DI.Annotations
 	[AttributeUsage(AttributeTargets.Class)]
 	internal sealed class InjectableAttribute : Attribute
 	{
+		public int TypePriority { get; set; }
+
 		public InjectableAttribute()
 		{
 		}
@@ -28,6 +30,31 @@ namespace SPTarkov.Server.Core.Models.Utils
 		{
 		}
 
+		void Warning(string message);
+		void Error(string message);
+		void Error(string message, Exception exception);
+	}
+}
+
+namespace SPTarkov.Server.Core.DI
+{
+	public static class OnLoadOrder
+	{
+		public const int SaveCallbacks = 600000;
+		public const int PostLoad = 1000000;
+	}
+
+	public interface IOnLoad
+	{
+		Task OnLoadAsync(CancellationToken cancellationToken);
+	}
+}
+
+namespace SPTarkov.Common.Models.Logging
+{
+	public interface ISptLogger<T>
+	{
+		void Success(string message);
 		void Warning(string message);
 		void Error(string message);
 		void Error(string message, Exception exception);
@@ -75,6 +102,8 @@ namespace SPTarkov.Server.Core.Models.Common
 
 namespace SPTarkov.Server.Core.Models.Eft.Common.Tables
 {
+	using SPTarkov.Server.Core.Models.Common;
+
 	public sealed class Item
 	{
 		public string Id { get; set; } = string.Empty;
@@ -101,11 +130,76 @@ namespace SPTarkov.Server.Core.Models.Eft.Common
 		public MongoId? SessionId { get; set; }
 		public BotBaseInventory? Inventory { get; set; }
 	}
+}
+
+namespace SPTarkov.Server.Core.Models.Eft.Common.Tables
+{
+	using SPTarkov.Server.Core.Models.Common;
 
 	public sealed class BotBaseInventory
 	{
 		public List<Item>? Items { get; set; } = new();
+		public MongoId? Equipment { get; set; }
 		public MongoId? Stash { get; set; }
+	}
+
+	public sealed class TemplateItem
+	{
+		public MongoId Id { get; set; }
+		public TemplateItemProperties? Properties { get; set; }
+	}
+
+	public sealed class TemplateItemProperties
+	{
+		public IEnumerable<Slot>? Slots { get; set; }
+	}
+
+	public sealed class Slot
+	{
+		public string? Name { get; set; }
+		public MongoId? Id { get; set; }
+		public MongoId? Parent { get; set; }
+		public SlotProperties? Properties { get; set; }
+		public bool? Required { get; set; }
+		public bool? MergeSlotWithChildren { get; set; }
+		public string? Prototype { get; set; }
+	}
+
+	public sealed class SlotProperties
+	{
+		public IEnumerable<SlotFilter>? Filters { get; set; }
+	}
+
+	public sealed class SlotFilter
+	{
+		public bool? Locked { get; set; }
+		public HashSet<MongoId>? Filter { get; set; }
+	}
+}
+
+namespace SPTarkov.Server.Core.Models.Spt.Tables
+{
+	using SPTarkov.Server.Core.Models.Common;
+	using SPTarkov.Server.Core.Models.Eft.Common.Tables;
+
+	public sealed class TemplateTable
+	{
+		public Dictionary<MongoId, TemplateItem> Items { get; set; } = new();
+	}
+}
+
+namespace SPTarkov.Server.Core.Models.Eft.Profile
+{
+	using SPTarkov.Server.Core.Models.Eft.Common;
+
+	public sealed class SptProfile
+	{
+		public Characters? CharacterData { get; set; }
+	}
+
+	public sealed class Characters
+	{
+		public PmcData? PmcData { get; set; }
 	}
 }
 
@@ -132,11 +226,31 @@ namespace SPTarkov.Server.Core.Servers
 	public class SaveServer
 	{
 		public Func<MongoId, Task>? SaveProfile { get; set; }
+		public Dictionary<MongoId, SPTarkov.Server.Core.Models.Eft.Profile.SptProfile> Profiles { get; } = new();
+
+		public virtual Dictionary<MongoId, SPTarkov.Server.Core.Models.Eft.Profile.SptProfile> GetProfiles()
+		{
+			return Profiles;
+		}
 
 		public virtual Task SaveProfileAsync(MongoId sessionId)
 		{
 			return SaveProfile?.Invoke(sessionId) ??
 			       Task.CompletedTask;
+		}
+
+		public virtual Task<long> SaveProfileAsync(
+			MongoId sessionId,
+			CancellationToken cancellationToken)
+		{
+			cancellationToken.ThrowIfCancellationRequested();
+			return SaveAndReturnAsync(sessionId);
+		}
+
+		private async Task<long> SaveAndReturnAsync(MongoId sessionId)
+		{
+			await SaveProfileAsync(sessionId);
+			return 0;
 		}
 	}
 }

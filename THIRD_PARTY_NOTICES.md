@@ -66,6 +66,16 @@ The maintainer has reviewed the redistributed assets for this public beta releas
 
 Bundled assets may include material derived from or compatible with the upstream Fire Support/Arys Reloaded basis. Third-party assets keep their own notices and permission requirements.
 
+## User-Provided Danger Close Ringtone
+
+`project/SamSWAT.FireSupport/LocalOnly/danger-close-ringtone.mp3` was supplied
+by the maintainer for local/test use. Local deployment copies it to
+`assets/content/ui/phone/audio/danger-close-ringtone.mp3`. Its filename
+identifies it as a Dokkaebi-themed sound effect, but no source or redistribution
+license has been documented. It is excluded from release archives and must be
+replaced with an original or explicitly licensed recording, or have its
+redistribution rights confirmed, before any public release.
+
 ## Disclaimer
 
 This mod is not affiliated with Battlestate Games, SPT, Project Fika, SamSWAT, Arys, danauraborealis, or the Accurate Circular Radar/Tyrian Radar authors. Credits identify upstream work and compatibility targets only.

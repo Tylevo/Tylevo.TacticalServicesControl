@@ -2,12 +2,12 @@
 
 A BepInEx mod that reworks SamSWAT's Fire Support / Arys Reloaded into a TerraGroup-style tactical support system for SPT and Fika.
 
-> **SPT 4.1.2 tester port:** v1.1.0 is being ported against the clean SPT
+> **SPT 4.1.2 tester port:** v1.3.0 is being tested against the clean SPT
 > 4.1.2 / EFT 0.16.9.5.40743 release. The expected test artifact is
-> `Tylevo.TacticalServicesControl-v1.1.0-SPT4.1.2-TESTER.zip`. The exact pinned
-> five-project build, local verification, and disposable server-bootstrap
-> smoke now pass. Menu load, raid behavior, and Fika behavior remain separate
-> manual gates and are not implied by compilation.
+> `Tylevo.TacticalServicesControl-v1.3.0-SPT4.1.2-TESTER.zip`. The exact pinned
+> five-project build and local verification pass. Server bootstrap, menu load,
+> raid behavior, and Fika behavior remain separate manual gates and are not
+> implied by compilation.
 
 This mod adds a **TerraGroup TSC Uplink** phone that lets you buy support authorizations in raid, then deploy them later from the same device. The phone handles service selection and camera-based target designation, so the rangefinder and YY gesture wheel are no longer required for the primary workflow.
 
@@ -19,6 +19,12 @@ Currently available support options:
 - UH-60 Cargo Transfer.
 - UAV Recon.
 - Focused Sweep.
+
+Tylevo Seasonal Modifiers can optionally use TSC's versioned Danger Close API
+to schedule environmental, host-authoritative ambient A-10 passes. TSC remains fully
+standalone when Seasonal Modifiers is absent. See
+[`docs/seasonal-modifiers-integration.md`](docs/seasonal-modifiers-integration.md)
+for the API v3 dispatch, warning, and Uplink-slot semantics.
 
 This project is derivative of SamSWAT's original Fire Support and SamSWAT's Fire Support - Arys Reloaded by Arys. Public redistribution is prepared with upstream permission recorded in `PERMISSIONS.md`, with full credit retained in `THIRD_PARTY_NOTICES.md` and `docs/credits.md`.
 
@@ -58,7 +64,9 @@ Do not place the ZIP contents inside an extra nested folder.
 
 ### Pre-Raid Store
 
-1. From the main menu, open **TSC UPLINK** directly below **Records**. If the Records entry is unavailable, TSC places itself below **Character** instead.
+When Seasonal Modifiers is not installed, open **TSC UPLINK** from the main menu directly below **Records**. If the Records entry is unavailable, TSC places itself below **Character** instead. Seasonal Modifiers owns that menu area when its client plugin is loaded, so TSC removes its redundant main-menu row; use the in-raid Uplink purchase flow instead.
+
+1. Open **TSC UPLINK** from the main menu on a standalone TSC install.
 2. Wait for the authenticated PMC stash and authorization ledger to load.
 3. Select **Buy** for a service, review the service, price, and projected balance in the confirmation dialog, then choose **Confirm Buy**. Cancelling sends no purchase request.
 4. Use **Dashboard** to open the active SPT server's local TSC Dashboard.

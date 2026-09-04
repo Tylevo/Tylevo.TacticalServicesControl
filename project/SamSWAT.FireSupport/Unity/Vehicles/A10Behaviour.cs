@@ -31,25 +31,28 @@ public sealed class A10Behaviour : FireSupportBehaviour
 	private Player _player;
 	private string _supportRequestId = string.Empty;
 	private string _requesterProfileId = string.Empty;
+	private string _projectileOwnerProfileId = string.Empty;
 	private bool _visualOnly;
 	private int _visualSeed;
 	private int _passIndex;
-	private System.Random _spreadRandom;
+	private A10RuntimeRequestContext _pendingRequestContext;
 	private static Material _visualTracerMaterial;
 
 	private const float TOP_SPEED = 180f;
-	private const float STRAFE_SPEED = 150f;
-	private const float VISUAL_TRACER_MAX_DISTANCE = 1400f;
-	private const float VISUAL_TRACER_SEGMENT_LENGTH = 42f;
 	private const float VISUAL_TRACER_LIFETIME = 0.08f;
 	private const float NETWORK_REPLAY_TRACER_LIFETIME = 0.18f;
 	private const float FALLBACK_GAU8_TIME_BETWEEN_SHOTS = 0.067f;
 	private const float STRIKE_ENGINE_VOLUME = 1f;
 	private const float STRIKE_ENGINE_MIN_DISTANCE = 450f;
 	private const float STRIKE_ENGINE_MAX_DISTANCE = 5000f;
-	private float _currentSpeed = STRAFE_SPEED;
+	private float _currentSpeed = A10ShotPlanner.StrafeSpeed;
 
 	public override ESupportType SupportType => ESupportType.Strafe;
+
+	public void SetRequestContext(A10RuntimeRequestContext requestContext)
+	{
+		_pendingRequestContext = requestContext;
+	}
 
 	public override void ProcessRequest(
 		Vector3 position,
@@ -60,46 +63,54 @@ public sealed class A10Behaviour : FireSupportBehaviour
 		int visualSeed = 0,
 		int passIndex = 0)
 	{
+		CleanupTransientObjects();
 		_visualOnly = visualOnly;
-		_supportRequestId = A10TracerNetworking.CurrentSupportRequestId;
-		_requesterProfileId = A10TracerNetworking.CurrentRequesterProfileId;
+		A10RuntimeRequestContext requestContext = _pendingRequestContext;
+		_pendingRequestContext = null;
+		_supportRequestId = requestContext?.SupportRequestId ?? string.Empty;
+		_requesterProfileId = requestContext?.RequesterProfileId ?? string.Empty;
+		_projectileOwnerProfileId = requestContext?.ProjectileOwnerProfileId ?? _requesterProfileId;
 		_visualSeed = visualSeed != 0 ? visualSeed : System.Environment.TickCount;
-		if (!_visualOnly && !string.IsNullOrWhiteSpace(_requesterProfileId))
+		if (!_visualOnly && !string.IsNullOrWhiteSpace(_projectileOwnerProfileId))
 		{
 			try
 			{
-				_weapon = new VehicleWeapon(_requesterProfileId, ItemConstants.GAU8_WEAPON_TPL, ItemConstants.GAU8_AMMO_TPL);
+				_weapon = new VehicleWeapon(
+					_projectileOwnerProfileId,
+					ItemConstants.GAU8_WEAPON_TPL,
+					ItemConstants.GAU8_AMMO_TPL);
 			}
 			catch (System.Exception ex)
 			{
-				FireSupportPlugin.LogSource?.LogWarning($"TSC A-10 visual runtime could not create requester-owned VehicleWeapon profile={A10AuthorityDiagnostics.ShortId(_requesterProfileId)}; using existing owner if available. {ex.Message}");
+				FireSupportPlugin.LogSource?.LogWarning($"TSC A-10 visual runtime could not create VehicleWeapon owner profile={A10AuthorityDiagnostics.ShortId(_projectileOwnerProfileId)} requester={A10AuthorityDiagnostics.ShortId(_requesterProfileId)}; using existing owner if available. {ex.Message}");
 			}
 		}
 
 		_passIndex = passIndex;
-		_spreadRandom = new System.Random(_visualSeed);
-		_currentSpeed = STRAFE_SPEED;
-		Vector3 a10StartPos = position + 2650 * direction + 320 * Vector3.up;
-		Vector3 a10Heading = position - a10StartPos;
+		_currentSpeed = A10ShotPlanner.StrafeSpeed;
+		Vector3 a10StartPos = A10ShotPlanner.GetOriginalAircraftOrigin(position, direction);
+		Vector3 a10Heading = A10ShotPlanner.GetAircraftForward(direction);
 
 		float a10YAngle = Mathf.Atan2(a10Heading.x, a10Heading.z) * Mathf.Rad2Deg;
 		Quaternion a10Rotation = Quaternion.Euler(0, a10YAngle, 0);
 
 		transform.SetPositionAndRotation(a10StartPos, a10Rotation);
-		_flareCountermeasureInstance = Instantiate(flareCountermeasure, null);
-		FlySequence(position, cancellationToken).Forget();
+		_flareCountermeasureInstance = flareCountermeasure != null
+			? Instantiate(flareCountermeasure, null)
+			: null;
+		A10StrikeLifecycle.Begin(_supportRequestId);
+		RunFlySequence(position, cancellationToken).Forget();
 	}
 
 	public override void ManualUpdate()
 	{
-		if (_flareCountermeasureInstance == null)
+		Transform t = transform;
+		if (_flareCountermeasureInstance != null)
 		{
-			return;
+			_flareCountermeasureInstance.transform.position = t.position - t.forward * 6.5f;
+			_flareCountermeasureInstance.transform.eulerAngles = new Vector3(90, t.eulerAngles.y, 0);
 		}
 
-		Transform t = transform;
-		_flareCountermeasureInstance.transform.position = t.position - t.forward * 6.5f;
-		_flareCountermeasureInstance.transform.eulerAngles = new Vector3(90, t.eulerAngles.y, 0);
 		transform.Translate(0, 0, _currentSpeed * Time.deltaTime, Space.Self);
 	}
 
@@ -128,7 +139,33 @@ public sealed class A10Behaviour : FireSupportBehaviour
 	}
 
 	// My main motto for the next 2 methods is: if it works - it works (ツ)
-	private async UniTaskVoid FlySequence(Vector3 strafePos, CancellationToken cancellationToken)
+	private async UniTaskVoid RunFlySequence(
+		Vector3 strafePos,
+		CancellationToken cancellationToken)
+	{
+		try
+		{
+			await FlySequence(strafePos, cancellationToken);
+		}
+		catch (System.OperationCanceledException)
+		{
+			if (this != null && gameObject.activeSelf)
+			{
+				ReturnToPool();
+			}
+		}
+		catch (System.Exception ex)
+		{
+			FireSupportPlugin.LogSource?.LogError(
+				$"TSC A-10 flight sequence failed requestId={A10AuthorityDiagnostics.ShortId(_supportRequestId)}. {ex}");
+			if (this != null && gameObject.activeSelf)
+			{
+				ReturnToPool();
+			}
+		}
+	}
+
+	private async UniTask FlySequence(Vector3 strafePos, CancellationToken cancellationToken)
 	{
 		await UniTask.WaitForSeconds(3f, cancellationToken: cancellationToken);
 
@@ -136,7 +173,7 @@ public sealed class A10Behaviour : FireSupportBehaviour
 		await UniTask.WaitForSeconds(1f, cancellationToken: cancellationToken);
 
 		// Disable flares
-		_flareCountermeasureInstance.SetActive(false);
+		_flareCountermeasureInstance?.SetActive(false);
 		await UniTask.WaitForSeconds(3f, cancellationToken: cancellationToken);
 
 		// Enable gun particles
@@ -189,7 +226,7 @@ public sealed class A10Behaviour : FireSupportBehaviour
 		await UniTask.WaitForSeconds(1.5f, cancellationToken: cancellationToken);
 
 		// Enable flares
-		_flareCountermeasureInstance.SetActive(true);
+		_flareCountermeasureInstance?.SetActive(true);
 		await UniTask.WaitForSeconds(8f, cancellationToken: cancellationToken);
 
 		// Play jet leaving voiceover
@@ -201,6 +238,42 @@ public sealed class A10Behaviour : FireSupportBehaviour
 		await UniTask.WaitForSeconds(4f, cancellationToken: cancellationToken);
 
 		ReturnToPool();
+	}
+
+	protected override void OnDisable()
+	{
+		string completedRequestId = _supportRequestId;
+		CleanupTransientObjects();
+		_supportRequestId = string.Empty;
+		_requesterProfileId = string.Empty;
+		_projectileOwnerProfileId = string.Empty;
+		_pendingRequestContext = null;
+		base.OnDisable();
+		A10StrikeLifecycle.Complete(completedRequestId);
+	}
+
+	private void OnDestroy()
+	{
+		CleanupTransientObjects();
+	}
+
+	private void CleanupTransientObjects()
+	{
+		if (_flareCountermeasureInstance != null)
+		{
+			DestroyImmediate(_flareCountermeasureInstance);
+			_flareCountermeasureInstance = null;
+		}
+
+		if (engineSource != null)
+		{
+			engineSource.Stop();
+		}
+
+		if (gau8Particles != null)
+		{
+			gau8Particles.SetActive(false);
+		}
 	}
 
 	private void PlayStrikeFlyoverAudio()
@@ -242,9 +315,17 @@ public sealed class A10Behaviour : FireSupportBehaviour
 
 	private async UniTaskVoid Gau8Sequence(Vector3 strafePos, CancellationToken cancellationToken)
 	{
-		List<A10TracerSegment> shotPlan = BuildGau8ShotPlan(strafePos);
+		float timeBetweenShots = GetGau8TimeBetweenShots();
+		List<A10TracerSegment> shotPlan = BuildGau8ShotPlan(strafePos, timeBetweenShots);
 		bool networkTracerAuthority = A10TracerNetworking.IsNetworkAuthorityActive;
 		float fireStartNetworkTime = Time.time;
+		if (shotPlan.Count > 0)
+		{
+			A10TracerSegment firstShot = shotPlan[0];
+			A10TracerSegment lastShot = shotPlan[shotPlan.Count - 1];
+			FireSupportPlugin.LogSource?.LogInfo(
+				$"TSC A-10 correlated shot plan requestId={A10AuthorityDiagnostics.ShortId(_supportRequestId)} pass={_passIndex} seed={_visualSeed} shots={shotPlan.Count} muzzleFirst={A10AuthorityDiagnostics.FormatVector(firstShot.ProjectileOrigin)} muzzleLast={A10AuthorityDiagnostics.FormatVector(lastShot.ProjectileOrigin)} impactFirst={A10AuthorityDiagnostics.FormatVector(firstShot.TracerEnd)} impactLast={A10AuthorityDiagnostics.FormatVector(lastShot.TracerEnd)} muzzleTravel={Vector3.Distance(firstShot.ProjectileOrigin, lastShot.ProjectileOrigin):0.0}m");
+		}
 
 		if (!_visualOnly && networkTracerAuthority && shotPlan.Count > 0)
 		{
@@ -275,6 +356,12 @@ public sealed class A10Behaviour : FireSupportBehaviour
 				break;
 			}
 
+			float waitSeconds = fireStartNetworkTime + shot.DelaySeconds - Time.time;
+			if (waitSeconds > 0f)
+			{
+				await UniTask.WaitForSeconds(waitSeconds, cancellationToken: cancellationToken);
+			}
+
 			if (!_visualOnly && _weapon != null)
 			{
 				_weapon.FireProjectile(shot.ProjectileOrigin, shot.ProjectileDirection);
@@ -283,37 +370,26 @@ public sealed class A10Behaviour : FireSupportBehaviour
 			{
 				RenderVisualTracerSegment(shot);
 			}
-
-			await UniTask.WaitForSeconds(GetGau8TimeBetweenShots(), cancellationToken: cancellationToken);
 		}
 
 		AccelerateSequence(cancellationToken).Forget();
 	}
 
-	private List<A10TracerSegment> BuildGau8ShotPlan(Vector3 strafePos)
+	private List<A10TracerSegment> BuildGau8ShotPlan(
+		Vector3 strafePos,
+		float timeBetweenShots)
 	{
-		Vector3 gau8Pos = gau8Transform.position + gau8Transform.forward * 515;
-		Vector3 gau8Dir = Vector3.Normalize(strafePos - gau8Pos);
-		Vector3 gau8LeftDir = Vector3.Cross(gau8Dir, Vector3.up).normalized;
-		float shotDelay = 0f;
-		var plan = new List<A10TracerSegment>(50);
-
-		for (int i = 0; i < 50; i++)
-		{
-			Vector3 leftRightSpread = gau8LeftDir * NextSpread(-0.007f, 0.007f);
-			gau8Dir = Vector3.Normalize(gau8Dir + new Vector3(0, 0.00037f, 0));
-			Vector3 projectileDir = Vector3.Normalize(gau8Dir + leftRightSpread);
-			plan.Add(BuildVisualTracerSegment(gau8Pos, projectileDir, shotDelay));
-			shotDelay += GetGau8TimeBetweenShots();
-		}
-
-		return plan;
-	}
-
-	private float NextSpread(float min, float max)
-	{
-		_spreadRandom ??= new System.Random(System.Environment.TickCount);
-		return min + (float)_spreadRandom.NextDouble() * (max - min);
+		Transform muzzle = gau8Transform != null ? gau8Transform : transform;
+		Vector3 aircraftForward = A10ShotPlanner.NormalizeAircraftForward(transform.forward);
+		IReadOnlyList<Vector3> impactPlan = A10ShotPlanner.BuildImpactPlan(
+			strafePos,
+			aircraftForward,
+			_visualSeed);
+		return A10ShotPlanner.BuildMovingMuzzlePlan(
+			muzzle.position,
+			aircraftForward,
+			impactPlan,
+			timeBetweenShots);
 	}
 
 	private float GetGau8TimeBetweenShots()
@@ -334,23 +410,7 @@ public sealed class A10Behaviour : FireSupportBehaviour
 
 	public static A10TracerSegment BuildVisualTracerSegment(Vector3 origin, Vector3 direction, float delaySeconds)
 	{
-		direction = direction.normalized;
-		float tracerDistance = VISUAL_TRACER_MAX_DISTANCE;
-		if (Physics.Raycast(origin, direction, out RaycastHit hitInfo, tracerDistance, ~0, QueryTriggerInteraction.Ignore))
-		{
-			tracerDistance = hitInfo.distance;
-		}
-
-		if (tracerDistance <= 1f)
-		{
-			return A10TracerSegment.Invalid(origin, direction, delaySeconds);
-		}
-
-		float segmentLength = Mathf.Min(VISUAL_TRACER_SEGMENT_LENGTH, tracerDistance);
-		Vector3 tracerEnd = origin + direction * tracerDistance;
-		Vector3 tracerStart = tracerEnd - direction * segmentLength;
-
-		return new A10TracerSegment(origin, direction, tracerStart, tracerEnd, delaySeconds);
+		return A10ShotPlanner.BuildRaycastTracerSegment(origin, direction, delaySeconds);
 	}
 
 	public static void RenderVisualTracerSegment(A10TracerSegment segment, bool prominentReplay = false)

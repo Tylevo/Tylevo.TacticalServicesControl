@@ -29,6 +29,7 @@ public record ServerModMetadata : IModMetadata
 [Injectable(TypePriority = OnLoadOrder.GameCallbacks + 1)]
 public class ServerMod(
 	CustomItemServiceExtended customItemService,
+	TscUplinkSpecialSlotService uplinkSpecialSlotService,
 	FireSupportServerConfigService fireSupportServerConfigService,
 	FireSupportUh60DeliveryService uh60DeliveryService,
 	FireSupportUh60TransferFeeService uh60TransferFeeService,
@@ -44,6 +45,7 @@ public class ServerMod(
 		await wttCommon.CustomItemParentService.CreateCustomParents(assembly);
 		cancellationToken.ThrowIfCancellationRequested();
 		await wttCommon.CustomItemServiceExtended.CreateCustomItems(assembly);
+		uplinkSpecialSlotService.ConfigurePocketTemplates();
 		customItemService.ApplyHackerModBundleCompatibility(pathToMod);
 		await wttCommon.CustomAssortSchemeService.CreateCustomAssortSchemes(assembly);
 		cancellationToken.ThrowIfCancellationRequested();

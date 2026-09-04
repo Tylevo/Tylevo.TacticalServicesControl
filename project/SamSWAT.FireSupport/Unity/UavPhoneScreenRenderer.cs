@@ -143,6 +143,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 	private CanvasGroup _deployGroup;
 	private CanvasGroup _deployBootGroup;
 	private CanvasGroup _uavRadarGroup;
+	private CanvasGroup _dangerCloseWarningGroup;
 	private int _deploySelectionIndex;
 	private Text _deniedReasonText;
 	private Text _deniedDetailText;
@@ -166,6 +167,8 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 	private int _uavRadarLastRangeMeters = int.MinValue;
 	private int _uavRadarLastContactCount = int.MinValue;
 	private int _uavRadarLastNextScanTenths = int.MinValue;
+	private Text _dangerCloseEtaText;
+	private int _dangerCloseLastEtaSeconds = int.MinValue;
 
 	public void Initialize(
 		Renderer screenRenderer,
@@ -198,6 +201,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		BuildDeploySelectScreen();
 		BuildDeployBootScreen();
 		BuildUavRadarLiveScreen();
+		BuildDangerCloseWarningScreen();
 		BindRenderTexture(uvRect);
 		if (TscDiagnostics.VerboseLcd)
 		{
@@ -260,6 +264,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		BuildDeploySelectScreen();
 		BuildDeployBootScreen();
 		BuildUavRadarLiveScreen();
+		BuildDangerCloseWarningScreen();
 		ShowState(state);
 	}
 
@@ -309,12 +314,18 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 
 	private void Update()
 	{
-		if (_currentState != TerraGroupPhoneState.UavRadarLive || _uavRadarGroup == null)
+		if (_currentState == TerraGroupPhoneState.UavRadarLive &&
+		    _uavRadarGroup != null)
 		{
+			UpdateUavRadarLiveScreen();
 			return;
 		}
 
-		UpdateUavRadarLiveScreen();
+		if (_currentState == TerraGroupPhoneState.DangerCloseWarning &&
+		    _dangerCloseWarningGroup != null)
+		{
+			UpdateDangerCloseWarningScreen();
+		}
 	}
 
 	public void Shutdown()
@@ -1707,6 +1718,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 			for (int i = 0; i < entries.Count; i++)
 			{
 				ESupportType type = entries[i];
+				bool isEnabled = FireSupportServiceAvailability.IsServiceEnabled(type);
 				bool isSelected = i == selected;
 				RectTransform row = AddPanel(root, new Rect(28 * sx, y, rowWidth, rowHeight), isSelected ? panelSelected : panel);
 				if (isSelected)
@@ -1719,8 +1731,15 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 				}
 
 				AddText(row, (i + 1).ToString(), F(22), FontStyle.Bold, isSelected ? amberHigh : muted, new Rect(14 * sx, 0, 40 * sx, rowHeight), TextAnchor.MiddleCenter);
-				AddText(row, GetServiceTitle(type), F(18), FontStyle.Bold, isSelected ? amberHigh : text, new Rect(62 * sx, 0, rowWidth - 150 * sx, rowHeight), TextAnchor.MiddleLeft);
-				AddText(row, $"x{FireSupportAuthorizations.GetDeployableCount(type)}", F(17), FontStyle.Bold, green, new Rect(rowWidth - 76 * sx, 0, 60 * sx, rowHeight), TextAnchor.MiddleRight);
+				AddText(row, GetServiceTitle(type), F(18), FontStyle.Bold, isEnabled && isSelected ? amberHigh : isEnabled ? text : muted, new Rect(62 * sx, 0, rowWidth - 150 * sx, rowHeight), TextAnchor.MiddleLeft);
+				AddText(
+					row,
+					isEnabled ? $"x{FireSupportAuthorizations.Get(type)}" : "LOCKED",
+					F(17),
+					FontStyle.Bold,
+					isEnabled ? green : muted,
+					new Rect(rowWidth - 92 * sx, 0, 76 * sx, rowHeight),
+					TextAnchor.MiddleRight);
 				y += rowHeight + rowSpacing;
 			}
 		}
@@ -1879,6 +1898,82 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		AddText(footer, footerText, F(12), FontStyle.Bold, greenHigh, new Rect(0, 0, 376f * scale, 50f * scale), TextAnchor.MiddleCenter);
 
 		_uavRadarNextTextRefreshAt = 0f;
+	}
+
+	private void BuildDangerCloseWarningScreen()
+	{
+		RectTransform root = CreateScreenRoot(
+			"TerraGroup Danger Close Warning Screen",
+			portrait: true);
+		_dangerCloseWarningGroup = root.gameObject.AddComponent<CanvasGroup>();
+
+		float w = root.sizeDelta.x;
+		float h = root.sizeDelta.y;
+		float scale = Mathf.Max(0.1f, Mathf.Min(w / 432f, h / 768f));
+		float left = (w - 432f * scale) * 0.5f;
+		int F(int size) => Mathf.Max(8, Mathf.RoundToInt(size * scale));
+		Rect R(float x, float y, float width, float height) =>
+			new(left + x * scale, y * scale, width * scale, height * scale);
+		Rect L(float x, float y, float width, float height) =>
+			new(x * scale, y * scale, width * scale, height * scale);
+
+		Color text = new(0.863f, 0.847f, 0.784f);
+		Color muted = new(0.616f, 0.600f, 0.549f);
+		Color amber = new(0.95f, 0.64f, 0.22f);
+		Color warning = new(0.92f, 0.26f, 0.16f);
+		Color panel = new(0.065f, 0.045f, 0.038f, 0.98f);
+		Color urgentPanel = new(0.13f, 0.035f, 0.025f, 0.98f);
+		Color line = new(0.55f, 0.24f, 0.18f, 0.72f);
+
+		AddText(root, "TERRAGROUP", F(22), FontStyle.Bold, text, R(26, 18, 240, 28), TextAnchor.MiddleLeft);
+		AddText(root, "TACTICAL SERVICES", F(10), FontStyle.Bold, muted, R(27, 44, 220, 18), TextAnchor.MiddleLeft);
+		AddText(root, DateTime.Now.ToString("HH:mm"), F(15), FontStyle.Bold, text, R(316, 24, 90, 24), TextAnchor.MiddleRight);
+		AddLine(root, R(20, 70, 392, 1), line);
+
+		AddText(root, "DANGER CLOSE", F(31), FontStyle.Bold, warning, R(28, 90, 376, 42), TextAnchor.MiddleCenter);
+		AddText(root, "LOCAL SAFETY ADVISORY", F(11), FontStyle.Bold, amber, R(28, 132, 376, 22), TextAnchor.MiddleCenter);
+
+		RectTransform taskingPanel = AddPanel(root, R(28, 174, 376, 104), panel);
+		AddText(taskingPanel, "A-10 STRAFE TASKED", F(24), FontStyle.Bold, text, L(12, 14, 352, 34), TextAnchor.MiddleCenter);
+		AddText(taskingPanel, "GUN RUN APPROACHING YOUR AREA", F(11), FontStyle.Bold, muted, L(12, 54, 352, 22), TextAnchor.MiddleCenter);
+		AddText(taskingPanel, "INBOUND SOON", F(14), FontStyle.Bold, amber, L(12, 77, 352, 20), TextAnchor.MiddleCenter);
+
+		RectTransform coverPanel = AddPanel(root, R(28, 306, 376, 238), urgentPanel);
+		AddText(coverPanel, "SEEK", F(45), FontStyle.Bold, text, L(12, 22, 352, 58), TextAnchor.MiddleCenter);
+		AddText(coverPanel, "COVER NOW", F(45), FontStyle.Bold, warning, L(12, 78, 352, 62), TextAnchor.MiddleCenter);
+		AddLine(coverPanel, L(24, 151, 328, 2), line);
+		_dangerCloseEtaText = AddText(
+			coverPanel,
+			$"ETA ~{Mathf.Max(0, _context.DurationSeconds)} SEC",
+			F(27),
+			FontStyle.Bold,
+			amber,
+			L(12, 166, 352, 46),
+			TextAnchor.MiddleCenter);
+
+		RectTransform footer = AddPanel(root, R(28, 574, 376, 76), panel);
+		AddText(footer, "THIS CALL DOES NOT DELAY THE STRIKE", F(10), FontStyle.Bold, muted, L(10, 8, 356, 24), TextAnchor.MiddleCenter);
+		string answerKey = PluginSettings.OpenUavRadarKey != null
+			? PluginSettings.OpenUavRadarKey.Value.ToString().ToUpperInvariant()
+			: "J";
+		AddText(footer, $"[{answerKey}] STOW / REOPEN UNTIL INBOUND", F(12), FontStyle.Bold, text, L(10, 35, 356, 30), TextAnchor.MiddleCenter);
+
+		_dangerCloseLastEtaSeconds = int.MinValue;
+		UpdateDangerCloseWarningScreen();
+	}
+
+	private void UpdateDangerCloseWarningScreen()
+	{
+		int secondsRemaining = Mathf.Max(
+			0,
+			UavPhoneHotkeyController.DangerCloseSecondsRemaining);
+		if (secondsRemaining == _dangerCloseLastEtaSeconds)
+		{
+			return;
+		}
+
+		_dangerCloseLastEtaSeconds = secondsRemaining;
+		SetTextIfChanged(_dangerCloseEtaText, $"ETA ~{secondsRemaining} SEC");
 	}
 
 	private static void AddRadarGridSquare(RectTransform parent, float inset, float size, Color color)
@@ -3059,6 +3154,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		SetGroup(_deployGroup, _deployGroup == activeGroup);
 		SetGroup(_deployBootGroup, _deployBootGroup == activeGroup);
 		SetGroup(_uavRadarGroup, _uavRadarGroup == activeGroup);
+		SetGroup(_dangerCloseWarningGroup, _dangerCloseWarningGroup == activeGroup);
 	}
 
 	private IEnumerator FadeToStateCoroutine(TerraGroupPhoneState state, float durationSeconds)
@@ -3085,7 +3181,8 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 			_deniedGroup,
 			_deployGroup,
 			_deployBootGroup,
-			_uavRadarGroup
+			_uavRadarGroup,
+			_dangerCloseWarningGroup
 		};
 
 		foreach (CanvasGroup group in groups)
@@ -3136,6 +3233,12 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 			_uavRadarNextTextRefreshAt = 0f;
 			UpdateUavRadarLiveScreen();
 		}
+
+		if (state == TerraGroupPhoneState.DangerCloseWarning)
+		{
+			_dangerCloseLastEtaSeconds = int.MinValue;
+			UpdateDangerCloseWarningScreen();
+		}
 	}
 
 	private CanvasGroup GetGroupForState(TerraGroupPhoneState state)
@@ -3154,6 +3257,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 			TerraGroupPhoneState.DeploySelect => _deployGroup,
 			TerraGroupPhoneState.DeployBoot => _deployBootGroup,
 			TerraGroupPhoneState.UavRadarLive => _uavRadarGroup,
+			TerraGroupPhoneState.DangerCloseWarning => _dangerCloseWarningGroup,
 			_ => _homeGroup
 		};
 	}

@@ -1,3 +1,4 @@
+using BepInEx.Bootstrap;
 using Comfort.Common;
 using Cysharp.Threading.Tasks;
 using EFT;
@@ -19,6 +20,7 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 {
 	private const string ButtonName = "TSC_MainMenuUplinkButton";
 	private const string PageName = "TSC_MainMenuPurchasePage";
+	private const string SeasonalModifiersPluginGuid = "com.tylevo.seasonalmodifiers";
 	private const int LayoutScanPasses = 12;
 	private const float LayoutScanIntervalSeconds = 0.5f;
 	private const float LayoutDriftCheckIntervalSeconds = 1f;
@@ -108,8 +110,13 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 	private bool _refreshPending;
 	private bool _purchasePending;
 	private ESupportType _pendingType = ESupportType.None;
+	private bool _seasonalClientActive;
 	private bool _superseded;
 	private bool _destroyed;
+
+	private bool ShouldShowMenuButton =>
+		PluginSettings.Enabled?.Value == true &&
+		!_seasonalClientActive;
 
 	public static void Attach(MenuScreen menuScreen, Profile profile)
 	{
@@ -160,7 +167,6 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 		}
 
 		_superseded = false;
-		enabled = true;
 		s_instance = this;
 		_menuScreen = menuScreen;
 		_profileId = profile?.Id?.Trim() ?? string.Empty;
@@ -174,6 +180,14 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 		}
 
 		_sessionKey = authenticatedKey;
+		_seasonalClientActive = IsSeasonalModifiersClientActive();
+		if (_seasonalClientActive)
+		{
+			SuppressMenuForSeasonal();
+			return;
+		}
+
+		enabled = true;
 		EnsureMenuButton();
 		_layoutScansRemaining = LayoutScanPasses;
 		_nextLayoutScanAt = Time.unscaledTime + LayoutScanIntervalSeconds;
@@ -186,12 +200,21 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 			DetachForReplacement();
 			return;
 		}
+		if (_seasonalClientActive)
+		{
+			SuppressMenuForSeasonal();
+			return;
+		}
 
 		if (_menuButton != null)
 		{
-			bool shouldShow = PluginSettings.Enabled?.Value == true;
+			bool shouldShow = ShouldShowMenuButton;
 			if (_menuButton.gameObject.activeSelf != shouldShow)
 			{
+				if (!shouldShow)
+				{
+					ClosePage();
+				}
 				_menuButton.gameObject.SetActive(shouldShow);
 				PositionMenuButton(FindCharacterButton(_menuScreen));
 			}
@@ -225,6 +248,47 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 		if (HasMenuPlacementDrifted(template))
 		{
 			PositionMenuButton(template);
+		}
+	}
+
+	private static bool IsSeasonalModifiersClientActive()
+	{
+		return Chainloader.PluginInfos.ContainsKey(SeasonalModifiersPluginGuid);
+	}
+
+	private void SuppressMenuForSeasonal()
+	{
+		ClosePage();
+		RestoreMenuStackPositions();
+		RetireAllMenuButtons();
+		_layoutScansRemaining = 0;
+		_nextLayoutScanAt = float.PositiveInfinity;
+		enabled = false;
+	}
+
+	private void RetireAllMenuButtons()
+	{
+		if (_menuButton != null)
+		{
+			DefaultUIButton ownedButton = _menuButton;
+			_menuButton = null;
+			RetireMenuButton(ownedButton);
+		}
+
+		if (_menuScreen == null)
+		{
+			return;
+		}
+
+		foreach (Transform candidate in
+		         _menuScreen.GetComponentsInChildren<Transform>(includeInactive: true))
+		{
+			if (candidate != null && candidate.name == ButtonName)
+			{
+				RetireMenuButton(
+					candidate.GetComponent<DefaultUIButton>(),
+					candidate.gameObject);
+			}
 		}
 	}
 
@@ -289,7 +353,7 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 			return;
 		}
 
-		_menuButton.gameObject.SetActive(PluginSettings.Enabled?.Value == true);
+		_menuButton.gameObject.SetActive(ShouldShowMenuButton);
 		_menuButton.SetRawText("TSC UPLINK", ResolveFontSize(template));
 		_menuButton.Interactable = true;
 		_menuButton.OnClick.RemoveAllListeners();
@@ -753,17 +817,28 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 			}
 		}
 
+		ClearMenuStackTracking();
+	}
+
+	private void ClearMenuStackTracking()
+	{
+		_menuStackParent = null;
 		_menuStackAnchor = null;
 		_menuStackAnchorButtonName = string.Empty;
 		_menuStackLayoutDriven = false;
 		_menuStackManualApplied = false;
+		_hasMenuStackSlotStep = false;
+		_menuStackSlotStepY = -ButtonSlotHeight;
+		_menuStackSquad = null;
+		_menuStackSquadOffsetY = 0f;
+		_hasMenuStackSquadBaseline = false;
 	}
 
 	private void OpenPage()
 	{
 		if (_superseded ||
 		    s_instance != this ||
-		    PluginSettings.Enabled?.Value != true)
+		    !ShouldShowMenuButton)
 		{
 			return;
 		}
