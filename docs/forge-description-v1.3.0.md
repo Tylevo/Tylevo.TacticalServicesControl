@@ -17,6 +17,6 @@ its redundant pre-raid row without changing any in-raid service. Standalone TSC
 installs keep the pre-raid storefront.
 
 This is a tester candidate. The exact-version build and 168/168 regression tests
-pass; final package, server bootstrap, live raid, migration UI, ballistic-impact,
-and Fika acceptance are pending. See
-`docs/port/SPT-4.1.4-PORT-LOG.md` for the current evidence.
+pass, along with final package checks and packaged-server/HTTP smoke. Live raid,
+migration UI, ballistic-impact, and Fika acceptance are pending. See
+`docs/port/SPT-4.1.4-VALIDATION.md` for the current evidence.

@@ -49,5 +49,6 @@ four runtime projects against its pinned references with deployment disabled;
 that evidence remains in `docs/port/SPT-4.1-PORT-LOG.md`. The combined SPT 4.1.4
 candidate now passes 168/168 regression tests and its exact-version five-project
 build with 0 errors and four existing warnings. Final package validation,
-server bootstrap, live solo/Fika warnings, profile UI, and raid impact behavior
-remain pending tester acceptance gates.
+packaged-server startup, and seven HTTP checks pass. Live solo/Fika warnings,
+profile UI, and raid impact behavior remain pending tester acceptance gates.
+See `docs/port/SPT-4.1.4-VALIDATION.md` for the exact tested artifact.

@@ -94,11 +94,11 @@ the disposable exact-version server bootstrap and public health-route smoke
 also pass. Dashboard schema/config/authentication exercise, final-package boot
 cleanliness, client load, solo raids, and Fika sessions remain separate gates
 in `docs/port/SPT-4.1-PORT-LOG.md`. These results do not validate SPT 4.1.4.
-The initial exact-version SPT 4.1.4 five-project build passes with 0 errors and
+The final exact-version SPT 4.1.4 five-project build passes with 0 errors and
 four existing warnings, and the combined regression suite passes 168/168.
-Final clean-commit build evidence, complete CI/package checks, server bootstrap,
-and client/raid/Fika acceptance remain in
-`docs/port/SPT-4.1.4-PORT-LOG.md`.
+Clean-commit build evidence, complete CI/package checks, packaged-server
+bootstrap, and seven HTTP checks pass. The artifact revision and remaining
+client/raid/Fika gates are in `docs/port/SPT-4.1.4-VALIDATION.md`.
 
 ### SPT 4.1 client and server contracts
 

@@ -102,15 +102,18 @@ inputs. The TSC archive must not redistribute them.
 | Official 4.1.4 field-map source audit | PASS | No matching TSC source references; details above. |
 | Exact SPT archive/reference and dependency identity | PASS | Recorded sizes, versions, and hashes above. |
 | Release metadata consistency | PASS | `tools/Test-ReleaseMetadata.ps1`: v1.3.0, SPT 4.1.4, SDK 10.0.201, expected tester filename. |
-| Regression suite | PASS | Combined pre-commit candidate: 168/168 tests (160 feature tests plus eight port-hardening tests). |
-| Complete CI-safe checks | PENDING | Finish repaired-bundle tracking and verify the final source revision. |
-| Five-project 4.1.4 build, deployment disabled | PASS | Initial combined candidate: 0 errors, four existing warnings. Final clean-commit evidence/output hashes remain to record. |
-| Serialized bundle audit and package checks | PENDING | Check baseline bundles and repaired Uplink override. |
-| Disposable 4.1.4 server bootstrap | PENDING | Confirm DI registration, WTT content load, and health route. |
-| Dashboard and native config editor | PENDING | Exercise authentication, schema, revision conflict, and persistence. |
+| Regression suite | PASS | Final candidate: 168/168 tests (160 feature tests plus eight port-hardening tests). |
+| Complete CI-safe checks | PASS | Metadata, source/package inventory, hygiene, JSON/JavaScript, whitespace, and regressions. |
+| Five-project 4.1.4 build, deployment disabled | PASS | Clean revision `ad49410`: 0 errors, four existing warnings, four runtime output hashes recorded. |
+| Serialized bundle audit and package checks | PASS (static) | All eight baseline bundles and repaired Uplink parsed; serialized game fields compatible. Final ZIP: 168 files, four DLLs, eight bundles. |
+| Disposable 4.1.4 server bootstrap | PASS | Packaged TSC and WTT 3.0.6 loaded; DI, config, UH-60 messenger/journal, and HTTP routes initialized. |
+| Dashboard and native config editor | PARTIAL | Health/config/schema/dashboard assets return HTTP 200; editing, native editor interaction, authentication/revision/persistence exercise remain pending. |
 | Client menu, phone equip/stow, and targeting | PENDING | Use the final matched package. |
 | Solo A-10, UAV, UH-60 transfer/extraction, and repeat raids | PENDING | Record live outcomes and logs. |
 | Fika human-host/client and dedicated-headless matrix | PENDING | Match every peer and dependency; retain experimental limitations. |
+
+The exact artifact revision, checksum, and final evidence summary are in
+[SPT-4.1.4-VALIDATION.md](SPT-4.1.4-VALIDATION.md).
 
 Update this record only with evidence from the actual 4.1.4 candidate. Package
 generation and a successful compile do not close the live gameplay gates.

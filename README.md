@@ -5,8 +5,8 @@ A BepInEx mod that reworks SamSWAT's Fire Support / Arys Reloaded into a TerraGr
 > **SPT 4.1.4 tester port:** v1.3.0 targets SPT 4.1.4 / EFT
 > 0.16.9.5.40743. The expected test artifact is
 > `Tylevo.TacticalServicesControl-v1.3.0-SPT4.1.4-TESTER.zip`.
-> The exact-version five-project build and 168 regression tests pass. Server
-> bootstrap, menu load, raid behavior, and Fika behavior require validation.
+> The exact-version build, 168 regression tests, final package checks, and
+> server/HTTP smoke pass. Menu load, raid behavior, and Fika require validation.
 > Current results are recorded in
 > `docs/port/SPT-4.1.4-PORT-LOG.md`.
 
@@ -165,9 +165,9 @@ See `docs/dashboard.md`, `PRIVACY.md`, and `SECURITY.md`.
 ## Known Issues
 
 - SPT 4.1.4 compilation passes with 0 errors and four existing warnings;
-  168/168 regression tests pass. Server bootstrap, final-package boot,
-  dashboard/config-editor exercise, menu, solo-raid, and Fika acceptance
-  require fresh evidence. See `docs/port/SPT-4.1.4-PORT-LOG.md` for
+  168/168 regression tests, final ZIP checks, and packaged-server/HTTP smoke
+  pass. Dashboard editing, native config editor, menu, solo raids, and Fika
+  require live acceptance. See `docs/port/SPT-4.1.4-VALIDATION.md` for
   each gate; historical SPT 4.1.2 passes do not close these gates.
 - The existing Uplink bundle repair and input/menu hardening are retained.
   The repaired equip/stow animation, targeting controls, and menu spacing
