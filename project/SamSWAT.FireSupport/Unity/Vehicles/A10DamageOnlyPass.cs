@@ -86,11 +86,20 @@ public static class A10DamageOnlyPass
 			Vector3 damageOrigin = A10ShotPlanner.GetHeadlessDamageOrigin(
 				request.Position,
 				request.Direction);
+			using var trajectoryEvaluator = weapon.CreateTrajectoryEvaluator();
+			List<A10TracerSegment> visualShotPlan = A10ShotPlanner.BuildMovingMuzzlePlan(
+				A10ShotPlanner.GetAircraftPositionAtFire(request.Position, request.Direction),
+				aircraftForward,
+				impactPlan,
+				timeBetweenShots,
+				trajectoryEvaluator);
 			List<A10TracerSegment> damageShotPlan = A10ShotPlanner.BuildMovingMuzzlePlan(
 				damageOrigin,
 				aircraftForward,
 				impactPlan,
-				timeBetweenShots);
+				timeBetweenShots,
+				trajectoryEvaluator);
+			AlignHeadlessShotPlans(visualShotPlan, damageShotPlan);
 			if (!damageShotPlan.Any(static segment => segment.IsValid))
 			{
 				reason = "A10ShotPlanEmpty";
@@ -156,19 +165,40 @@ public static class A10DamageOnlyPass
 			seed);
 		Vector3 visualOrigin = A10ShotPlanner.GetAircraftPositionAtFire(request.Position, request.Direction);
 		Vector3 damageOrigin = A10ShotPlanner.GetHeadlessDamageOrigin(request.Position, request.Direction);
+		using var trajectoryEvaluator = weapon.CreateTrajectoryEvaluator();
 		List<A10TracerSegment> visualShotPlan = A10ShotPlanner.BuildMovingMuzzlePlan(
 			visualOrigin,
 			aircraftForward,
 			impactPlan,
-			timeBetweenShots);
+			timeBetweenShots,
+			trajectoryEvaluator);
 		List<A10TracerSegment> damageShotPlan = A10ShotPlanner.BuildMovingMuzzlePlan(
 			damageOrigin,
 			aircraftForward,
 			impactPlan,
-			timeBetweenShots);
+			timeBetweenShots,
+			trajectoryEvaluator);
+		bool directFallbackTrajectoryClear = AlignHeadlessShotPlans(visualShotPlan, damageShotPlan);
 		A10TracerSegment[] visualSegments = visualShotPlan.Where(static segment => segment.IsValid).ToArray();
 		A10TracerSegment[] damageSegments = damageShotPlan.Where(static segment => segment.IsValid).ToArray();
-		HitAccounting hitAccounting = ProbeHitCandidates(gameWorld, damageSegments, owner, request.Position, request.Direction);
+		if (damageSegments.Length == 0)
+		{
+			A10AuthorityDiagnostics.LogWarning(
+				$"TSC A-10 authoritative damage skipped requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} pass={request.PassIndex}; no valid paired ballistic solutions.");
+			return false;
+		}
+
+		// Broad legacy fallback probes cannot establish a hit through an obstruction.
+		// Native projectiles still collide normally, but synthetic fallback is disabled
+		// whenever either representation misses the intended surface or is unreachable.
+		HitAccounting hitAccounting = directFallbackTrajectoryClear
+			? ProbeHitCandidates(gameWorld, damageSegments, owner, request.Position, request.Direction)
+			: default;
+		if (!directFallbackTrajectoryClear)
+		{
+			FireSupportPlugin.LogSource?.LogInfo(
+				$"TSC A-10 direct fallback suppressed requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} pass={request.PassIndex} reason=InvalidOrObstructedShotPlan");
+		}
 		bool publishTracerBurst = A10TracerNetworking.IsNetworkAuthorityActive && visualSegments.Length > 0;
 
 		FireSupportPlugin.LogSource?.LogInfo(
@@ -226,12 +256,20 @@ public static class A10DamageOnlyPass
 		int fired = 0;
 		int fireFailures = 0;
 		float ballisticFireStartTime = Time.time;
+		float latestFiredImpactTime = ballisticFireStartTime;
 		FireSupportPlugin.LogSource?.LogInfo(
 			$"TSC A-10 authoritative fire started role={request.Role} requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} pass={request.PassIndex} seed={seed} shots={damageShotPlan.Count} damageOrigin={A10AuthorityDiagnostics.FormatVector(damageOrigin)} damageOriginDistance={Vector3.Distance(damageOrigin, request.Position):0.0}m nonOwnerCandidates={hitAccounting.NonOwnerPlayerHitCount} ownerCandidates={hitAccounting.OwnerPlayerHitCount} damageConfirmed=unavailable");
 		try
 		{
-			foreach (A10TracerSegment shot in damageShotPlan)
+			int shotIndex = -1;
+			foreach (A10TracerSegment shot in damageShotPlan.OrderBy(static segment => segment.DelaySeconds))
 			{
+				shotIndex++;
+				if (!shot.IsValid)
+				{
+					continue;
+				}
+
 				if (cancellationToken.IsCancellationRequested)
 				{
 					break;
@@ -245,8 +283,13 @@ public static class A10DamageOnlyPass
 
 				try
 				{
-					weapon.FireProjectile(shot.ProjectileOrigin, shot.ProjectileDirection);
+					Shot bullet = weapon.FireProjectile(shot.ProjectileOrigin, shot.ProjectileDirection);
+					latestFiredImpactTime = Mathf.Max(latestFiredImpactTime, Time.time + shot.FlightTimeSeconds);
 					fired++;
+					if (shotIndex == 0 || shotIndex == damageShotPlan.Count / 2 || shotIndex == damageShotPlan.Count - 1)
+					{
+						A10ShotDiagnostics.Observe(bullet, shot, request.SupportRequestId, request.PassIndex, shotIndex, cancellationToken);
+					}
 				}
 				catch (Exception ex)
 				{
@@ -269,6 +312,16 @@ public static class A10DamageOnlyPass
 				$"TSC A-10 authoritative fire cancelled before direct fallback role={request.Role} requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} pass={request.PassIndex} seed={seed} fired={fired}/{damageShotPlan.Count}.");
 			return fired > 0;
 		}
+		if (fired == 0)
+		{
+			return false;
+		}
+		if (fireFailures > 0)
+		{
+			hitAccounting = default;
+			FireSupportPlugin.LogSource?.LogInfo(
+				$"TSC A-10 direct fallback suppressed requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} pass={request.PassIndex} reason=ProjectileCreationFailure");
+		}
 
 		if (request.Role == A10AuthorityRole.FikaHeadlessHost &&
 		    hitAccounting.TotalPlayerHitCount > 0 &&
@@ -277,7 +330,10 @@ public static class A10DamageOnlyPass
 			try
 			{
 				await UniTask.WaitForSeconds(
-					DirectFallbackBallisticSettleSeconds,
+					A10HeadlessShotTiming.GetSettleWaitSeconds(
+						Time.time,
+						latestFiredImpactTime,
+						DirectFallbackBallisticSettleSeconds),
 					cancellationToken: cancellationToken);
 			}
 			catch (OperationCanceledException)
@@ -296,6 +352,39 @@ public static class A10DamageOnlyPass
 		FireSupportPlugin.LogSource?.LogInfo(
 			$"TSC A-10 authoritative fire complete role={request.Role} requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} pass={request.PassIndex} seed={seed} fired={fired}/{damageShotPlan.Count} fireProjectileFailures={fireFailures} colliderHits={hitAccounting.ColliderHitCount} ownerCandidatePlayers={hitAccounting.OwnerPlayerHitCount} nonOwnerCandidatePlayers={hitAccounting.NonOwnerPlayerHitCount} aliveOwnerCandidatePlayers={hitAccounting.AliveOwnerPlayerHitCount} aliveNonOwnerCandidatePlayers={hitAccounting.AliveNonOwnerPlayerHitCount} colliderResolvedPlayers={hitAccounting.ColliderResolvedPlayerHitCount} geometricCandidatePlayers={hitAccounting.GeometricPlayerHitCount} unresolvedColliderHits={hitAccounting.UnresolvedColliderHitCount} directFallbackApplied={fallbackResult.AppliedCount} directFallbackCommanded={fallbackResult.CommandedCount} directFallbackFailures={fallbackResult.FailureCount} damageApplications={(fallbackResult.Attempted ? fallbackResult.AppliedCount + fallbackResult.CommandedCount : 0)} damageConfirmed=unavailable");
 		return fired > 0;
+	}
+
+	private static bool AlignHeadlessShotPlans(
+		List<A10TracerSegment> visualShotPlan,
+		List<A10TracerSegment> damageShotPlan)
+	{
+		bool allIntendedImpactsReachable = visualShotPlan.Count == damageShotPlan.Count;
+		int count = Math.Min(visualShotPlan.Count, damageShotPlan.Count);
+		for (int index = 0; index < count; index++)
+		{
+			A10TracerSegment visual = visualShotPlan[index];
+			A10TracerSegment damage = damageShotPlan[index];
+			bool paired = A10HeadlessShotTiming.TryAlignArrival(ref visual, ref damage);
+			allIntendedImpactsReachable &= paired &&
+			                              A10HeadlessShotTiming.ReachesIntendedImpact(visual) &&
+			                              A10HeadlessShotTiming.ReachesIntendedImpact(damage);
+			visualShotPlan[index] = visual;
+			damageShotPlan[index] = damage;
+		}
+
+		for (int index = count; index < visualShotPlan.Count; index++)
+		{
+			A10TracerSegment shot = visualShotPlan[index];
+			shot.IsValid = false;
+			visualShotPlan[index] = shot;
+		}
+		for (int index = count; index < damageShotPlan.Count; index++)
+		{
+			A10TracerSegment shot = damageShotPlan[index];
+			shot.IsValid = false;
+			damageShotPlan[index] = shot;
+		}
+		return allIntendedImpactsReachable;
 	}
 
 	private static A10ProjectileOwnerMode GetProjectileOwnerMode(A10StrikeRequest request)

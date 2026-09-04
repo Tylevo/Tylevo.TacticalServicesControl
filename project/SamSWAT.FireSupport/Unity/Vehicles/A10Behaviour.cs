@@ -324,7 +324,7 @@ public sealed class A10Behaviour : FireSupportBehaviour
 			A10TracerSegment firstShot = shotPlan[0];
 			A10TracerSegment lastShot = shotPlan[shotPlan.Count - 1];
 			FireSupportPlugin.LogSource?.LogInfo(
-				$"TSC A-10 correlated shot plan requestId={A10AuthorityDiagnostics.ShortId(_supportRequestId)} pass={_passIndex} seed={_visualSeed} shots={shotPlan.Count} muzzleFirst={A10AuthorityDiagnostics.FormatVector(firstShot.ProjectileOrigin)} muzzleLast={A10AuthorityDiagnostics.FormatVector(lastShot.ProjectileOrigin)} impactFirst={A10AuthorityDiagnostics.FormatVector(firstShot.TracerEnd)} impactLast={A10AuthorityDiagnostics.FormatVector(lastShot.TracerEnd)} muzzleTravel={Vector3.Distance(firstShot.ProjectileOrigin, lastShot.ProjectileOrigin):0.0}m");
+				$"TSC A-10 ballistic shot plan requestId={A10AuthorityDiagnostics.ShortId(_supportRequestId)} pass={_passIndex} seed={_visualSeed} shots={shotPlan.Count} valid={shotPlan.Count(static shot => shot.IsValid)} muzzleFirst={A10AuthorityDiagnostics.FormatVector(firstShot.ProjectileOrigin)} muzzleLast={A10AuthorityDiagnostics.FormatVector(lastShot.ProjectileOrigin)} intendedFirst={A10AuthorityDiagnostics.FormatVector(firstShot.IntendedImpact)} predictedFirst={A10AuthorityDiagnostics.FormatVector(firstShot.TracerEnd)} predictedLast={A10AuthorityDiagnostics.FormatVector(lastShot.TracerEnd)} flightFirst={firstShot.FlightTimeSeconds:0.000}s flightLast={lastShot.FlightTimeSeconds:0.000}s muzzleTravel={Vector3.Distance(firstShot.ProjectileOrigin, lastShot.ProjectileOrigin):0.0}m");
 		}
 
 		if (!_visualOnly && networkTracerAuthority && shotPlan.Count > 0)
@@ -349,8 +349,16 @@ public sealed class A10Behaviour : FireSupportBehaviour
 				"TSC A-10 visual runtime cannot fire authoritative GAU-8 damage because no VehicleWeapon is available.");
 		}
 
+		if (_visualOnly && !networkTracerAuthority)
+		{
+			A10TracerPlayback.PlayAtLocalTime(shotPlan.ToArray(), fireStartNetworkTime, cancellationToken);
+		}
+
+		int shotIndex = -1;
 		foreach (A10TracerSegment shot in shotPlan)
 		{
+			shotIndex++;
+			if (!shot.IsValid) continue;
 			if (cancellationToken.IsCancellationRequested || _gameWorld?.IsMainPlayerAlive() == false)
 			{
 				break;
@@ -364,11 +372,11 @@ public sealed class A10Behaviour : FireSupportBehaviour
 
 			if (!_visualOnly && _weapon != null)
 			{
-				_weapon.FireProjectile(shot.ProjectileOrigin, shot.ProjectileDirection);
-			}
-			else if (_visualOnly && !networkTracerAuthority)
-			{
-				RenderVisualTracerSegment(shot);
+				var bullet = _weapon.FireProjectile(shot.ProjectileOrigin, shot.ProjectileDirection);
+				if (shotIndex == 0 || shotIndex == shotPlan.Count / 2 || shotIndex == shotPlan.Count - 1)
+				{
+					A10ShotDiagnostics.Observe(bullet, shot, _supportRequestId, _passIndex, shotIndex, cancellationToken);
+				}
 			}
 		}
 
@@ -385,11 +393,15 @@ public sealed class A10Behaviour : FireSupportBehaviour
 			strafePos,
 			aircraftForward,
 			_visualSeed);
+		using A10EftTrajectoryEvaluator trajectoryEvaluator = _weapon != null
+			? _weapon.CreateTrajectoryEvaluator()
+			: VehicleWeapon.CreateGau8VisualTrajectoryEvaluator();
 		return A10ShotPlanner.BuildMovingMuzzlePlan(
 			muzzle.position,
 			aircraftForward,
 			impactPlan,
-			timeBetweenShots);
+			timeBetweenShots,
+			trajectoryEvaluator);
 	}
 
 	private float GetGau8TimeBetweenShots()

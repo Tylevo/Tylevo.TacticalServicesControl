@@ -51,6 +51,11 @@ public struct Vector3 : IEquatable<Vector3>
 		return (left - right).magnitude;
 	}
 
+	public static float Dot(Vector3 left, Vector3 right)
+	{
+		return left.x * right.x + left.y * right.y + left.z * right.z;
+	}
+
 	public static Vector3 operator +(Vector3 left, Vector3 right)
 	{
 		return new Vector3(left.x + right.x, left.y + right.y, left.z + right.z);
@@ -110,6 +115,11 @@ public static class Mathf
 	{
 		return MathF.Min(left, right);
 	}
+
+	public static int Clamp(int value, int minimum, int maximum)
+	{
+		return Math.Clamp(value, minimum, maximum);
+	}
 }
 
 public struct RaycastHit
@@ -127,6 +137,24 @@ public enum QueryTriggerInteraction
 
 public static class Physics
 {
+	public readonly record struct RaycastQuery(
+		Vector3 Origin,
+		Vector3 Direction,
+		float MaximumDistance,
+		int LayerMask,
+		QueryTriggerInteraction TriggerInteraction);
+
+	public static Vector3 gravity { get; set; } = new(0f, -9.81f, 0f);
+	public static Func<RaycastQuery, RaycastHit?>? RaycastHandler { get; set; }
+	public static Func<RaycastQuery, RaycastHit[]>? RaycastAllHandler { get; set; }
+
+	public static void Reset()
+	{
+		gravity = new Vector3(0f, -9.81f, 0f);
+		RaycastHandler = null;
+		RaycastAllHandler = null;
+	}
+
 	public static bool Raycast(
 		Vector3 origin,
 		Vector3 direction,
@@ -135,7 +163,20 @@ public static class Physics
 		int layerMask,
 		QueryTriggerInteraction queryTriggerInteraction)
 	{
-		hitInfo = default;
-		return false;
+		RaycastHit? result = RaycastHandler?.Invoke(new RaycastQuery(
+			origin, direction, maxDistance, layerMask, queryTriggerInteraction));
+		hitInfo = result.GetValueOrDefault();
+		return result.HasValue;
+	}
+
+	public static RaycastHit[] RaycastAll(
+		Vector3 origin,
+		Vector3 direction,
+		float maxDistance,
+		int layerMask,
+		QueryTriggerInteraction queryTriggerInteraction)
+	{
+		return RaycastAllHandler?.Invoke(new RaycastQuery(
+			origin, direction, maxDistance, layerMask, queryTriggerInteraction)) ?? Array.Empty<RaycastHit>();
 	}
 }

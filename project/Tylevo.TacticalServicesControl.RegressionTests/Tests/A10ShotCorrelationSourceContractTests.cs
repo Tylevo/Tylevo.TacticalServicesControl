@@ -43,7 +43,7 @@ internal static class A10ShotCorrelationSourceContractTests
 			compact,
 			"Per-shot muzzle travel must use the aircraft root's forward vector because ManualUpdate moves the root in self space.");
 		AssertEx.Contains(
-			"A10ShotPlanner.BuildMovingMuzzlePlan( muzzle.position, aircraftForward, impactPlan, timeBetweenShots)",
+			"A10ShotPlanner.BuildMovingMuzzlePlan( muzzle.position, aircraftForward, impactPlan, timeBetweenShots, trajectoryEvaluator)",
 			compact,
 			"The visible muzzle position must remain the first projectile origin.");
 		AssertEx.Contains(
@@ -109,12 +109,9 @@ internal static class A10ShotCorrelationSourceContractTests
 		AssertEx.Contains("IReadOnlyList<Vector3> BuildImpactPlan(", compact);
 		AssertEx.Contains("new System.Random(seed", compact);
 		AssertEx.Contains("for (int index = 0; index < ShotCount; index++)", compact);
-		AssertEx.Contains(
-			"Vector3 direction = Vector3.Normalize(impactPoint - projectileOrigin)",
-			compact);
-		AssertEx.Contains(
-			"new A10TracerSegment(projectileOrigin, direction, tracerStart, tracerEnd, shotDelay)",
-			compact);
+		AssertEx.Contains("A10BallisticSolver.TrySolve(", compact);
+		AssertEx.False(compact.Contains("Vector3.Normalize(impactPoint - projectileOrigin)", StringComparison.Ordinal),
+			"The launch direction must solve the actual flight; direct ray aim lands short under gravity and drag.");
 	}
 
 	[RegressionTest]

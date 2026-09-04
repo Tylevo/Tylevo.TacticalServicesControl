@@ -54,7 +54,9 @@ public class A10TracerBurstPacket : INetSerializable
 			writer.PutUnmanaged(segment.ProjectileDirection);
 			writer.PutUnmanaged(segment.TracerStart);
 			writer.PutUnmanaged(segment.TracerEnd);
-			writer.Put(segment.DelaySeconds);
+			// Replay is the terminal tracer/impact, so transmit its arrival delay.
+			// Receivers have FlightTimeSeconds=0 and must not add it again.
+			writer.Put(segment.ImpactDelaySeconds);
 		}
 	}
 

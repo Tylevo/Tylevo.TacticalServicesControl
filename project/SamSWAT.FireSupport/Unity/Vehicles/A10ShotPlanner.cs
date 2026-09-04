@@ -15,8 +15,10 @@ public static class A10ShotPlanner
 	public const float TracerSegmentLength = 42f;
 	private const float AnchoredReplayLongitudinalSpacing = 0.9f;
 	private const float AnchoredReplayLateralSpread = 7.5f;
-	private const float AnchoredReplayGroundProbeHeight = 140f;
-	private const float AnchoredReplayGroundProbeDistance = 320f;
+	// Search near the designated elevation, including stacked surfaces, rather
+	// than snapping every round to the first roof below a probe 140 m overhead.
+	private const float AnchoredReplayGroundProbeHeight = 24f;
+	private const float AnchoredReplayGroundProbeDistance = 24f;
 	private const float DamageOnlyMinimumGroundClearance = 20f;
 	private const float DamageOnlyGroundProbeHeight = 500f;
 	private const float DamageOnlyGroundProbeDistance = 900f;
@@ -53,7 +55,8 @@ public static class A10ShotPlanner
 		Vector3 firstMuzzleOrigin,
 		Vector3 aircraftForward,
 		IReadOnlyList<Vector3> impactPlan,
-		float timeBetweenShots)
+		float timeBetweenShots,
+		IA10TrajectoryEvaluator trajectoryEvaluator)
 	{
 		var plan = new List<A10TracerSegment>(impactPlan?.Count ?? 0);
 		if (impactPlan == null || impactPlan.Count == 0)
@@ -68,34 +71,71 @@ public static class A10ShotPlanner
 			float shotDelay = index * safeTimeBetweenShots;
 			Vector3 projectileOrigin = firstMuzzleOrigin +
 			                           safeAircraftForward * StrafeSpeed * shotDelay;
-			Vector3 impactPoint = impactPlan[index];
-			Vector3 direction = Vector3.Normalize(impactPoint - projectileOrigin);
-			if (direction.sqrMagnitude <= 0.0001f)
-			{
-				direction = Vector3.down;
-			}
-
-			float distance = Vector3.Distance(projectileOrigin, impactPoint);
-			if (distance <= 1f)
-			{
-				plan.Add(A10TracerSegment.Invalid(projectileOrigin, direction, shotDelay));
-				continue;
-			}
-
-			Vector3 tracerEnd = ResolveFirstImpact(projectileOrigin, direction, distance, impactPoint);
-			float tracerDistance = Vector3.Distance(projectileOrigin, tracerEnd);
-			if (tracerDistance <= 1f)
-			{
-				plan.Add(A10TracerSegment.Invalid(projectileOrigin, direction, shotDelay));
-				continue;
-			}
-
-			float segmentLength = Mathf.Min(TracerSegmentLength, tracerDistance);
-			Vector3 tracerStart = tracerEnd - direction * segmentLength;
-			plan.Add(new A10TracerSegment(projectileOrigin, direction, tracerStart, tracerEnd, shotDelay));
+			plan.Add(BuildBallisticShot(projectileOrigin, impactPlan[index], shotDelay, trajectoryEvaluator));
 		}
 
 		return plan;
+	}
+
+	public static A10TracerSegment BuildBallisticShot(
+		Vector3 projectileOrigin,
+		Vector3 intendedImpact,
+		float shotDelay,
+		IA10TrajectoryEvaluator trajectoryEvaluator)
+	{
+		if (!A10BallisticSolver.TrySolve(projectileOrigin, intendedImpact, trajectoryEvaluator, out A10BallisticSolution solution))
+		{
+			return A10TracerSegment.Invalid(projectileOrigin, Vector3.zero, shotDelay);
+		}
+
+		IReadOnlyList<A10TrajectoryPoint> path = solution.Path;
+		Vector3 tracerEnd = path[path.Count - 1].Position;
+		float flightTime = solution.FlightTimeSeconds;
+		int terminalIndex = path.Count - 1;
+		for (int index = 1; index < path.Count; index++)
+		{
+			Vector3 chord = path[index].Position - path[index - 1].Position;
+			float length = chord.magnitude;
+			if (length <= 0.0001f) continue;
+			// Include the intended surface if the final integration point lands
+			// fractionally above it. Earlier chords have no padding.
+			float padding = index == path.Count - 1 ? 0.5f : 0f;
+			if (!Physics.Raycast(path[index - 1].Position, chord / length,
+				out RaycastHit hit, length + padding, EFT.Ballistics.BallisticsCalculatorConstants.HitMask,
+				QueryTriggerInteraction.UseGlobal)) continue;
+			tracerEnd = hit.point;
+			flightTime = path[index - 1].TimeSeconds +
+			             (path[index].TimeSeconds - path[index - 1].TimeSeconds) * hit.distance / length;
+			terminalIndex = index;
+			break;
+		}
+
+		if (Vector3.Distance(projectileOrigin, tracerEnd) <= 1f)
+		{
+			return A10TracerSegment.Invalid(projectileOrigin, solution.Direction, shotDelay);
+		}
+
+		// Walk back along the solved flight for the short visible terminal tracer.
+		Vector3 tracerStart = tracerEnd;
+		float remaining = TracerSegmentLength;
+		for (int index = terminalIndex - 1; index >= 0; index--)
+		{
+			Vector3 delta = path[index].Position - tracerStart;
+			float length = delta.magnitude;
+			if (length >= remaining && length > 0f)
+			{
+				tracerStart += delta * (remaining / length);
+				break;
+			}
+			tracerStart = path[index].Position;
+			remaining -= length;
+		}
+
+		return new A10TracerSegment(projectileOrigin, solution.Direction, tracerStart, tracerEnd, shotDelay)
+		{
+			IntendedImpact = intendedImpact,
+			FlightTimeSeconds = flightTime
+		};
 	}
 
 	public static A10TracerSegment BuildRaycastTracerSegment(
@@ -186,32 +226,20 @@ public static class A10ShotPlanner
 	{
 		Vector3 probeStart = intendedImpact + Vector3.up * AnchoredReplayGroundProbeHeight;
 		float probeDistance = AnchoredReplayGroundProbeHeight + AnchoredReplayGroundProbeDistance;
-		if (Physics.Raycast(probeStart, Vector3.down, out RaycastHit hit, probeDistance, ~0, QueryTriggerInteraction.Ignore))
+		RaycastHit[] hits = Physics.RaycastAll(probeStart, Vector3.down, probeDistance,
+			LayersMaskController.TerrainLowPoly, QueryTriggerInteraction.Ignore);
+		Vector3 closest = intendedImpact;
+		float closestHeight = float.PositiveInfinity;
+		foreach (RaycastHit hit in hits)
 		{
-			return hit.point;
+			float height = Math.Abs(hit.point.y - intendedImpact.y);
+			if (height < closestHeight)
+			{
+				closest = hit.point;
+				closestHeight = height;
+			}
 		}
-
-		return intendedImpact;
-	}
-
-	private static Vector3 ResolveFirstImpact(
-		Vector3 origin,
-		Vector3 direction,
-		float intendedDistance,
-		Vector3 intendedImpact)
-	{
-		if (Physics.Raycast(
-			    origin,
-			    direction,
-			    out RaycastHit hit,
-			    intendedDistance + 0.5f,
-			    ~0,
-			    QueryTriggerInteraction.Ignore))
-		{
-			return hit.point;
-		}
-
-		return intendedImpact;
+		return closest;
 	}
 
 	private static float NextSpread(System.Random random, float min, float max)

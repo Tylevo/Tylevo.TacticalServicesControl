@@ -87,61 +87,91 @@ public class FireSupportSpotter : ScriptableObject
 			ENotificationIconType.Default,
 			null);
 
-		_spotterPositionObj.SetActive(true);
-
-		while (!IsConfirmPressed() && !cancellationToken.IsCancellationRequested)
+		// Each targeting session must acquire its own hit before confirmation.
+		// In particular, a confirm on the first frame cannot reuse the previous
+		// session's marker transform.
+		_spotterPositionObj.SetActive(false);
+		bool hasSampledLocation = false;
+		Vector3 sampledLocation = default;
+		try
 		{
-			if (IsRequestCancelled())
+			while (true)
 			{
-				_spotterPositionObj.SetActive(false);
-				FireSupportUI.Instance.SpotterNotice.SetActive(false);
-				FireSupportUI.Instance.SpotterHeliNotice.SetActive(false);
+				cancellationToken.ThrowIfCancellationRequested();
+				if (IsRequestCancelled())
+				{
+					return SetLocationResult.InvalidLocation;
+				}
 
-				return SetLocationResult.InvalidLocation;
-			}
+				bool confirmPressed = IsConfirmPressed();
+				if (checkSpace && confirmPressed)
+				{
+					// Helicopter clearance belongs to the displayed collider's
+					// existing position. Do not move it to a fresh ray hit and
+					// approve that new position using the prior physics result.
+					if (!hasSampledLocation || _colliderCheckerObj.HasCollision)
+					{
+						FireSupportAudio.Instance.PlayVoiceover(EVoiceoverType.StationDoesNotHear);
+						return SetLocationResult.InvalidLocation;
+					}
+					return new SetLocationResult(sampledLocation, success: true);
+				}
 
-			Transform cameraT = _player.CameraPosition;
-			
-			bool hasHit = Physics.Raycast(
-				origin: cameraT.position + cameraT.forward,
-				direction: cameraT.forward,
-				out RaycastHit hitInfo,
-				maxDistance: 500,
-				_layerMask);
-			
-			FireSupportUI.Instance.SpotterNotice.SetActive(!hasHit);
-			
-			if (checkSpace && hasHit)
-			{
-				FireSupportUI.Instance.SpotterHeliNotice.SetActive(_colliderCheckerObj.HasCollision);
+				Transform cameraT = _player.CameraPosition;
+				bool hasHit = Physics.Raycast(
+					origin: cameraT.position + cameraT.forward,
+					direction: cameraT.forward,
+					out RaycastHit hitInfo,
+					maxDistance: 500,
+					_layerMask,
+					QueryTriggerInteraction.Ignore);
 
-				if (_colliderCheckerObj.HasCollision)
+				FireSupportUI.Instance.SpotterNotice.SetActive(!hasHit);
+				hasSampledLocation = hasHit;
+				sampledLocation = hitInfo.point;
+				_spotterPositionObj.SetActive(hasHit);
+				if (hasHit)
+				{
+					_spotterPositionObj.transform.position = hitInfo.point;
+				}
+
+				bool hasBlockedSpace = checkSpace && hasHit && _colliderCheckerObj.HasCollision;
+				FireSupportUI.Instance.SpotterHeliNotice.SetActive(hasBlockedSpace);
+				if (hasBlockedSpace)
 				{
 					_colliderCheckerObj.Rotate(5f);
 				}
+
+				if (confirmPressed)
+				{
+					if (!hasHit || hasBlockedSpace)
+					{
+						FireSupportAudio.Instance.PlayVoiceover(EVoiceoverType.StationDoesNotHear);
+						return SetLocationResult.InvalidLocation;
+					}
+
+					return new SetLocationResult(hitInfo.point, success: true);
+				}
+
+				await UniTask.NextFrame(PlayerLoopTiming.Update, cancellationToken);
 			}
-
-			_spotterPositionObj.transform.position = hitInfo.point;
-			
-			await UniTask.NextFrame(PlayerLoopTiming.Update, cancellationToken);
 		}
-
-		if (_spotterPositionObj.transform.position.Equals(Vector3.zero) ||
-			checkSpace && _colliderCheckerObj.HasCollision)
+		finally
 		{
-			FireSupportAudio.Instance.PlayVoiceover(EVoiceoverType.StationDoesNotHear);
-			FireSupportUI.Instance.SpotterNotice.SetActive(false);
-			FireSupportUI.Instance.SpotterHeliNotice.SetActive(false);
-			
-			_spotterPositionObj.SetActive(false);
-			return SetLocationResult.InvalidLocation;
+			if (_spotterPositionObj != null)
+			{
+				_spotterPositionObj.SetActive(false);
+			}
+			if (FireSupportUI.Instance != null)
+			{
+				FireSupportUI.Instance.SpotterNotice.SetActive(false);
+				FireSupportUI.Instance.SpotterHeliNotice.SetActive(false);
+			}
 		}
-
-		_spotterPositionObj.SetActive(false);
-		return new SetLocationResult(_spotterPositionObj.transform.position, success: true);
 	}
 
 	public async UniTask<SetDirectionResult> SetSupportDirection(
+		Vector3 targetLocation,
 		CancellationToken cancellationToken)
 	{
 		await UniTask.WaitForSeconds(0.1f, cancellationToken: cancellationToken);
@@ -151,47 +181,71 @@ public class FireSupportSpotter : ScriptableObject
 			ENotificationIconType.Default,
 			null);
 
-		_spotterRotationObj.transform.SetPositionAndRotation(_spotterPositionObj.transform.position, Quaternion.identity);
+		_spotterRotationObj.transform.SetPositionAndRotation(targetLocation, Quaternion.identity);
 		_spotterRotationObj.SetActive(true);
 		_inputManager.SetActive(false);
 
-		while (!IsConfirmPressed() && !cancellationToken.IsCancellationRequested)
+		try
 		{
-			if (IsRequestCancelled())
+			while (true)
+			{
+				cancellationToken.ThrowIfCancellationRequested();
+				if (IsRequestCancelled())
+				{
+					return SetDirectionResult.InvalidDirection;
+				}
+				if (IsConfirmPressed())
+				{
+					return new SetDirectionResult(
+						_spotterDirectionStartTransform.position,
+						_spotterDirectionEndTransform.position,
+						_spotterRotationObj.transform.rotation,
+						success: true);
+				}
+
+				float xAxisRotation = Input.GetAxis("Mouse X") * 5;
+				_spotterRotationObj.transform.Rotate(Vector3.down, xAxisRotation);
+
+				await UniTask.NextFrame(cancellationToken);
+			}
+		}
+		finally
+		{
+			if (_inputManager != null)
+			{
+				_inputManager.SetActive(true);
+			}
+			if (_spotterRotationObj != null)
 			{
 				_spotterRotationObj.SetActive(false);
-				_inputManager.SetActive(true);
-				
-				return SetDirectionResult.InvalidDirection;
 			}
-
-			float xAxisRotation = Input.GetAxis("Mouse X") * 5;
-			_spotterRotationObj.transform.Rotate(Vector3.down, xAxisRotation);
-
-			await UniTask.NextFrame(cancellationToken);
 		}
-
-		_inputManager.SetActive(true);
-		_spotterRotationObj.SetActive(false);
-		
-		return new SetDirectionResult(
-			_spotterDirectionStartTransform.position,
-			_spotterDirectionEndTransform.position,
-			_spotterRotationObj.transform.rotation,
-			success: true);
 	}
 
-	public async UniTask ConfirmLocation(CancellationToken cancellationToken)
+	public UniTask ConfirmLocation(CancellationToken cancellationToken)
+	{
+		return ConfirmLocation(_spotterPositionObj.transform.position, cancellationToken);
+	}
+
+	public async UniTask ConfirmLocation(Vector3 targetLocation, CancellationToken cancellationToken)
 	{
 		_spotterConfirmationObj.transform.SetPositionAndRotation(
-			_spotterPositionObj.transform.position + Vector3.up,
+			targetLocation + Vector3.up,
 			Quaternion.identity);
 		
 		_spotterConfirmationObj.SetActive(true);
 		
-		await UniTask.WaitForSeconds(0.8f, cancellationToken: cancellationToken);
-
-		_spotterConfirmationObj.SetActive(false);
+		try
+		{
+			await UniTask.WaitForSeconds(0.8f, cancellationToken: cancellationToken);
+		}
+		finally
+		{
+			if (_spotterConfirmationObj != null)
+			{
+				_spotterConfirmationObj.SetActive(false);
+			}
+		}
 	}
 
 	// Targeting raycasts from the player camera, so no designator item is

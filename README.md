@@ -2,13 +2,12 @@
 
 A BepInEx mod that reworks SamSWAT's Fire Support / Arys Reloaded into a TerraGroup-style tactical support system for SPT and Fika.
 
-> **SPT 4.1.4 tester port:** v1.3.0 targets SPT 4.1.4 / EFT
+> **SPT 4.1.4 A-10 targeting tester:** v1.3.1 targets SPT 4.1.4 / EFT
 > 0.16.9.5.40743. The expected test artifact is
-> `Tylevo.TacticalServicesControl-v1.3.0-SPT4.1.4-TESTER.zip`.
-> The exact-version build, 168 regression tests, final package checks, and
-> server/HTTP smoke pass. Menu load, raid behavior, and Fika require validation.
-> Current results are recorded in
-> `docs/port/SPT-4.1.4-PORT-LOG.md`.
+> `Tylevo.TacticalServicesControl-v1.3.1-SPT4.1.4-TESTER.zip`.
+> This corrects A-10 aim using EFT's native projectile physics. Live solo and
+> Fika accuracy checks remain required. Details and validation are recorded in
+> `docs/a10-ballistics-v1.3.1.md`.
 
 This mod adds a **TerraGroup TSC Uplink** phone that lets you buy support authorizations in raid, then deploy them later from the same device. The phone handles service selection and camera-based target designation, so the rangefinder and YY gesture wheel are no longer required for the primary workflow.
 

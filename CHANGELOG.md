@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.3.1 - Public Beta (unreleased)
+
+A-10 targeting correction for SPT 4.1.4 / EFT 0.16.9.5.40743.
+
+- Solve each GAU-8 launch direction using EFT's native gravity and drag
+  calculation, the loaded ammunition, and the actual weapon speed factor.
+- Preserve the moving muzzle and seeded strike footprint. Unreachable rounds
+  are skipped instead of reverting to uncompensated straight-line aim.
+- Trace curved trajectories against EFT's ballistic collision layers and time
+  terminal tracer/impact replay for arrival. Keep the existing packet layout.
+- Carry the confirmed laser position directly into the strike. Use nearby
+  terrain/low-poly surfaces closest to its elevation instead of overhead roofs.
+- Align headless visual/damage arrival times; wait for projectile arrival before
+  the existing fallback health check and suppress synthetic fallback when paths
+  are invalid, obstructed, or native firing fails.
+- Add bounded, sampled actual-collision diagnostics with explicit unavailable
+  results when EFT's shot pooling prevents observation.
+
+Live solo and multiplayer acceptance remain required; see
+`docs/a10-ballistics-v1.3.1.md` for validation and limitations.
+
 ## 1.3.0 - Public Beta (unreleased)
 
 SPT 4.1.4 warning-and-Uplink integration release for Tylevo Seasonal

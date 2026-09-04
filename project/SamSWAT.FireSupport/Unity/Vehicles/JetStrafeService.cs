@@ -18,11 +18,12 @@ public sealed class JetStrafeService(
 
 		if (!locationResult.Success) return;
 
-		SetDirectionResult directionResult = await spotter.SetSupportDirection(cancellationToken);
+		Vector3 targetLocation = locationResult.TargetLocation;
+		SetDirectionResult directionResult = await spotter.SetSupportDirection(targetLocation, cancellationToken);
 
 		if (directionResult.Success)
 		{
-			await spotter.ConfirmLocation(cancellationToken);
+			await spotter.ConfirmLocation(targetLocation, cancellationToken);
 			FireSupportAuthorizationUse authorizationUse =
 				await FireSupportPayment.TryPayForDeploymentAsync(SupportType);
 			if (!authorizationUse.Ok)
@@ -31,15 +32,15 @@ public sealed class JetStrafeService(
 			}
 
 			ConfirmRequest(
-					strafeStartPos: directionResult.StartPosition,
-					strafeEndPos: directionResult.EndPosition,
+					targetLocation: targetLocation,
+					strafeDirection: (directionResult.EndPosition - directionResult.StartPosition).normalized,
 					authorizationUse: authorizationUse,
 					cancellationToken)
 				.Forget();
 		}
 	}
 
-	private async UniTaskVoid ConfirmRequest(Vector3 strafeStartPos, Vector3 strafeEndPos,
+	private async UniTaskVoid ConfirmRequest(Vector3 targetLocation, Vector3 strafeDirection,
 		FireSupportAuthorizationUse authorizationUse,
 		CancellationToken cancellationToken)
 	{
@@ -70,12 +71,10 @@ public sealed class JetStrafeService(
 			FireSupportAudio.Instance.PlayVoiceover(EVoiceoverType.StationStrafeRequest);
 			await UniTask.WaitForSeconds(8f, cancellationToken: cancellationToken);
 
-			Vector3 pos = (strafeStartPos + strafeEndPos) / 2;
-			Vector3 dir = (strafeEndPos - strafeStartPos).normalized;
 			FireSupportNetworkRequestResult firstPass = await ExecuteStrafePass(
 				effectiveSupportType,
-				pos,
-				dir,
+				targetLocation,
+				strafeDirection,
 				passIndex: 0,
 				BuildDispatchRequestId(authorizationUse, 0),
 				cancellationToken);
@@ -103,8 +102,8 @@ public sealed class JetStrafeService(
 				await UniTask.WaitForSeconds(delay, cancellationToken: cancellationToken);
 				FireSupportNetworkRequestResult secondPass = await ExecuteStrafePass(
 					effectiveSupportType,
-					pos,
-					-dir,
+					targetLocation,
+					-strafeDirection,
 					passIndex: 1,
 					BuildDispatchRequestId(authorizationUse, 1),
 					cancellationToken);

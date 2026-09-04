@@ -9,6 +9,11 @@ public struct A10TracerSegment
 	public Vector3 TracerStart;
 	public Vector3 TracerEnd;
 	public float DelaySeconds;
+	// Launch time and arrival time are separate. Network packets carry the latter
+	// in their existing replay-delay field, without changing the wire layout.
+	public float FlightTimeSeconds;
+	public Vector3 IntendedImpact;
+	public float ImpactDelaySeconds => DelaySeconds + FlightTimeSeconds;
 	public bool IsValid;
 
 	public A10TracerSegment(
@@ -24,6 +29,8 @@ public struct A10TracerSegment
 		TracerStart = tracerStart;
 		TracerEnd = tracerEnd;
 		DelaySeconds = delaySeconds;
+		FlightTimeSeconds = 0f;
+		IntendedImpact = tracerEnd;
 		IsValid = isValid;
 	}
 

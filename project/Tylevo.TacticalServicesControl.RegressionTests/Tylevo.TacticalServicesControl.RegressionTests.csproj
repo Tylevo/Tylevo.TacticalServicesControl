@@ -72,6 +72,16 @@
              Link="Production\A10TracerSegment.cs" />
     <Compile Include="..\SamSWAT.FireSupport\Unity\Vehicles\A10ShotPlanner.cs"
              Link="Production\A10ShotPlanner.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\Vehicles\A10BallisticSolver.cs"
+             Link="Production\A10BallisticSolver.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\Vehicles\A10EftTrajectoryEvaluator.cs"
+             Link="Production\A10EftTrajectoryEvaluator.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\Vehicles\A10HeadlessShotTiming.cs"
+             Link="Production\A10HeadlessShotTiming.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\Vehicles\A10TracerBurst.cs"
+             Link="Production\A10TracerBurst.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Fika.Interop\A10TracerBurstPacket.cs"
+             Link="Production\A10TracerBurstPacket.cs" />
     <Compile Include="..\SamSWAT.FireSupport.Fika.Interop\FireSupportSettingsPacket.cs"
              Link="Production\FireSupportSettingsPacket.cs" />
     <Compile Include="..\SamSWAT.FireSupport.Fika.Interop\FireSupportRequestPacket.cs"
