@@ -175,11 +175,6 @@ See `docs/dashboard.md`, `PRIVACY.md`, and `SECURITY.md`.
   in the candidate's external evidence sidecars; in-game phone acceptance
   remains pending. Check `docs/release-notes-v1.3.2.md` for this candidate's
   scope. The proposed native purchase interface is a concept only.
-- Historical v1.3.0 SPT 4.1.4 compilation passed with 0 errors and four existing warnings;
-  168/168 regression tests, final ZIP checks, and packaged-server/HTTP smoke
-  pass. Dashboard editing, native config editor, menu, solo raids, and Fika
-  require live acceptance. See `docs/port/SPT-4.1.4-VALIDATION.md` for
-  each gate; historical SPT 4.1.2 passes do not close these gates.
 - The existing Uplink bundle repair and input/menu hardening are retained.
   The repaired equip/stow animation, targeting controls, and menu spacing
   still require a fresh SPT 4.1.4 client run.
