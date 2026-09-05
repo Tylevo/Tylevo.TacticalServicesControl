@@ -22,9 +22,9 @@ internal static class DangerCloseWarningPacketTests
 	{
 		foreach ((DangerCloseWarningKind kind, int seconds) in new[]
 		         {
-		         	(DangerCloseWarningKind.Advance, 90),
-		         	(DangerCloseWarningKind.Cancel, 0),
-		         	(DangerCloseWarningKind.Inbound, 0)
+		             (DangerCloseWarningKind.Advance, 90),
+		             (DangerCloseWarningKind.Cancel, 0),
+		             (DangerCloseWarningKind.Inbound, 0)
 		         })
 		{
 			var expected = new DangerCloseWarningPacket(
