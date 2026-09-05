@@ -1,5 +1,11 @@
 # Tylevo's Tactical Services Control v1.3.0 Public Beta
 
+> **Historical documentation.** These instructions and results describe this
+> earlier version. For TSC v1.3.10 on SPT 4.1.5, use the
+> [current release notes](release-notes-v1.3.10.md) and
+> [installation guide](dependencies.md). See the [archive index](archive/README.md)
+> for earlier release availability.
+
 This SPT 4.1.4 tester keeps TSC fully standalone while adding the optional
 Danger Close API v3 integration used by Tylevo Seasonal Modifiers.
 

@@ -1,7 +1,7 @@
 # TSC dashboard and SIC
 
-The TSC dashboard keeps its TerraGroup styling. Starting with v1.3.9, you can
-open it from SPT's SIC through the launcher.
+Open the themed TerraGroup TSC dashboard from SPT's SIC through the launcher.
+You can also use the in-game store's **Dashboard** button.
 
 ## Open from the launcher
 

@@ -1,5 +1,11 @@
 # Forge Main Description Draft
 
+> **Historical documentation.** These instructions and results describe this
+> earlier version. For TSC v1.3.10 on SPT 4.1.5, use the
+> [current release notes](release-notes-v1.3.10.md) and
+> [installation guide](dependencies.md). See the [archive index](archive/README.md)
+> for earlier release availability.
+
 > v1.1.0 SPT 4.1.2 tester draft. Do not publish as a stable release until the
 > build, server, client, raid, multiplayer, and package gates pass. Expected
 > artifact: `Tylevo.TacticalServicesControl-v1.1.0-SPT4.1.2-TESTER.zip`.

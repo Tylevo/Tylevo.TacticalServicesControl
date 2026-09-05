@@ -1,8 +1,8 @@
 # TSC v1.3.0 / SPT 4.1.4 tester validation
 
-> Historical initial-port evidence. The current release is TSC 1.3.8; use
-> [the current validation summary](../validation/v1.3.8.md) for later fixes,
-> 216 regression tests, Pilot server checks, and user-reported gameplay results.
+> Historical initial-port evidence. The current release is TSC v1.3.10 for
+> SPT 4.1.5; see its [release notes](../release-notes-v1.3.10.md) and
+> [validation summary](../validation/v1.3.10.md) for current results and limits.
 > Pending statements below apply to the initial v1.3.0 candidate only.
 
 Validated on 2026-09-04. Candidate source revision:

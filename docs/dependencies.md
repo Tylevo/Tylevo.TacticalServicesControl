@@ -1,114 +1,103 @@
-# SPT 4.1.5 dependencies
+# Installing TSC for SPT 4.1.5
 
-## v1.3.10 public beta
+The current package is **TSC v1.3.10 for SPT 4.1.5**. It includes the SPT 4.1
+rebuild of UnityToolkit 2.0.1, its companion libraries, and license notices,
+with Arys's permission. **You do not need a separate UnityToolkit or
+compatibility-overlay download.**
 
-The v1.3.10 release retains the UnityToolkit installation bundled since
-v1.3.9. The full TSC ZIP includes UnityToolkit 2.0.1 with its plugin and prepatcher
-rebuilt against SPT 4.1, companion libraries, and license notices. No separate
-Toolkit or compatibility-overlay download is needed. WTT CommonLib remains
-required separately; Fika is optional and also installed separately.
+Install **WTT Client CommonLib and WTT Server CommonLib 3.0.6** separately from
+the [official WTT release](https://github.com/WelcomeToThursday/WTT-CommonLib/releases/tag/v3.0.6),
+including its serialization prepatcher. Fika is optional; solo play does not
+need it.
 
-1. Close the game, launcher, and SPT server. Back up profiles and TSC's
-   configuration and complete storage directory before updating.
-2. Update SPT to 4.1.5, then install WTT Client CommonLib and WTT Server
-   CommonLib 3.0.6 from the
-   [official WTT v3.0.6 release](https://github.com/WelcomeToThursday/WTT-CommonLib/releases/tag/v3.0.6),
-   including its serialization prepatcher.
-3. Extract the [complete v1.3.10 ZIP](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases/download/v1.3.10/Tylevo.TacticalServicesControl-v1.3.10-SPT4.1.5-TESTER.zip) into that SPT root. Merge its
-   `BepInEx` and `SPT_Runtime` folders with the existing folders.
-4. If Toolkit is already installed, replace its files in the standard folders
-   when prompted. Keep one installation; additional copies of the same plugin
-   in other folders can conflict.
+## Coming from SPT 4.0.13
 
-The bundled dependency uses these standard locations:
+Install SPT 4.1.5 in a **new folder** and create a **fresh profile**. SPT lists
+profile compatibility from 4.1.x onward and does not support 4.0.x mods on
+4.1.5. Do not extract this update over your 4.0.13 installation. Keep the old
+installation and its profiles as your backup. See the
+[SPT 4.1.5 release guidance](https://github.com/SP-Tushonka/build/releases/tag/4.1.5).
 
-- `BepInEx/plugins/UnityToolkit/`: plugin, companion libraries, and `Assemblies.jsonc`.
-- `BepInEx/patchers/UnityToolkit/`: prepatcher and its companion library.
-- Both folders include `THIRD_PARTY_NOTICES.txt` with the dependency licenses.
+Install the current dependencies and TSC package in the new installation.
+Let TSC create fresh `config/` and `storage/` directories for your new profile.
+You can use your old settings as a reference when configuring the dashboard,
+but do not copy old authorization ledgers or cargo records into the new
+profile's installation.
 
-Arys remains the author of UnityToolkit. On September 5, 2026, the maintainer
-confirmed Arys's explicit permission to bundle the rebuilt dependency with
-TSC. It retains version 2.0.1 and the original plugin identity. This is a
-TSC-distributed rebuild, not a new official Arys release. UnityToolkit remains
-under MIT, and its companion libraries keep their respective licenses. See
-[permissions](../PERMISSIONS.md) and [third-party notices](../THIRD_PARTY_NOTICES.md).
+## Installation
 
-SPT 4.1.4's prepatch validator rejects the original plugin's SPT 4.0.1 assembly
-reference before Toolkit or TSC initializes. The bundled rebuild references
-SPT 4.1 and passes that version check. This identifies a startup compatibility
-check; it does not establish a Toolkit runtime defect. The
-[source and binary provenance](../tools/dependencies/unitytoolkit/README.md)
-records the rebuild inputs, source patch, and limits of the checks performed.
+1. Close the game, launcher, and SPT server.
+2. Install SPT 4.1.5 and WTT CommonLib, including all of WTT's required components.
+3. Download the [full TSC v1.3.10 ZIP](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases/download/v1.3.10/Tylevo.TacticalServicesControl-v1.3.10-SPT4.1.5-TESTER.zip).
+   Extract it into the SPT root so its `BepInEx` and `SPT_Runtime` folders merge
+   with the existing folders. GitHub's automatic source archives are not
+   installable mod packages.
+4. If UnityToolkit is already installed, replace its files in the standard
+   folders when prompted. Keep one installation; do not leave duplicate
+   plugin or prepatcher copies in other folders.
+5. Start the SPT server, then the launcher and game.
 
-The [SPT 4.1.5 release](https://github.com/SP-Tushonka/build/releases/tag/4.1.5)
-fixes server validation of older Unity bundles. Its
-[client prepatch validator](https://github.com/SP-Tushonka/modules/blob/4.1.5/SPT.PrePatch/PluginValidator.cs)
-still requires matching SPT major and minor assembly-reference versions, so
-that bundle fix does not remove the Toolkit startup check.
+Check for these folders directly inside your SPT installation:
+
+```text
+BepInEx/plugins/Tylevo.TacticalServicesControl/
+SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/
+BepInEx/plugins/UnityToolkit/
+BepInEx/patchers/UnityToolkit/
+```
+
+Install all four TSC DLLs and their assets together. TSC replaces the old
+SamSWAT Fire Support and Arys Reloaded packages; do not install them alongside
+it. If updating TSC, remove older duplicate TSC DLLs from other mod folders.
+
+## Updating an existing SPT 4.1.x installation
+
+SPT supports patch updates within 4.1.x. Follow its
+[update guide](https://wiki.sp-tushonka.com/en/SPT_4x/Updating_SPT) and back up
+your profiles before updating SPT to 4.1.5.
+
+With the server stopped, also back up the TSC mod files and its `config/` and
+**complete `storage/` directory**. Storage contains purchased authorizations,
+payment recovery records, and cargo delivery state. Extract the current TSC
+package over its existing folders. The ZIP contains no profiles, mutable
+configuration, storage, or admin tokens, so it preserves that existing state.
+TSC migrates its supported configuration and ledger formats when the server
+starts. A rollback needs matching backups of the mod files and saved state.
+
+If your existing 4.1.x setup still uses
+`SPT/user/mods/Tylevo.TacticalServicesControl/`, move its backed-up `config/`
+and complete `storage/` directories into
+`SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/` before the first server
+start. Keep the new release's DLLs and assets. If both locations contain state,
+restore one consistent backup instead of merging ledgers. TSC does not read
+the old folder automatically. This preservation advice applies to the same
+compatible profile; a fresh profile should start with fresh TSC storage.
 
 ## Optional multiplayer
 
-Solo play does not require Fika. The current build reference is Project Fika
-client 2.4.2 plus its compatible server component. For experimental testing,
-follow the [official Project Fika v2.4.2 release](https://github.com/project-fika/Fika-Plugin/releases/tag/v2.4.2)
-and the [TSC known issues](known-issues.md).
+**Fika support has not been tested on the current SPT/Fika versions.** Fika
+client 2.4.2 is the compilation reference for this release, not a claim that
+multiplayer is verified. Install a matching Fika client/server pair and the
+same TSC package on every participating machine if you are testing it. See
+the [Fika guide](fika.md) and [known issues](known-issues.md) for restrictions.
 
-**Multiplayer on the current SPT/Fika versions remains untested.** The
-maintainer reports successful local use of v1.3.10 on SPT 4.1.5; individual
-service checks are not documented. Static inspection of SPT's version check
-does not establish gameplay compatibility. Follow the
-[release notes](release-notes-v1.3.10.md) for validation results and their limits.
+## About the bundled UnityToolkit
 
-## Published v1.3.9 for SPT 4.1.4
+Arys remains the author of UnityToolkit. This is a TSC-distributed SPT 4.1
+rebuild of version 2.0.1, not a new official Arys release. It includes the
+plugin, prepatcher, companion libraries, `Assemblies.jsonc`, and dependency
+license notices. UnityToolkit remains under MIT; its companion libraries
+retain their own licenses. See [permissions](../PERMISSIONS.md),
+[third-party notices](../THIRD_PARTY_NOTICES.md), and the
+[source and packaging guide](../tools/dependencies/unitytoolkit/README.md).
 
-The [v1.3.9 release](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases/tag/v1.3.9)
-remains available for SPT 4.1.4. It already includes the same rebuilt Toolkit
-and companion libraries in the standard folders above; WTT is separately
-required and Fika is optional. Use that version's full ZIP when staying on
-SPT 4.1.4. Its [release notes](release-notes-v1.3.9.md) and
-[validation record](validation/v1.3.9.md) remain unchanged.
+SPT 4.1.5 fixes server validation of older Unity asset bundles. Its separate
+[client startup check](https://github.com/SP-Tushonka/modules/blob/4.1.5/SPT.PrePatch/PluginValidator.cs)
+still requires compatible SPT assembly references, which is why the rebuilt
+Toolkit is included.
 
 ## Historical v1.3.8 installation: official Toolkit plus overlay
 
-The published v1.3.8 ZIP is unchanged and does not include UnityToolkit.
-The steps and hashes below apply to that release. TSC v1.3.9 and
-v1.3.10 bundle Toolkit as described above.
-
-1. Close the game.
-2. Download and extract the official
-   [UnityToolkit v2.0.1 release](https://github.com/ArysWasTaken/UnityToolkit/releases/tag/v2.0.1)
-   into your SPT root. Its `BepInEx` folder must merge with your existing one.
-3. Download `UnityToolkit-v2.0.1-SPT4.1-compat-overlay.zip` from the
-   [TSC v1.3.8 release](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases/tag/v1.3.8).
-   Copy its `BepInEx` folder into the same SPT root and replace the two
-   UnityToolkit DLLs when prompted.
-4. Keep the other files from the official archive. In particular, retain
-   `Assemblies.jsonc`, the UniTask/VContainer/ZLinq/ZString/Unity.Collections
-   libraries, and the prepatcher's `System.Runtime.CompilerServices.Unsafe.dll`.
-
-The overlay is an unofficial TSC compatibility build of Arys's MIT-licensed
-UnityToolkit. It retains version 2.0.1 and supplies the SPT 4.1 build configuration,
-updated references, deployment guards, and a string-based lookup for the existing player-loop patch target.
-It is not a complete UnityToolkit installation. Install the official archive
-first; installing it again afterward would overwrite the compatibility build.
-
-The two overlay DLLs are the exact compatibility binaries used by the TSC
-SPT 4.1.4 tester. All 13 remaining files match the official archive byte for byte.
-No additional libraries, proprietary references, or game files are redistributed
-in the overlay. Its `LICENSE` preserves Arys's MIT notice; the complete source
-patch and build-input manifest are included alongside the installation files.
-
-| File | Bytes | SHA-256 |
-| --- | ---: | --- |
-| Official `UnityToolkit-v2.0.1.7z` | 500753 | `81FF11B228B73863F5CF1F54B9D823C344D23A6E900EC8FC3C33578569906FA1` |
-| `BepInEx/plugins/UnityToolkit/UnityToolkit.dll` | 8704 | `DBA886D4C8B118C389795B1196EC13742DA42771C50D190209C370F69C416E75` |
-| `BepInEx/patchers/UnityToolkit/UnityToolkit-Prepatcher.dll` | 5120 | `730156D8360A0BCA9024CF20F3886FBBD9509A7D793760FDD75C3BE186DFBDDE` |
-| `UnityToolkit-v2.0.1-SPT4.1-compat.patch` | See archive | `1AD825EF63012A2EC9F2B6658A86E3F713AEDC1FE2C2E6DCD43701D28EE8283D` |
-
-## Rebuilding and packaging the Toolkit dependency
-
-The current [Toolkit source and packaging guide](../tools/dependencies/unitytoolkit/README.md)
-contains the pinned upstream commit, compatibility patch, required local build
-references, deployment-suppressed build commands, and package-input contract.
-The source repository contains the patch and notices; compiled dependencies
-are supplied separately to the packager and checked against the reviewed pins.
+The old separate-download instructions are retained in the
+[archived dependency guide](archive/dependencies-v1.3.9.md). They apply only to
+older packages. Use the installation steps above for the current release.

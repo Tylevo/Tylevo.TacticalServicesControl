@@ -1,25 +1,38 @@
-# Known Issues
+# Known issues
 
-Current release: **TSC 1.3.8 for SPT 4.1.4**. The release remains a beta/tester
-build. See [current validation](validation/v1.3.8.md) for the automated,
-server, and user-reported gameplay evidence and its limits.
+Current release: **TSC v1.3.10 for SPT 4.1.5**. The maintainer reports that the
+updated local setup is working. The [validation record](validation/v1.3.10.md)
+separates that report from automated and server checks.
 
-- Phone inventory inspect model may still need polish.
-- Mortar/artillery support is planned but not included.
-- Dedicated-headless Fika A-10 damage remains experimental and separately gated from the original single-player/human-host path. The known raw-health half-death path has been replaced with Fika's player-owned damage routes, but lethal bot corpse sync and remote-human death/downed behavior still require matched-build live acceptance.
-- Human-host, Fika-client, and dedicated-headless live acceptance for
-  transactional requests, requester-owned UAV state, standard-Extraction and
-  Cargo timing isolation, and multi-currency payment is not yet complete.
-- If both authority-acceptance result paths and cancellation settlement are lost beyond their bounded waits, an authority-executed service can still be refunded and become free.
-- Commit/refund retries are volatile. A client crash, permanent logout, or backend outage that outlasts pending expiry can refund an already delivered service.
-- Remote third-person phone animation sync is planned but not included.
-- Public beta: back up profiles before testing payment modes.
+## Multiplayer
 
-Stash payment and non-host A-10 tracer visibility are implemented, but the
-current automated suite does not exercise either path end to end. Both remain
-in the matched-version live multiplayer acceptance matrix.
+**Fika support has not been tested on the current SPT/Fika versions.**
+Compiling against Fika 2.4.2 does not establish multiplayer compatibility.
 
-The Pilot shop's registration, saved unlock, listing, and portrait have passed
-native server checks. Final portrait framing and a paid purchase in the game
-UI remain to be checked. The bottom-bar shortcut has native prefab and
-lifecycle fixture coverage; resolution-specific rendering is still a live check.
+- UH-60 Cargo Transfer is available to solo players and a requesting human
+  host. Other Fika clients and dedicated-headless requesters cannot use it
+  until item-dependent handling prices can be verified by the host.
+- Dedicated-headless A-10 damage is experimental and must be enabled
+  separately. Bot death/corpse synchronization and remote-player death or
+  downed behavior still need live testing.
+- Request acceptance, refunds, requester-only UAV state, extraction/cargo
+  timing, stash payments, and non-host A-10 effects still need matched-version
+  multiplayer testing. See the [Fika guide](fika.md).
+
+Two recovery limits remain: if both acceptance paths and cancellation
+settlement time out, a service that already ran can still be refunded.
+Commit/refund retries are also held in memory, so a client crash, permanent
+logout, or sufficiently long backend outage can refund an already delivered
+service.
+
+## Presentation and service checks
+
+- The phone's inventory inspect model may need more polish.
+- A-10 impacts, collisions, and replay effects need broader testing across maps.
+- Phone and store layouts need broader coverage across resolutions and combat
+  conditions. Pilot's registration and portrait have server checks; exact
+  portrait framing and a paid purchase were not individually documented in
+  the latest local test report.
+
+Mortar/artillery support and remote third-person phone animation sync are
+not included.

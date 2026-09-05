@@ -1,5 +1,11 @@
 # Tylevo's Tactical Services Control v1.2.0 Public Beta
 
+> **Historical documentation.** These instructions and results describe this
+> earlier version. For TSC v1.3.10 on SPT 4.1.5, use the
+> [current release notes](release-notes-v1.3.10.md) and
+> [installation guide](dependencies.md). See the [archive index](archive/README.md)
+> for earlier release availability.
+
 This SPT 4.1.2 tester release adds optional integration with Tylevo Seasonal
 Modifiers. TSC still works independently and does not require Seasonal
 Modifiers.

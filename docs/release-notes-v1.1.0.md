@@ -1,5 +1,11 @@
 # Tylevo's Tactical Services Control v1.1.0 Public Beta
 
+> **Historical documentation.** These instructions and results describe this
+> earlier version. For TSC v1.3.10 on SPT 4.1.5, use the
+> [current release notes](release-notes-v1.3.10.md) and
+> [installation guide](dependencies.md). See the [archive index](archive/README.md)
+> for earlier release availability.
+
 > Separate tester prerelease published as GitHub tag `v1.1.0-beta.1`. This does not consume the final `v1.1.0` tag.
 
 Target: **SPT 4.1.2 / EFT 0.16.9.5.40743 tester**. This port follows the
