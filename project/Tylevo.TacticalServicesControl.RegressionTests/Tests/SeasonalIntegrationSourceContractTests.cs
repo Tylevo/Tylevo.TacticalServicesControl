@@ -16,6 +16,8 @@ internal static class SeasonalIntegrationSourceContractTests
 		"project/SamSWAT.FireSupport/Unity/MainMenuPurchaseController.cs";
 	private const string MainMenuViewPath =
 		"project/SamSWAT.FireSupport/Unity/MainMenuPurchaseController.View.cs";
+	private const string MainMenuTaskBarPath =
+		"project/SamSWAT.FireSupport/Unity/MainMenuPurchaseController.TaskBar.cs";
 	private const string MainMenuPatchPath =
 		"project/SamSWAT.FireSupport/Patches/MainMenuPurchasePatch.cs";
 	private const string GameWorldStartPatchPath =
@@ -619,11 +621,12 @@ internal static class SeasonalIntegrationSourceContractTests
 			patch);
 
 		string mainMenu = ReadProductionSource(MainMenuPath);
+		string taskBar = ReadProductionSource(MainMenuTaskBarPath);
 		int catalogStart = mainMenu.IndexOf(
 			"private static readonly ServiceDescriptor[] s_services =",
 			StringComparison.Ordinal);
 		int catalogEnd = mainMenu.IndexOf(
-			"private static readonly string[] s_stackButtonNames =",
+			"];",
 			catalogStart,
 			StringComparison.Ordinal);
 		AssertEx.True(catalogStart >= 0 && catalogEnd > catalogStart);
@@ -644,16 +647,15 @@ internal static class SeasonalIntegrationSourceContractTests
 		int updateStart = mainMenu.IndexOf(
 			"private void Update()",
 			StringComparison.Ordinal);
-		int ensureButtonStart = mainMenu.IndexOf(
-			"private void EnsureMenuButton()",
+		int updateEnd = mainMenu.IndexOf(
+			"private static bool IsSeasonalModifiersClientActive()",
 			updateStart,
 			StringComparison.Ordinal);
-		AssertEx.True(updateStart >= 0 && ensureButtonStart > updateStart);
-		string update = mainMenu[updateStart..ensureButtonStart];
-		AssertEx.Contains(
-			"bool shouldShow = ShouldShowMenuButton;",
-			update);
-		AssertEx.Contains("_menuButton.gameObject.SetActive(shouldShow);", update);
+		AssertEx.True(updateStart >= 0 && updateEnd > updateStart);
+		string update = mainMenu[updateStart..updateEnd];
+		AssertEx.Contains("if (!CanUseTaskBar)", update);
+		AssertEx.Contains("ClosePage();", update);
+		AssertEx.Contains("SetTaskBarVisible(false);", update);
 		AssertEx.Contains("if (_seasonalClientActive)", update);
 		AssertEx.Contains("SuppressMenuForSeasonal();", update);
 
@@ -667,23 +669,21 @@ internal static class SeasonalIntegrationSourceContractTests
 		AssertEx.Contains("PluginSettings.Enabled?.Value == true &&", mainMenu);
 		AssertEx.Contains("!_seasonalClientActive;", mainMenu);
 		AssertEx.Contains("ClosePage();", mainMenu);
-		AssertEx.Contains("RestoreMenuStackPositions();", mainMenu);
 		AssertEx.Contains("RetireAllMenuButtons();", mainMenu);
-		AssertEx.Contains("ClearMenuStackTracking();", mainMenu);
 		AssertEx.Contains("_nextLayoutScanAt = float.PositiveInfinity;", mainMenu);
 		AssertEx.Contains("enabled = false;", mainMenu);
 
-		int positionButtonStart = mainMenu.IndexOf(
-			"private void PositionMenuButton(",
-			ensureButtonStart,
-			StringComparison.Ordinal);
-		AssertEx.True(positionButtonStart > ensureButtonStart);
-		string ensureButton = mainMenu[ensureButtonStart..positionButtonStart];
-		AssertEx.Contains(
-			"_menuButton.gameObject.SetActive(ShouldShowMenuButton);",
-			ensureButton);
-		AssertEx.Contains("_menuButton.SetRawText(\"TSC UPLINK\"", ensureButton);
-		AssertEx.Contains("_menuButton.OnClick.AddListener(OpenPage);", ensureButton);
+		AssertEx.Contains("PreloaderUI.Instance?.MenuTaskBar", taskBar);
+		AssertEx.Contains("ShouldShowMenuButton", taskBar);
+		AssertEx.Contains("Singleton<GameWorld>.Instance == null", taskBar);
+		AssertEx.Contains("isActiveAndEnabled", taskBar);
+		AssertEx.Contains("HandleTaskBarToggle", taskBar);
+		AssertEx.Contains("OpenPage();", taskBar);
+		AssertEx.False(
+			mainMenu.Contains("PositionMenuButton", StringComparison.Ordinal) ||
+			mainMenu.Contains("RestoreMenuStackPositions", StringComparison.Ordinal) ||
+			taskBar.Contains("PositionMenuButton", StringComparison.Ordinal),
+			"The persistent bottom-bar entry must not insert or reposition a central-menu row.");
 		AssertEx.False(
 			mainMenu.Contains("IsDangerCloseActive", StringComparison.Ordinal),
 			"Main-menu suppression must depend on Seasonal client presence, not a raid lease.");

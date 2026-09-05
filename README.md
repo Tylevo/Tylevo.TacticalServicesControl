@@ -2,12 +2,12 @@
 
 A BepInEx mod that reworks SamSWAT's Fire Support / Arys Reloaded into a TerraGroup-style tactical support system for SPT and Fika.
 
-> **SPT 4.1.4 tactical icon tester:** v1.3.6 targets SPT 4.1.4 / EFT
+> **SPT 4.1.4 bottom-bar Uplink tester:** v1.3.7 targets SPT 4.1.4 / EFT
 > 0.16.9.5.40743. The expected test artifact is
-> `Tylevo.TacticalServicesControl-v1.3.6-SPT4.1.4-TESTER.zip`.
-> This removes the pale rounded frames from the six service icon images.
-> The aircraft, cargo, and recon symbols retain the tactical palette. See
-> `docs/release-notes-v1.3.6.md` for this candidate's scope.
+> `Tylevo.TacticalServicesControl-v1.3.7-SPT4.1.4-TESTER.zip`.
+> TSC Uplink now opens from the bottom bar immediately left of Character
+> while on the main menu. The center menu keeps its native spacing. See
+> `docs/release-notes-v1.3.7.md` for this candidate's scope.
 
 This mod adds a **TerraGroup TSC Uplink** phone that lets you buy support authorizations in raid, then deploy them later from the same device. The phone handles service selection and camera-based target designation, so the rangefinder and YY gesture wheel are no longer required for the primary workflow.
 
@@ -65,7 +65,7 @@ Do not place the ZIP contents inside an extra nested folder.
 
 ### Pre-Raid Store
 
-When Seasonal Modifiers is not installed, open **TSC UPLINK** from the main menu directly below **Records**. If the Records entry is unavailable, TSC places itself below **Character** instead. Seasonal Modifiers owns that menu area when its client plugin is loaded, so TSC removes its redundant main-menu row; use the in-raid Uplink purchase flow instead.
+When Seasonal Modifiers is not installed, open **TSC UPLINK** on the bottom bar immediately left of **Character** while on the main menu. It uses the native footer layout and does not add a row to the center menu. The shortcut hides when leaving the main menu. When the Seasonal Modifiers client is loaded, TSC suppresses its redundant shortcut; use the in-raid Uplink purchase flow instead.
 
 1. Open **TSC UPLINK** from the main menu on a standalone TSC install.
 2. Wait for your stash balance and purchased authorizations to load.

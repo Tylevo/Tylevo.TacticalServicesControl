@@ -10,8 +10,8 @@ using System.Reflection;
 namespace SamSWAT.FireSupport.ArysReloaded.Patches;
 
 /// <summary>
-/// Adds the pre-raid purchase entry only after EFT has populated its native
-/// main-menu button stack and supplied the authenticated profile.
+/// Binds the pre-raid footer entry after EFT supplies the authenticated
+/// main-menu profile. The controller waits for PreloaderUI's native taskbar.
 /// </summary>
 [UsedImplicitly]
 internal sealed class MainMenuPurchasePatch : ModulePatch

@@ -86,11 +86,11 @@ Interop, the Fika bootstrap, and the regression runner. The build always passes
 the supplied SPT installation. Use `-Configuration` only when intentionally
 checking another configured target.
 
-The active v1.3.6 candidate removes the rounded pale perimeter frames from
-the six service icon images. Runtime code and layouts are unchanged.
-Build, asset, and package results are recorded in the candidate's external
-evidence sidecars; in-game appearance remains a separate check. See
-`docs/release-notes-v1.3.6.md` for scope and acceptance.
+The active v1.3.7 candidate moves the pre-raid entry into EFT's bottom bar
+immediately left of Character. It removes center-menu insertion and keeps
+the storefront's purchase behavior. Build, regression, native-contract, and
+package results are recorded in external evidence sidecars. See
+`docs/release-notes-v1.3.7.md` for scope and acceptance.
 
 ### SPT 4.1 client and server contracts
 
@@ -99,10 +99,11 @@ evidence sidecars; in-game appearance remains a separate check. See
 overload fails patch initialization, and `FireSupportSpotter.Load` times out
 after five seconds if the manager is not captured.
 
-`MainMenuSlotStepPolicy` prefers measured adjacent native rows, then a cached
-row interval, accepting those trusted measurements up to 160 pixels. The
-ambiguous Play-to-Character gap is a later fallback capped at 90 pixels. Keep
-the Seasonal Modifiers menu handoff when applying these placement rules.
+The pre-raid entry resolves `PreloaderUI.Instance.MenuTaskBar` and clones
+Character's complete wrapper into the native `Tabs` horizontal layout.
+Its cloned toggle group and listeners remain separate from native navigation.
+Center-menu transforms are not rewritten. Keep the Seasonal client handoff
+and active-menu/raid guards when changing this entry.
 
 `FireSupportServerConfigService` and `FireSupportAuthorizationLedger` must
 remain explicit DI singletons: their paths, revision, and transaction state
@@ -165,7 +166,7 @@ named asset bundles. It asserts the exact archive-root set and rejects
 proprietary dependencies, profiles, storage, logs, build artifacts, archives,
 and `.gitkeep` files from the package.
 
-The v1.3.6 package contract follows the verified public v1.0.8 artifact:
+The v1.3.7 package contract follows the verified public v1.0.8 artifact:
 
 - Extract the ZIP directly into the SPT installation root.
 - The archive contains exactly `BepInEx/` and `SPT_Runtime/` at top level.
@@ -188,7 +189,7 @@ repository:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\verify-local.ps1 `
   -SptDir "C:\Path\To\SPT" `
   -SptSharedAssembliesDir "C:\Path\To\SPT Assemblies" `
-  -EvidencePath "C:\External\TSC\v1.3.6-build-evidence.json"
+  -EvidencePath "C:\External\TSC\v1.3.7-build-evidence.json"
 ```
 
 `-EvidencePath` must not already exist and must be outside the repository. Once
@@ -198,8 +199,8 @@ directory:
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\New-ReleasePackage.ps1 `
   -BaselineAssetArchive "C:\Path\To\Tylevo.TacticalServicesControl-v1.0.8-SPT4.0.13.zip" `
-  -OutputDirectory "C:\External\TSC\v1.3.6-candidate" `
-  -BuildEvidencePath "C:\External\TSC\v1.3.6-build-evidence.json"
+  -OutputDirectory "C:\External\TSC\v1.3.7-candidate" `
+  -BuildEvidencePath "C:\External\TSC\v1.3.7-build-evidence.json"
 ```
 
 The baseline archive is an explicit input for the eight historical Unity
@@ -231,8 +232,8 @@ separate checks recorded in `docs/port/SPT-4.1.4-PORT-LOG.md`.
 
 The four DLLs come only from the fixed project build-output paths recorded in
 the manifest. All four must have the reviewed assembly name,
-`AssemblyVersion`/`FileVersion` `1.3.6.0`, and
-`AssemblyInformationalVersion` `1.3.6+<current-clean-HEAD>`. This rejects old,
+`AssemblyVersion`/`FileVersion` `1.3.7.0`, and
+`AssemblyInformationalVersion` `1.3.7+<current-clean-HEAD>`. This rejects old,
 mixed, or locally modified build outputs. The packager requires the external
 build evidence and matches its HEAD/tree, SDK, configuration, output paths,
 sizes, SHA-256 values, and assembly metadata against those four DLLs. Run the
@@ -252,7 +253,7 @@ working-tree bytes, and the clean HEAD/tree identity is checked again before
 success.
 
 For this port the generated archive name is exactly
-`Tylevo.TacticalServicesControl-v1.3.6-SPT4.1.4-TESTER.zip`. The `TESTER`
+`Tylevo.TacticalServicesControl-v1.3.7-SPT4.1.4-TESTER.zip`. The `TESTER`
 suffix must remain until the 4.1.4 runtime acceptance gates are complete.
 
 The command also writes a new external `*.content-evidence.json` sidecar with

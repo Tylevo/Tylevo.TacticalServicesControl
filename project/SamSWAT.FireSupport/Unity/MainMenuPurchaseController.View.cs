@@ -305,6 +305,10 @@ public sealed partial class MainMenuPurchaseController
 			_ => "uav_recon"
 		};
 		string key = $"{(amber ? "amber_512" : "neutral_512")}/{icon}.png";
+		return LoadStoreSprite(key);
+	}
+	private static Sprite LoadStoreSprite(string key)
+	{
 		if (s_storeIcons.TryGetValue(key, out Sprite cached)) return cached;
 		Sprite sprite = null;
 		Texture2D texture = null;
@@ -327,7 +331,7 @@ public sealed partial class MainMenuPurchaseController
 		}
 		catch (Exception ex)
 		{
-			FireSupportPlugin.LogSource.LogWarning($"TSC storefront icon unavailable: {icon}. {ex.Message}");
+			FireSupportPlugin.LogSource.LogWarning($"TSC storefront icon unavailable: {key}. {ex.Message}");
 		}
 		if (sprite == null && texture != null) Destroy(texture);
 		s_storeIcons[key] = sprite;

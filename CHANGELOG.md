@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.3.7 - Public Beta (unreleased)
+
+- Move the pre-raid TSC Uplink entry to the bottom bar immediately left of
+  Character. Use EFT's native tab wrapper and horizontal layout.
+- Remove center-menu insertion and position rewrites, preserving EFT's
+  normal main-menu spacing.
+- Give the cloned shortcut its own toggle group and action so opening TSC
+  cannot select Character or modify the native navigation registrations.
+- Hide the shortcut outside the active main menu and reject disabled, stale,
+  and in-raid callbacks. Preserve Seasonal client suppression and purchase
+  authentication, confirmation, and recovery behavior.
+
+See `docs/release-notes-v1.3.7.md`; verification results are recorded in the
+candidate's external evidence sidecars.
+
 ## 1.3.6 - Public Beta (unreleased)
 
 - Remove the pale rounded perimeter frames baked into the six service icons.
