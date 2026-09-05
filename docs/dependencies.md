@@ -53,10 +53,11 @@ client 2.4.2 plus its compatible server component. For experimental testing,
 follow the [official Project Fika v2.4.2 release](https://github.com/project-fika/Fika-Plugin/releases/tag/v2.4.2)
 and the [TSC known issues](known-issues.md).
 
-**New SPT 4.1.5 client and raid validation for v1.3.10 is pending. Multiplayer
-on the current SPT/Fika versions remains untested.** Static inspection of
-SPT's version check does not establish gameplay compatibility. Follow the
-[candidate notes](release-notes-v1.3.10.md) for new validation results.
+**Multiplayer on the current SPT/Fika versions remains untested.** The
+maintainer reports successful local use of v1.3.10 on SPT 4.1.5; individual
+service checks are not documented. Static inspection of SPT's version check
+does not establish gameplay compatibility. Follow the
+[candidate notes](release-notes-v1.3.10.md) for validation results and their limits.
 
 ## Published v1.3.9 for SPT 4.1.4
 

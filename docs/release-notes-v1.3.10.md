@@ -1,8 +1,8 @@
 # Tylevo's Tactical Services Control v1.3.10 Public Beta
 
-Unreleased candidate for SPT 4.1.5 / EFT 0.16.9.5.40743. New client and raid
-acceptance is pending, and multiplayer on the current SPT/Fika versions
-remains untested. The published [v1.3.9 release](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases/tag/v1.3.9)
+Unreleased candidate for SPT 4.1.5 / EFT 0.16.9.5.40743. Initial local use is
+reported working; multiplayer on the current SPT/Fika versions remains
+untested. The published [v1.3.9 release](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases/tag/v1.3.9)
 continues to target SPT 4.1.4.
 
 This candidate updates TSC's version to 1.3.10 and its declared SPT target
@@ -42,7 +42,8 @@ the themed dashboard, SIC registration, and both server bundles. See the
 [v1.3.10 validation record](validation/v1.3.10.md) and
 [4.1.5 reference log](port/SPT-4.1.5-PORT-LOG.md).
 
-Client launch, phone controls, support services in raid, and current Fika
-multiplayer remain untested on 4.1.5. Server and build checks do not establish
-gameplay compatibility. The v1.3.9 validation record remains historical evidence
-for the earlier target.
+After installing the candidate, the maintainer reported that the updated
+local setup was working. This records successful initial use; the report did
+not list individual phone, service, or raid checks. Broader service testing
+remains open, and current Fika multiplayer remains untested. The v1.3.9
+validation record remains historical evidence for the earlier target.

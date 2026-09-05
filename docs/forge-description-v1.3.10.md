@@ -2,8 +2,9 @@
 
 Unreleased candidate for SPT 4.1.5. Call in A-10 strafes, UH-60 extraction
 and cargo transfer, or UAV reconnaissance through the TerraGroup TSC Uplink.
-New client and raid checks for this target are pending. Multiplayer on the
-current SPT/Fika versions remains untested.
+The maintainer reports successful local use on this target. Individual service
+checks are not documented; multiplayer on the current SPT/Fika versions
+remains untested.
 
 This candidate updates TSC's declared SPT target and retains the gameplay
 and configuration features from v1.3.9. Open **Tactical Services Control**

@@ -1,8 +1,9 @@
 # Building
 
 The current source is the unreleased TSC v1.3.10 candidate for SPT 4.1.5.
-New client and raid checks are pending; current Fika multiplayer remains
-untested. The published v1.3.9 release continues to target SPT 4.1.4.
+The maintainer reports successful local use. Individual service checks are
+not documented, and current Fika multiplayer remains untested. The published
+v1.3.9 release continues to target SPT 4.1.4.
 
 This repository does not include proprietary EFT or SPT assemblies. Provide local references from your own SPT install.
 
@@ -34,8 +35,8 @@ need a separate Toolkit or overlay download. Historical pins remain in the
 [4.1.2](docs/port/SPT-4.1-PORT-LOG.md) and
 [4.1.4](docs/port/SPT-4.1.4-PORT-LOG.md) port logs. The v1.3.9 validation record is historical;
 new candidate checks and their remaining limits are recorded in
-`docs/release-notes-v1.3.10.md`. New SPT 4.1.5 client/raid acceptance and
-multiplayer on the current SPT/Fika versions remain unverified.
+`docs/release-notes-v1.3.10.md`. The maintainer's local feedback does not
+establish individual service or Fika multiplayer compatibility.
 
 TSC references WTT Common Lib from the local SPT dependency install. Do not copy WTT Common Lib source or binaries into the TSC source tree or release archive.
 
@@ -103,8 +104,8 @@ checking another configured target.
 The v1.3.10 candidate retains the themed SIC dashboard and separate native
 editor runtime/disk actions introduced in v1.3.9. Build, regression, native
 API, package, and installation results must identify the new target and
-candidate revision. See `docs/release-notes-v1.3.10.md` for scope and pending
-acceptance; previous 4.1.4 results are not new 4.1.5 test results.
+candidate revision. See `docs/release-notes-v1.3.10.md` for scope, maintainer
+feedback, and remaining checks; previous 4.1.4 results are not new 4.1.5 test results.
 
 ### SPT 4.1 client and server contracts
 

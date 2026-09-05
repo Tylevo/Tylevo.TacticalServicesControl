@@ -5,7 +5,7 @@ Call in an A-10 strafe, arrange a helicopter pickup, or check for nearby contact
 > **v1.3.10 unreleased candidate · SPT 4.1.5 / EFT 0.16.9.5.40743**
 >
 > This candidate retains the bundled UnityToolkit 2.0.1 rebuilt against SPT 4.1, with Arys's permission. No separate Toolkit or compatibility-overlay download is needed. WTT CommonLib is still required separately.
-> **New SPT 4.1.5 client and raid checks are pending. Multiplayer on the current SPT/Fika versions remains untested.** See the [v1.3.10 candidate notes](docs/release-notes-v1.3.10.md).
+> **Initial local use on SPT 4.1.5 is reported working. Multiplayer on the current SPT/Fika versions remains untested.** See the [v1.3.10 candidate notes](docs/release-notes-v1.3.10.md) for test coverage.
 
 The latest published release is **v1.3.9 for SPT 4.1.4**, published September 5, 2026. Download its [full v1.3.9 ZIP](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases/download/v1.3.9/Tylevo.TacticalServicesControl-v1.3.9-SPT4.1.4-TESTER.zip) from the [v1.3.9 release](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases/tag/v1.3.9). `SHA256SUMS.txt` is available alongside the ZIP.
 
@@ -39,7 +39,7 @@ It also retains the v1.3.0 through v1.3.8 updates:
 
 ## Requirements
 
-- [SPT 4.1.5](https://github.com/SP-Tushonka/build/releases/tag/4.1.5). New client and raid validation for this candidate is pending.
+- [SPT 4.1.5](https://github.com/SP-Tushonka/build/releases/tag/4.1.5). Initial local use of this candidate is reported working.
 - [UnityToolkit 2.0.1](docs/dependencies.md), included in the full TSC ZIP since v1.3.9 and retained for this candidate with its plugin and prepatcher rebuilt against SPT 4.1, companion libraries, and license notices. There is no separate Toolkit or overlay download for this candidate.
 - [WTT CommonLib 3.0.6](https://github.com/WelcomeToThursday/WTT-CommonLib/releases/tag/v3.0.6), including its client, server, and serialization prepatcher components.
 - For experimental multiplayer testing, [Project Fika client 2.4.2](https://github.com/project-fika/Fika-Plugin/releases/tag/v2.4.2) and its corresponding server component. This version is a build reference only; multiplayer compatibility hasn't been tested with this SPT release. You don't need Fika for solo play; TSC detects it at runtime.
@@ -183,7 +183,7 @@ See `docs/dashboard.md`, `PRIVACY.md`, and `SECURITY.md`.
 
 ## Beta status and known issues
 
-The v1.3.10 candidate passed its full SPT 4.1.5 build, all 238 regression tests, and 26 isolated server checks covering the dashboard, SIC registration, configuration, and bundles. Client, raid, and current Fika multiplayer testing remain pending. See the [candidate validation notes](docs/validation/v1.3.10.md) for the scope and limits; the previous v1.3.9 results remain historical evidence for SPT 4.1.4.
+The v1.3.10 candidate passed its full SPT 4.1.5 build, all 238 regression tests, and 26 isolated server checks covering the dashboard, SIC registration, configuration, and bundles. The maintainer reports that the updated local setup is working. Individual service checks were not listed, and current Fika multiplayer remains untested. See the [candidate validation notes](docs/validation/v1.3.10.md) for the scope and limits; the previous v1.3.9 results remain historical evidence for SPT 4.1.4.
 
 The earlier v1.3.8 release passed **216 regression tests**, a full local build with no errors, and checks on its **169-file package**. These historical checks do not confirm Fika compatibility; live multiplayer testing has not been done on the current SPT/Fika versions. Server checks confirmed Pilot's unlock, the Pilot-only Uplink listing, its price and purchase limit, the exact portrait bytes, and preserved profile and trader state. They didn't cover the Trading screen in game or a paid Uplink purchase.
 

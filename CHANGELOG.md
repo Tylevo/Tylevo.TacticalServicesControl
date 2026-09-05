@@ -9,8 +9,9 @@
   required; Fika 2.4.2 remains an optional build reference.
 - Carry forward the themed SIC dashboard and separate native config
   Apply/Save behavior from v1.3.9. This target update adds no gameplay changes.
-- Mark new SPT 4.1.5 client and raid acceptance as pending. Multiplayer on
-  the current SPT/Fika versions remains untested.
+- Record the maintainer's report that initial local use on SPT 4.1.5 is
+  working. Individual service checks were not listed; multiplayer on the
+  current SPT/Fika versions remains untested.
 
 See the [v1.3.10 candidate notes](docs/release-notes-v1.3.10.md).
 
