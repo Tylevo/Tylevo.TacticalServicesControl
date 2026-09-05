@@ -4,12 +4,12 @@ Last updated: 2026-07-27
 
 > **Historical SPT 4.0.13 snapshot — superseded.** This handoff preserves the
 > v1.0.8/v1.1.0-beta.1 stabilization and packaging evidence as it existed on
-> the date above. It is not the active port guide. For the current SPT 4.1.4
-> target, branch, dependency status, build gates, tester filename, and
-> `SPT_Runtime/user/mods` package layout, use
-> `docs/release-notes-v1.3.9.md`, `docs/validation/v1.3.9.md`, and
-> `docs/port/SPT-4.1.4-PORT-LOG.md`. Do not apply the 4.0.13 target,
-> archive names, `SPT/user/mods` paths, or commands below to the 4.1.4 tester.
+> the date above. It is not the active port guide. For TSC v1.3.10 on SPT 4.1.5,
+> use the [current release notes](release-notes-v1.3.10.md),
+> [validation record](validation/v1.3.10.md),
+> [installation guide](dependencies.md), and
+> [reference log](port/SPT-4.1.5-PORT-LOG.md). Do not apply the 4.0.13 target,
+> archive names, `SPT/user/mods` paths, or commands below to the current release.
 > The remaining historical details are intentionally retained unchanged.
 
 **2026-09-05 packaging addendum for the v1.3.9 release:** Arys

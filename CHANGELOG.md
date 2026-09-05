@@ -4,18 +4,35 @@
 
 Published September 5, 2026 for SPT 4.1.5.
 
-- Target SPT 4.1.5 with one matched v1.3.10 identity for the four TSC DLLs.
-  Keep the `SPT-4.1 Release` build configuration and existing package layout.
-- Retain bundled UnityToolkit 2.0.1 rebuilt against SPT 4.1, its companion
-  libraries, and license notices. WTT CommonLib 3.0.6 remains separately
-  required; Fika 2.4.2 remains an optional build reference.
-- Carry forward the themed SIC dashboard and separate native config
-  Apply/Save behavior from v1.3.9. This target update adds no gameplay changes.
-- Record the maintainer's report that initial local use on SPT 4.1.5 is
-  working. Individual service checks were not listed; multiplayer on the
-  current SPT/Fika versions remains untested.
+**Forge upgrade summary:** this is the package prepared to follow TSC v1.0.8
+for SPT 4.0.13. The intervening GitHub test builds were not published on Forge,
+so the player-facing release notes cover their cumulative changes:
 
-See the [v1.3.10 release notes](docs/release-notes-v1.3.10.md).
+- UH-60 Cargo Transfer replaces Priority Exfil, with Pilot mail delivery and
+  a separate item-handling fee paid from carried roubles or the stash.
+- Add the pre-raid support store, redesigned phone UI and service artwork,
+  Alt-and-mouse selection, and eased phone zoom.
+- Move the Uplink shop to the unlocked UH-60 Pilot and add its dedicated
+  fourth special slot.
+- Add physical-phone and corner-HUD radar display options, multi-currency
+  support pricing, and stronger authorization/payment recovery.
+- Correct A-10 shot origins and trajectory compensation to address impacts
+  landing short of the designated target.
+- Integrate the themed dashboard and native config editor with SIC, including
+  validation and protection against conflicting or failed saves.
+- Bundle the compatible UnityToolkit 2.0.1 rebuild, companion libraries, and
+  license notices with Arys's permission. WTT CommonLib 3.0.6 is still required
+  separately; no Toolkit or compatibility-overlay download is needed.
+
+This build targets SPT 4.1.5 with a matched v1.3.10 identity for all four TSC
+DLLs. The version-by-version development entries below record when the
+individual changes landed.
+
+The maintainer reports successful local use on SPT 4.1.5. Current SPT/Fika
+multiplayer remains untested; Fika 2.4.2 is an optional build reference, not a
+compatibility claim.
+
+See the [cumulative v1.3.10 release notes](docs/release-notes-v1.3.10.md).
 
 ## 1.3.9 - Public Beta
 

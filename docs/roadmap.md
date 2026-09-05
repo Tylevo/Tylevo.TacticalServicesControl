@@ -1,5 +1,11 @@
 # Roadmap
 
+> **Historical v1.1.0 roadmap.** Completed work and release gates below reflect
+> that development stage. For TSC v1.3.10 on SPT 4.1.5, use the
+> [current release notes](release-notes-v1.3.10.md) and
+> [known issues](known-issues.md). Potential features here are not commitments
+> or a current release checklist.
+
 ## Completed For The v1.1.0 Candidate
 
 - Authenticated pre-raid authorization store with confirmation and a dashboard shortcut.

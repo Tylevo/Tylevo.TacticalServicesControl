@@ -1,5 +1,11 @@
 # Tylevo's Tactical Services Control v1.0.8 Public Beta
 
+> **Historical documentation.** These instructions and results describe this
+> earlier version. For TSC v1.3.10 on SPT 4.1.5, use the
+> [current release notes](release-notes-v1.3.10.md) and
+> [installation guide](dependencies.md). See the [archive index](archive/README.md)
+> for earlier release availability.
+
 Install-ready beta package for SPT 4.0.13. Extract it into the SPT root while the game and server are closed.
 
 This update follows the published v1.0.7 build and contains the changes below.

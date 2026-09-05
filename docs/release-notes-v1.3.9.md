@@ -1,5 +1,11 @@
 # Tylevo's Tactical Services Control v1.3.9 Public Beta
 
+> **Historical documentation.** These instructions and results describe this
+> earlier version. For TSC v1.3.10 on SPT 4.1.5, use the
+> [current release notes](release-notes-v1.3.10.md) and
+> [installation guide](dependencies.md). See the [archive index](archive/README.md)
+> for earlier release availability.
+
 Published September 5, 2026 for SPT 4.1.4. SPT 4.1.5 and Fika multiplayer
 on the current SPT/Fika versions have not been tested.
 

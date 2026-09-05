@@ -2,10 +2,12 @@
 
 Updated: 2026-08-14
 
-Status: **historical SPT 4.1.2 tester record**. The active target and its new
-verification are recorded in `SPT-4.1.4-PORT-LOG.md`. This record combines the
-prior TSC 1.1 modernization evidence with separately identified TSC 1.3
-integration evidence; it is not acceptance evidence for the merged 4.1.4 build.
+Status: **historical SPT 4.1.2 tester record**. The current TSC v1.3.10 / SPT
+4.1.5 target is documented in the [current release notes](../release-notes-v1.3.10.md),
+[reference log](SPT-4.1.5-PORT-LOG.md), and
+[validation record](../validation/v1.3.10.md). This record combines earlier
+TSC 1.1 modernization and TSC 1.3 integration evidence; it does not establish
+current gameplay compatibility.
 
 This log separates static inspection, compilation, server boot, client load,
 raid behavior, and multiplayer behavior. A pass in one column is not evidence
