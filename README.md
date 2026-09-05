@@ -2,13 +2,13 @@
 
 A BepInEx mod that reworks SamSWAT's Fire Support / Arys Reloaded into a TerraGroup-style tactical support system for SPT and Fika.
 
-> **SPT 4.1.4 phone interface tester:** v1.3.3 targets SPT 4.1.4 / EFT
+> **SPT 4.1.4 Uplink store tester:** v1.3.4 targets SPT 4.1.4 / EFT
 > 0.16.9.5.40743. The expected test artifact is
-> `Tylevo.TacticalServicesControl-v1.3.3-SPT4.1.4-TESTER.zip`.
-> This adds native purchase screens, service artwork, and hold-Alt mouse
-> selection. The eased zoom and A-10 targeting corrections are retained.
-> In-game phone acceptance remains pending; see `docs/release-notes-v1.3.3.md` and
-> `docs/a10-ballistics-v1.3.1.md` for the retained ballistic acceptance checks.
+> `Tylevo.TacticalServicesControl-v1.3.4-SPT4.1.4-TESTER.zip`.
+> This redesigns the pre-raid store with service artwork, selectable cards,
+> and a purchase summary. The native phone UI, hold-Alt controls, eased zoom,
+> and A-10 targeting corrections are retained. See
+> `docs/release-notes-v1.3.4.md` for this candidate's scope.
 
 This mod adds a **TerraGroup TSC Uplink** phone that lets you buy support authorizations in raid, then deploy them later from the same device. The phone handles service selection and camera-based target designation, so the rangefinder and YY gesture wheel are no longer required for the primary workflow.
 
@@ -69,8 +69,8 @@ Do not place the ZIP contents inside an extra nested folder.
 When Seasonal Modifiers is not installed, open **TSC UPLINK** from the main menu directly below **Records**. If the Records entry is unavailable, TSC places itself below **Character** instead. Seasonal Modifiers owns that menu area when its client plugin is loaded, so TSC removes its redundant main-menu row; use the in-raid Uplink purchase flow instead.
 
 1. Open **TSC UPLINK** from the main menu on a standalone TSC install.
-2. Wait for the authenticated PMC stash and authorization ledger to load.
-3. Select **Buy** for a service, review the service, price, and projected balance in the confirmation dialog, then choose **Confirm Buy**. Cancelling sends no purchase request.
+2. Wait for your stash balance and purchased authorizations to load.
+3. Select a service card to see its artwork, description, price, availability, and owned authorizations. Use the purchase review control, then confirm in the dialog after checking the price and projected balance. Cancelling sends no purchase request.
 4. Use **Dashboard** to open the active SPT server's local TSC Dashboard.
 
 Pre-raid purchases require persistent authorizations and a server-backed stash payment source. They remain available when the same PMC enters a raid.
@@ -176,9 +176,11 @@ See `docs/dashboard.md`, `PRIVACY.md`, and `SECURITY.md`.
 
 ## Known Issues
 
-- v1.3.3 build, package, and regression results are recorded in the candidate's
-  external evidence sidecars; in-game phone acceptance remains pending.
-  Check `docs/release-notes-v1.3.3.md` for the interface and mouse-input scope.
+- v1.3.4 build, layout, package, and regression results are recorded in the
+  candidate's external evidence sidecars. The v1.3.3 phone interface and Alt
+  controls received positive in-raid user feedback; storefront acceptance
+  and the broader multiplayer checks remain separate.
+  Check `docs/release-notes-v1.3.4.md` for this interface update.
 - The existing Uplink bundle repair and input/menu hardening are retained.
   The repaired equip/stow animation, targeting controls, and menu spacing
   still require a fresh SPT 4.1.4 client run.

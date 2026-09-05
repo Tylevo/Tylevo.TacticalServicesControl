@@ -40,6 +40,8 @@ internal static class HelicopterItemTransferSourceContractTests
 		"project/SamSWAT.FireSupport/Unity/FireSupportDeployMenu.cs";
 	private const string MainMenuPath =
 		"project/SamSWAT.FireSupport/Unity/MainMenuPurchaseController.cs";
+	private const string MainMenuViewPath =
+		"project/SamSWAT.FireSupport/Unity/MainMenuPurchaseController.View.cs";
 	private const string PhoneRendererPath =
 		"project/SamSWAT.FireSupport/Unity/UavPhoneScreenRenderer.cs";
 	private const string SupportTypePath =
@@ -683,6 +685,7 @@ internal static class HelicopterItemTransferSourceContractTests
 	{
 		string supportTypes = ReadProductionSource(SupportTypePath);
 		string mainMenu = ReadProductionSource(MainMenuPath);
+		string mainMenuView = ReadProductionSource(MainMenuViewPath);
 		string phone = ReadProductionSource(PhoneRendererPath);
 
 		AssertEx.Contains("PriorityExfil = 10", supportTypes);
@@ -707,6 +710,14 @@ internal static class HelicopterItemTransferSourceContractTests
 		AssertEx.False(
 			mainMenu.Contains("UH-60 PRIORITY EXFIL", StringComparison.Ordinal),
 			"The storefront must expose the replacement Cargo Transfer product.");
+		AssertEx.Contains(
+			"SetConfirmationPresentation(",
+			ExtractMember(mainMenu, "ShowPurchaseConfirmation"));
+		string confirmation = ExtractMember(mainMenuView, "SetConfirmationPresentation");
+		AssertEx.Contains("service.Type == ESupportType.PriorityExfil", confirmation);
+		AssertEx.Contains("This service does not extract your PMC.", confirmation);
+		AssertEx.Contains("A separate RUB handling fee", confirmation);
+		AssertEx.Contains("when cargo is loaded.", confirmation);
 	}
 
 	[RegressionTest]

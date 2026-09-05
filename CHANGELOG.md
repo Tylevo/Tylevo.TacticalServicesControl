@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.3.4 - Public Beta (unreleased)
+
+Pre-raid TSC Uplink storefront redesign for SPT 4.1.4.
+
+- Replace the six plain purchase rows with selectable service cards, existing
+  aircraft artwork, and a selected-service detail panel in the phone's palette.
+- Show price, owned authorizations, storage limit, availability, and purchase
+  status together. Keep the separate confirmation step before spending.
+- Fit the store and confirmation dialog to the available menu canvas when
+  the resolution changes.
+- Preserve authenticated stash purchases, original-term payment recovery,
+  service restrictions, and the UH-60 cargo handling-fee disclosure.
+- Retain the in-raid phone UI, Alt selection, eased zoom, and A-10 corrections.
+
+Build, layout, regression, package, and installation results are recorded in
+the candidate's external evidence sidecars. See `docs/release-notes-v1.3.4.md`.
+
 ## 1.3.3 - Public Beta (unreleased)
 
 Native phone purchase screens and optional mouse selection for SPT 4.1.4.

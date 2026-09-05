@@ -17,7 +17,7 @@ namespace SamSWAT.FireSupport.ArysReloaded.Unity;
 /// Main-menu-only authorization storefront. It owns no player, hands controller,
 /// inventory item, or raid runtime object.
 /// </summary>
-public sealed class MainMenuPurchaseController : MonoBehaviour
+public sealed partial class MainMenuPurchaseController : MonoBehaviour
 {
 	private const string ButtonName = "TSC_MainMenuUplinkButton";
 	private const string PageName = "TSC_MainMenuPurchasePage";
@@ -28,11 +28,11 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 	private const float ButtonSlotHeight = 60f;
 	private const float DefaultTaskBarSlotWidth = 150f;
 
-	// Restrained subset of the dashboard palette. The storefront intentionally
-	// keeps its original simple layout and built-in Unity font.
+	// Shared visual language with the native in-raid phone: dark panels,
+	// ivory text, amber actions, and green service readiness.
 	private static readonly Color s_background = new Color32(3, 6, 7, 250);
-	private static readonly Color s_panel = new Color32(12, 17, 17, 255);
-	private static readonly Color s_row = new Color32(17, 23, 22, 255);
+	private static readonly Color s_panel = new Color32(5, 7, 8, 255);
+	private static readonly Color s_row = new Color32(18, 21, 21, 255);
 	private static readonly Color s_line = new Color32(220, 216, 200, 41);
 	private static readonly Color s_lineStrong = new Color32(232, 185, 103, 117);
 	private static readonly Color s_text = new Color32(220, 216, 200, 255);
@@ -210,6 +210,7 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 			return;
 		}
 
+		if (_pageRoot != null && _pageRoot.activeSelf) UpdateStorefrontScale();
 		if (_taskBarButton != null)
 		{
 			bool shouldShow = ShouldShowMenuButton;
@@ -1029,169 +1030,8 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 
 		_pageRoot.SetActive(true);
 		_pageRoot.transform.SetAsLastSibling();
+		UpdateStorefrontScale();
 		StartRefresh();
-	}
-
-	private void BuildPage()
-	{
-		if (_pageRoot != null)
-		{
-			return;
-		}
-
-		Canvas parentCanvas = _menuScreen?.GetComponentInParent<Canvas>();
-		if (parentCanvas == null)
-		{
-			FireSupportPlugin.LogSource.LogWarning(
-				"TSC main-menu purchase page could not find the EFT menu Canvas.");
-			return;
-		}
-
-		_pageRoot = new GameObject(
-			PageName,
-			typeof(RectTransform),
-			typeof(Canvas),
-			typeof(GraphicRaycaster),
-			typeof(CanvasGroup),
-			typeof(Image));
-		_pageRoot.transform.SetParent(parentCanvas.transform, false);
-		Stretch(_pageRoot.GetComponent<RectTransform>());
-		Canvas pageCanvas = _pageRoot.GetComponent<Canvas>();
-		pageCanvas.overrideSorting = true;
-		pageCanvas.sortingOrder = parentCanvas.sortingOrder + 500;
-		_pageRoot.GetComponent<Image>().color = s_background;
-
-		GameObject panel = CreateBorderedPanel(_pageRoot.transform, "Panel", s_panel, s_lineStrong);
-		SetRect(panel.GetComponent<RectTransform>(), new Vector2(0.5f, 0.5f), new Vector2(1180f, 780f), Vector2.zero);
-
-		CreateText(panel.transform, "Title", "TERRAGROUP // TSC UPLINK", 34, FontStyle.Bold,
-			s_amberHigh, TextAnchor.MiddleLeft,
-			new Vector2(0.5f, 1f), new Vector2(800f, 52f), new Vector2(-145f, -42f));
-		CreateText(panel.transform, "Subtitle", "PRE-RAID PERSISTENT AUTHORIZATION STORE", 17, FontStyle.Normal,
-			s_muted, TextAnchor.MiddleLeft,
-			new Vector2(0.5f, 1f), new Vector2(800f, 30f), new Vector2(-145f, -82f));
-
-		_balanceText = CreateText(panel.transform, "Balance", "STASH: --", 22, FontStyle.Bold,
-			s_text, TextAnchor.MiddleRight,
-			new Vector2(1f, 1f), new Vector2(330f, 42f), new Vector2(-210f, -40f));
-		_statusText = CreateText(panel.transform, "Status", "Open the page to synchronize.", 17, FontStyle.Normal,
-			s_muted, TextAnchor.MiddleLeft,
-			new Vector2(0.5f, 1f), new Vector2(1090f, 46f), new Vector2(0f, -124f));
-
-		_refreshButton = CreateButton(panel.transform, "Refresh", "REFRESH", new Vector2(0.5f, 1f),
-			new Vector2(150f, 42f), new Vector2(330f, -84f), StartRefresh, ButtonVisual.Neutral);
-		CreateButton(panel.transform, "Close", "CLOSE", new Vector2(0.5f, 1f),
-			new Vector2(130f, 42f), new Vector2(480f, -84f), ClosePage, ButtonVisual.Neutral);
-
-		_rows.Clear();
-		for (int index = 0; index < s_services.Length; index++)
-		{
-			ServiceDescriptor service = s_services[index];
-			float y = -190f - index * 82f;
-			GameObject row = CreateBorderedPanel(panel.transform, $"Row_{service.Type}", s_row, s_line);
-			SetRect(row.GetComponent<RectTransform>(), new Vector2(0.5f, 1f), new Vector2(1090f, 68f), new Vector2(0f, y));
-
-			Text name = CreateText(row.transform, "Name", service.DisplayName, 20, FontStyle.Bold,
-				s_text, TextAnchor.MiddleLeft, new Vector2(0f, 0.5f),
-				new Vector2(300f, 54f), new Vector2(165f, 0f));
-			Text state = CreateText(row.transform, "State", "--", 15, FontStyle.Bold,
-				s_muted, TextAnchor.MiddleLeft, new Vector2(0f, 0.5f),
-				new Vector2(150f, 54f), new Vector2(385f, 0f));
-			Text price = CreateText(row.transform, "Price", "--", 19, FontStyle.Bold,
-				s_amberHigh, TextAnchor.MiddleRight, new Vector2(0f, 0.5f),
-				new Vector2(190f, 54f), new Vector2(610f, 0f));
-			Text owned = CreateText(row.transform, "Owned", "-- / --", 18, FontStyle.Bold,
-				s_text, TextAnchor.MiddleCenter, new Vector2(0f, 0.5f),
-				new Vector2(150f, 54f), new Vector2(790f, 0f));
-			Button buy = CreateButton(row.transform, "Buy", "BUY", new Vector2(1f, 0.5f),
-				new Vector2(140f, 42f), new Vector2(-88f, 0f), () => ShowPurchaseConfirmation(service.Type));
-			_rows[service.Type] = new RowView(name, state, price, owned, buy);
-		}
-
-		CreateText(panel.transform, "Footer",
-			"Purchases debit the authenticated PMC stash and must be returned by the persistent server ledger.",
-			14, FontStyle.Normal, s_muted, TextAnchor.MiddleLeft,
-			new Vector2(0.5f, 0f), new Vector2(850f, 32f), new Vector2(-120f, 26f));
-		CreateButton(
-			panel.transform,
-			"Dashboard",
-			"DASHBOARD",
-			new Vector2(1f, 0f),
-			new Vector2(160f, 38f),
-			new Vector2(-100f, 28f),
-			OpenDashboard,
-			ButtonVisual.Neutral);
-
-		BuildPurchaseConfirmation();
-		_pageRoot.SetActive(false);
-		Redraw();
-	}
-
-	private void BuildPurchaseConfirmation()
-	{
-		_purchaseConfirmationRoot = CreatePanel(
-			_pageRoot.transform,
-			"PurchaseConfirmation",
-			new Color32(0, 0, 0, 210));
-		Stretch(_purchaseConfirmationRoot.GetComponent<RectTransform>());
-		_purchaseConfirmationRoot.GetComponent<Image>().raycastTarget = true;
-
-		GameObject dialog = CreateBorderedPanel(
-			_purchaseConfirmationRoot.transform,
-			"Dialog",
-			s_panel,
-			s_lineStrong);
-		SetRect(
-			dialog.GetComponent<RectTransform>(),
-			new Vector2(0.5f, 0.5f),
-			new Vector2(660f, 360f),
-			Vector2.zero);
-
-		_purchaseConfirmationTitle = CreateText(
-			dialog.transform,
-			"Title",
-			"CONFIRM PURCHASE",
-			26,
-			FontStyle.Bold,
-			s_amberHigh,
-			TextAnchor.MiddleLeft,
-			new Vector2(0.5f, 1f),
-			new Vector2(580f, 48f),
-			new Vector2(0f, -42f));
-		_purchaseConfirmationBody = CreateText(
-			dialog.transform,
-			"Body",
-			string.Empty,
-			17,
-			FontStyle.Normal,
-			s_text,
-			TextAnchor.UpperLeft,
-			new Vector2(0.5f, 0.5f),
-			new Vector2(580f, 190f),
-			new Vector2(0f, 12f));
-		_purchaseConfirmationBody.horizontalOverflow = HorizontalWrapMode.Wrap;
-		_purchaseConfirmationBody.verticalOverflow = VerticalWrapMode.Overflow;
-		_purchaseConfirmationBody.lineSpacing = 1.05f;
-
-		CreateButton(
-			dialog.transform,
-			"Cancel",
-			"CANCEL",
-			new Vector2(0.5f, 0f),
-			new Vector2(190f, 46f),
-			new Vector2(-110f, 42f),
-			HidePurchaseConfirmation,
-			ButtonVisual.Neutral);
-		_purchaseConfirmationConfirmButton = CreateButton(
-			dialog.transform,
-			"Confirm",
-			"CONFIRM BUY",
-			new Vector2(0.5f, 0f),
-			new Vector2(190f, 46f),
-			new Vector2(110f, 42f),
-			ConfirmPurchase);
-
-		_purchaseConfirmationRoot.SetActive(false);
 	}
 
 	private void StartRefresh()
@@ -1241,7 +1081,7 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 		_ready = false;
 		_refreshPending = true;
 		int generation = ++_generation;
-		SetStatus("Synchronizing authoritative stash and authorization ledger...", true);
+		SetStatus("Refreshing your stash and authorizations...", true);
 		Redraw();
 		RefreshAsync(generation, _sessionKey, afterMutation, _refreshCts.Token).Forget();
 	}
@@ -1274,20 +1114,21 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 			_snapshot = snapshot;
 			_ready = true;
 			bool recoveredPreparedPurchase = AdoptPreparedPurchase(snapshot);
+			if (recoveredPreparedPurchase) _selectedService = _ambiguousType;
 			if (!string.IsNullOrWhiteSpace(_ambiguousRequestId))
 			{
 				SetStatus(
 					recoveredPreparedPurchase
-						? "INTERRUPTED PURCHASE RECOVERED // SELECT RETRY TO FINISH WITHOUT A SECOND CHARGE"
-						: "PURCHASE RECOVERY PENDING // SELECT RETRY WITH THE ORIGINAL REQUEST ID",
+						? "Interrupted purchase recovered. Review recovery to finish without a second charge."
+						: "A purchase needs recovery. Select its service to continue.",
 					false);
 			}
 			else
 			{
 				SetStatus(
 					afterMutation
-						? $"PURCHASE CONFIRMED // SERVER REVISION {Math.Max(0, snapshot.Revision)}"
-						: $"CONNECTED // SERVER REVISION {Math.Max(0, snapshot.Revision)}",
+						? "Purchase confirmed. Your stash and authorizations are up to date."
+						: "Services ready. Select an authorization to review.",
 					true);
 			}
 		}
@@ -1373,11 +1214,11 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 			    out PaymentCurrency currency,
 			    out bool recoveredPreparedQuote))
 		{
-			SetStatus("Server omitted valid purchase terms. REFRESH and try again.", false);
+			SetStatus("Purchase terms are unavailable. REFRESH and try again.", false);
 			return;
 		}
-		int balance =
-			FireSupportServerConfigClient.GetSnapshotStashBalance(_snapshot, currency) ?? 0;
+		int? balance =
+			FireSupportServerConfigClient.GetSnapshotStashBalance(_snapshot, currency);
 		_confirmationType = supportType;
 		_confirmationPrice = price;
 		_confirmationCurrency = currency;
@@ -1388,27 +1229,7 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 			? _ambiguousRequestId
 			: string.Empty;
 
-		_purchaseConfirmationTitle.text = retryAmbiguousPurchase
-			? "CONFIRM PURCHASE RETRY"
-			: "CONFIRM PURCHASE";
-		string cargoDisclosure =
-			supportType == ESupportType.PriorityExfil
-				? "\n\nCARGO ONLY: This service does not extract your PMC. " +
-				  "The item handling fee is calculated separately when cargo is loaded."
-				: string.Empty;
-		_purchaseConfirmationBody.text = retryAmbiguousPurchase
-			? $"{descriptor.DisplayName}\n\n" +
-			  "This reuses the original request ID and cannot create a second completed charge.\n" +
-			  $"{(recoveredPreparedQuote ? "Original prepared price" : "Current list price")}: " +
-			  $"{PaymentCurrencyInfo.Format(price, currency)}\n\n" +
-			  $"Continue purchase recovery?{cargoDisclosure}"
-			: $"{descriptor.DisplayName}\n\n" +
-			  $"UNIT PRICE: {PaymentCurrencyInfo.Format(price, currency)}\n" +
-			  $"STASH BEFORE: {PaymentCurrencyInfo.Format(balance, currency)}\n" +
-			  $"STASH AFTER: {FormatProjectedBalance(balance, price, currency)}\n\n" +
-			  $"Purchase one persistent pre-raid authorization?{cargoDisclosure}";
-		_purchaseConfirmationConfirmButton.GetComponentInChildren<Text>().text =
-			retryAmbiguousPurchase ? "CONFIRM RETRY" : "CONFIRM BUY";
+		SetConfirmationPresentation(descriptor, price, currency, balance, retryAmbiguousPurchase, recoveredPreparedQuote);
 		_purchaseConfirmationRoot.SetActive(true);
 		_purchaseConfirmationRoot.transform.SetAsLastSibling();
 		Redraw();
@@ -1469,7 +1290,7 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 		    currentCurrency != expectedCurrency)
 		{
 			SetStatus(
-				"Server revision or pricing changed. REFRESH, then confirm the purchase again.",
+				"Service availability or pricing changed. REFRESH, then confirm the purchase again.",
 				false);
 			Redraw();
 			return;
@@ -1602,7 +1423,7 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 		_pendingType = supportType;
 		SetStatus(
 			retryAmbiguousPurchase
-				? $"Retrying {descriptor.DisplayName} with the original request ID..."
+				? $"Recovering the interrupted {descriptor.DisplayName} purchase..."
 				: $"Submitting {descriptor.DisplayName} purchase...",
 			true);
 		Redraw();
@@ -1708,7 +1529,7 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 					expectedCurrency);
 				_ready = false;
 				SetStatus(
-					"Purchase response could not be correlated. REFRESH, then RETRY with the original request ID.",
+					"The purchase result could not be verified. REFRESH, then review recovery for this service.",
 					false);
 				return;
 			}
@@ -1735,7 +1556,7 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 						expectedCurrency);
 					_ready = false;
 					SetStatus(
-						"Purchase outcome is uncertain. REFRESH, then RETRY with the original request ID.",
+						"The purchase outcome is uncertain. REFRESH, then review recovery for this service.",
 						false);
 				}
 				else
@@ -1756,7 +1577,7 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 					expectedCurrency);
 				_ready = false;
 				SetStatus(
-					$"Purchase outcome is uncertain ({ex.Message}). REFRESH, then RETRY with the original request ID.",
+					$"The purchase outcome is uncertain ({ex.Message}). REFRESH, then review recovery for this service.",
 					false);
 			}
 		}
@@ -1826,8 +1647,8 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 		int? stashBalance =
 			FireSupportServerConfigClient.GetSnapshotStashBalance(_snapshot, currency);
 		_balanceText.text = stashBalance is int balance
-			? $"STASH: {PaymentCurrencyInfo.Format(balance, currency)}"
-			: "STASH: --";
+			? PaymentCurrencyInfo.Format(balance, currency)
+			: "SYNC";
 		if (_refreshButton != null)
 		{
 			_refreshButton.interactable =
@@ -1867,7 +1688,7 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 				? "OUTCOME UNKNOWN"
 				: !locallyAvailable
 					? localRestrictionStatus
-					: !hasSnapshot ? "--" : enabled ? "AVAILABLE" : "DISABLED";
+					: !hasSnapshot ? "SYNC" : !enabled ? "LOCKED" : atLimit ? "LIMIT REACHED" : "AVAILABLE";
 			row.State.color = retryAmbiguousPurchase
 				? s_amberHigh
 				: enabled
@@ -1878,20 +1699,23 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 				: "--";
 			row.Price.color = price >= 0 ? s_amberHigh : s_muted;
 			row.Owned.text = hasSnapshot ? $"{owned} / {maximum}" : "-- / --";
-			row.Buy.interactable =
+			row.CanPurchase =
 				_ready &&
 				!_refreshPending &&
 				!_purchasePending &&
 				!IsPurchaseConfirmationOpen &&
 				(retryAmbiguousPurchase ||
 				 (!hasAmbiguousPurchase && enabled && !atLimit));
-			row.Buy.GetComponentInChildren<Text>().text =
+			row.Select.interactable = !IsPurchaseConfirmationOpen;
+			row.ActionLabel =
 				pending
-					? "WAIT"
-					: retryAmbiguousPurchase
-						? "RETRY"
-						: atLimit ? "MAX" : enabled ? "BUY" : "LOCKED";
+					? "PROCESSING PURCHASE"
+					: _refreshPending ? "SYNCING"
+					: !_ready ? "REFRESH TO CONTINUE"
+					: retryAmbiguousPurchase ? "REVIEW RECOVERY"
+					: atLimit ? "LIMIT REACHED" : enabled ? "REVIEW PURCHASE" : "SERVICE LOCKED";
 		}
+		RedrawStoreDetail();
 	}
 
 	private static bool ValidateSnapshot(
@@ -2749,19 +2573,25 @@ public sealed class MainMenuPurchaseController : MonoBehaviour
 
 	private sealed class RowView
 	{
-		public RowView(Text name, Text state, Text price, Text owned, Button buy)
+		public RowView(Text name, Text state, Text price, Text owned, Button select, Image background, Outline border)
 		{
 			Name = name;
 			State = state;
 			Price = price;
 			Owned = owned;
-			Buy = buy;
+			Select = select;
+			Background = background;
+			Border = border;
 		}
 
 		public Text Name { get; }
 		public Text State { get; }
 		public Text Price { get; }
 		public Text Owned { get; }
-		public Button Buy { get; }
+		public Button Select { get; }
+		public Image Background { get; }
+		public Outline Border { get; }
+		public bool CanPurchase { get; set; }
+		public string ActionLabel { get; set; }
 	}
 }

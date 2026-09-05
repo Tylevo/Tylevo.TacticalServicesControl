@@ -14,6 +14,8 @@ internal static class SeasonalIntegrationSourceContractTests
 		"project/SamSWAT.FireSupport/Unity/UavPhoneHotkeyController.cs";
 	private const string MainMenuPath =
 		"project/SamSWAT.FireSupport/Unity/MainMenuPurchaseController.cs";
+	private const string MainMenuViewPath =
+		"project/SamSWAT.FireSupport/Unity/MainMenuPurchaseController.View.cs";
 	private const string MainMenuPatchPath =
 		"project/SamSWAT.FireSupport/Patches/MainMenuPurchasePatch.cs";
 	private const string GameWorldStartPatchPath =
@@ -716,15 +718,26 @@ internal static class SeasonalIntegrationSourceContractTests
 		AssertEx.Contains("return \"AUTONOMOUS OPS\";", availability);
 
 		string mainMenu = ReadProductionSource(MainMenuPath);
-		int rowsStart = mainMenu.IndexOf("_rows.Clear();", StringComparison.Ordinal);
-		int rowsEnd = mainMenu.IndexOf(
-			"CreateText(panel.transform, \"Footer\"",
+		string view = ReadProductionSource(MainMenuViewPath);
+		int rowsStart = view.IndexOf("_rows.Clear();", StringComparison.Ordinal);
+		AssertEx.True(rowsStart >= 0);
+		int rowAssignment = view.IndexOf(
+			"_rows[service.Type] = new RowView",
 			rowsStart,
 			StringComparison.Ordinal);
+		AssertEx.True(rowsStart >= 0 && rowAssignment > rowsStart);
+		int rowsEnd = view.IndexOf(';', rowAssignment) + 1;
 		AssertEx.True(rowsStart >= 0 && rowsEnd > rowsStart);
-		string rowConstruction = mainMenu[rowsStart..rowsEnd];
+		string rowConstruction = view[rowsStart..rowsEnd];
 		AssertEx.Contains("for (int index = 0; index < s_services.Length; index++)", rowConstruction);
 		AssertEx.Contains("_rows[service.Type] = new RowView", rowConstruction);
+		AssertEx.Contains("SelectStoreService(service.Type)", rowConstruction);
+		AssertEx.False(
+			rowConstruction.Contains("ShowPurchaseConfirmation(", StringComparison.Ordinal) ||
+			rowConstruction.Contains("BeginPurchase(", StringComparison.Ordinal),
+			"Selecting a service card must only inspect the service, without purchasing it.");
+		AssertEx.Contains("() => ShowPurchaseConfirmation(_selectedService)", view);
+		AssertEx.Contains("_detailReview.interactable = row.CanPurchase;", view);
 		AssertEx.False(
 			rowConstruction.Contains("IsLocalUseAllowed", StringComparison.Ordinal) ||
 			rowConstruction.Contains("IsDangerCloseActive", StringComparison.Ordinal),
@@ -746,7 +759,7 @@ internal static class SeasonalIntegrationSourceContractTests
 			redraw);
 		AssertEx.Contains("!locallyAvailable", redraw);
 		AssertEx.Contains("? localRestrictionStatus", redraw);
-		AssertEx.Contains("row.Buy.interactable =", redraw);
+		AssertEx.Contains("row.CanPurchase =", redraw);
 		AssertEx.Contains("(!hasAmbiguousPurchase && enabled && !atLimit)", redraw);
 		AssertEx.False(
 			redraw.Contains("SetActive(false)", StringComparison.Ordinal) ||
