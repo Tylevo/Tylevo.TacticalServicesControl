@@ -7,6 +7,7 @@ const state = {
 	health: null,
 	adminToken: "",
 	adminTokenPanelOpen: false,
+	busy: false,
 	dirtyPaths: new Set()
 };
 
@@ -77,9 +78,13 @@ elements.unlockAdminButton.addEventListener("click", () => {
 });
 
 elements.applyAdminTokenButton.addEventListener("click", () => run(validateAdminToken));
-elements.reloadButton.addEventListener("click", () => run(loadConfig));
+elements.reloadButton.addEventListener("click", () => {
+	if (confirmDiscard()) run(loadConfig);
+});
 elements.saveButton.addEventListener("click", () => run(saveConfig));
-elements.reloadDiskButton.addEventListener("click", () => run(() => postAdmin("reload")));
+elements.reloadDiskButton.addEventListener("click", () => {
+	if (confirmDiscard()) run(() => postAdmin("reload"));
+});
 elements.resetButton.addEventListener("click", () => {
 	if (confirm("Reset TSC config to defaults?")) {
 		run(() => postAdmin("reset"));
@@ -88,8 +93,37 @@ elements.resetButton.addEventListener("click", () => {
 
 init().catch((error) => showToast(error.message, true));
 
-function run(action) {
-	action().catch((error) => showToast(error.message, true));
+window.addEventListener("beforeunload", (event) => {
+	if (state.dirtyPaths.size === 0) return;
+	event.preventDefault();
+	event.returnValue = "";
+});
+
+function confirmDiscard() {
+	return state.dirtyPaths.size === 0 || confirm("Discard your unsaved TSC changes and reload the settings?");
+}
+
+async function run(action) {
+	if (state.busy) return;
+	state.busy = true;
+	updateBusyState();
+	try {
+		await action();
+	} catch (error) {
+		showToast(error.message, true);
+	} finally {
+		state.busy = false;
+		updateBusyState();
+	}
+}
+
+function updateBusyState() {
+	elements.formRoot.inert = state.busy;
+	for (const button of [elements.reloadButton, elements.reloadDiskButton, elements.resetButton,
+		elements.unlockAdminButton, elements.applyAdminTokenButton]) {
+		button.disabled = state.busy;
+	}
+	updateDirtyState();
 }
 
 async function init() {
@@ -138,6 +172,9 @@ async function saveConfig() {
 		});
 	} catch (error) {
 		handleAdminFailure(error);
+		if (error.status === 409) {
+			throw new Error("Settings changed in SIC or another dashboard. Your edits are still here. Use Reload Config to get the latest settings before editing again.");
+		}
 		throw error;
 	}
 	state.config = updated;
@@ -530,7 +567,7 @@ function markDirty(path) {
 function updateDirtyState() {
 	const count = state.dirtyPaths.size;
 	elements.changeStatus.textContent = `${count} unsaved ${count === 1 ? "change" : "changes"}`;
-	elements.saveButton.disabled = count === 0;
+	elements.saveButton.disabled = state.busy || count === 0;
 }
 
 async function requestJson(url, options = {}) {

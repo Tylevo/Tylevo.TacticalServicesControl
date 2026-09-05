@@ -378,9 +378,9 @@ public sealed class FireSupportHttpListener(
 			return;
 		}
 
-		if (!configService.TryUpdateConfig(request, out string error))
+		if (!configService.TryUpdateConfig(request, out string error, out bool revisionConflict, request.Revision))
 		{
-			await WriteJsonAsync(httpContext, 400, new { error });
+			await WriteJsonAsync(httpContext, revisionConflict ? 409 : 400, new { error });
 			return;
 		}
 

@@ -717,6 +717,12 @@ Invoke-Checked -FilePath "node" -Arguments @(
     (Join-Path $repositoryRoot "project\SamSWAT.FireSupport.Server\CopyToOutput\web\app.mjs")
 )
 
+Write-Host "Running dashboard interaction regression tests."
+Invoke-Checked -FilePath "node" -Arguments @(
+    "--test",
+    (Join-Path $PSScriptRoot "tests\dashboard.test.mjs")
+)
+
 Write-Host "Validating release identity and metadata."
 & (Join-Path $PSScriptRoot "Test-ReleaseMetadata.ps1") -RepositoryRoot $repositoryRoot
 if (-not $?) {

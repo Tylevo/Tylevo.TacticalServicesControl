@@ -11,32 +11,68 @@ public sealed class FireSupportConfigEditorProvider(
 	FireSupportServerConfigService configService) : IConfigEditorConfigProvider
 {
 	private const string ConfigId = "com.tylevo.tacticalservicescontrol";
-	private readonly FireSupportConfigEditorView _runtimeView = new();
 
 	public IEnumerable<ConfigEditorConfigRegistration> GetConfigs()
 	{
-		CopyView(
-			FireSupportConfigEditorView.FromConfig(configService.GetConfigSnapshot()),
-			_runtimeView);
+		// SIC asks for registrations for each operation. Keep its serialized view
+		// local so concurrent editor sessions cannot overwrite one another's DTO.
+		FireSupportConfigEditorView runtimeView =
+			FireSupportConfigEditorView.FromConfig(configService.GetConfigSnapshot());
 		yield return new ConfigEditorConfigRegistration
 		{
 			Id = ConfigId,
 			DisplayName = "Tactical Services Control",
-			RuntimeConfig = _runtimeView,
+			RuntimeConfig = runtimeView,
 			RuntimeType = typeof(FireSupportConfigEditorView),
 			FileName = "tsc-config.json",
 			IgnoredSectionPaths = new HashSet<string>(StringComparer.Ordinal)
 			{
 				"/revision"
 			},
-			LoadFromDiskAsync = _ => ValueTask.FromResult<object?>(
-				FireSupportConfigEditorView.FromConfig(configService.GetConfigSnapshot())),
-			ApplyToRuntimeAsync = ApplyAsync,
-			SaveToDiskAsync = ApplyAsync
+			LoadFromDiskAsync = token => LoadFromDiskAsync(runtimeView, token),
+			ApplyToRuntimeAsync = (edited, token) => ApplyAsync(edited, token, runtimeView),
+			SaveToDiskAsync = (edited, token) => SaveAsync(edited, token, runtimeView)
 		};
 	}
 
-	private ValueTask ApplyAsync(object editedConfig, CancellationToken cancellationToken)
+	private ValueTask<object?> LoadFromDiskAsync(
+		FireSupportConfigEditorView runtimeView,
+		CancellationToken cancellationToken)
+	{
+		cancellationToken.ThrowIfCancellationRequested();
+		if (!configService.TryGetDiskConfigSnapshot(out RaidOpsFireSupportServerConfig diskConfig, out string error))
+		{
+			throw new InvalidOperationException(error);
+		}
+
+		FireSupportConfigEditorView runtime = FireSupportConfigEditorView.FromConfig(configService.GetConfigSnapshot());
+		CopyView(runtime, runtimeView);
+		// The service captures disk values and their current edit generation under
+		// one lock. Retain that revision so a later concurrent edit stays detectable.
+		return ValueTask.FromResult<object?>(FireSupportConfigEditorView.FromConfig(diskConfig));
+	}
+
+	private ValueTask ApplyAsync(
+		object editedConfig,
+		CancellationToken cancellationToken,
+		FireSupportConfigEditorView runtimeView)
+	{
+		return UpdateAsync(editedConfig, cancellationToken, runtimeView, saveToDisk: false);
+	}
+
+	private ValueTask SaveAsync(
+		object editedConfig,
+		CancellationToken cancellationToken,
+		FireSupportConfigEditorView runtimeView)
+	{
+		return UpdateAsync(editedConfig, cancellationToken, runtimeView, saveToDisk: true);
+	}
+
+	private ValueTask UpdateAsync(
+		object editedConfig,
+		CancellationToken cancellationToken,
+		FireSupportConfigEditorView runtimeView,
+		bool saveToDisk)
 	{
 		cancellationToken.ThrowIfCancellationRequested();
 		if (editedConfig is not FireSupportConfigEditorView edited)
@@ -45,16 +81,34 @@ public sealed class FireSupportConfigEditorProvider(
 				"SPT supplied an unexpected Tactical Services Control config type.");
 		}
 
-		RaidOpsFireSupportServerConfig current = configService.GetConfigSnapshot();
+		string error;
+		RaidOpsFireSupportServerConfig current;
+		if (saveToDisk)
+		{
+			if (!configService.TryGetDiskConfigSnapshot(out current, out error))
+			{
+				throw new InvalidOperationException(error);
+			}
+		}
+		else
+		{
+			current = configService.GetConfigSnapshot();
+		}
+
+		// Overlay only the curated values on the target being edited, preserving
+		// settings the native editor does not expose in either runtime or disk.
 		RaidOpsFireSupportServerConfig candidate = edited.ApplyTo(current);
-		if (!configService.TryUpdateConfig(candidate, out string error, edited.Revision))
+		bool updated = saveToDisk
+			? configService.TrySaveConfig(candidate, out error, edited.Revision)
+			: configService.TryApplyConfig(candidate, out error, edited.Revision);
+		if (!updated)
 		{
 			throw new InvalidOperationException(error);
 		}
 
 		CopyView(
 			FireSupportConfigEditorView.FromConfig(configService.GetConfigSnapshot()),
-			_runtimeView);
+			runtimeView);
 		return ValueTask.CompletedTask;
 	}
 
@@ -143,6 +197,13 @@ public sealed class FireSupportConfigEditorView
 
 	public RaidOpsFireSupportServerConfig ApplyTo(RaidOpsFireSupportServerConfig config)
 	{
+		if (Prices is null || Enabled is null || PurchasePersistence is null || Uav is null
+			|| FocusedSweep is null || Extraction is null || PriorityExfil is null || DoublePass is null)
+		{
+			throw new InvalidOperationException(
+				"Tactical Services Control settings sections cannot be null. Reload the config and try again.");
+		}
+
 		config.PaymentMode = PaymentMode;
 		config.PaymentSource = PaymentSource;
 		config.PaymentCurrency = PaymentCurrency;

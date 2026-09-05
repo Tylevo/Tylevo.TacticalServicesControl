@@ -161,6 +161,12 @@ button.danger {
 	gap: 4px;
 }
 
+.sic-nav {
+	margin-top: 24px;
+	padding-top: 16px;
+	border-top: 1px solid var(--line);
+}
+
 .section-nav a {
 	position: relative;
 	display: block;

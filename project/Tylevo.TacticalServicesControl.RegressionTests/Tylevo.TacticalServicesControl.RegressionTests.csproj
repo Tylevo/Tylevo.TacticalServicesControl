@@ -14,10 +14,14 @@
     Fika binaries, so it is safe to run in public CI.
   -->
   <ItemGroup>
+    <Compile Include="..\SamSWAT.FireSupport.Server\FireSupportConfigEditorProvider.cs"
+             Link="Production\FireSupportConfigEditorProvider.cs" />
     <Compile Include="..\SamSWAT.FireSupport.Server\FireSupportAuthorizationLedger.cs"
              Link="Production\FireSupportAuthorizationLedger.cs" />
     <Compile Include="..\SamSWAT.FireSupport.Server\FireSupportServerConfigMigration.cs"
              Link="Production\FireSupportServerConfigMigration.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Server\FireSupportServerConfigService.cs"
+             Link="Production\FireSupportServerConfigService.cs" />
     <Compile Include="..\SamSWAT.FireSupport\Unity\CargoTimingPolicy.cs"
              Link="Production\CargoTimingPolicy.cs" />
     <Compile Include="..\SamSWAT.FireSupport\Unity\MainMenuSlotStepPolicy.cs"

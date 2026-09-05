@@ -1,6 +1,7 @@
 using SPTarkov.DI.Annotations;
 using SPTarkov.Server.Core.DI;
 using SPTarkov.Server.Core.Models.Spt.Mod;
+using SPTarkov.Server.Web;
 using System.Reflection;
 using Path = System.IO.Path;
 using Range = SemanticVersioning.Range;
@@ -8,10 +9,10 @@ using Version = SemanticVersioning.Version;
 
 namespace SamSWAT.FireSupport.ArysReloaded;
 
-public record ServerModMetadata : IModMetadata
+public record ServerModMetadata : IModMetadata, IModBlazorMetadata
 {
 	public string ModGuid { get; init; } = "com.tylevo.tacticalservicescontrol";
-	public string Name { get; init; } = "TylevoTacticalServicesControl";
+	public string Name { get; init; } = "Tactical Services Control";
 	public string Author { get; init; } = "Tylevo";
 	public List<string>? Contributors { get; init; }
 	public Version Version { get; init; } = new(ModMetadata.VERSION);
@@ -24,6 +25,10 @@ public record ServerModMetadata : IModMetadata
 	};
 	public string? Url { get; init; }
 	public string License { get; init; } = "Creative Commons BY-NC 4.0";
+	public string? WWWRootUrl { get; init; }
+	public string? HomePage { get; init; } = "/tsc/admin";
+	public string? HomePageDescription { get; init; } =
+		"Open the Tactical Services Control dashboard for service pricing, tuning, and server diagnostics.";
 }
 
 [Injectable(TypePriority = OnLoadOrder.GameCallbacks + 1)]

@@ -145,6 +145,12 @@ These settings apply to support authorizations. Cargo Transfer's separate EFT ha
 
 ## Dashboard
 
+The v1.3.9 source candidate adds **Tactical Services Control** under SIC's
+**Mod pages**, opening the same TerraGroup dashboard. Its sidebar links back
+to SIC and the native config editor. This addition is not in the v1.3.8 ZIP
+linked above. See the [dashboard guide](docs/dashboard.md) for both editors
+and their Apply, Save, and reload behavior.
+
 Change server and host settings in the local TSC Dashboard:
 
 ```text

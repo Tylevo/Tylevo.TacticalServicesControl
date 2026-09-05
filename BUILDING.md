@@ -59,7 +59,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\verify-ci.ps1
 
 It runs the zero-dependency regression runner, checks changed-line whitespace,
 validates the solution and deploy guards, parses shipped JSON, checks dashboard
-JavaScript syntax, verifies release/version metadata, checks tracked-file
+JavaScript syntax and dashboard interaction tests, verifies release/version metadata, checks tracked-file
 hygiene, and validates the declarative package inputs. GitHub Actions runs this
 same command. CI must never download, cache, upload, or redistribute
 proprietary reference assemblies.
@@ -87,11 +87,10 @@ Interop, the Fika bootstrap, and the regression runner. The build always passes
 the supplied SPT installation. Use `-Configuration` only when intentionally
 checking another configured target.
 
-The active v1.3.8 candidate moves the physical Uplink offer to the unlocked
-UH-60 Pilot trader and ships the supplied portrait. Existing locked Pilot
-profile entries receive a targeted migration. Build, regression, native API,
-package, and installation results are recorded in external evidence sidecars.
-See `docs/release-notes-v1.3.8.md` for scope and acceptance.
+The active v1.3.9 candidate registers the themed dashboard with SIC and
+separates native editor runtime changes from disk saves. Build, regression,
+native API, package, and installation results are recorded in external
+evidence sidecars. See `docs/release-notes-v1.3.9.md` for scope and acceptance.
 
 ### SPT 4.1 client and server contracts
 
@@ -109,8 +108,9 @@ and active-menu/raid guards when changing this entry.
 `FireSupportServerConfigService` and `FireSupportAuthorizationLedger` must
 remain explicit DI singletons: their paths, revision, and transaction state
 are shared by load callbacks, HTTP handlers, and purchase consumers. The native
-SPT config editor uses the same validation and atomic save path as the TSC
-dashboard.
+SPT config editor shares validation and atomic disk writes with the TSC
+dashboard. Apply changes runtime only; Save changes disk only. Each editor
+registration owns its snapshot, and revisions protect against stale writes.
 
 Historical SPT 4.1.2 client runs exposed the repaired input/menu issues and the
 Uplink animator layer/default-state mismatch. The earlier corrected DLL
