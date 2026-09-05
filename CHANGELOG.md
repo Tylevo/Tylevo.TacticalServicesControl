@@ -1,6 +1,8 @@
 # Changelog
 
-## 1.3.10 - Public Beta (unreleased)
+## 1.3.10 - Public Beta
+
+Published September 5, 2026 for SPT 4.1.5.
 
 - Target SPT 4.1.5 with one matched v1.3.10 identity for the four TSC DLLs.
   Keep the `SPT-4.1 Release` build configuration and existing package layout.
@@ -13,7 +15,7 @@
   working. Individual service checks were not listed; multiplayer on the
   current SPT/Fika versions remains untested.
 
-See the [v1.3.10 candidate notes](docs/release-notes-v1.3.10.md).
+See the [v1.3.10 release notes](docs/release-notes-v1.3.10.md).
 
 ## 1.3.9 - Public Beta
 

@@ -1,6 +1,7 @@
 # Building
 
-The current source is the unreleased TSC v1.3.10 candidate for SPT 4.1.5.
+The current source is TSC v1.3.10 public beta for SPT 4.1.5, published
+September 5, 2026.
 The maintainer reports successful local use. Individual service checks are
 not documented, and current Fika multiplayer remains untested. The published
 v1.3.9 release continues to target SPT 4.1.4.
@@ -34,7 +35,7 @@ records its source patch, provenance, and package preparation. Players do not
 need a separate Toolkit or overlay download. Historical pins remain in the
 [4.1.2](docs/port/SPT-4.1-PORT-LOG.md) and
 [4.1.4](docs/port/SPT-4.1.4-PORT-LOG.md) port logs. The v1.3.9 validation record is historical;
-new candidate checks and their remaining limits are recorded in
+the 4.1.5 checks and their remaining limits are recorded in
 `docs/release-notes-v1.3.10.md`. The maintainer's local feedback does not
 establish individual service or Fika multiplayer compatibility.
 
@@ -101,10 +102,10 @@ Interop, the Fika bootstrap, and the regression runner. The build always passes
 the supplied SPT installation. Use `-Configuration` only when intentionally
 checking another configured target.
 
-The v1.3.10 candidate retains the themed SIC dashboard and separate native
+The v1.3.10 release retains the themed SIC dashboard and separate native
 editor runtime/disk actions introduced in v1.3.9. Build, regression, native
 API, package, and installation results must identify the new target and
-candidate revision. See `docs/release-notes-v1.3.10.md` for scope, maintainer
+source revision. See `docs/release-notes-v1.3.10.md` for scope, maintainer
 feedback, and remaining checks; previous 4.1.4 results are not new 4.1.5 test results.
 
 ### SPT 4.1 client and server contracts

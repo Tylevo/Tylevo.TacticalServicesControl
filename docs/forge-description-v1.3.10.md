@@ -1,16 +1,17 @@
 # Tylevo's Tactical Services Control v1.3.10 Public Beta
 
-Unreleased candidate for SPT 4.1.5. Call in A-10 strafes, UH-60 extraction
-and cargo transfer, or UAV reconnaissance through the TerraGroup TSC Uplink.
+Public beta for SPT 4.1.5, published September 5, 2026. Call in A-10 strafes,
+UH-60 extraction and cargo transfer, or UAV reconnaissance through the
+TerraGroup TSC Uplink.
 The maintainer reports successful local use on this target. Individual service
 checks are not documented; multiplayer on the current SPT/Fika versions
 remains untested.
 
-This candidate updates TSC's declared SPT target and retains the gameplay
+This release updates TSC's declared SPT target and retains the gameplay
 and configuration features from v1.3.9. Open **Tactical Services Control**
 under SIC's **Mod pages** for the themed dashboard. The native config editor
 also remains available, with separate runtime Apply, disk Save, and Load Disk
-actions. See the [candidate notes](release-notes-v1.3.10.md) and
+actions. See the [release notes](release-notes-v1.3.10.md) and
 [dashboard guide](dashboard.md).
 
 UnityToolkit 2.0.1 is bundled with its plugin and prepatcher rebuilt against
@@ -21,7 +22,7 @@ and serialization prepatcher components. Fika is optional; version 2.4.2
 remains a build reference rather than a multiplayer compatibility claim.
 
 Close the game and server, back up profiles and TSC configuration/storage,
-update SPT to 4.1.5, and extract the full v1.3.10 candidate ZIP into the SPT
+update SPT to 4.1.5, and extract the full v1.3.10 ZIP into the SPT
 root. Replace existing Toolkit files in their standard folders and keep one
 installation. Follow the [dependency guide](dependencies.md). The published
 v1.3.9 package remains available for SPT 4.1.4.

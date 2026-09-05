@@ -1,8 +1,8 @@
 # SPT 4.1.5 Compatibility Log
 
 This records the archive, compile references, and static startup audit for the
-unreleased TSC `1.3.10` candidate targeting SPT `4.1.5` and EFT
-`0.16.9.5.40743`, assessed on 2026-09-05. Candidate execution results belong in
+TSC `1.3.10` public beta targeting SPT `4.1.5` and EFT
+`0.16.9.5.40743`, assessed and published on 2026-09-05. Execution results belong in
 the [v1.3.10 release notes](../release-notes-v1.3.10.md). This static audit alone
 does not establish runtime compatibility. The maintainer later reported
 successful local use; individual service checks were not documented and Fika
