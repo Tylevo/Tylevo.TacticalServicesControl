@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "criticalReferencePins": [
     {
       "fileName": "hollowed.dll",
@@ -28,7 +28,9 @@
   ],
   "installRoots": [
     "BepInEx/plugins/Tylevo.TacticalServicesControl",
-    "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl"
+    "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl",
+    "BepInEx/plugins/UnityToolkit",
+    "BepInEx/patchers/UnityToolkit"
   ],
   "mirrors": [
     {
@@ -233,6 +235,14 @@
     {
       "source": "THIRD_PARTY_NOTICES.md",
       "destination": "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/THIRD_PARTY_NOTICES.md"
+    },
+    {
+      "source": "tools/dependencies/unitytoolkit/THIRD_PARTY_NOTICES.txt",
+      "destination": "BepInEx/plugins/UnityToolkit/THIRD_PARTY_NOTICES.txt"
+    },
+    {
+      "source": "tools/dependencies/unitytoolkit/THIRD_PARTY_NOTICES.txt",
+      "destination": "BepInEx/patchers/UnityToolkit/THIRD_PARTY_NOTICES.txt"
     }
   ],
   "baselineAssetArchive": {
@@ -305,7 +315,9 @@
     "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/web/styles.css"
   ],
   "exactCounts": {
-    ".dll": 4,
+    "builtDlls": 4,
+    "bundledDlls": 14,
+    ".dll": 18,
     ".bundle": 8
   },
   "forbiddenExtensions": [
@@ -352,5 +364,145 @@
     "^WTT-.+\\.dll$",
     "^ZLinq(?:\\..+)?\\.dll$",
     "^ZString\\.dll$"
+  ],
+  "bundledDependencies": [
+    {
+      "id": "unitytoolkit",
+      "version": "2.0.1",
+      "compatibility": "SPT 4.1",
+      "repository": "https://github.com/ArysWasTaken/UnityToolkit",
+      "sourceCommit": "3c27a9798dc4396ca0b3dc765448a4221ff3007b",
+      "upstreamArchive": {
+        "fileName": "UnityToolkit-v2.0.1.7z",
+        "length": 500753,
+        "sha256": "81FF11B228B73863F5CF1F54B9D823C344D23A6E900EC8FC3C33578569906FA1"
+      },
+      "compatibilityPatch": {
+        "source": "tools/dependencies/unitytoolkit/UnityToolkit-v2.0.1-SPT4.1-compat.patch",
+        "sha256": "1AD825EF63012A2EC9F2B6658A86E3F713AEDC1FE2C2E6DCD43701D28EE8283D"
+      },
+      "files": [
+        {
+          "path": "BepInEx/patchers/UnityToolkit/System.Runtime.CompilerServices.Unsafe.dll",
+          "length": 19256,
+          "sha256": "FD67ABC4C4AF10AFFBCD42FD68A2A7BC361B26714AFE6965D4D0D139459D8297",
+          "origin": "upstream-release",
+          "upstreamLength": 19256,
+          "upstreamSha256": "FD67ABC4C4AF10AFFBCD42FD68A2A7BC361B26714AFE6965D4D0D139459D8297"
+        },
+        {
+          "path": "BepInEx/patchers/UnityToolkit/UnityToolkit-Prepatcher.dll",
+          "length": 5120,
+          "sha256": "730156D8360A0BCA9024CF20F3886FBBD9509A7D793760FDD75C3BE186DFBDDE",
+          "origin": "spt41-overlay",
+          "upstreamLength": 5120,
+          "upstreamSha256": "AAE1BE1B5292AA1B468F154DCD1C28FCC557A7557EB2F27FD83CB1B1D0A13EEF"
+        },
+        {
+          "path": "BepInEx/plugins/UnityToolkit/Assemblies.jsonc",
+          "length": 298,
+          "sha256": "3918CA15CD04295A5C129241A5DEFC3932B50BAA0FBABE9B88E1FD7E3E6568E7",
+          "origin": "upstream-release",
+          "upstreamLength": 298,
+          "upstreamSha256": "3918CA15CD04295A5C129241A5DEFC3932B50BAA0FBABE9B88E1FD7E3E6568E7"
+        },
+        {
+          "path": "BepInEx/plugins/UnityToolkit/UniTask.Addressables.dll",
+          "length": 3584,
+          "sha256": "913B8EFD93A996A463BCEB777968FC3C1F69A751B2BA3A6139876A172A28B939",
+          "origin": "upstream-release",
+          "upstreamLength": 3584,
+          "upstreamSha256": "913B8EFD93A996A463BCEB777968FC3C1F69A751B2BA3A6139876A172A28B939"
+        },
+        {
+          "path": "BepInEx/plugins/UnityToolkit/UniTask.dll",
+          "length": 505856,
+          "sha256": "ECF2F94E53F217CFB2D941F874B0D4DB4B4966B4677AB628044B9E416A5C7531",
+          "origin": "upstream-release",
+          "upstreamLength": 505856,
+          "upstreamSha256": "ECF2F94E53F217CFB2D941F874B0D4DB4B4966B4677AB628044B9E416A5C7531"
+        },
+        {
+          "path": "BepInEx/plugins/UnityToolkit/UniTask.DOTween.dll",
+          "length": 3584,
+          "sha256": "82C500D2C1D985F0A91B6CBDBA1B8C0F625702A22C4691D40A4D85A80029FA02",
+          "origin": "upstream-release",
+          "upstreamLength": 3584,
+          "upstreamSha256": "82C500D2C1D985F0A91B6CBDBA1B8C0F625702A22C4691D40A4D85A80029FA02"
+        },
+        {
+          "path": "BepInEx/plugins/UnityToolkit/UniTask.Linq.dll",
+          "length": 676864,
+          "sha256": "2F16CFA0D91A66A980A98EEEA51E31C17E68998AC91795D2F9023CFEF13082AD",
+          "origin": "upstream-release",
+          "upstreamLength": 676864,
+          "upstreamSha256": "2F16CFA0D91A66A980A98EEEA51E31C17E68998AC91795D2F9023CFEF13082AD"
+        },
+        {
+          "path": "BepInEx/plugins/UnityToolkit/UniTask.TextMeshPro.dll",
+          "length": 11776,
+          "sha256": "A8EAB5DD1313628F6DCD90BC0715BAD14815EE3AEC1F9BDCB7E869654E02AE30",
+          "origin": "upstream-release",
+          "upstreamLength": 11776,
+          "upstreamSha256": "A8EAB5DD1313628F6DCD90BC0715BAD14815EE3AEC1F9BDCB7E869654E02AE30"
+        },
+        {
+          "path": "BepInEx/plugins/UnityToolkit/Unity.Collections.dll",
+          "length": 452608,
+          "sha256": "87BF6E681FB0C8A508CAA823C499D20C3B7DA7A7B6F5ED6C7F46E0425862DC1D",
+          "origin": "upstream-release",
+          "upstreamLength": 452608,
+          "upstreamSha256": "87BF6E681FB0C8A508CAA823C499D20C3B7DA7A7B6F5ED6C7F46E0425862DC1D"
+        },
+        {
+          "path": "BepInEx/plugins/UnityToolkit/UnityToolkit.dll",
+          "length": 8704,
+          "sha256": "DBA886D4C8B118C389795B1196EC13742DA42771C50D190209C370F69C416E75",
+          "origin": "spt41-overlay",
+          "upstreamLength": 8704,
+          "upstreamSha256": "A2EC73858992A6E573A1C53E2C1F7AF142E339ADBDFBC087FAEEE6A8EA1B6575"
+        },
+        {
+          "path": "BepInEx/plugins/UnityToolkit/VContainer.dll",
+          "length": 96768,
+          "sha256": "921F6C91479FEE2DBF0106527672EB1422274A76576AA0A310283FCA6BC94365",
+          "origin": "upstream-release",
+          "upstreamLength": 96768,
+          "upstreamSha256": "921F6C91479FEE2DBF0106527672EB1422274A76576AA0A310283FCA6BC94365"
+        },
+        {
+          "path": "BepInEx/plugins/UnityToolkit/ZLinq.dll",
+          "length": 246272,
+          "sha256": "D82D892059E9B2B15EBB26DD095CCA25BE30B6106221F66D59BEC044230B9649",
+          "origin": "upstream-release",
+          "upstreamLength": 246272,
+          "upstreamSha256": "D82D892059E9B2B15EBB26DD095CCA25BE30B6106221F66D59BEC044230B9649"
+        },
+        {
+          "path": "BepInEx/plugins/UnityToolkit/ZLinq.Unity.dll",
+          "length": 19968,
+          "sha256": "84EEE9F9468911CBA75D53A9F776ECA4989D5E395606A4DDEE4BDF94DB67A227",
+          "origin": "upstream-release",
+          "upstreamLength": 19968,
+          "upstreamSha256": "84EEE9F9468911CBA75D53A9F776ECA4989D5E395606A4DDEE4BDF94DB67A227"
+        },
+        {
+          "path": "BepInEx/plugins/UnityToolkit/ZLinq.Unity.UnityCollectoins.dll",
+          "length": 4096,
+          "sha256": "2FC7C8AD0E3B8B6C97CB6B838413C20BD0F95DAE2D1FF31F6D456025CC416894",
+          "origin": "upstream-release",
+          "upstreamLength": 4096,
+          "upstreamSha256": "2FC7C8AD0E3B8B6C97CB6B838413C20BD0F95DAE2D1FF31F6D456025CC416894"
+        },
+        {
+          "path": "BepInEx/plugins/UnityToolkit/ZString.dll",
+          "length": 266240,
+          "sha256": "12F4B553C49AE250CF17AA5885E895CBD798E1825D4822EA7DACF5F0763EAD6B",
+          "origin": "upstream-release",
+          "upstreamLength": 266240,
+          "upstreamSha256": "12F4B553C49AE250CF17AA5885E895CBD798E1825D4822EA7DACF5F0763EAD6B"
+        }
+      ]
+    }
   ]
 }

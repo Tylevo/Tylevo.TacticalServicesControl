@@ -7,10 +7,22 @@ Last updated: 2026-07-27
 > the date above. It is not the active port guide. For the current SPT 4.1.4
 > target, branch, dependency status, build gates, tester filename, and
 > `SPT_Runtime/user/mods` package layout, use
-> `docs/release-notes-v1.3.8.md`, `docs/validation/v1.3.8.md`, and
+> `docs/release-notes-v1.3.9.md`, `docs/validation/v1.3.9.md`, and
 > `docs/port/SPT-4.1.4-PORT-LOG.md`. Do not apply the 4.0.13 target,
 > archive names, `SPT/user/mods` paths, or commands below to the 4.1.4 tester.
 > The remaining historical details are intentionally retained unchanged.
+
+**2026-09-05 packaging addendum for the v1.3.9 release:** Arys
+approved bundling UnityToolkit 2.0.1 rebuilt against SPT 4.1, as confirmed
+by the maintainer. The reviewed, pinned Toolkit plugin, prepatcher, companion
+files, and required notices are now an explicit exception to the dependency
+exclusions below. The package uses the standard
+`BepInEx/plugins/UnityToolkit/` and `BepInEx/patchers/UnityToolkit/` locations.
+WTT, Fika, and game/SPT reference assemblies remain excluded. Use the current
+[dependency guide](dependencies.md), [Toolkit packaging contract](../tools/dependencies/unitytoolkit/README.md),
+and package allowlist for the exact permitted files; the historical file
+counts below do not describe v1.3.9. SPT 4.1.5 and current Fika multiplayer
+remain untested.
 
 ## Start Here
 
@@ -283,6 +295,10 @@ Still open:
 Do not convert an automated pass into a claim of live multiplayer acceptance.
 
 ## Package Contract
+
+The UnityToolkit exclusion in this historical contract is superseded only
+for the approved, pinned v1.3.9 dependency files and notices described in the
+addendum above.
 
 The v1.1.0 archive must:
 

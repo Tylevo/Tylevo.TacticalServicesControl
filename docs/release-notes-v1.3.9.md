@@ -1,7 +1,24 @@
 # Tylevo's Tactical Services Control v1.3.9 Public Beta
 
-SPT 4.1.4 beta candidate. Fika multiplayer remains untested on the current
-SPT/Fika versions.
+Published September 5, 2026 for SPT 4.1.4. SPT 4.1.5 and Fika multiplayer
+on the current SPT/Fika versions have not been tested.
+
+Download the full `Tylevo.TacticalServicesControl-v1.3.9-SPT4.1.4-TESTER.zip`
+and `SHA256SUMS.txt` from the [v1.3.9 release](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases/tag/v1.3.9).
+
+UnityToolkit 2.0.1 is now included in the TSC ZIP, with its plugin and
+prepatcher rebuilt against SPT 4.1, companion libraries, and license notices.
+There is no separate Toolkit or compatibility-overlay download. The maintainer
+confirmed Arys's explicit permission to bundle the rebuilt Toolkit on
+September 5, 2026. UnityToolkit remains under MIT; companion libraries keep
+their own licenses.
+
+Install WTT CommonLib separately, including its client, server, and
+serialization prepatcher components. Fika is optional and also installed
+separately. Extract the complete release ZIP into the SPT 4.1.4 root with
+the game and server stopped, replacing existing Toolkit files in their
+standard folders when prompted. Keep one Toolkit installation. See the
+[dependency guide](dependencies.md) for the file layout.
 
 The SIC home page now has a **Tactical Services Control** entry under Mod pages.
 It opens the existing TerraGroup dashboard, with its amber and green palette,
@@ -22,8 +39,11 @@ Unsaved dashboard changes survive save failures, and reload/navigation warns
 before discarding them. Dashboard operations cannot overlap.
 
 This update does not move or reset player profiles, purchased authorizations,
-payment records, or cargo storage. Dependencies and the installation layout
-remain the same as v1.3.8.
+payment records, or cargo storage. The TSC client and server folders remain
+the same as v1.3.8; the ZIP now also supplies the standard
+`BepInEx/plugins/UnityToolkit/` and `BepInEx/patchers/UnityToolkit/` folders.
+The published v1.3.8 package is unchanged and still uses its earlier separate
+Toolkit and overlay installation steps.
 
 Build and integration results, including the remaining visual and Fika
 checks, are recorded in the [validation notes](validation/v1.3.9.md).
