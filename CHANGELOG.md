@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.3.2 - Public Beta (unreleased)
+
+Authorization-phone zoom polish for SPT 4.1.4 / EFT 0.16.9.5.40743.
+
+- Add a 0.08-second lead-in before the incoming authorization phone begins its
+  zoom, followed by eased camera FOV and hand framing over 0.75 seconds by
+  default.
+- Add F12 **Phone zoom in seconds** (0.25-1.5, default 0.75) and
+  **Phone zoom out seconds** (0.15-0.8, default 0.35). Zoom-out uses the native
+  FOV transition.
+- Preserve the original raid FOV when restoring the view or reopening the
+  phone quickly. Deploy and radar phone presentation retain their existing
+  behavior.
+- Retain the v1.3.1 A-10 ballistic targeting corrections. The proposed native
+  purchase interface remains a concept preview and is not included in v1.3.2.
+
+The regression suite passes 198/198 tests. Build and package results are
+recorded in the candidate's external evidence sidecars; in-game phone
+acceptance remains pending. See `docs/release-notes-v1.3.2.md`.
+
 ## 1.3.1 - Public Beta (unreleased)
 
 A-10 targeting correction for SPT 4.1.4 / EFT 0.16.9.5.40743.

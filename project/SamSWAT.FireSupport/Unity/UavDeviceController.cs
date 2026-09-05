@@ -20,8 +20,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 	private const float AuthorizingFadeSeconds = 0.2f;
 	private const float AuthorizedFadeSeconds = 0.25f;
 	private const string TapAudioClipName = "Blastgang_finger_tap_oneshot_FP";
-	private const float PhoneZoomTransitionSeconds = 0.2f;
-	private const float PhoneZoomRestoreSeconds = 0.15f;
+	private const float PhoneZoomStartDelaySeconds = 0.08f;
 	private const float UprightRevealSeconds = 0.26f;
 	private const float UprightRevealLowerOffset = 0.16f;
 	private const float UprightHiddenEquipSpeedMultiplier = 2.5f;
@@ -31,6 +30,8 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 	private static UavDeviceController s_phoneZoomOwner;
 	private static float s_phoneZoomOriginalFov;
 	private static Vector3 s_phoneFramingOriginalOffset;
+	private static WeakReference<CameraManager> s_phoneZoomRestoreCamera;
+	private static float s_phoneZoomRestoreUntil;
 
 	private Player _ownerPlayer;
 	private AudioSource _tapAudioSource;
@@ -79,6 +80,13 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 	private Vector3 _uprightFallbackCameraOffset;
 	private bool _phoneZoomApplied;
 	private bool _phoneFramingApplied;
+	private readonly PhonePresentationTransition _phonePresentationTransition = new();
+	private CameraManager _phoneZoomCamera;
+	private Vector3 _phoneFramingStartOffset;
+	private float _phoneZoomStartFov;
+	private float _phoneZoomTargetFov;
+	private int _phoneZoomFirstWritableFrame = -1;
+	private bool _phonePresentationOwnershipObserved;
 
 	public Animator PhoneAnimator { get; private set; }
 	public UavPhoneLaunchMode LaunchMode { get; set; } = UavPhoneLaunchMode.ManualAuthorization;
@@ -359,6 +367,10 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 
 	private void Update()
 	{
+		if (s_phoneZoomOwner == this && !HasPhonePresentationOwnership())
+		{
+			RestorePhoneZoom();
+		}
 		MaintainPhoneFraming();
 		MaintainUprightFallbackCameraOffset();
 		MaintainHiddenUprightEquipSpeed();
@@ -2623,6 +2635,73 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 		ShutdownPhoneScreen();
 	}
 
+	private void LateUpdate()
+	{
+		if (!_phoneZoomApplied || _phoneZoomFirstWritableFrame < 0 || s_phoneZoomOwner != this)
+		{
+			return;
+		}
+
+		if (!HasPhonePresentationOwnership() || !CameraManager.Exist ||
+		    !ReferenceEquals(_phoneZoomCamera, CameraManager.Instance) || _phoneZoomCamera.Camera == null)
+		{
+			RestorePhoneZoom();
+			return;
+		}
+
+		// SetFov(current, 0) stops the previous native tween but its replacement
+		// completes on the following frame. LateUpdate runs after that coroutine.
+		if (Time.frameCount < _phoneZoomFirstWritableFrame)
+		{
+			return;
+		}
+
+		if (!_phonePresentationTransition.TrySample(Time.unscaledTime, s_phoneZoomOwner, out float blend))
+		{
+			RestorePhoneZoom();
+			return;
+		}
+
+		try
+		{
+			float fov = Mathf.Lerp(_phoneZoomStartFov, _phoneZoomTargetFov, blend);
+			// This is the same write path as CameraManager.SetFovCoroutine. The Fov
+			// setter preserves native LOD bias and OnFovChanged notifications. Calling
+			// SetFov every frame would restart its coroutine before it can advance.
+			_phoneZoomCamera.Camera.fieldOfView = fov;
+			_phoneZoomCamera.Fov = fov;
+			if (blend >= 1f)
+			{
+				_phoneZoomFirstWritableFrame = -1;
+			}
+		}
+		catch (Exception ex)
+		{
+			RestorePhoneZoom();
+			FireSupportPlugin.LogSource.LogWarning($"TSC Uplink phone zoom transition stopped. {ex}");
+		}
+	}
+
+	private bool HasPhonePresentationOwnership()
+	{
+		if (IsUprightPhoneMode(LaunchMode))
+		{
+			return true;
+		}
+		if (_ownerPlayer?.IsYourPlayer != true)
+		{
+			return false;
+		}
+		if (ReferenceEquals(_ownerPlayer.HandsController, this))
+		{
+			_phonePresentationOwnershipObserved = true;
+			return true;
+		}
+		// InitializeController can run before EFT installs the new hands owner.
+		// Once installed, relinquish every incoming write when ownership changes.
+		return !_phonePresentationOwnershipObserved;
+	}
+
 	private void ApplyPhoneZoom()
 	{
 		if (_phoneZoomApplied ||
@@ -2640,7 +2719,16 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 			CameraManager cameraClass = CameraManager.Instance;
 			if (s_phoneZoomOwner == null)
 			{
-				s_phoneZoomOriginalFov = cameraClass.Fov;
+				// A quick reopen can interrupt the native zoom-out before it
+				// reaches the real raid FOV. Retain that original restore target.
+				bool restorePending = s_phoneZoomRestoreCamera != null &&
+				                      s_phoneZoomRestoreCamera.TryGetTarget(out CameraManager restoreCamera) &&
+				                      ReferenceEquals(restoreCamera, cameraClass) && Time.time < s_phoneZoomRestoreUntil;
+				if (!restorePending)
+				{
+					s_phoneZoomRestoreCamera = null;
+					s_phoneZoomOriginalFov = cameraClass.Fov;
+				}
 				if (_ownerPlayer?.ProceduralWeaponAnimation?.HandsContainer != null)
 				{
 					s_phoneFramingOriginalOffset =
@@ -2649,6 +2737,10 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 			}
 
 			_phoneFramingApplied = _ownerPlayer?.ProceduralWeaponAnimation?.HandsContainer != null;
+			_phoneFramingStartOffset = _phoneFramingApplied
+				? _ownerPlayer.ProceduralWeaponAnimation.HandsContainer.CameraOffset
+				: s_phoneFramingOriginalOffset;
+			_phonePresentationOwnershipObserved = ReferenceEquals(_ownerPlayer.HandsController, this);
 
 			bool preserveRaidFov = IsUprightPhoneMode(LaunchMode);
 			float targetFov = s_phoneZoomOriginalFov;
@@ -2665,9 +2757,16 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 			}
 
 			s_phoneZoomOwner = this;
+			_phoneZoomCamera = cameraClass;
 			if (_phoneZoomApplied)
 			{
-				cameraClass.SetFov(targetFov, PhoneZoomTransitionSeconds, true);
+				s_phoneZoomRestoreCamera = null;
+				_phoneZoomStartFov = cameraClass.Camera != null ? cameraClass.Camera.fieldOfView : cameraClass.Fov;
+				_phoneZoomTargetFov = targetFov;
+				_phonePresentationTransition.Begin(this,
+					Time.unscaledTime + PhoneZoomStartDelaySeconds, GetPhoneZoomInSeconds());
+				_phoneZoomFirstWritableFrame = Time.frameCount + 1;
+				cameraClass.SetFov(_phoneZoomStartFov, 0f, true);
 			}
 
 			MaintainPhoneFraming();
@@ -2702,6 +2801,10 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 		framedOffset.x -= GetPhoneHorizontalFraming();
 		framedOffset.y -= GetPhoneVerticalFraming();
 		framedOffset.y += GetUprightRevealLowerOffset();
+		if (_phonePresentationTransition.TrySample(Time.unscaledTime, s_phoneZoomOwner, out float blend))
+		{
+			framedOffset = Vector3.Lerp(_phoneFramingStartOffset, framedOffset, blend);
+		}
 		handsContainer.CameraOffset = framedOffset;
 	}
 
@@ -2733,9 +2836,21 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 		return Mathf.Clamp(PluginSettings.PhoneZoomHorizontalFraming?.Value ?? -0.004f, -0.15f, 0.15f);
 	}
 
+	private static float GetPhoneZoomInSeconds()
+	{
+		return Mathf.Clamp(PluginSettings.PhoneZoomInSeconds?.Value ?? 0.75f, 0.25f, 1.5f);
+	}
+
+	private static float GetPhoneZoomOutSeconds()
+	{
+		return Mathf.Clamp(PluginSettings.PhoneZoomOutSeconds?.Value ?? 0.35f, 0.15f, 0.8f);
+	}
+
 	private void RestorePhoneZoom()
 	{
 		_uprightRevealStartedAt = -1f;
+		_phonePresentationTransition.Cancel();
+		_phoneZoomFirstWritableFrame = -1;
 		if (!_phoneZoomApplied && !_phoneFramingApplied)
 		{
 			return;
@@ -2759,9 +2874,15 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 					s_phoneFramingOriginalOffset;
 			}
 
-			if (restoreFov && CameraManager.Exist && CameraManager.Instance != null)
+			if (restoreFov && CameraManager.Exist && CameraManager.Instance != null &&
+			    ReferenceEquals(_phoneZoomCamera, CameraManager.Instance))
 			{
-				CameraManager.Instance.SetFov(s_phoneZoomOriginalFov, PhoneZoomRestoreSeconds, true);
+				float restoreSeconds = GetPhoneZoomOutSeconds();
+				CameraManager.Instance.SetFov(s_phoneZoomOriginalFov, restoreSeconds, true);
+				s_phoneZoomRestoreCamera = new WeakReference<CameraManager>(CameraManager.Instance);
+				// Native SetFov uses scaled deltaTime and completes one frame
+				// after the duration countdown, unlike the phone's UI clock.
+				s_phoneZoomRestoreUntil = Time.time + restoreSeconds + Time.deltaTime;
 				TscDiagnostics.LogPhone(
 					$"TSC Uplink phone zoom restored. fov={s_phoneZoomOriginalFov:F1}.");
 			}
@@ -2773,6 +2894,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 		finally
 		{
 			s_phoneZoomOwner = null;
+			_phoneZoomCamera = null;
 		}
 	}
 

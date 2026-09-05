@@ -94,11 +94,18 @@ the disposable exact-version server bootstrap and public health-route smoke
 also pass. Dashboard schema/config/authentication exercise, final-package boot
 cleanliness, client load, solo raids, and Fika sessions remain separate gates
 in `docs/port/SPT-4.1-PORT-LOG.md`. These results do not validate SPT 4.1.4.
-The final exact-version SPT 4.1.4 five-project build passes with 0 errors and
+The historical v1.3.0 exact-version SPT 4.1.4 five-project build passed with 0 errors and
 four existing warnings, and the combined regression suite passes 168/168.
 Clean-commit build evidence, complete CI/package checks, packaged-server
 bootstrap, and seven HTTP checks pass. The artifact revision and remaining
 client/raid/Fika gates are in `docs/port/SPT-4.1.4-VALIDATION.md`.
+
+The active v1.3.2 candidate adds authorization-phone zoom easing and preserves
+the v1.3.1 ballistic correction. Its regression suite passes 198/198 tests.
+Build and package results are recorded in the candidate's external evidence
+sidecars; in-game phone acceptance remains pending.
+The native purchase-interface concept is not part of this release. See
+`docs/release-notes-v1.3.2.md` for the zoom settings and acceptance scope.
 
 ### SPT 4.1 client and server contracts
 
@@ -123,13 +130,14 @@ Uplink animator layer/default-state mismatch. The earlier corrected DLL
 deployment was not a completed client acceptance run; its hashes and smoke
 details remain in `docs/port/SPT-4.1-PORT-LOG.md`.
 
-The A-10 regression seam now verifies the deterministic 50-round impact plan,
-per-shot muzzle movement at the aircraft strafe speed, shared fire timing, and
-reuse of the planned segments by projectile and network paths. Solo and
-human-host projectiles originate from the visible moving aircraft. The
-dedicated-headless executor still uses its shorter experimental damage origin;
-it shares deterministic intended impacts with client replay but does not claim
-exact ballistic-path or arrival-time parity.
+The retained v1.3.1 A-10 regression seams cover the deterministic 50-round
+impact plan, moving muzzle, native gravity/drag evaluation, and terminal
+replay timing. Solo and human-host projectiles originate from the visible
+moving aircraft. The dedicated-headless executor retains its shorter
+experimental damage origin and aligns predicted visual/damage arrivals. Its
+fallback waits for projectile travel and is suppressed for invalid or
+obstructed paths. Actual solo and multiplayer collision accuracy remains a
+live acceptance check; see `docs/a10-ballistics-v1.3.1.md`.
 
 The former MSBuild `CreateReleaseZip` and release-cleanup targets were removed
 because they read and modified the live `SptDir` tree and updated an existing
@@ -172,7 +180,7 @@ named asset bundles. It asserts the exact archive-root set and rejects
 proprietary dependencies, profiles, storage, logs, build artifacts, archives,
 and `.gitkeep` files from the package.
 
-The v1.3.1 package contract follows the verified public v1.0.8 artifact:
+The v1.3.2 package contract follows the verified public v1.0.8 artifact:
 
 - Extract the ZIP directly into the SPT installation root.
 - The archive contains exactly `BepInEx/` and `SPT_Runtime/` at top level.
@@ -195,7 +203,7 @@ repository:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\verify-local.ps1 `
   -SptDir "C:\Path\To\SPT" `
   -SptSharedAssembliesDir "C:\Path\To\SPT Assemblies" `
-  -EvidencePath "C:\External\TSC\v1.3.1-build-evidence.json"
+  -EvidencePath "C:\External\TSC\v1.3.2-build-evidence.json"
 ```
 
 `-EvidencePath` must not already exist and must be outside the repository. Once
@@ -205,8 +213,8 @@ directory:
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\New-ReleasePackage.ps1 `
   -BaselineAssetArchive "C:\Path\To\Tylevo.TacticalServicesControl-v1.0.8-SPT4.0.13.zip" `
-  -OutputDirectory "C:\External\TSC\v1.3.1-candidate" `
-  -BuildEvidencePath "C:\External\TSC\v1.3.1-build-evidence.json"
+  -OutputDirectory "C:\External\TSC\v1.3.2-candidate" `
+  -BuildEvidencePath "C:\External\TSC\v1.3.2-build-evidence.json"
 ```
 
 The baseline archive is an explicit input for the eight historical Unity
@@ -238,8 +246,8 @@ separate checks recorded in `docs/port/SPT-4.1.4-PORT-LOG.md`.
 
 The four DLLs come only from the fixed project build-output paths recorded in
 the manifest. All four must have the reviewed assembly name,
-`AssemblyVersion`/`FileVersion` `1.3.1.0`, and
-`AssemblyInformationalVersion` `1.3.1+<current-clean-HEAD>`. This rejects old,
+`AssemblyVersion`/`FileVersion` `1.3.2.0`, and
+`AssemblyInformationalVersion` `1.3.2+<current-clean-HEAD>`. This rejects old,
 mixed, or locally modified build outputs. The packager requires the external
 build evidence and matches its HEAD/tree, SDK, configuration, output paths,
 sizes, SHA-256 values, and assembly metadata against those four DLLs. Run the
@@ -259,7 +267,7 @@ working-tree bytes, and the clean HEAD/tree identity is checked again before
 success.
 
 For this port the generated archive name is exactly
-`Tylevo.TacticalServicesControl-v1.3.1-SPT4.1.4-TESTER.zip`. The `TESTER`
+`Tylevo.TacticalServicesControl-v1.3.2-SPT4.1.4-TESTER.zip`. The `TESTER`
 suffix must remain until the 4.1.4 runtime acceptance gates are complete.
 
 The command also writes a new external `*.content-evidence.json` sidecar with

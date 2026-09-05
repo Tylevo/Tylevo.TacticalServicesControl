@@ -95,6 +95,8 @@ internal static class PluginSettings
 	internal static ConfigEntry<KeyboardShortcut> SpotterConfirmKey { get; private set; }
 	internal static ConfigEntry<bool> PhoneAutoZoomEnabled { get; private set; }
 	internal static ConfigEntry<float> PhoneZoomFov { get; private set; }
+	internal static ConfigEntry<float> PhoneZoomInSeconds { get; private set; }
+	internal static ConfigEntry<float> PhoneZoomOutSeconds { get; private set; }
 	internal static ConfigEntry<float> PhoneZoomVerticalFraming { get; private set; }
 	internal static ConfigEntry<float> PhoneZoomHorizontalFraming { get; private set; }
 	private static ConfigEntry<bool> PhoneFramingDefaultsMigrated { get; set; }
@@ -451,6 +453,20 @@ internal static class PluginSettings
 			new ConfigDescription(
 				"Raises or lowers the first-person phone while automatic phone zoom is active. Positive values raise the phone toward screen center; negative values lower it.",
 				new AcceptableValueRange<float>(-0.25f, 0.25f)));
+		PhoneZoomInSeconds = config.Bind(
+			"TerraGroup Phone",
+			"Phone zoom in seconds",
+			0.75f,
+			new ConfigDescription(
+				"Time for authorization phone zoom and framing to ease into place as the phone is raised. Higher values give a slower, smoother approach. Deploy and held UAV radar screens retain their current FOV.",
+				new AcceptableValueRange<float>(0.25f, 1.5f)));
+		PhoneZoomOutSeconds = config.Bind(
+			"TerraGroup Phone",
+			"Phone zoom out seconds",
+			0.35f,
+			new ConfigDescription(
+				"Camera transition time when restoring your original FOV after closing the authorization phone.",
+				new AcceptableValueRange<float>(0.15f, 0.8f)));
 		PhoneZoomHorizontalFraming = config.Bind(
 			"TerraGroup Phone",
 			"Phone horizontal framing",

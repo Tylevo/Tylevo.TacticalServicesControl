@@ -2,12 +2,13 @@
 
 A BepInEx mod that reworks SamSWAT's Fire Support / Arys Reloaded into a TerraGroup-style tactical support system for SPT and Fika.
 
-> **SPT 4.1.4 A-10 targeting tester:** v1.3.1 targets SPT 4.1.4 / EFT
+> **SPT 4.1.4 phone zoom tester:** v1.3.2 targets SPT 4.1.4 / EFT
 > 0.16.9.5.40743. The expected test artifact is
-> `Tylevo.TacticalServicesControl-v1.3.1-SPT4.1.4-TESTER.zip`.
-> This corrects A-10 aim using EFT's native projectile physics. Live solo and
-> Fika accuracy checks remain required. Details and validation are recorded in
-> `docs/a10-ballistics-v1.3.1.md`.
+> `Tylevo.TacticalServicesControl-v1.3.2-SPT4.1.4-TESTER.zip`.
+> This adds an eased incoming authorization-phone zoom and retains the v1.3.1
+> A-10 targeting corrections. The native purchase-UI concept is not included.
+> In-game phone acceptance remains pending; see `docs/release-notes-v1.3.2.md` and
+> `docs/a10-ballistics-v1.3.1.md` for the retained ballistic acceptance checks.
 
 This mod adds a **TerraGroup TSC Uplink** phone that lets you buy support authorizations in raid, then deploy them later from the same device. The phone handles service selection and camera-based target designation, so the rangefinder and YY gesture wheel are no longer required for the primary workflow.
 
@@ -88,6 +89,13 @@ Pre-raid purchases require persistent authorizations and a server-backed stash p
 
 The `U`, `K`, `J`, and spotter-confirm controls are configurable in the BepInEx configuration manager opened with `F12`. `UAV Radar Display` also provides the `Phone`/`HUD` choice and four HUD positions, while `Helicopter Cargo` provides the `Carried`/`Stash` handling-fee source. Phone framing and optional authorization-screen zoom are available there as well; the `K` deploy view and held `J` radar preserve the current raid FOV and reveal directly in the upright presentation after EFT finishes the concealed equip transaction.
 
+When authorization-screen zoom is enabled, it begins after a 0.08-second
+lead-in and eases the camera FOV and hand framing over 0.75 seconds by default.
+In `F12`, **Phone zoom in seconds** accepts 0.25-1.5 seconds, and **Phone zoom
+out seconds** accepts 0.15-0.8 seconds with a default of 0.35. Closing the phone
+restores the original raid FOV; quickly reopening it retains that original
+restore target. These settings do not change deploy or radar presentation.
+
 Server/host settings are changed from the local TSC Dashboard:
 
 ```text
@@ -163,7 +171,11 @@ See `docs/dashboard.md`, `PRIVACY.md`, and `SECURITY.md`.
 
 ## Known Issues
 
-- SPT 4.1.4 compilation passes with 0 errors and four existing warnings;
+- v1.3.2 passes 198/198 regression tests. Build and package results are recorded
+  in the candidate's external evidence sidecars; in-game phone acceptance
+  remains pending. Check `docs/release-notes-v1.3.2.md` for this candidate's
+  scope. The proposed native purchase interface is a concept only.
+- Historical v1.3.0 SPT 4.1.4 compilation passed with 0 errors and four existing warnings;
   168/168 regression tests, final ZIP checks, and packaged-server/HTTP smoke
   pass. Dashboard editing, native config editor, menu, solo raids, and Fika
   require live acceptance. See `docs/port/SPT-4.1.4-VALIDATION.md` for
