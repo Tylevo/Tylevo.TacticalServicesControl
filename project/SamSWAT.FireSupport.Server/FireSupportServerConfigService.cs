@@ -11,17 +11,17 @@ using System.Diagnostics.CodeAnalysis;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using System.Threading;
 using IOPath = System.IO.Path;
 
 namespace SamSWAT.FireSupport.ArysReloaded;
 
-[Injectable]
+[Injectable(InjectionType.Singleton)]
 public sealed class FireSupportServerConfigService(
 	ISptLogger<FireSupportServerConfigService> logger,
 	ProfileHelper profileHelper,
 	SaveServer saveServer,
 	FireSupportAuthorizationLedger authorizationLedger,
+	FireSupportProfileMutationGate profileMutationGate,
 	ICloner cloner)
 {
 	private const string ConfigFileName = "tsc-config.json";
@@ -30,7 +30,8 @@ public sealed class FireSupportServerConfigService(
 	private const string LegacyAdminTokenFileName = "raidops-firesupport-admin-token.txt";
 	private const string AdminTokenEnvironmentVariable = "TSC_ADMIN_TOKEN";
 	private const string LegacyAdminTokenEnvironmentVariable = "RAIDOPS_FIRESUPPORT_ADMIN_TOKEN";
-	private const string RoubleTemplateId = "5449016a4bdc2d6f028b456f";
+	private const float MinDoublePassSecondPassDelaySeconds = 6f;
+	private const float MaxDoublePassSecondPassDelaySeconds = 45f;
 	private static readonly TimeSpan s_purchaseRateLimitWindow = TimeSpan.FromSeconds(2);
 
 	private static readonly JsonSerializerOptions s_jsonOptions = new()
@@ -41,7 +42,6 @@ public sealed class FireSupportServerConfigService(
 	};
 
 	private readonly object _gate = new();
-	private readonly SemaphoreSlim _purchaseGate = new(1, 1);
 	private RaidOpsFireSupportServerConfig _config = CreateDefaultConfig();
 	private readonly Dictionary<string, DateTimeOffset> _purchaseRateLimits = new(StringComparer.OrdinalIgnoreCase);
 	private string _configPath = string.Empty;
@@ -68,6 +68,15 @@ public sealed class FireSupportServerConfigService(
 		{
 			_config = LoadConfig();
 			NormalizeConfig(_config);
+			if (!TryValidateConfig(_config, out string validationError))
+			{
+				logger.Error(
+					$"TSC config validation failed: {validationError} " +
+					"Unsafe UH-60 service timing is repaired automatically; an invalid " +
+					"payment currency remains fail-closed until corrected in the dashboard.");
+				RepairInvalidServiceTimings(_config);
+			}
+
 			if (_config.Revision <= 0)
 			{
 				_config.Revision = 1;
@@ -120,7 +129,7 @@ public sealed class FireSupportServerConfigService(
 		}
 	}
 
-	public RaidOpsFireSupportServerConfig GetSnapshot(MongoId sessionId, FireSupportPurchaseRequest? request = null)
+	public object GetSnapshot(MongoId sessionId, FireSupportPurchaseRequest? request = null)
 	{
 		RaidOpsFireSupportServerConfig snapshot;
 		lock (_gate)
@@ -128,45 +137,100 @@ public sealed class FireSupportServerConfigService(
 			snapshot = CloneConfig(_config);
 		}
 
-		if (TryResolveProfile(sessionId, request, out PmcData? pmc, out MongoId saveSessionId))
+		snapshot.PlayerStateIncluded = false;
+		snapshot.StashCurrencyBalance = null;
+		snapshot.StashRoubleBalance = null;
+		snapshot.Authorizations = new Dictionary<string, int>();
+		snapshot.PreparedPurchases = null;
+		snapshot.PreparedPurchaseDetails = null;
+		Dictionary<string, string>? preparedPurchases = null;
+		Dictionary<string, FireSupportPreparedPurchaseQuote>?
+			preparedPurchaseDetails = null;
+		if (TryResolveAuthenticatedProfile(
+			    sessionId,
+			    request,
+			    out PmcData? pmc,
+			    out MongoId saveSessionId,
+			    out _))
 		{
-			snapshot.StashRoubleBalance = CountStashRoubles(pmc);
+			snapshot.PlayerStateIncluded = true;
+			if (PaymentCurrencyInfo.TryParse(
+				    snapshot.PaymentCurrency,
+				    out PaymentCurrency paymentCurrency))
+			{
+				int stashBalance = CountStashCurrency(
+					pmc,
+					PaymentCurrencyInfo.GetTemplateId(paymentCurrency));
+				snapshot.StashCurrencyBalance = stashBalance;
+				// Keep the legacy alias only for RUB. Old clients then fail
+				// closed instead of displaying a rouble balance while a new
+				// server debits USD or EUR.
+				snapshot.StashRoubleBalance =
+					paymentCurrency == PaymentCurrency.RUB ? stashBalance : null;
+			}
+			string profileLedgerId = GetCanonicalProfileLedgerId(pmc, saveSessionId);
+			preparedPurchaseDetails =
+				authorizationLedger.GetPreparedPersistentPurchaseDetails(profileLedgerId);
+			preparedPurchases = preparedPurchaseDetails.ToDictionary(
+				pair => pair.Key,
+				pair => pair.Value.RequestId,
+				StringComparer.OrdinalIgnoreCase);
 			if (snapshot.PurchasePersistence?.Enabled == true)
 			{
-				string profileLedgerId = GetProfileLedgerId(request, saveSessionId);
 				snapshot.Authorizations = authorizationLedger.GetCredits(
 					profileLedgerId,
-					snapshot.PurchasePersistence.PendingUseTimeoutSeconds);
+					snapshot.PurchasePersistence.PendingUseTimeoutSeconds,
+					snapshot.PurchasePersistence.MaxStoredAuthorizationsPerService);
 			}
 		}
 
-		return snapshot;
+		return preparedPurchases == null
+			? snapshot
+			: CreateAuthenticatedSnapshotPayload(
+				snapshot,
+				preparedPurchases,
+				preparedPurchaseDetails ??
+				new Dictionary<string, FireSupportPreparedPurchaseQuote>(
+					StringComparer.OrdinalIgnoreCase));
+	}
+
+	public RaidOpsFireSupportServerConfig GetConfigSnapshot()
+	{
+		lock (_gate)
+		{
+			return CloneConfig(_config);
+		}
 	}
 
 	public async Task<FireSupportPurchaseResponse> TryPurchaseAsync(
 		MongoId sessionId,
 		FireSupportPurchaseRequest request)
 	{
-		await _purchaseGate.WaitAsync();
-		try
-		{
-			return await TryPurchaseSerializedAsync(sessionId, request);
-		}
-		finally
-		{
-			_purchaseGate.Release();
-		}
+		return await profileMutationGate.RunAsync(
+			() => TryPurchaseSerializedAsync(sessionId, request));
 	}
 
 	private async Task<FireSupportPurchaseResponse> TryPurchaseSerializedAsync(
 		MongoId sessionId,
 		FireSupportPurchaseRequest request)
 	{
+		const string persistentPurchaseAction = "BuyPersistentAuthorization";
+		bool requiresPersistentPurchase = string.Equals(
+			request.Action,
+			persistentPurchaseAction,
+			StringComparison.OrdinalIgnoreCase);
+		string purchaseRequestId = requiresPersistentPurchase
+			? request.RequestId?.Trim() ?? string.Empty
+			: string.Empty;
 		RaidOpsFireSupportServerConfig config;
 		lock (_gate)
 		{
 			config = CloneConfig(_config);
 		}
+		bool configuredCurrencyValid =
+			PaymentCurrencyInfo.TryParse(
+				config.PaymentCurrency,
+				out PaymentCurrency configuredCurrency);
 
 		var response = new FireSupportPurchaseResponse
 		{
@@ -174,8 +238,49 @@ public sealed class FireSupportServerConfigService(
 			Reason = string.Empty,
 			SupportType = request.SupportType,
 			ServerRevision = config.Revision,
-			PaymentSource = config.PaymentSource
+			PaymentSource = config.PaymentSource,
+			Currency = configuredCurrencyValid
+				? configuredCurrency.ToString()
+				: config.PaymentCurrency?.Trim() ?? string.Empty,
+			RequestId = purchaseRequestId.Length <= FireSupportAuthorizationLedger.MaxPersistentPurchaseRequestIdLength
+				? purchaseRequestId
+				: string.Empty
 		};
+		if (!configuredCurrencyValid)
+		{
+			// Never reinterpret an invalid current-schema currency as RUB. This
+			// keeps hand-edited or corrupted config files fail-closed until the
+			// administrator selects RUB, USD, or EUR explicitly.
+			response.Reason = "InvalidPaymentCurrency";
+			return response;
+		}
+
+		PmcData? pmc;
+		MongoId saveSessionId;
+		string profileDenialReason;
+		lock (_gate)
+		{
+			if (!TryResolveProfileForPurchase(
+				    sessionId,
+				    request,
+				    out pmc,
+				    out saveSessionId,
+				    out profileDenialReason))
+			{
+				response.Reason = profileDenialReason;
+				return response;
+			}
+		}
+
+		if (requiresPersistentPurchase &&
+		    (string.IsNullOrWhiteSpace(purchaseRequestId) ||
+		     purchaseRequestId.Length > FireSupportAuthorizationLedger.MaxPersistentPurchaseRequestIdLength))
+		{
+			response.Reason = "InvalidRequestId";
+			return response;
+		}
+
+		response.RequestId = purchaseRequestId;
 
 		if (!TryResolveSupportType(request.SupportType, out ESupportType supportType))
 		{
@@ -192,62 +297,207 @@ public sealed class FireSupportServerConfigService(
 			return response;
 		}
 
-		if (!IsServiceEnabled(config, supportType))
-		{
-			response.Reason = "ServiceUnavailable";
-			return response;
-		}
-
 		PaymentSource paymentSource = ParseEnum(config.PaymentSource, PaymentSource.CarriedRoubles);
 		response.PaymentSource = paymentSource.ToString();
-		if (!IsServerBackedPaymentSource(paymentSource))
-		{
-			response.Reason = "PaymentSourceNotServerBacked";
-			return response;
-		}
+		PaymentCurrency paymentCurrency = configuredCurrency;
+		string currencyTemplateId = PaymentCurrencyInfo.GetTemplateId(paymentCurrency);
 
-		PmcData? pmc;
-		MongoId saveSessionId;
-		string profileDenialReason;
 		int newBalance;
 		int chargedFromStash = 0;
 		string profileLedgerId = string.Empty;
 		List<Item>? inventorySnapshot = null;
 		DateTimeOffset purchaseTime = DateTimeOffset.UtcNow;
+		bool preparedRecovery = false;
+		string expectedPostDebitFingerprint = string.Empty;
 		lock (_gate)
 		{
-			if (!TryResolveProfileForPurchase(sessionId, request, out pmc, out saveSessionId, out profileDenialReason))
+			profileLedgerId = GetCanonicalProfileLedgerId(pmc, saveSessionId);
+			if (requiresPersistentPurchase)
 			{
-				response.Reason = profileDenialReason;
+				PersistentPurchaseReplayStatus replayStatus =
+					authorizationLedger.GetPersistentPurchaseReplay(
+						profileLedgerId,
+						supportType,
+						requestedQuantity,
+						purchaseRequestId,
+					out Dictionary<string, int> replayAuthorizations,
+					out FireSupportPersistentPurchaseRecord? journalEntry);
+				if (journalEntry != null)
+				{
+					// A prepared/accepted request keeps the original transaction
+					// currency even if the administrator changes the live config.
+					paymentCurrency = PaymentCurrencyInfo.Parse(journalEntry.Currency);
+					currencyTemplateId = PaymentCurrencyInfo.GetTemplateId(paymentCurrency);
+					response.Currency = paymentCurrency.ToString();
+				}
+				if (replayStatus == PersistentPurchaseReplayStatus.Accepted)
+				{
+					response.NewBalance = CountStashCurrency(pmc, currencyTemplateId);
+					response.AuthorizationsIncluded = true;
+					response.Authorizations = replayAuthorizations;
+					response.Ok = true;
+					response.Reason = "AlreadyAccepted";
+					response.Cost = journalEntry?.Price ?? response.Cost;
+					response.AuthorizationGranted = true;
+					response.ChargedFromStash = 0;
+					return response;
+				}
+
+				if (replayStatus == PersistentPurchaseReplayStatus.Conflict)
+				{
+					response.NewBalance = CountStashCurrency(pmc, currencyTemplateId);
+					response.AuthorizationsIncluded = true;
+					response.Authorizations = replayAuthorizations;
+					response.Reason = "PurchaseRequestConflict";
+					return response;
+				}
+
+				if (replayStatus == PersistentPurchaseReplayStatus.Prepared)
+				{
+					if (journalEntry == null)
+					{
+						response.Reason = "PersistentPurchasePending";
+						response.NewBalance = CountStashCurrency(pmc, currencyTemplateId);
+						return response;
+					}
+
+					response.Cost = journalEntry.Price;
+					int recoveryBalance = CountStashCurrency(pmc, currencyTemplateId);
+					string recoveryFingerprint =
+						ComputeCurrencyInventoryFingerprint(pmc, currencyTemplateId);
+					bool matchesPreDebitFingerprint = string.Equals(
+						recoveryFingerprint,
+						journalEntry.PreDebitFingerprint,
+						StringComparison.OrdinalIgnoreCase);
+					bool matchesExpectedPostDebitFingerprint = string.Equals(
+						recoveryFingerprint,
+						journalEntry.ExpectedPostDebitFingerprint,
+						StringComparison.OrdinalIgnoreCase);
+					bool finalizeWithoutDebit =
+						journalEntry.Price == 0 && matchesExpectedPostDebitFingerprint;
+					if (journalEntry.Price >= 0 &&
+					    !finalizeWithoutDebit &&
+					    matchesPreDebitFingerprint)
+					{
+						preparedRecovery = true;
+						expectedPostDebitFingerprint = journalEntry.ExpectedPostDebitFingerprint;
+						logger.Warning(
+							$"TSC persistent purchase recovery resuming original-price debit sessionId={FormatLogId(saveSessionId)} supportType={supportType} requestId={FormatRequestId(purchaseRequestId)} balance={recoveryBalance}");
+					}
+					else if (finalizeWithoutDebit || matchesExpectedPostDebitFingerprint)
+					{
+						logger.Warning(
+							$"TSC persistent purchase recovery detected the expected post-debit {paymentCurrency} inventory; finalizing without another charge sessionId={FormatLogId(saveSessionId)} supportType={supportType} requestId={FormatRequestId(purchaseRequestId)} balance={recoveryBalance}");
+
+						bool recovered = authorizationLedger.TryFinalizePersistentPurchase(
+							profileLedgerId,
+							supportType,
+							requestedQuantity,
+							purchaseRequestId,
+							out Dictionary<string, int> recoveredAuthorizations,
+							out FireSupportPersistentPurchaseRecord? recoveredPurchase,
+							out string recoveryReason);
+						response.NewBalance = recoveryBalance;
+						response.AuthorizationsIncluded = true;
+						response.Authorizations = recoveredAuthorizations;
+						response.Cost = recoveredPurchase?.Price ?? journalEntry.Price;
+						if (!recovered)
+						{
+							logger.Error(
+								$"TSC persistent purchase recovery finalize failed reason={recoveryReason} sessionId={FormatLogId(saveSessionId)} supportType={supportType} requestId={FormatRequestId(purchaseRequestId)}");
+							response.Reason = "PersistentPurchasePending";
+							return response;
+						}
+
+						MarkPurchaseAttempt(saveSessionId, supportType, DateTimeOffset.UtcNow);
+						response.Ok = true;
+						response.Reason = "AlreadyAccepted";
+						response.AuthorizationGranted = true;
+						response.ChargedFromStash = 0;
+						return response;
+					}
+					else
+					{
+						logger.Warning(
+							$"TSC persistent purchase recovery fingerprint mismatch; leaving purchase prepared sessionId={FormatLogId(saveSessionId)} supportType={supportType} requestId={FormatRequestId(purchaseRequestId)} preBalance={journalEntry.PreDebitBalance} expectedPostBalance={journalEntry.ExpectedPostDebitBalance} currentBalance={recoveryBalance}");
+						response.Reason = "PersistentPurchasePending";
+						response.NewBalance = recoveryBalance;
+						response.AuthorizationsIncluded = true;
+						response.Authorizations = replayAuthorizations;
+						return response;
+					}
+				}
+				else if (config.PurchasePersistence?.Enabled != true)
+				{
+					response.Reason = "PurchasePersistenceDisabled";
+					response.NewBalance = CountStashCurrency(pmc, currencyTemplateId);
+					return response;
+				}
+			}
+
+			if (!preparedRecovery &&
+			    !IsExpectedCurrencyAccepted(request.ExpectedCurrency, configuredCurrency))
+			{
+				response.Reason = "PurchaseCurrencyMismatch";
+				response.NewBalance = CountStashCurrency(
+					pmc,
+					PaymentCurrencyInfo.GetTemplateId(configuredCurrency));
+				logger.Warning(
+					$"TSC purchase currency changed sessionId={FormatLogId(saveSessionId)} supportType={supportType} requestId={FormatRequestId(purchaseRequestId)} expectedCurrency={request.ExpectedCurrency ?? "<legacy>"} currentCurrency={configuredCurrency}");
 				return response;
 			}
 
-			if (IsPurchaseRateLimited(saveSessionId, supportType, purchaseTime))
+			if (requiresPersistentPurchase &&
+			    !preparedRecovery &&
+			    request.ExpectedCost.HasValue &&
+			    request.ExpectedCost.Value != response.Cost)
+			{
+				response.Reason = "PurchaseQuoteChanged";
+				response.NewBalance = CountStashCurrency(pmc, currencyTemplateId);
+				logger.Warning(
+					$"TSC persistent purchase quote changed sessionId={FormatLogId(saveSessionId)} supportType={supportType} requestId={FormatRequestId(purchaseRequestId)} expectedCost={request.ExpectedCost.Value} currentCost={response.Cost}");
+				return response;
+			}
+
+			if (!preparedRecovery && !IsServiceEnabled(config, supportType))
+			{
+				response.Reason = "ServiceUnavailable";
+				return response;
+			}
+
+			if (!preparedRecovery && !IsServerBackedPaymentSource(paymentSource))
+			{
+				response.Reason = "PaymentSourceNotServerBacked";
+				return response;
+			}
+
+			if (!preparedRecovery && IsPurchaseRateLimited(saveSessionId, supportType, purchaseTime))
 			{
 				response.Reason = "RateLimited";
-				response.NewBalance = CountStashRoubles(pmc);
+				response.NewBalance = CountStashCurrency(pmc, currencyTemplateId);
 				logger.Warning($"TSC purchase denied reason=RateLimited sessionId={FormatLogId(saveSessionId)} supportType={supportType}");
 				return response;
 			}
 
-			profileLedgerId = GetProfileLedgerId(request, saveSessionId);
-			if (config.PurchasePersistence?.Enabled == true)
+			if (!requiresPersistentPurchase && config.PurchasePersistence?.Enabled == true)
 			{
 				Dictionary<string, int> credits = authorizationLedger.GetCredits(
 					profileLedgerId,
-					config.PurchasePersistence.PendingUseTimeoutSeconds);
+					config.PurchasePersistence.PendingUseTimeoutSeconds,
+					config.PurchasePersistence.MaxStoredAuthorizationsPerService);
 				string supportKey = GetSupportKey(supportType);
 				int currentCredits = credits.TryGetValue(supportKey, out int count) ? Math.Max(0, count) : 0;
 				if (currentCredits + requestedQuantity > config.PurchasePersistence.MaxStoredAuthorizationsPerService)
 				{
 					response.Reason = "AuthorizationLimitReached";
-					response.NewBalance = CountStashRoubles(pmc);
+					response.NewBalance = CountStashCurrency(pmc, currencyTemplateId);
+					response.AuthorizationsIncluded = true;
 					response.Authorizations = credits;
 					return response;
 				}
 			}
 
-			int stashBalance = CountStashRoubles(pmc);
+			int stashBalance = CountStashCurrency(pmc, currencyTemplateId);
 			if (stashBalance < response.Cost)
 			{
 				response.Reason = "InsufficientRoubles";
@@ -268,25 +518,123 @@ public sealed class FireSupportServerConfigService(
 				return response;
 			}
 
+			if (requiresPersistentPurchase && !preparedRecovery)
+			{
+				string preDebitFingerprint =
+					ComputeCurrencyInventoryFingerprint(pmc, currencyTemplateId);
+				if (!TryComputeExpectedPostDebitFingerprint(
+					    pmc,
+					    currencyTemplateId,
+					    response.Cost,
+					    out string projectedPostDebitFingerprint,
+					    out int projectedCharge) ||
+				    projectedCharge != response.Cost)
+				{
+					logger.Error(
+						$"TSC persistent purchase could not project the exact stash mutation sessionId={FormatLogId(saveSessionId)} supportType={supportType} requestId={FormatRequestId(purchaseRequestId)} expectedCharge={response.Cost} projectedCharge={projectedCharge}");
+					response.Reason = "PaymentMutationFailed";
+					response.NewBalance = stashBalance;
+					return response;
+				}
+
+				expectedPostDebitFingerprint = projectedPostDebitFingerprint;
+				bool prepared = authorizationLedger.TryPreparePersistentPurchase(
+					profileLedgerId,
+					supportType,
+					requestedQuantity,
+					response.Cost,
+					response.Currency,
+					stashBalance,
+					preDebitFingerprint,
+					expectedPostDebitFingerprint,
+					config.PurchasePersistence!.MaxStoredAuthorizationsPerService,
+					purchaseRequestId,
+					out Dictionary<string, int> preparedAuthorizations,
+					out FireSupportPersistentPurchaseRecord? preparedPurchase,
+					out string prepareReason);
+				response.AuthorizationsIncluded = true;
+				response.Authorizations = preparedAuthorizations;
+				if (!prepared)
+				{
+					logger.Warning(
+						$"TSC persistent purchase prepare failed reason={prepareReason} sessionId={FormatLogId(saveSessionId)} supportType={supportType} requestId={FormatRequestId(purchaseRequestId)}");
+					response.Reason = string.Equals(prepareReason, "AlreadyPrepared", StringComparison.OrdinalIgnoreCase)
+						? "PersistentPurchasePending"
+						: prepareReason;
+					response.NewBalance = stashBalance;
+					return response;
+				}
+
+				response.Cost = preparedPurchase?.Price ?? response.Cost;
+				expectedPostDebitFingerprint =
+					preparedPurchase?.ExpectedPostDebitFingerprint ?? expectedPostDebitFingerprint;
+			}
+
+			string actualPostDebitFingerprint = string.Empty;
 			try
 			{
-				chargedFromStash = DebitStashRoubles(pmc, response.Cost);
-				newBalance = CountStashRoubles(pmc);
+				chargedFromStash = DebitStashCurrency(
+					pmc,
+					currencyTemplateId,
+					response.Cost);
+				newBalance = CountStashCurrency(pmc, currencyTemplateId);
+				if (requiresPersistentPurchase)
+				{
+					actualPostDebitFingerprint =
+						ComputeCurrencyInventoryFingerprint(pmc, currencyTemplateId);
+				}
 			}
 			catch (Exception ex)
 			{
 				pmc.Inventory.Items = inventorySnapshot;
 				logger.Error($"TSC stash payment mutation failed sessionId={FormatLogId(saveSessionId)}", ex);
-				response.Reason = "PaymentMutationFailed";
-				response.NewBalance = CountStashRoubles(pmc);
+				bool cancelled = !requiresPersistentPurchase ||
+				                 TryCancelPreparedPersistentPurchase(
+					                 profileLedgerId,
+					                 supportType,
+					                 requestedQuantity,
+					                 purchaseRequestId,
+					                 saveSessionId,
+					                 "payment mutation failure");
+				response.Reason = cancelled ? "PaymentMutationFailed" : "PersistentPurchasePending";
+				response.NewBalance = CountStashCurrency(pmc, currencyTemplateId);
 				return response;
 			}
 
 			if (chargedFromStash != response.Cost)
 			{
 				pmc.Inventory.Items = inventorySnapshot;
-				response.Reason = "PaymentMutationFailed";
-				response.NewBalance = CountStashRoubles(pmc);
+				bool cancelled = !requiresPersistentPurchase ||
+				                 TryCancelPreparedPersistentPurchase(
+					                 profileLedgerId,
+					                 supportType,
+					                 requestedQuantity,
+					                 purchaseRequestId,
+					                 saveSessionId,
+					                 "incomplete payment mutation");
+				response.Reason = cancelled ? "PaymentMutationFailed" : "PersistentPurchasePending";
+				response.NewBalance = CountStashCurrency(pmc, currencyTemplateId);
+				return response;
+			}
+
+			if (requiresPersistentPurchase &&
+			    !string.Equals(
+				    actualPostDebitFingerprint,
+				    expectedPostDebitFingerprint,
+				    StringComparison.OrdinalIgnoreCase))
+			{
+				pmc.Inventory.Items = inventorySnapshot;
+				logger.Error(
+					$"TSC persistent purchase post-debit {paymentCurrency} inventory fingerprint mismatch sessionId={FormatLogId(saveSessionId)} supportType={supportType} requestId={FormatRequestId(purchaseRequestId)}");
+				bool cancelled = TryCancelPreparedPersistentPurchase(
+					profileLedgerId,
+					supportType,
+					requestedQuantity,
+					purchaseRequestId,
+					saveSessionId,
+					"post-debit inventory fingerprint mismatch");
+				response.Reason = cancelled ? "PaymentMutationFailed" : "PersistentPurchasePending";
+				response.NewBalance = CountStashCurrency(pmc, currencyTemplateId);
 				return response;
 			}
 		}
@@ -299,17 +647,67 @@ public sealed class FireSupportServerConfigService(
 		{
 			logger.Error($"TSC stash payment save failed sessionId={FormatLogId(saveSessionId)}", ex);
 			bool rolledBack = await TryRollbackStashPaymentAsync(pmc, saveSessionId, inventorySnapshot, "profile save failure");
-			response.Reason = rolledBack ? "ProfileSaveFailed" : "PaymentRollbackFailed";
-			response.NewBalance = CountStashRoubles(pmc);
+			bool cancelled = rolledBack &&
+			                 (!requiresPersistentPurchase ||
+			                  TryCancelPreparedPersistentPurchase(
+				                  profileLedgerId,
+				                  supportType,
+				                  requestedQuantity,
+				                  purchaseRequestId,
+				                  saveSessionId,
+				                  "profile save rollback"));
+			response.Reason = requiresPersistentPurchase && !cancelled
+				? "PersistentPurchasePending"
+				: rolledBack ? "ProfileSaveFailed" : "PaymentRollbackFailed";
+			response.NewBalance = CountStashCurrency(pmc, currencyTemplateId);
 			response.ChargedFromStash = rolledBack ? 0 : chargedFromStash;
 			return response;
 		}
 
-		if (config.PurchasePersistence?.Enabled == true)
+		if (requiresPersistentPurchase)
+		{
+			bool finalized = authorizationLedger.TryFinalizePersistentPurchase(
+				profileLedgerId,
+				supportType,
+				requestedQuantity,
+				purchaseRequestId,
+				out Dictionary<string, int> authorizations,
+				out FireSupportPersistentPurchaseRecord? finalizedPurchase,
+				out string ledgerReason);
+			response.AuthorizationsIncluded = true;
+			response.Authorizations = authorizations;
+			response.Cost = finalizedPurchase?.Price ?? response.Cost;
+			if (!finalized)
+			{
+				logger.Warning(
+					$"TSC persistent purchase finalize failed reason={ledgerReason} sessionId={FormatLogId(saveSessionId)} supportType={supportType} requestId={FormatRequestId(purchaseRequestId)}");
+				bool rolledBack = await TryRollbackStashPaymentAsync(
+					pmc,
+					saveSessionId,
+					inventorySnapshot,
+					"persistent purchase finalize failure");
+				bool cancelled = rolledBack &&
+				                 TryCancelPreparedPersistentPurchase(
+					                 profileLedgerId,
+					                 supportType,
+					                 requestedQuantity,
+					                 purchaseRequestId,
+					                 saveSessionId,
+					                 "persistent purchase finalize rollback");
+				response.Ok = false;
+				response.Reason = rolledBack && cancelled ? ledgerReason : "PersistentPurchasePending";
+				response.NewBalance = CountStashCurrency(pmc, currencyTemplateId);
+				response.ChargedFromStash = rolledBack ? 0 : chargedFromStash;
+				response.AuthorizationGranted = false;
+				return response;
+			}
+		}
+		else if (config.PurchasePersistence?.Enabled == true)
 		{
 			bool granted;
 			Dictionary<string, int> authorizations;
 			string ledgerReason;
+			bool authorizationsIncluded;
 			try
 			{
 				granted = authorizationLedger.TryGrant(
@@ -317,10 +715,15 @@ public sealed class FireSupportServerConfigService(
 					supportType,
 					requestedQuantity,
 					response.Cost,
+					response.Currency,
 					config.PurchasePersistence.MaxStoredAuthorizationsPerService,
 					config.PurchasePersistence.PendingUseTimeoutSeconds,
 					out authorizations,
 					out ledgerReason);
+				authorizationsIncluded = !string.Equals(
+					ledgerReason,
+					"InvalidAuthorizationRequest",
+					StringComparison.OrdinalIgnoreCase);
 			}
 			catch (Exception ex)
 			{
@@ -328,6 +731,7 @@ public sealed class FireSupportServerConfigService(
 				granted = false;
 				authorizations = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 				ledgerReason = "AuthorizationLedgerSaveFailed";
+				authorizationsIncluded = false;
 			}
 
 			if (!granted)
@@ -337,13 +741,18 @@ public sealed class FireSupportServerConfigService(
 				bool rolledBack = await TryRollbackStashPaymentAsync(pmc, saveSessionId, inventorySnapshot, "authorization grant failure");
 				response.Ok = false;
 				response.Reason = rolledBack ? ledgerReason : "PaymentRollbackFailed";
-				response.NewBalance = CountStashRoubles(pmc);
+				response.NewBalance = CountStashCurrency(pmc, currencyTemplateId);
 				response.ChargedFromStash = rolledBack ? 0 : chargedFromStash;
 				response.AuthorizationGranted = false;
-				response.Authorizations = authorizations;
+				if (authorizationsIncluded)
+				{
+					response.AuthorizationsIncluded = true;
+					response.Authorizations = authorizations;
+				}
 				return response;
 			}
 
+			response.AuthorizationsIncluded = true;
 			response.Authorizations = authorizations;
 		}
 
@@ -359,7 +768,7 @@ public sealed class FireSupportServerConfigService(
 		response.AuthorizationGranted = true;
 
 		logger.Success(
-			$"TSC authorization purchased: {supportType}. sessionId={FormatLogId(saveSessionId)} cost={response.Cost} chargedFromStash={chargedFromStash} newBalance={newBalance} revision={config.Revision}");
+			$"TSC authorization purchased: {supportType}. sessionId={FormatLogId(saveSessionId)} cost={response.Cost} currency={response.Currency} chargedFromStash={chargedFromStash} newBalance={newBalance} revision={config.Revision}");
 		return response;
 	}
 
@@ -385,6 +794,39 @@ public sealed class FireSupportServerConfigService(
 		catch (Exception ex)
 		{
 			logger.Error($"TSC stash payment rollback save failed sessionId={FormatLogId(saveSessionId)} reason={reason}", ex);
+			return false;
+		}
+	}
+
+	private bool TryCancelPreparedPersistentPurchase(
+		string profileLedgerId,
+		ESupportType supportType,
+		int quantity,
+		string requestId,
+		MongoId saveSessionId,
+		string context)
+	{
+		try
+		{
+			bool cancelled = authorizationLedger.TryCancelPreparedPersistentPurchase(
+				profileLedgerId,
+				supportType,
+				quantity,
+				requestId,
+				out string cancellationReason);
+			if (!cancelled)
+			{
+				logger.Error(
+					$"TSC persistent purchase cancellation failed reason={cancellationReason} context={context} sessionId={FormatLogId(saveSessionId)} supportType={supportType} requestId={FormatRequestId(requestId)}");
+			}
+
+			return cancelled;
+		}
+		catch (Exception ex)
+		{
+			logger.Error(
+				$"TSC persistent purchase cancellation threw context={context} sessionId={FormatLogId(saveSessionId)} supportType={supportType} requestId={FormatRequestId(requestId)}",
+				ex);
 			return false;
 		}
 	}
@@ -427,6 +869,8 @@ public sealed class FireSupportServerConfigService(
 			Reason = string.Empty,
 			SupportType = request.SupportType,
 			ServerRevision = config.Revision,
+			PaymentSource = config.PaymentSource,
+			Currency = PaymentCurrencyInfo.Parse(config.PaymentCurrency).ToString(),
 			RequestId = request.RequestId
 		};
 
@@ -443,13 +887,13 @@ public sealed class FireSupportServerConfigService(
 		}
 
 		response.SupportType = supportType.ToString();
-		if (!TryResolveProfileForPurchase(sessionId, request, out _, out MongoId saveSessionId, out string profileDenialReason))
+		if (!TryResolveProfileForPurchase(sessionId, request, out PmcData? pmc, out MongoId saveSessionId, out string profileDenialReason))
 		{
 			response.Reason = profileDenialReason;
 			return response;
 		}
 
-		string profileLedgerId = GetProfileLedgerId(request, saveSessionId);
+		string profileLedgerId = GetCanonicalProfileLedgerId(pmc, saveSessionId);
 		bool ok;
 		Dictionary<string, int> authorizations;
 		string reason;
@@ -459,6 +903,7 @@ public sealed class FireSupportServerConfigService(
 				profileLedgerId,
 				supportType,
 				request.RequestId,
+				config.PurchasePersistence.MaxStoredAuthorizationsPerService,
 				config.PurchasePersistence.PendingUseTimeoutSeconds,
 				out authorizations,
 				out reason);
@@ -469,6 +914,7 @@ public sealed class FireSupportServerConfigService(
 				profileLedgerId,
 				supportType,
 				request.RequestId,
+				config.PurchasePersistence.MaxStoredAuthorizationsPerService,
 				config.PurchasePersistence.PendingUseTimeoutSeconds,
 				out authorizations,
 				out reason);
@@ -487,9 +933,15 @@ public sealed class FireSupportServerConfigService(
 		}
 
 		response.Ok = ok;
-		response.Reason = ok ? mutation.ToString() : reason;
+		response.Reason = ok && string.IsNullOrWhiteSpace(reason)
+			? mutation.ToString()
+			: reason;
 		response.AuthorizationConsumed = mutation != AuthorizationMutation.Refund && ok;
 		response.AuthorizationGranted = mutation == AuthorizationMutation.Refund && ok;
+		response.AuthorizationsIncluded = !string.Equals(
+			reason,
+			"InvalidAuthorizationRequest",
+			StringComparison.OrdinalIgnoreCase);
 		response.Authorizations = authorizations;
 		logger.Success(
 			$"TSC authorization {mutation.ToString().ToLowerInvariant()} result={response.Reason} sessionId={FormatLogId(saveSessionId)} supportType={supportType}");
@@ -567,6 +1019,7 @@ public sealed class FireSupportServerConfigService(
 				revision = snapshot.Revision,
 				paymentMode = snapshot.PaymentMode,
 				paymentSource = snapshot.PaymentSource,
+				paymentCurrency = snapshot.PaymentCurrency,
 				requestCooldownSeconds = snapshot.RequestCooldownSeconds,
 				adminDashboard,
 				adminTokenConfigured = !string.IsNullOrWhiteSpace(GetAdminToken()),
@@ -581,6 +1034,7 @@ public sealed class FireSupportServerConfigService(
 			revision = snapshot.Revision,
 			paymentMode = snapshot.PaymentMode,
 			paymentSource = snapshot.PaymentSource,
+			paymentCurrency = snapshot.PaymentCurrency,
 			requestCooldownSeconds = snapshot.RequestCooldownSeconds,
 			configFile = ConfigFileName,
 			adminTokenFile = AdminTokenFileName,
@@ -611,56 +1065,77 @@ public sealed class FireSupportServerConfigService(
 				Section("persistence", "Purchase Persistence",
 					Field("purchasePersistence.enabled", "Persistent Authorizations", "toggle"),
 					Field("purchasePersistence.maxStoredAuthorizationsPerService", "Max Stored Per Service", "number", min: 1, max: 25, step: 1),
-					Field("purchasePersistence.pendingUseTimeoutSeconds", "Pending Use Timeout", "number", min: 10, max: 1800, step: 10),
+					Field("purchasePersistence.pendingUseTimeoutSeconds", "Pending Use Timeout", "number", min: GetRequiredPendingUseTimeoutSeconds(), max: 1800, step: 5),
 					Field("purchasePersistence.spendCreditsBeforeCash", "Spend Credits First", "toggle"),
 					Field("purchasePersistence.allowAutoPurchaseOnUse", "Allow Auto Purchase On Use", "toggle")),
 				Section("payment", "Payment",
+					Field("paymentCurrency", "Payment Currency", "select", options: new[] { "RUB", "USD", "EUR" }),
 					Field("paymentSource", "Payment Source", "select", options: new[] { "CarriedRoubles", "StashRoubles", "PreferCarriedThenStash", "PreferStashThenCarried" })),
 				Section("pricing", "Service Pricing",
-					Field("prices.A10", "A-10 Price", "number", min: 0, max: 10000000, step: 5000, slider: true),
-					Field("prices.DoublePass", "Double Pass Price", "number", min: 0, max: 10000000, step: 5000, slider: true),
-					Field("prices.Uav", "UAV Price", "number", min: 0, max: 10000000, step: 5000, slider: true),
-					Field("prices.FocusedSweep", "Focused Sweep Price", "number", min: 0, max: 10000000, step: 5000, slider: true),
-					Field("prices.Extraction", "Extraction Price", "number", min: 0, max: 10000000, step: 5000, slider: true),
-					Field("prices.PriorityExfil", "Priority Exfil Price", "number", min: 0, max: 10000000, step: 5000, slider: true)),
+					Field("prices.A10", "A-10 Price", "number", min: 0, max: 10000000, step: 1, slider: true),
+					Field("prices.DoublePass", "Double Pass Price", "number", min: 0, max: 10000000, step: 1, slider: true),
+					Field("prices.Uav", "UAV Price", "number", min: 0, max: 10000000, step: 1, slider: true),
+					Field("prices.FocusedSweep", "Focused Sweep Price", "number", min: 0, max: 10000000, step: 1, slider: true),
+					Field("prices.Extraction", "Extraction Price", "number", min: 0, max: 10000000, step: 1, slider: true),
+					Field("prices.PriorityExfil", "Cargo Transfer Price", "number", min: 0, max: 10000000, step: 1, slider: true)),
 				Section("services", "Service Toggles",
 					Field("enabled.A10", "A-10 Enabled", "toggle"),
 					Field("enabled.DoublePass", "Double Pass Enabled", "toggle"),
 					Field("enabled.Uav", "UAV Enabled", "toggle"),
 					Field("enabled.FocusedSweep", "Focused Sweep Enabled", "toggle"),
 					Field("enabled.Extraction", "Extraction Enabled", "toggle"),
-					Field("enabled.PriorityExfil", "Priority Exfil Enabled", "toggle")),
+					Field("enabled.PriorityExfil", "Cargo Transfer Enabled", "toggle")),
 				Section("recon", "Recon Services",
-					Field("uav.durationSeconds", "UAV Duration", "number", min: 5, max: 300, step: 5, slider: true),
+					Field("uav.durationSeconds", "UAV Duration", "number", min: 5, max: 1800, step: 5, slider: true),
 					Field("uav.rangeMeters", "UAV Range", "number", min: 25, max: 1000, step: 25, slider: true),
 					Field("uav.scanIntervalSeconds", "UAV Scan Interval", "number", min: 0.1, max: 10, step: 0.1),
-					Field("focusedSweep.durationSeconds", "Focused Sweep Duration", "number", min: 5, max: 300, step: 5, slider: true),
+					Field("focusedSweep.durationSeconds", "Focused Sweep Duration", "number", min: 5, max: 1800, step: 5, slider: true),
 					Field("focusedSweep.rangeMeters", "Focused Sweep Range", "number", min: 25, max: 1000, step: 25, slider: true),
-					Field("focusedSweep.scanIntervalSeconds", "Focused Sweep Scan Interval", "number", min: 0.1, max: 10, step: 0.1)),
-				Section("extraction", "Extraction Services",
-					Field("extraction.dispatchDelaySeconds", "Extraction Dispatch Delay", "number", min: 0, max: 120, step: 1),
-					Field("extraction.waitTimeSeconds", "Extraction Wait Time", "number", min: 5, max: 300, step: 5, slider: true),
-					Field("extraction.extractTimeSeconds", "Extraction Time", "number", min: 1, max: 60, step: 1),
-					Field("extraction.speedMultiplier", "Extraction Speed", "number", min: 0.5, max: 3, step: 0.05, slider: true),
-					Field("priorityExfil.dispatchDelaySeconds", "Priority Dispatch Delay", "number", min: 0, max: 120, step: 1),
-					Field("priorityExfil.waitTimeSeconds", "Priority Wait Time", "number", min: 5, max: 300, step: 5, slider: true),
-					Field("priorityExfil.extractTimeSeconds", "Priority Extraction Time", "number", min: 1, max: 60, step: 1),
-					Field("priorityExfil.speedMultiplier", "Priority Speed", "number", min: 0.5, max: 3, step: 0.05, slider: true)),
+					Field("focusedSweep.scanIntervalSeconds", "Focused Sweep Scan Interval", "number", min: 0.1, max: 10, step: 0.05)),
+				Section("extraction", "UH-60 Services",
+					Field("extraction.dispatchDelaySeconds", "Extraction Dispatch Delay", "number", min: 0, max: ExtractionTimingPolicy.MaxDispatchDelaySeconds, step: 1),
+					Field("extraction.waitTimeSeconds", "Extraction Wait Time", "number", min: ExtractionTimingPolicy.MinWaitTimeSeconds, max: ExtractionTimingPolicy.MaxWaitTimeSeconds, step: 5, slider: true),
+					Field("extraction.extractTimeSeconds", "Extraction Time", "number", min: ExtractionTimingPolicy.MinExtractTimeSeconds, max: ExtractionTimingPolicy.MaxExtractTimeSeconds, step: 1),
+					Field("extraction.speedMultiplier", "Extraction Speed Multiplier", "number", min: ExtractionTimingPolicy.MinSpeedMultiplier, max: ExtractionTimingPolicy.MaxSpeedMultiplier, step: 0.05, slider: true),
+					Field("priorityExfil.dispatchDelaySeconds", "Cargo Dispatch Delay", "number", min: 0, max: ExtractionTimingPolicy.MaxDispatchDelaySeconds, step: 1),
+					Field("priorityExfil.waitTimeSeconds", "Cargo Wait Time", "number", min: ExtractionTimingPolicy.MinWaitTimeSeconds, max: ExtractionTimingPolicy.MaxWaitTimeSeconds, step: 5, slider: true),
+					Field("priorityExfil.speedMultiplier", "Cargo Speed Multiplier", "number", min: ExtractionTimingPolicy.MinSpeedMultiplier, max: ExtractionTimingPolicy.MaxSpeedMultiplier, step: 0.05, slider: true)),
 				Section("fire", "Fire Support",
-					Field("a10.secondPassDelaySeconds", "A-10 Second Pass Delay", "number", min: 0, max: 60, step: 1),
-					Field("doublePass.secondPassDelaySeconds", "Double Pass Delay", "number", min: 0, max: 60, step: 1))
+					Field("doublePass.secondPassDelaySeconds", "Double Pass Delay", "number", min: MinDoublePassSecondPassDelaySeconds, max: MaxDoublePassSecondPassDelaySeconds, step: 1))
 			}
 		};
 	}
 
-	public bool TryUpdateConfig(RaidOpsFireSupportServerConfig incoming, out string error)
+	public bool TryUpdateConfig(
+		RaidOpsFireSupportServerConfig incoming,
+		out string error,
+		int? expectedRevision = null)
 	{
 		error = string.Empty;
 		try
 		{
 			NormalizeConfig(incoming);
+			if (!TryValidateConfig(incoming, out error))
+			{
+				return false;
+			}
+
 			lock (_gate)
 			{
+				if (ConfigsEquivalentExceptRevision(incoming, _config))
+				{
+					incoming.Revision = _config.Revision;
+					return true;
+				}
+
+				if (expectedRevision.HasValue && expectedRevision.Value != _config.Revision)
+				{
+					error =
+						$"Config revision changed from {expectedRevision.Value} to {_config.Revision}. " +
+						"Reload the editor before saving.";
+					return false;
+				}
+
 				incoming.Revision = Math.Max(incoming.Revision, _config.Revision + 1);
 				_config = CloneConfig(incoming);
 				SaveConfig(_config);
@@ -683,15 +1158,21 @@ public sealed class FireSupportServerConfigService(
 		snapshot = CreateDefaultConfig();
 		try
 		{
+			RaidOpsFireSupportServerConfig candidate = LoadConfig();
+			NormalizeConfig(candidate);
+			if (!TryValidateConfig(candidate, out error))
+			{
+				return false;
+			}
+
 			lock (_gate)
 			{
-				_config = LoadConfig();
-				NormalizeConfig(_config);
-				if (_config.Revision <= 0)
+				if (candidate.Revision <= 0)
 				{
-					_config.Revision = 1;
+					candidate.Revision = 1;
 				}
 
+				_config = candidate;
 				SaveConfig(_config);
 				snapshot = CloneConfig(_config);
 			}
@@ -830,52 +1311,51 @@ public sealed class FireSupportServerConfigService(
 		};
 	}
 
-	private bool TryResolveProfile(
+	private bool TryResolveAuthenticatedProfile(
 		MongoId httpSessionId,
 		FireSupportPurchaseRequest? request,
 		[NotNullWhen(true)] out PmcData? pmc,
-		out MongoId saveSessionId)
+		out MongoId saveSessionId,
+		out bool identityMismatch)
 	{
 		pmc = null;
 		saveSessionId = default;
+		identityMismatch = false;
 
-		foreach (MongoId candidate in EnumerateSessionCandidates(httpSessionId, request))
+		if (!IsUsableMongoId(httpSessionId) ||
+		    !TryGetPmcProfileBySession(httpSessionId, out PmcData? sessionProfile))
 		{
-			try
-			{
-				PmcData? profile = profileHelper.GetPmcProfile(candidate);
-				if (profile != null)
-				{
-					pmc = profile;
-					saveSessionId = ResolveSaveSessionId(profile, candidate);
-					return true;
-				}
-			}
-			catch
-			{
-				// Try the next candidate. Fika/client requests may provide either session or PMC id.
-			}
+			return false;
 		}
 
-		foreach (MongoId candidate in EnumerateProfileCandidates(request))
+		saveSessionId = ResolveSaveSessionId(sessionProfile, httpSessionId);
+		if (!IsUsableMongoId(saveSessionId))
 		{
-			try
-			{
-				PmcData? profile = profileHelper.GetProfileByPmcId(candidate);
-				if (profile != null)
-				{
-					pmc = profile;
-					saveSessionId = ResolveSaveSessionId(profile, httpSessionId);
-					return IsUsableMongoId(saveSessionId);
-				}
-			}
-			catch
-			{
-				// Try the next candidate. The id may be a session id instead of a PMC profile id.
-			}
+			return false;
 		}
 
-		return false;
+		if (request != null && !RequestHintsMatchProfile(sessionProfile, request, saveSessionId))
+		{
+			identityMismatch = true;
+			return false;
+		}
+
+		pmc = sessionProfile;
+		return true;
+	}
+
+	private static bool ConfigsEquivalentExceptRevision(
+		RaidOpsFireSupportServerConfig first,
+		RaidOpsFireSupportServerConfig second)
+	{
+		RaidOpsFireSupportServerConfig firstCopy = CloneConfig(first);
+		RaidOpsFireSupportServerConfig secondCopy = CloneConfig(second);
+		firstCopy.Revision = 0;
+		secondCopy.Revision = 0;
+		return string.Equals(
+			JsonSerializer.Serialize(firstCopy, s_jsonOptions),
+			JsonSerializer.Serialize(secondCopy, s_jsonOptions),
+			StringComparison.Ordinal);
 	}
 
 	private bool TryResolveProfileForPurchase(
@@ -889,36 +1369,25 @@ public sealed class FireSupportServerConfigService(
 		saveSessionId = default;
 		denialReason = "ProfileNotFound";
 
-		if (IsUsableMongoId(httpSessionId) &&
-		    TryGetPmcProfileBySession(httpSessionId, out PmcData? sessionProfile))
+		if (!TryResolveAuthenticatedProfile(
+			    httpSessionId,
+			    request,
+			    out PmcData? sessionProfile,
+			    out MongoId resolvedSaveSessionId,
+			    out bool identityMismatch))
 		{
-			if (!RequestHintsMatchProfile(sessionProfile, request, httpSessionId))
+			if (identityMismatch)
 			{
 				denialReason = "ProfileSessionMismatch";
 				logger.Warning($"TSC purchase denied reason=ProfileSessionMismatch sessionId={FormatLogId(httpSessionId)}");
-				return false;
 			}
 
-			pmc = sessionProfile;
-			saveSessionId = ResolveSaveSessionId(sessionProfile, httpSessionId);
-			return IsUsableMongoId(saveSessionId);
+			return false;
 		}
 
-		if (TryResolveProfile(default, request, out PmcData? hintedProfile, out MongoId hintedSaveSessionId))
-		{
-			if (!RequestHintsMatchProfile(hintedProfile, request, hintedSaveSessionId))
-			{
-				denialReason = "ProfileSessionMismatch";
-				logger.Warning($"TSC purchase denied reason=ProfileSessionMismatch sessionId={FormatLogId(hintedSaveSessionId)}");
-				return false;
-			}
-
-			pmc = hintedProfile;
-			saveSessionId = hintedSaveSessionId;
-			return IsUsableMongoId(saveSessionId);
-		}
-
-		return false;
+		pmc = sessionProfile;
+		saveSessionId = resolvedSaveSessionId;
+		return true;
 	}
 
 	private bool RequestHintsMatchProfile(
@@ -926,21 +1395,36 @@ public sealed class FireSupportServerConfigService(
 		FireSupportPurchaseRequest request,
 		MongoId resolvedSessionId)
 	{
-		if (TryCreateMongoId(request.ProfileId, out MongoId profileId))
+		if (!string.IsNullOrWhiteSpace(request.ProfileId))
 		{
-			if (!TryGetPmcProfileByProfileId(profileId, out PmcData? profileHint) ||
+			if (!TryCreateMongoId(request.ProfileId, out MongoId profileId) ||
+			    !TryGetPmcProfileByProfileId(profileId, out PmcData? profileHint) ||
 			    !IsSameProfile(resolvedProfile, profileHint))
 			{
 				return false;
 			}
 		}
 
-		if (TryCreateMongoId(request.SessionId, out MongoId sessionId) &&
-		    !AreSameMongoId(sessionId, resolvedSessionId) &&
-		    TryGetPmcProfileBySession(sessionId, out PmcData? sessionHint) &&
-		    !IsSameProfile(resolvedProfile, sessionHint))
+		if (!string.IsNullOrWhiteSpace(request.SessionId))
 		{
-			return false;
+			if (!TryCreateMongoId(request.SessionId, out MongoId sessionId))
+			{
+				return false;
+			}
+
+			if (!AreSameMongoId(sessionId, resolvedSessionId))
+			{
+				bool matchesSessionProfile =
+					TryGetPmcProfileBySession(sessionId, out PmcData? sessionHint) &&
+					IsSameProfile(resolvedProfile, sessionHint);
+				bool matchesPmcProfile =
+					TryGetPmcProfileByProfileId(sessionId, out PmcData? profileHint) &&
+					IsSameProfile(resolvedProfile, profileHint);
+				if (!matchesSessionProfile && !matchesPmcProfile)
+				{
+					return false;
+				}
+			}
 		}
 
 		return true;
@@ -1016,34 +1500,6 @@ public sealed class FireSupportServerConfigService(
 		return $"{saveSessionId}:{supportType}";
 	}
 
-	private static IEnumerable<MongoId> EnumerateSessionCandidates(
-		MongoId httpSessionId,
-		FireSupportPurchaseRequest? request)
-	{
-		if (IsUsableMongoId(httpSessionId))
-		{
-			yield return httpSessionId;
-		}
-
-		if (TryCreateMongoId(request?.SessionId, out MongoId requestSessionId))
-		{
-			yield return requestSessionId;
-		}
-	}
-
-	private static IEnumerable<MongoId> EnumerateProfileCandidates(FireSupportPurchaseRequest? request)
-	{
-		if (TryCreateMongoId(request?.ProfileId, out MongoId profileId))
-		{
-			yield return profileId;
-		}
-
-		if (TryCreateMongoId(request?.SessionId, out MongoId sessionId))
-		{
-			yield return sessionId;
-		}
-	}
-
 	private static MongoId ResolveSaveSessionId(PmcData pmc, MongoId fallback)
 	{
 		if (pmc.SessionId.HasValue && IsUsableMongoId(pmc.SessionId.Value))
@@ -1085,6 +1541,13 @@ public sealed class FireSupportServerConfigService(
 			return true;
 		}
 
+		if (left.Id.HasValue &&
+		    right.Id.HasValue &&
+		    AreSameMongoId(left.Id.Value, right.Id.Value))
+		{
+			return true;
+		}
+
 		return left.SessionId.HasValue &&
 		       right.SessionId.HasValue &&
 		       AreSameMongoId(left.SessionId.Value, right.SessionId.Value);
@@ -1097,15 +1560,104 @@ public sealed class FireSupportServerConfigService(
 		       string.Equals(left.ToString(), right.ToString(), StringComparison.OrdinalIgnoreCase);
 	}
 
-	private static int CountStashRoubles(PmcData pmc)
+	private static int CountStashCurrency(PmcData pmc, string currencyTemplateId)
 	{
-		return GetStashRoubleStacks(pmc).Sum(GetStackCount);
+		return GetStashCurrencyStacks(pmc, currencyTemplateId).Sum(GetStackCount);
 	}
 
-	private static int DebitStashRoubles(PmcData pmc, int amount)
+	private static string ComputeCurrencyInventoryFingerprint(
+		PmcData pmc,
+		string currencyTemplateId)
+	{
+		return ComputeCurrencyInventoryFingerprint(
+			GetStashCurrencyStacks(pmc, currencyTemplateId)
+				.Select(stack =>
+					new KeyValuePair<string, int>(
+						stack.Id.ToString().ToLowerInvariant(),
+						GetStackCount(stack))));
+	}
+
+	private static bool TryComputeExpectedPostDebitFingerprint(
+		PmcData pmc,
+		string currencyTemplateId,
+		int amount,
+		out string fingerprint,
+		out int projectedCharge)
+	{
+		fingerprint = string.Empty;
+		projectedCharge = 0;
+		if (amount < 0)
+		{
+			return false;
+		}
+
+		List<Item> stacks =
+			GetStashCurrencyStacks(pmc, currencyTemplateId).ToList();
+		var projectedCounts = stacks.ToDictionary(
+			stack => stack.Id.ToString(),
+			GetStackCount,
+			StringComparer.OrdinalIgnoreCase);
+		var removedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		List<Item> inventoryItems = pmc.Inventory?.Items ?? new List<Item>();
+		int remaining = amount;
+
+		foreach (Item stack in stacks)
+		{
+			if (remaining <= 0)
+			{
+				break;
+			}
+
+			string stackId = stack.Id.ToString();
+			int stackCount = projectedCounts[stackId];
+			int take = Math.Min(stackCount, remaining);
+			remaining -= take;
+
+			if (take >= stackCount)
+			{
+				CollectDescendantIds(stackId, inventoryItems, removedIds);
+				continue;
+			}
+
+			projectedCounts[stackId] = stackCount - take;
+		}
+
+		projectedCharge = amount - remaining;
+		fingerprint = ComputeCurrencyInventoryFingerprint(
+			stacks
+				.Where(stack => !removedIds.Contains(stack.Id.ToString()))
+				.Select(stack =>
+					new KeyValuePair<string, int>(
+						stack.Id.ToString().ToLowerInvariant(),
+						projectedCounts[stack.Id.ToString()])));
+		return remaining == 0;
+	}
+
+	private static string ComputeCurrencyInventoryFingerprint(
+		IEnumerable<KeyValuePair<string, int>> stacks)
+	{
+		var fingerprintInput = new StringBuilder();
+		foreach (KeyValuePair<string, int> stack in stacks
+			         .OrderBy(entry => entry.Key, StringComparer.Ordinal))
+		{
+			fingerprintInput
+				.Append(stack.Key)
+				.Append(':')
+				.Append(stack.Value.ToString(System.Globalization.CultureInfo.InvariantCulture))
+				.Append('\n');
+		}
+
+		byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(fingerprintInput.ToString()));
+		return Convert.ToHexString(hash);
+	}
+
+	private static int DebitStashCurrency(
+		PmcData pmc,
+		string currencyTemplateId,
+		int amount)
 	{
 		int remaining = amount;
-		foreach (Item stack in GetStashRoubleStacks(pmc).ToList())
+		foreach (Item stack in GetStashCurrencyStacks(pmc, currencyTemplateId).ToList())
 		{
 			if (remaining <= 0)
 			{
@@ -1129,7 +1681,9 @@ public sealed class FireSupportServerConfigService(
 		return amount - remaining;
 	}
 
-	private static IEnumerable<Item> GetStashRoubleStacks(PmcData pmc)
+	private static IEnumerable<Item> GetStashCurrencyStacks(
+		PmcData pmc,
+		string currencyTemplateId)
 	{
 		BotBaseInventory? inventory = pmc.Inventory;
 		List<Item>? items = inventory?.Items;
@@ -1146,7 +1700,10 @@ public sealed class FireSupportServerConfigService(
 		foreach (Item item in items)
 		{
 			if (item == null ||
-			    !string.Equals(item.Template.ToString(), RoubleTemplateId, StringComparison.OrdinalIgnoreCase) ||
+			    !string.Equals(
+				    item.Template.ToString(),
+				    currencyTemplateId,
+				    StringComparison.OrdinalIgnoreCase) ||
 			    !IsDescendantOfStash(item, stashId, itemsById))
 			{
 				continue;
@@ -1273,12 +1830,32 @@ public sealed class FireSupportServerConfigService(
 	private static void NormalizeConfig(RaidOpsFireSupportServerConfig config)
 	{
 		RaidOpsFireSupportServerConfig defaults = CreateDefaultConfig();
+		int sourceSchemaVersion =
+			FireSupportServerConfigMigration.NormalizePersistedFields(
+				config,
+				defaults);
 		config.PaymentMode = Enum.TryParse(config.PaymentMode, ignoreCase: true, out PaymentMode paymentMode)
 			? paymentMode.ToString()
 			: defaults.PaymentMode;
 		config.PaymentSource = Enum.TryParse(config.PaymentSource, ignoreCase: true, out PaymentSource paymentSource)
 			? paymentSource.ToString()
 			: defaults.PaymentSource;
+		if (PaymentCurrencyInfo.TryParse(
+			    config.PaymentCurrency,
+			    out PaymentCurrency paymentCurrency))
+		{
+			config.PaymentCurrency = paymentCurrency.ToString();
+		}
+		else if (sourceSchemaVersion < 3)
+		{
+			// Pre-currency configs were RUB-only. Migrate that one known legacy
+			// case, but preserve invalid schema-3 input so validation rejects it.
+			config.PaymentCurrency = nameof(PaymentCurrency.RUB);
+		}
+		else
+		{
+			config.PaymentCurrency = config.PaymentCurrency?.Trim() ?? string.Empty;
+		}
 		config.RequestCooldownSeconds = config.RequestCooldownSeconds < 0
 			? defaults.RequestCooldownSeconds
 			: config.RequestCooldownSeconds;
@@ -1289,10 +1866,9 @@ public sealed class FireSupportServerConfigService(
 		config.Uav = NormalizeUavSettings(config.Uav, defaults.Uav);
 		config.FocusedSweep = NormalizeUavSettings(config.FocusedSweep, defaults.FocusedSweep);
 		config.Extraction = NormalizeExtractionSettings(config.Extraction, defaults.Extraction);
-		config.PriorityExfil = NormalizeExtractionSettings(config.PriorityExfil, defaults.PriorityExfil);
+		config.PriorityExfil = NormalizeCargoSettings(config.PriorityExfil, defaults.PriorityExfil);
 		config.A10 = config.A10 ?? defaults.A10;
 		config.DoublePass = NormalizeA10Settings(config.DoublePass, defaults.DoublePass);
-		config.StashRoubleBalance = null;
 	}
 
 	private static Dictionary<TKey, TValue> MergeDictionary<TKey, TValue>(
@@ -1358,23 +1934,164 @@ public sealed class FireSupportServerConfigService(
 		RaidOpsFireSupportServerConfig.ExtractionSettings? settings,
 		RaidOpsFireSupportServerConfig.ExtractionSettings defaults)
 	{
-		settings ??= new RaidOpsFireSupportServerConfig.ExtractionSettings();
-		settings.WaitTimeSeconds = settings.WaitTimeSeconds <= 0 ? defaults.WaitTimeSeconds : settings.WaitTimeSeconds;
-		settings.ExtractTimeSeconds = settings.ExtractTimeSeconds <= 0f
-			? defaults.ExtractTimeSeconds
-			: settings.ExtractTimeSeconds;
-		settings.SpeedMultiplier = settings.SpeedMultiplier <= 0f ? defaults.SpeedMultiplier : settings.SpeedMultiplier;
-		return settings;
+		return settings ?? defaults;
+	}
+
+	private static RaidOpsFireSupportServerConfig.CargoSettings NormalizeCargoSettings(
+		RaidOpsFireSupportServerConfig.CargoSettings? settings,
+		RaidOpsFireSupportServerConfig.CargoSettings defaults)
+	{
+		return settings ?? defaults;
+	}
+
+	private static bool TryValidateConfig(
+		RaidOpsFireSupportServerConfig config,
+		out string error)
+	{
+		if (!PaymentCurrencyInfo.TryParse(
+			    config.PaymentCurrency,
+			    out _))
+		{
+			error =
+				$"paymentCurrency ({config.PaymentCurrency ?? "<missing>"}) must be RUB, USD, or EUR.";
+			return false;
+		}
+
+		if (!TryValidateExtractionTiming(config.Extraction, "extraction", out error))
+		{
+			return false;
+		}
+
+		if (!TryValidateCargoTiming(
+			    config.PriorityExfil,
+			    "priorityExfil",
+			    out error))
+		{
+			return false;
+		}
+
+		int requiredPendingTimeout = GetRequiredPendingUseTimeoutSeconds();
+		if (config.PurchasePersistence?.Enabled == true &&
+		    config.PurchasePersistence.PendingUseTimeoutSeconds <
+		    requiredPendingTimeout)
+		{
+			error =
+				$"purchasePersistence.pendingUseTimeoutSeconds " +
+				$"({config.PurchasePersistence.PendingUseTimeoutSeconds}) must be >= " +
+				$"{requiredPendingTimeout} seconds for the supported extraction dispatch " +
+				$"maximum ({ExtractionTimingPolicy.MaxDispatchDelaySeconds:0.##}) plus authority settlement margin.";
+			return false;
+		}
+
+		error = string.Empty;
+		return true;
+	}
+
+	private static bool TryValidateExtractionTiming(
+		RaidOpsFireSupportServerConfig.ExtractionSettings settings,
+		string path,
+		out string error)
+	{
+		return ExtractionTimingPolicy.TryValidate(
+			ToExtractionTimingValues(settings),
+			path,
+			out error);
+	}
+
+	private static bool TryValidateCargoTiming(
+		RaidOpsFireSupportServerConfig.CargoSettings settings,
+		string path,
+		out string error)
+	{
+		return CargoTimingPolicy.TryValidate(
+			ToCargoTimingValues(settings),
+			path,
+			out error);
+	}
+
+	private static void RepairInvalidServiceTimings(
+		RaidOpsFireSupportServerConfig config)
+	{
+		RaidOpsFireSupportServerConfig defaults = CreateDefaultConfig();
+		RepairExtractionTiming(config.Extraction, defaults.Extraction);
+		RepairCargoTiming(config.PriorityExfil, defaults.PriorityExfil);
+		int requiredPendingTimeout = GetRequiredPendingUseTimeoutSeconds();
+		if (config.PurchasePersistence?.Enabled == true &&
+		    config.PurchasePersistence.PendingUseTimeoutSeconds <
+		    requiredPendingTimeout)
+		{
+			config.PurchasePersistence.PendingUseTimeoutSeconds =
+				requiredPendingTimeout;
+		}
+	}
+
+	private static int GetRequiredPendingUseTimeoutSeconds()
+	{
+		// Local BepInEx timing remains a supported fallback when shared server
+		// tuning is unavailable or disabled. Size the ledger reservation for the
+		// full supported dispatch range, not only the current dashboard values.
+		return ExtractionTimingPolicy.GetRequiredPendingUseTimeoutSeconds();
+	}
+
+	private static void RepairExtractionTiming(
+		RaidOpsFireSupportServerConfig.ExtractionSettings settings,
+		RaidOpsFireSupportServerConfig.ExtractionSettings defaults)
+	{
+		ExtractionTimingValues repaired = ExtractionTimingPolicy.Repair(
+			ToExtractionTimingValues(settings),
+			ToExtractionTimingValues(defaults));
+		settings.DispatchDelaySeconds = repaired.DispatchDelaySeconds;
+		settings.WaitTimeSeconds = repaired.WaitTimeSeconds;
+		settings.ExtractTimeSeconds = repaired.ExtractTimeSeconds;
+		settings.SpeedMultiplier = repaired.SpeedMultiplier;
+	}
+
+	private static void RepairCargoTiming(
+		RaidOpsFireSupportServerConfig.CargoSettings settings,
+		RaidOpsFireSupportServerConfig.CargoSettings defaults)
+	{
+		ExtractionTimingValues repaired = CargoTimingPolicy.Repair(
+			ToCargoTimingValues(settings),
+			ToCargoTimingValues(defaults));
+		settings.DispatchDelaySeconds = repaired.DispatchDelaySeconds;
+		settings.WaitTimeSeconds = repaired.WaitTimeSeconds;
+		settings.SpeedMultiplier = repaired.SpeedMultiplier;
+	}
+
+	private static ExtractionTimingValues ToExtractionTimingValues(
+		RaidOpsFireSupportServerConfig.ExtractionSettings settings)
+	{
+		return new ExtractionTimingValues(
+			settings.DispatchDelaySeconds,
+			settings.WaitTimeSeconds,
+			settings.ExtractTimeSeconds,
+			settings.SpeedMultiplier);
+	}
+
+	private static ExtractionTimingValues ToCargoTimingValues(
+		RaidOpsFireSupportServerConfig.CargoSettings settings)
+	{
+		return new ExtractionTimingValues(
+			settings.DispatchDelaySeconds,
+			settings.WaitTimeSeconds,
+			settings.ExtractTimeSeconds,
+			settings.SpeedMultiplier);
 	}
 
 	private static RaidOpsFireSupportServerConfig.A10Settings NormalizeA10Settings(
 		RaidOpsFireSupportServerConfig.A10Settings? settings,
 		RaidOpsFireSupportServerConfig.A10Settings defaults)
 	{
-		settings ??= new RaidOpsFireSupportServerConfig.A10Settings();
-		settings.SecondPassDelaySeconds = settings.SecondPassDelaySeconds <= 0f
-			? defaults.SecondPassDelaySeconds
-			: settings.SecondPassDelaySeconds;
+		settings ??= defaults;
+		settings.SecondPassDelaySeconds =
+			float.IsNaN(settings.SecondPassDelaySeconds) ||
+			float.IsInfinity(settings.SecondPassDelaySeconds) ||
+			settings.SecondPassDelaySeconds <= 0f
+				? defaults.SecondPassDelaySeconds
+				: Math.Clamp(
+					settings.SecondPassDelaySeconds,
+					MinDoublePassSecondPassDelaySeconds,
+					MaxDoublePassSecondPassDelaySeconds);
 		return settings;
 	}
 	private static RaidOpsFireSupportServerConfig CloneConfig(RaidOpsFireSupportServerConfig config)
@@ -1385,12 +2102,52 @@ public sealed class FireSupportServerConfigService(
 		       CreateDefaultConfig();
 	}
 
+	private static Dictionary<string, JsonElement> CreateAuthenticatedSnapshotPayload(
+		RaidOpsFireSupportServerConfig snapshot,
+		Dictionary<string, string> preparedPurchases,
+		Dictionary<string, FireSupportPreparedPurchaseQuote>
+			preparedPurchaseDetails)
+	{
+		Dictionary<string, JsonElement> payload =
+			JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(
+				JsonSerializer.Serialize(snapshot, s_jsonOptions),
+				s_jsonOptions) ??
+			new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+		payload["preparedPurchases"] =
+			JsonSerializer.SerializeToElement(preparedPurchases, s_jsonOptions);
+		payload["preparedPurchaseDetails"] =
+			JsonSerializer.SerializeToElement(
+				preparedPurchaseDetails,
+				s_jsonOptions);
+		return payload;
+	}
+
 	private static TEnum ParseEnum<TEnum>(string value, TEnum fallback)
 		where TEnum : struct
 	{
 		return Enum.TryParse(value, ignoreCase: true, out TEnum parsed)
 			? parsed
 			: fallback;
+	}
+
+	private static bool IsExpectedCurrencyAccepted(
+		string? expectedCurrency,
+		PaymentCurrency configuredCurrency)
+	{
+		// Currency was added after the original RUB-only protocol. Legacy
+		// requests remain valid only while the server is still configured for
+		// RUB; USD/EUR require an explicit quote identity from a new client.
+		if (string.IsNullOrWhiteSpace(expectedCurrency))
+		{
+			return configuredCurrency == PaymentCurrency.RUB;
+		}
+
+		return Enum.TryParse(
+			       expectedCurrency.Trim(),
+			       ignoreCase: true,
+			       out PaymentCurrency parsed) &&
+		       Enum.IsDefined(typeof(PaymentCurrency), parsed) &&
+		       parsed == configuredCurrency;
 	}
 
 	private static string? ExtractBearerToken(string? authorizationHeader)
@@ -1431,11 +2188,27 @@ public sealed class FireSupportServerConfigService(
 		return $"...{value[^keep..]}";
 	}
 
-	private static string GetProfileLedgerId(FireSupportPurchaseRequest? request, MongoId saveSessionId)
+	private static string FormatRequestId(string? requestId)
 	{
-		if (TryCreateMongoId(request?.ProfileId, out MongoId profileId))
+		if (string.IsNullOrWhiteSpace(requestId))
 		{
-			return profileId.ToString();
+			return "<empty>";
+		}
+
+		string value = requestId.Trim();
+		int keep = Math.Min(8, value.Length);
+		return $"...{value[^keep..]}";
+	}
+
+	private static string GetCanonicalProfileLedgerId(PmcData pmc, MongoId saveSessionId)
+	{
+		// v1.0.8 clients keyed the ledger with the PMC profile ID. Resolving that
+		// ID from the authenticated profile preserves those credits without
+		// trusting a request hint. The authenticated save session is only a
+		// fallback for malformed legacy profiles that have no usable PMC ID.
+		if (pmc.Id.HasValue && IsUsableMongoId(pmc.Id.Value))
+		{
+			return pmc.Id.Value.ToString();
 		}
 
 		return saveSessionId.ToString();
@@ -1482,9 +2255,12 @@ public sealed class FireSupportServerConfigService(
 	{
 		return new RaidOpsFireSupportServerConfig
 		{
+			ConfigSchemaVersion =
+				FireSupportServerConfigMigration.CurrentConfigSchemaVersion,
 			Revision = 1,
 			PaymentMode = nameof(PaymentMode.PhoneAuthorizations),
 			PaymentSource = nameof(PaymentSource.CarriedRoubles),
+			PaymentCurrency = nameof(PaymentCurrency.RUB),
 			RequestCooldownSeconds = 300,
 			Prices = new Dictionary<string, int>
 			{
@@ -1523,24 +2299,26 @@ public sealed class FireSupportServerConfigService(
 			},
 			Uav = new RaidOpsFireSupportServerConfig.UavSettings
 			{
-				DurationSeconds = 45,
+				DurationSeconds = 480,
 				RangeMeters = 200f,
-				ScanIntervalSeconds = 1f
+				ScanIntervalSeconds = 5f
 			},
 			FocusedSweep = new RaidOpsFireSupportServerConfig.UavSettings
 			{
-				DurationSeconds = 30,
+				DurationSeconds = 90,
 				RangeMeters = 100f,
-				ScanIntervalSeconds = 0.5f
+				ScanIntervalSeconds = 0.75f
 			},
 			Extraction = new RaidOpsFireSupportServerConfig.ExtractionSettings
 			{
-				DispatchDelaySeconds = 0f,
+				DispatchDelaySeconds =
+					FireSupportServerConfigMigration
+						.LegacyStandardExtractionDispatchDelaySeconds,
 				WaitTimeSeconds = 30,
 				ExtractTimeSeconds = 10f,
 				SpeedMultiplier = 1f
 			},
-			PriorityExfil = new RaidOpsFireSupportServerConfig.ExtractionSettings
+			PriorityExfil = new RaidOpsFireSupportServerConfig.CargoSettings
 			{
 				DispatchDelaySeconds = 3f,
 				WaitTimeSeconds = 20,

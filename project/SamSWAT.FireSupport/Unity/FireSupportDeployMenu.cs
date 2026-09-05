@@ -23,7 +23,12 @@ public static class FireSupportDeployMenu
 		var entries = new List<ESupportType>(s_displayOrder.Length);
 		foreach (ESupportType type in s_displayOrder)
 		{
-			if (FireSupportAuthorizations.GetDeployableCount(type) > 0)
+			bool lockedA10Authorization =
+				type is ESupportType.Strafe or ESupportType.DoubleStrafe &&
+				!FireSupportServiceAvailability.IsServiceEnabled(type) &&
+				FireSupportAuthorizations.Get(type) > 0;
+			if (FireSupportAuthorizations.GetDeployableCount(type) > 0 ||
+			    lockedA10Authorization)
 			{
 				entries.Add(type);
 			}

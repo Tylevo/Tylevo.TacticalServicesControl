@@ -3,6 +3,8 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using Comfort.Common;
+using EFT;
 using Newtonsoft.Json.Linq;
 using TMPro;
 using UnityEngine;
@@ -18,20 +20,39 @@ public readonly struct UavPhoneScreenContext
 	}
 
 	public UavPhoneScreenContext(ESupportType supportType, int costRoubles, int balanceRoubles, int durationSeconds)
+		: this(
+			supportType,
+			costRoubles,
+			balanceRoubles,
+			durationSeconds,
+			FireSupportPayment.GetActivePaymentCurrency())
+	{
+	}
+
+	public UavPhoneScreenContext(
+		ESupportType supportType,
+		int cost,
+		int balance,
+		int durationSeconds,
+		PaymentCurrency currency)
 	{
 		SupportType = supportType;
-		CostRoubles = costRoubles;
-		BalanceRoubles = balanceRoubles;
+		Cost = cost;
+		Balance = balance;
 		DurationSeconds = durationSeconds;
+		Currency = PaymentCurrencyInfo.Normalize(currency);
 	}
 
 	public ESupportType SupportType { get; }
-	public int CostRoubles { get; }
-	public int BalanceRoubles { get; }
+	public int Cost { get; }
+	public int Balance { get; }
 	public int DurationSeconds { get; }
+	public PaymentCurrency Currency { get; }
+	public int CostRoubles => Cost;
+	public int BalanceRoubles => Balance;
 }
 
-public sealed class UavPhoneScreenRenderer : MonoBehaviour
+public sealed partial class UavPhoneScreenRenderer : MonoBehaviour
 {
 	private const int RenderLayer = 31;
 	private const int LongSide = 1024;
@@ -42,11 +63,19 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 	private const int LandscapeLayoutHeight = 512;
 	private const int PortraitLayoutWidth = 512;
 	private const int PortraitLayoutHeight = 1024;
+	private const int RadarHudTextureWidth = 432;
+	private const int RadarHudTextureHeight = 768;
+	private const float RadarHudPlotX = 28f;
+	private const float RadarHudPlotTop = 170f;
+	private const float RadarHudPlotSize = 376f;
+	private const float RadarHudDisplayScale = 0.5f;
+	private const float RadarHudMargin = 24f;
 	private const float OpaqueScreenPlaneScale = 1.01f;
 	private const float SwipeArrowAnimationSeconds = 1.05f;
 	private const string SwipeArrowRelativePath = "animations/swipe_up/swipe_arrow_sprite.png";
 	private const string SwipeFrameRelativePathFormat = "animations/swipe_up/frames_512x1024/swipe_{0:00}.png";
 	private const int SwipeFrameCount = 12;
+	private const float UavRadarTextRefreshSeconds = 0.1f;
 	private static readonly Rect SwipeAnimationMaskRect = new Rect(46f, 482f, 422f, 270f);
 
 	private static Sprite s_whiteSprite;
@@ -63,6 +92,8 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 
 	private Camera _camera;
 	private Canvas _canvas;
+	private Canvas _hudOutputCanvas;
+	private RawImage _hudOutputImage;
 	private RenderTexture _renderTexture;
 	private Renderer _screenRenderer;
 	private Transform _rendererRoot;
@@ -75,6 +106,14 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 	private bool _texTransformApplied;
 	private bool _forceOpaqueDebug;
 	private bool _previousScreenRendererEnabled = true;
+	private UnityEngine.Rendering.ShadowCastingMode _previousShadowCastingMode;
+	private bool _previousReceiveShadows;
+	private UnityEngine.Rendering.LightProbeUsage _previousLightProbeUsage;
+	private UnityEngine.Rendering.ReflectionProbeUsage _previousReflectionProbeUsage;
+	private bool _rendererPresentationCaptured;
+	private bool _shutdown;
+	private bool _radarHudMode;
+	private bool _radarHudPositionSubscribed;
 	private Coroutine _stateFadeCoroutine;
 	private GameObject _opaqueScreenObject;
 	private Mesh _opaqueScreenMesh;
@@ -103,12 +142,33 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 	private CanvasGroup _deniedGroup;
 	private CanvasGroup _deployGroup;
 	private CanvasGroup _deployBootGroup;
+	private CanvasGroup _uavRadarGroup;
+	private CanvasGroup _dangerCloseWarningGroup;
 	private int _deploySelectionIndex;
 	private Text _deniedReasonText;
 	private Text _deniedDetailText;
 	private Image _swipeArrowImage;
 	private Sprite[] _swipeFrameSprites;
 	private Coroutine _swipeAnimationCoroutine;
+	private RectTransform _uavRadarPlot;
+	private RectTransform _uavRadarSweepTransform;
+	private Image _uavRadarScanProgressImage;
+	private Text _uavRadarStatusText;
+	private Text _uavRadarRemainingText;
+	private Text _uavRadarRangeText;
+	private Text _uavRadarContactsText;
+	private Text _uavRadarNextScanText;
+	private readonly List<UavReconOverlay.ReconContactSnapshot> _uavRadarContactSnapshots = new(32);
+	private readonly List<Image> _uavRadarBlips = new(32);
+	private float _uavRadarPlotRadius;
+	private float _uavRadarUiScale = 1f;
+	private float _uavRadarNextTextRefreshAt;
+	private int _uavRadarLastRemainingSeconds = int.MinValue;
+	private int _uavRadarLastRangeMeters = int.MinValue;
+	private int _uavRadarLastContactCount = int.MinValue;
+	private int _uavRadarLastNextScanTenths = int.MinValue;
+	private Text _dangerCloseEtaText;
+	private int _dangerCloseLastEtaSeconds = int.MinValue;
 
 	public void Initialize(
 		Renderer screenRenderer,
@@ -140,6 +200,8 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		BuildDeniedScreen();
 		BuildDeploySelectScreen();
 		BuildDeployBootScreen();
+		BuildUavRadarLiveScreen();
+		BuildDangerCloseWarningScreen();
 		BindRenderTexture(uvRect);
 		if (TscDiagnostics.VerboseLcd)
 		{
@@ -148,6 +210,29 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 
 		ShowState(TerraGroupPhoneState.Home);
 		FireSupportPlugin.LogSource.LogInfo("TSC Uplink UI started.");
+	}
+
+	internal void InitializeRadarHud(UavRadarHudPosition position)
+	{
+		if (_canvas != null || _renderTexture != null)
+		{
+			throw new InvalidOperationException("TSC radar HUD renderer was already initialized.");
+		}
+
+		_radarHudMode = true;
+		_texWidth = RadarHudTextureWidth;
+		_texHeight = RadarHudTextureHeight;
+		_canvasRotation = 0f;
+		_font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+
+		BuildRenderTextureCamera();
+		BuildCanvas();
+		BuildUavRadarLiveScreen();
+		BuildRadarHudOutput(position);
+		SubscribeRadarHudPosition();
+		ShowState(TerraGroupPhoneState.UavRadarLive);
+		FireSupportPlugin.LogSource.LogInfo(
+			$"TSC scanner-only UAV radar HUD started. position={position}.");
 	}
 
 	public void Rebuild(UavPhoneScreenContext context, TerraGroupPhoneState state)
@@ -159,10 +244,18 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		}
 
 		StopSwipeAnimation();
+		if (_stateFadeCoroutine != null)
+		{
+			StopCoroutine(_stateFadeCoroutine);
+			_stateFadeCoroutine = null;
+		}
+		ResetNativeScreens();
 		_swipeArrowImage = null;
 		_swipeFrameSprites = null;
+		ResetUavRadarUiReferences();
 		for (int i = _canvas.transform.childCount - 1; i >= 0; i--)
 		{
+			_canvas.transform.GetChild(i).gameObject.SetActive(false);
 			Destroy(_canvas.transform.GetChild(i).gameObject);
 		}
 
@@ -177,11 +270,14 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		BuildDeniedScreen();
 		BuildDeploySelectScreen();
 		BuildDeployBootScreen();
+		BuildUavRadarLiveScreen();
+		BuildDangerCloseWarningScreen();
 		ShowState(state);
 	}
 
 	public void ShowState(TerraGroupPhoneState state)
 	{
+		ResetPhonePointer();
 		if (_stateFadeCoroutine != null)
 		{
 			StopCoroutine(_stateFadeCoroutine);
@@ -195,7 +291,9 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 
 	public void FadeToState(TerraGroupPhoneState state, float durationSeconds)
 	{
-		if (_canvas == null || durationSeconds <= 0f)
+		ResetPhonePointer();
+		RefreshNativeState(state);
+		if (_canvas == null || durationSeconds <= 0f || GetGroupForState(state) == GetGroupForState(_currentState))
 		{
 			ShowState(state);
 			return;
@@ -224,17 +322,52 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		ShowState(TerraGroupPhoneState.Denied);
 	}
 
+	private void Update()
+	{
+		UpdateNativeScreen();
+		if (_currentState == TerraGroupPhoneState.UavRadarLive &&
+		    _uavRadarGroup != null)
+		{
+			UpdateUavRadarLiveScreen();
+			return;
+		}
+
+		if (_currentState == TerraGroupPhoneState.DangerCloseWarning &&
+		    _dangerCloseWarningGroup != null)
+		{
+			UpdateDangerCloseWarningScreen();
+		}
+	}
+
 	public void Shutdown()
 	{
+		if (_shutdown)
+		{
+			return;
+		}
+
+		_shutdown = true;
 		UnsubscribeSettingChanges();
+		UnsubscribeRadarHudPosition();
 		StopSwipeAnimation();
+		if (_stateFadeCoroutine != null)
+		{
+			StopCoroutine(_stateFadeCoroutine);
+			_stateFadeCoroutine = null;
+		}
+		ResetNativeScreens();
 
 		RestoreDebugDisabledRenderers();
 		DestroyOpaqueScreenPlane();
 
-		if (_screenRenderer != null)
+		if (_screenRenderer != null && _rendererPresentationCaptured)
 		{
 			_screenRenderer.enabled = _previousScreenRendererEnabled;
+			_screenRenderer.shadowCastingMode = _previousShadowCastingMode;
+			_screenRenderer.receiveShadows = _previousReceiveShadows;
+			_screenRenderer.lightProbeUsage = _previousLightProbeUsage;
+			_screenRenderer.reflectionProbeUsage = _previousReflectionProbeUsage;
+
 			try
 			{
 				if (_previousScreenMaterial != null)
@@ -274,25 +407,48 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 			_screenMaterial = null;
 		}
 
+		if (_hudOutputImage != null)
+		{
+			_hudOutputImage.texture = null;
+			_hudOutputImage = null;
+		}
+
+		if (_hudOutputCanvas != null)
+		{
+			Destroy(_hudOutputCanvas.gameObject);
+			_hudOutputCanvas = null;
+		}
+
 		if (_canvas != null)
 		{
 			Destroy(_canvas.gameObject);
+			_canvas = null;
 		}
 
 		if (_camera != null)
 		{
+			_camera.targetTexture = null;
 			Destroy(_camera.gameObject);
+			_camera = null;
 		}
 
 		if (_renderTexture != null)
 		{
 			_renderTexture.Release();
+			Destroy(_renderTexture);
+			_renderTexture = null;
 		}
+
+		_screenRenderer = null;
+		_rendererRoot = null;
+		_previousScreenMaterial = null;
+		_previousScreenMaterials = null;
+		ResetUavRadarUiReferences();
 	}
 
 	private void OnDestroy()
 	{
-		UnsubscribeSettingChanges();
+		Shutdown();
 	}
 
 	public static Renderer FindBestScreenRenderer(Transform root, string context, bool logCandidates = true)
@@ -507,6 +663,120 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		scaler.referencePixelsPerUnit = 100f;
 	}
 
+	private void BuildRadarHudOutput(UavRadarHudPosition position)
+	{
+		GameObject outputObject = new("TSC UAV Radar HUD Canvas");
+		outputObject.transform.SetParent(transform, false);
+		outputObject.layer = 0;
+
+		_hudOutputCanvas = outputObject.AddComponent<Canvas>();
+		_hudOutputCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+		_hudOutputCanvas.sortingOrder = 3000;
+
+		CanvasScaler scaler = outputObject.AddComponent<CanvasScaler>();
+		scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+		scaler.referenceResolution = new Vector2(1920f, 1080f);
+		scaler.matchWidthOrHeight = 0.5f;
+
+		GameObject imageObject = new("TSC UAV Radar HUD Image");
+		imageObject.transform.SetParent(outputObject.transform, false);
+		imageObject.layer = 0;
+		RectTransform imageTransform = imageObject.AddComponent<RectTransform>();
+		imageTransform.sizeDelta =
+			Vector2.one * (RadarHudPlotSize * RadarHudDisplayScale);
+
+		_hudOutputImage = imageObject.AddComponent<RawImage>();
+		_hudOutputImage.texture = _renderTexture;
+		_hudOutputImage.uvRect = new Rect(
+			RadarHudPlotX / RadarHudTextureWidth,
+			(RadarHudTextureHeight - RadarHudPlotTop - RadarHudPlotSize) /
+			RadarHudTextureHeight,
+			RadarHudPlotSize / RadarHudTextureWidth,
+			RadarHudPlotSize / RadarHudTextureHeight);
+		_hudOutputImage.color = Color.white;
+		_hudOutputImage.raycastTarget = false;
+		ApplyRadarHudPosition(position);
+	}
+
+	private void ApplyRadarHudPosition(UavRadarHudPosition position)
+	{
+		RectTransform imageTransform = _hudOutputImage?.rectTransform;
+		if (imageTransform == null)
+		{
+			return;
+		}
+
+		Vector2 anchor;
+		Vector2 pivot;
+		Vector2 offset;
+		switch (position)
+		{
+			case UavRadarHudPosition.TopLeft:
+				anchor = new Vector2(0f, 1f);
+				pivot = new Vector2(0f, 1f);
+				offset = new Vector2(RadarHudMargin, -RadarHudMargin);
+				break;
+			case UavRadarHudPosition.TopRight:
+				anchor = new Vector2(1f, 1f);
+				pivot = new Vector2(1f, 1f);
+				offset = new Vector2(-RadarHudMargin, -RadarHudMargin);
+				break;
+			case UavRadarHudPosition.BottomLeft:
+				anchor = new Vector2(0f, 0f);
+				pivot = new Vector2(0f, 0f);
+				offset = new Vector2(RadarHudMargin, RadarHudMargin);
+				break;
+			case UavRadarHudPosition.BottomRight:
+			default:
+				anchor = new Vector2(1f, 0f);
+				pivot = new Vector2(1f, 0f);
+				offset = new Vector2(-RadarHudMargin, RadarHudMargin);
+				break;
+		}
+
+		imageTransform.anchorMin = anchor;
+		imageTransform.anchorMax = anchor;
+		imageTransform.pivot = pivot;
+		imageTransform.anchoredPosition = offset;
+	}
+
+	private void SubscribeRadarHudPosition()
+	{
+		if (_radarHudPositionSubscribed ||
+		    PluginSettings.RadarHudPosition == null)
+		{
+			return;
+		}
+
+		PluginSettings.RadarHudPosition.SettingChanged += OnRadarHudPositionChanged;
+		_radarHudPositionSubscribed = true;
+	}
+
+	private void UnsubscribeRadarHudPosition()
+	{
+		if (!_radarHudPositionSubscribed)
+		{
+			return;
+		}
+
+		if (PluginSettings.RadarHudPosition != null)
+		{
+			PluginSettings.RadarHudPosition.SettingChanged -= OnRadarHudPositionChanged;
+		}
+
+		_radarHudPositionSubscribed = false;
+	}
+
+	private void OnRadarHudPositionChanged(object sender, EventArgs args)
+	{
+		UavRadarHudPosition position =
+			PluginSettings.RadarHudPosition?.Value ??
+			UavRadarHudPosition.BottomRight;
+		ApplyRadarHudPosition(position);
+		TscDiagnostics.LogPhone(
+			$"TSC scanner-only UAV radar HUD moved. position={position}.");
+	}
+
 	private IEnumerator LogRenderTextureAlpha(RenderTexture target)
 	{
 		yield return new WaitForEndOfFrame();
@@ -572,6 +842,11 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		_previousTextureScale = _previousScreenMaterial.mainTextureScale;
 		_previousTextureOffset = _previousScreenMaterial.mainTextureOffset;
 		_previousScreenRendererEnabled = _screenRenderer.enabled;
+		_previousShadowCastingMode = _screenRenderer.shadowCastingMode;
+		_previousReceiveShadows = _screenRenderer.receiveShadows;
+		_previousLightProbeUsage = _screenRenderer.lightProbeUsage;
+		_previousReflectionProbeUsage = _screenRenderer.reflectionProbeUsage;
+		_rendererPresentationCaptured = true;
 
 		_screenMaterial = CreateOpaqueLcdMaterial(_renderTexture, _forceOpaqueDebug);
 
@@ -1096,297 +1371,6 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		};
 	}
 
-	private void BuildHomeScreen()
-	{
-		if (TryBuildAssetScreen(
-			    "TerraGroup Home Asset Screen",
-			    "landscape_1024x512/TG_00_Boot_ResolvingDNS.png",
-			    portrait: false,
-			    out _homeGroup))
-		{
-			return;
-		}
-
-		RectTransform root = CreateScreenRoot("TerraGroup Home Screen");
-		_homeGroup = root.gameObject.AddComponent<CanvasGroup>();
-		BuildCommonChrome(root, "TERRAGROUP", "Secure Field Terminal");
-
-		AddText(root, "TACTICAL", 48, FontStyle.Bold, new Color(0.9f, 0.95f, 0.93f), new Rect(42, 120, 680, 58), TextAnchor.MiddleCenter);
-		AddText(root, "AUTHORIZATION NETWORK", 24, FontStyle.Bold, Teal(), new Rect(42, 174, 680, 34), TextAnchor.MiddleCenter);
-
-		RectTransform card = AddPanel(root, new Rect(114, 232, 540, 100), new Color(0.045f, 0.065f, 0.065f, 0.94f));
-		AddText(card, "PHONE AUTHORIZATIONS", 22, FontStyle.Bold, Color.white, new Rect(0, 18, 540, 34), TextAnchor.MiddleCenter);
-		AddText(card, "PURCHASE HERE. DEPLOY FROM UPLINK.", 18, FontStyle.Normal, Muted(), new Rect(0, 54, 540, 30), TextAnchor.MiddleCenter);
-
-		RectTransform footer = AddPanel(root, new Rect(150, 366, 468, 42), new Color(0.09f, 0.28f, 0.26f, 0.58f));
-		AddText(footer, "TAP TO OPEN SERVICES", 23, FontStyle.Bold, Teal(), new Rect(0, 4, 468, 32), TextAnchor.MiddleCenter);
-
-		BuildScanlineOverlay(root);
-	}
-
-	private void BuildTacticalServicesScreen()
-	{
-		if (TryBuildAssetScreen(
-			    "TerraGroup Tactical Services Asset Screen",
-			    GetTacticalServicesAssetPath(_context.SupportType),
-			    portrait: false,
-			    out _tacticalServicesGroup))
-		{
-			AddDynamicTextOverlays(
-				_tacticalServicesGroup.transform as RectTransform,
-				GetTacticalServicesAssetPath(_context.SupportType),
-				portrait: false);
-			return;
-		}
-
-		RectTransform root = CreateScreenRoot("TerraGroup Tactical Services Screen");
-		_tacticalServicesGroup = root.gameObject.AddComponent<CanvasGroup>();
-		BuildCommonChrome(root, "TERRAGROUP", "Tactical Services");
-
-		AddText(root, "SERVICE CATEGORY", 34, FontStyle.Bold, new Color(0.9f, 0.95f, 0.93f), new Rect(42, 110, 680, 44), TextAnchor.MiddleLeft);
-		AddText(root, "SELECT AN AUTHORIZATION TYPE", 18, FontStyle.Normal, Teal(), new Rect(44, 150, 420, 28), TextAnchor.MiddleLeft);
-
-		AddServiceCard(root, ESupportType.Extract, new Rect(42, 194, 206, 142));
-		AddServiceCard(root, ESupportType.Strafe, new Rect(281, 194, 206, 142));
-		AddServiceCard(root, ESupportType.Uav, new Rect(520, 194, 206, 142));
-
-		RectTransform footer = AddPanel(root, new Rect(42, 356, 684, 52), new Color(0.045f, 0.06f, 0.06f, 0.92f));
-		AddText(footer, "1 EXTRACTION   2 FIRE SUPPORT   3 RECON", 22, FontStyle.Bold, new Color(0.9f, 0.93f, 0.9f), new Rect(0, 5, 684, 34), TextAnchor.MiddleCenter);
-
-		BuildScanlineOverlay(root);
-	}
-
-	private void BuildServiceCategoryScreen()
-	{
-		if (TryBuildAssetScreen(
-			    "TerraGroup Service Category Asset Screen",
-			    GetCategoryAssetPath(_context.SupportType),
-			    portrait: false,
-			    out _serviceCategoryGroup))
-		{
-			AddDynamicTextOverlays(
-				_serviceCategoryGroup.transform as RectTransform,
-				GetCategoryAssetPath(_context.SupportType),
-				portrait: false);
-			return;
-		}
-
-		RectTransform root = CreateScreenRoot("TerraGroup Service Category Screen");
-		_serviceCategoryGroup = root.gameObject.AddComponent<CanvasGroup>();
-		BuildCommonChrome(root, "TERRAGROUP", GetCategoryName(_context.SupportType));
-
-		AddText(root, GetCategoryName(_context.SupportType), 34, FontStyle.Bold, new Color(0.9f, 0.95f, 0.93f), new Rect(42, 110, 680, 44), TextAnchor.MiddleLeft);
-		AddText(root, "AVAILABLE SERVICE", 18, FontStyle.Normal, Teal(), new Rect(44, 150, 420, 28), TextAnchor.MiddleLeft);
-
-		RectTransform card = AddPanel(root, new Rect(82, 196, 604, 142), new Color(0.06f, 0.078f, 0.078f, 0.94f));
-		AddText(card, GetServiceTitle(_context.SupportType), 34, FontStyle.Bold, Color.white, new Rect(28, 20, 360, 44), TextAnchor.MiddleLeft);
-		AddText(card, GetServiceDescription(_context.SupportType), 18, FontStyle.Normal, Muted(), new Rect(30, 66, 390, 48), TextAnchor.MiddleLeft);
-		AddText(card, FormatRoubles(_context.CostRoubles), 32, FontStyle.Bold, Amber(), new Rect(400, 44, 172, 42), TextAnchor.MiddleRight);
-		AddText(card, $"AUTH {FireSupportAuthorizations.Get(_context.SupportType)}", 18, FontStyle.Bold, Teal(), new Rect(400, 86, 172, 30), TextAnchor.MiddleRight);
-
-		RectTransform footer = AddPanel(root, new Rect(150, 366, 468, 42), new Color(0.09f, 0.28f, 0.26f, 0.58f));
-		AddText(footer, "TAP TO REVIEW SERVICE", 23, FontStyle.Bold, Teal(), new Rect(0, 4, 468, 32), TextAnchor.MiddleCenter);
-
-		BuildScanlineOverlay(root);
-	}
-
-	private void BuildRequestScreen()
-	{
-		if (TryBuildAssetScreen(
-			    "TerraGroup Request Review Asset Screen",
-			    GetReviewAssetPath(_context.SupportType),
-			    portrait: false,
-			    out _requestGroup))
-		{
-			AddDynamicTextOverlays(
-				_requestGroup.transform as RectTransform,
-				GetReviewAssetPath(_context.SupportType),
-				portrait: false);
-			return;
-		}
-
-		RectTransform root = CreateScreenRoot("Request Screen");
-		_requestGroup = root.gameObject.AddComponent<CanvasGroup>();
-		BuildCommonChrome(root, "TERRAGROUP", "Tactical Services");
-
-		AddText(root, $"{GetServiceTitle(_context.SupportType)} REQUEST", 40, FontStyle.Bold, new Color(0.9f, 0.95f, 0.93f), new Rect(40, 104, 660, 48), TextAnchor.MiddleLeft);
-		AddText(root, "REVIEW AND AUTHORIZE", 18, FontStyle.Normal, Teal(), new Rect(42, 150, 360, 24), TextAnchor.MiddleLeft);
-
-		RectTransform leftPanel = AddPanel(root, new Rect(42, 188, 330, 152), new Color(0.07f, 0.085f, 0.085f, 0.92f));
-		AddText(leftPanel, "MISSION SUMMARY", 18, FontStyle.Normal, Muted(), new Rect(18, 10, 250, 28), TextAnchor.MiddleLeft);
-		AddDetailRow(leftPanel, "DURATION", GetServiceDuration(), 44);
-		AddDetailRow(leftPanel, "DEPLOYMENT", GetDeploymentMode(_context.SupportType), 78);
-		AddDetailRow(leftPanel, "AUTH HELD", FireSupportAuthorizations.Get(_context.SupportType).ToString(), 112);
-
-		RectTransform rightPanel = AddPanel(root, new Rect(396, 188, 330, 152), new Color(0.07f, 0.085f, 0.085f, 0.92f));
-		AddText(rightPanel, "COST BREAKDOWN", 18, FontStyle.Normal, Muted(), new Rect(18, 10, 250, 28), TextAnchor.MiddleLeft);
-		AddDetailRow(rightPanel, "SERVICE FEE", FormatRoubles(_context.CostRoubles), 44);
-		AddDetailRow(rightPanel, "BALANCE", FormatRoubles(_context.BalanceRoubles), 78);
-		AddLine(rightPanel, new Rect(18, 108, rightPanel.sizeDelta.x - 36, 1), new Color(0.45f, 0.53f, 0.5f, 0.18f));
-		AddText(rightPanel, "TOTAL", 18, FontStyle.Bold, Muted(), new Rect(18, 114, 100, 28), TextAnchor.MiddleLeft);
-		AddText(rightPanel, FormatRoubles(_context.CostRoubles), 25, FontStyle.Bold, Amber(), new Rect(124, 108, 188, 38), TextAnchor.MiddleRight);
-
-		RectTransform footer = AddPanel(root, new Rect(42, 356, 684, 52), new Color(0.045f, 0.06f, 0.06f, 0.92f));
-		AddText(footer, "TAP DEVICE TO AUTHORIZE", 28, FontStyle.Bold, new Color(0.9f, 0.93f, 0.9f), new Rect(0, 5, 684, 34), TextAnchor.MiddleCenter);
-
-		BuildScanlineOverlay(root);
-	}
-
-	private void BuildRotateToConfirmScreen()
-	{
-		if (TryBuildAssetScreen(
-			    "TerraGroup Rotate Confirm Asset Screen",
-			    GetReviewAssetPath(_context.SupportType),
-			    portrait: false,
-			    out _rotateGroup))
-		{
-			AddDynamicTextOverlays(
-				_rotateGroup.transform as RectTransform,
-				GetReviewAssetPath(_context.SupportType),
-				portrait: false);
-			return;
-		}
-
-		RectTransform root = CreateScreenRoot("Rotate Confirm Screen");
-		_rotateGroup = root.gameObject.AddComponent<CanvasGroup>();
-		BuildCommonChrome(root, "TERRAGROUP", "Secure Payment");
-
-		AddText(root, "ROTATE DEVICE", 44, FontStyle.Bold, new Color(0.9f, 0.95f, 0.93f), new Rect(42, 128, 682, 54), TextAnchor.MiddleCenter);
-		AddText(root, "TO CONFIRM PAYMENT", 23, FontStyle.Bold, Teal(), new Rect(42, 180, 682, 34), TextAnchor.MiddleCenter);
-
-		RectTransform card = AddPanel(root, new Rect(146, 246, 476, 86), new Color(0.055f, 0.07f, 0.075f, 0.94f));
-		AddText(card, GetServiceTitle(_context.SupportType), 24, FontStyle.Bold, Color.white, new Rect(22, 16, 260, 32), TextAnchor.MiddleLeft);
-		AddText(card, FormatRoubles(_context.CostRoubles), 28, FontStyle.Bold, Amber(), new Rect(260, 14, 190, 36), TextAnchor.MiddleRight);
-		AddText(card, "PRESS ENTER TO CONTINUE", 17, FontStyle.Bold, Muted(), new Rect(22, 48, 428, 28), TextAnchor.MiddleCenter);
-
-		BuildScanlineOverlay(root);
-	}
-
-	private void BuildConfirmPaymentPortraitScreen()
-	{
-		if (TryBuildAssetScreen(
-			    "TerraGroup Confirm Payment Asset Screen",
-			    GetConfirmSwipeAssetPath(_context.SupportType),
-			    portrait: true,
-			    out _confirmPaymentGroup))
-		{
-			AddDynamicTextOverlays(
-				_confirmPaymentGroup.transform as RectTransform,
-				GetConfirmSwipeAssetPath(_context.SupportType),
-				portrait: true);
-			BuildSwipeAnimationOverlay(_confirmPaymentGroup.transform as RectTransform);
-			return;
-		}
-
-		RectTransform root = CreateScreenRoot("Confirm Payment Portrait Screen");
-		_confirmPaymentGroup = root.gameObject.AddComponent<CanvasGroup>();
-		BuildCommonChrome(root, "TERRAGROUP", "Secure Payment");
-
-		RectTransform card = AddPanel(root, new Rect(184, 94, 400, 286), new Color(0.055f, 0.07f, 0.075f, 0.95f));
-		AddText(card, "CONFIRM TRANSFER", 28, FontStyle.Bold, Color.white, new Rect(0, 20, 400, 38), TextAnchor.MiddleCenter);
-		AddText(card, GetServiceTitle(_context.SupportType), 25, FontStyle.Bold, new Color(0.9f, 0.95f, 0.93f), new Rect(30, 78, 220, 36), TextAnchor.MiddleLeft);
-		AddText(card, GetServiceDescription(_context.SupportType), 16, FontStyle.Normal, Muted(), new Rect(32, 114, 220, 54), TextAnchor.MiddleLeft);
-		AddText(card, FormatRoubles(_context.CostRoubles), 31, FontStyle.Bold, Amber(), new Rect(226, 184, 140, 42), TextAnchor.MiddleRight);
-		AddLine(card, new Rect(28, 174, 344, 1), new Color(0.45f, 0.53f, 0.5f, 0.22f));
-		AddText(card, "TOTAL PAYMENT", 17, FontStyle.Bold, Muted(), new Rect(32, 188, 160, 28), TextAnchor.MiddleLeft);
-		AddText(card, "SWIPE UP", 30, FontStyle.Bold, Teal(), new Rect(0, 232, 400, 38), TextAnchor.MiddleCenter);
-
-		BuildSwipeAnimationOverlay(root);
-		BuildScanlineOverlay(root);
-	}
-
-	private void BuildAuthorizingScreen()
-	{
-		if (TryBuildAssetScreen(
-			    "TerraGroup Authorizing Asset Screen",
-			    "portrait_512x1024/TG_05_Authorizing.png",
-			    portrait: true,
-			    out _authorizingGroup))
-		{
-			return;
-		}
-
-		RectTransform root = CreateScreenRoot("Authorizing Screen");
-		_authorizingGroup = root.gameObject.AddComponent<CanvasGroup>();
-		BuildCommonChrome(root, "TERRAGROUP", "Secure Payment");
-
-		AddText(root, "CONFIRMING TRANSFER", 42, FontStyle.Bold, new Color(0.9f, 0.94f, 0.92f), new Rect(42, 118, 682, 54), TextAnchor.MiddleCenter);
-		AddText(root, "AUTHENTICATING DEVICE KEY", 21, FontStyle.Normal, Teal(), new Rect(42, 168, 682, 30), TextAnchor.MiddleCenter);
-
-		RectTransform card = AddPanel(root, new Rect(106, 222, 556, 132), new Color(0.055f, 0.07f, 0.075f, 0.94f));
-		AddText(card, "SERVICE", 18, FontStyle.Normal, Muted(), new Rect(22, 18, 180, 28), TextAnchor.MiddleLeft);
-		AddText(card, GetServiceTitle(_context.SupportType), 30, FontStyle.Bold, Color.white, new Rect(22, 54, 260, 38), TextAnchor.MiddleLeft);
-		AddText(card, GetServiceDescription(_context.SupportType), 18, FontStyle.Normal, new Color(0.76f, 0.8f, 0.78f), new Rect(22, 90, 310, 30), TextAnchor.MiddleLeft);
-		AddText(card, FormatRoubles(_context.CostRoubles), 34, FontStyle.Bold, Amber(), new Rect(318, 54, 210, 44), TextAnchor.MiddleRight);
-		AddText(card, "TRANSFER PENDING", 18, FontStyle.Bold, Amber(), new Rect(318, 96, 210, 28), TextAnchor.MiddleRight);
-
-		RectTransform progress = AddPanel(root, new Rect(116, 372, 536, 46), new Color(0.09f, 0.28f, 0.26f, 0.58f));
-		AddText(progress, "SECURE LINK ESTABLISHED", 24, FontStyle.Bold, Teal(), new Rect(0, 5, 536, 34), TextAnchor.MiddleCenter);
-
-		BuildScanlineOverlay(root);
-	}
-
-	private void BuildAuthorizedScreen()
-	{
-		if (TryBuildAssetScreen(
-			    "TerraGroup Authorized Asset Screen",
-			    GetAuthorizedAssetPath(_context.SupportType),
-			    portrait: true,
-			    out _authorizedGroup))
-		{
-			return;
-		}
-
-		RectTransform root = CreateScreenRoot("Authorized Screen");
-		_authorizedGroup = root.gameObject.AddComponent<CanvasGroup>();
-		BuildCommonChrome(root, "TERRAGROUP", "Verified");
-
-		AddText(root, "REQUEST AUTHORIZED", 46, FontStyle.Bold, new Color(0.91f, 0.96f, 0.93f), new Rect(42, 120, 682, 58), TextAnchor.MiddleCenter);
-		AddText(root, $"{GetServiceTitle(_context.SupportType)} READY TO DEPLOY", 24, FontStyle.Bold, Teal(), new Rect(42, 176, 682, 34), TextAnchor.MiddleCenter);
-
-		RectTransform card = AddPanel(root, new Rect(118, 236, 532, 130), new Color(0.045f, 0.075f, 0.07f, 0.95f));
-		AddText(card, "ACTIVE SERVICE", 18, FontStyle.Normal, Muted(), new Rect(24, 18, 200, 28), TextAnchor.MiddleLeft);
-		AddText(card, GetServiceTitle(_context.SupportType), 32, FontStyle.Bold, Color.white, new Rect(24, 56, 320, 38), TextAnchor.MiddleLeft);
-		AddText(card, "Authorizations", 18, FontStyle.Normal, Muted(), new Rect(24, 98, 180, 26), TextAnchor.MiddleLeft);
-		AddText(card, FireSupportAuthorizations.Get(_context.SupportType).ToString(), 26, FontStyle.Bold, Teal(), new Rect(250, 92, 250, 32), TextAnchor.MiddleRight);
-
-		RectTransform footer = AddPanel(root, new Rect(116, 382, 536, 42), new Color(0.09f, 0.28f, 0.26f, 0.62f));
-		AddText(footer, "SECURE CHANNEL ACTIVE", 23, FontStyle.Bold, Teal(), new Rect(0, 4, 536, 32), TextAnchor.MiddleCenter);
-
-		BuildScanlineOverlay(root);
-	}
-
-	private void BuildDeniedScreen()
-	{
-		_deniedReasonText = null;
-		_deniedDetailText = null;
-		if (TryBuildAssetScreen(
-			    "TerraGroup Payment Denied Asset Screen",
-			    "portrait_512x1024/TG_07_PaymentDenied.png",
-			    portrait: true,
-			    out _deniedGroup))
-		{
-			AddDeniedReasonOverlay(_deniedGroup.transform as RectTransform, portrait: true);
-			return;
-		}
-
-		RectTransform root = CreateScreenRoot("Denied Screen");
-		_deniedGroup = root.gameObject.AddComponent<CanvasGroup>();
-		BuildCommonChrome(root, "TERRAGROUP", "Secure Payment");
-
-		AddText(root, "TRANSFER DENIED", 46, FontStyle.Bold, new Color(1f, 0.55f, 0.45f), new Rect(42, 124, 682, 58), TextAnchor.MiddleCenter);
-		_deniedReasonText = AddText(root, string.Empty, 22, FontStyle.Bold, Amber(), new Rect(42, 178, 682, 34), TextAnchor.MiddleCenter);
-
-		RectTransform card = AddPanel(root, new Rect(118, 236, 532, 120), new Color(0.08f, 0.045f, 0.04f, 0.94f));
-		AddText(card, "SERVICE", 18, FontStyle.Normal, Muted(), new Rect(24, 16, 180, 28), TextAnchor.MiddleLeft);
-		AddText(card, GetServiceTitle(_context.SupportType), 30, FontStyle.Bold, Color.white, new Rect(24, 52, 300, 38), TextAnchor.MiddleLeft);
-		AddText(card, FormatRoubles(_context.BalanceRoubles), 24, FontStyle.Bold, Amber(), new Rect(286, 52, 214, 38), TextAnchor.MiddleRight);
-		_deniedDetailText = AddText(card, string.Empty, 16, FontStyle.Bold, Muted(), new Rect(24, 88, 476, 26), TextAnchor.MiddleCenter);
-		UpdateDeniedReasonText();
-
-		BuildScanlineOverlay(root);
-	}
-
 	public void SetDeploySelection(int index)
 	{
 		_deploySelectionIndex = Mathf.Max(0, index);
@@ -1396,10 +1380,11 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 	{
 		RectTransform root = CreateScreenRoot("TerraGroup Deploy Select Screen", portrait: true);
 		_deployGroup = root.gameObject.AddComponent<CanvasGroup>();
+		RegisterPointerRoot(TerraGroupPhoneState.DeploySelect, root, portrait: true);
 
 		float w = root.sizeDelta.x;
 		float h = root.sizeDelta.y;
-		float sx = w / 432f;
+		float sx = Mathf.Min(w / 432f, h / 768f);
 		int F(int size) => Mathf.RoundToInt(size * sx);
 
 		// Palette from assets/content/ui/phone/docs/design_system.json so the
@@ -1455,6 +1440,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 			for (int i = 0; i < entries.Count; i++)
 			{
 				ESupportType type = entries[i];
+				bool isEnabled = FireSupportServiceAvailability.IsServiceEnabled(type);
 				bool isSelected = i == selected;
 				RectTransform row = AddPanel(root, new Rect(28 * sx, y, rowWidth, rowHeight), isSelected ? panelSelected : panel);
 				if (isSelected)
@@ -1467,8 +1453,18 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 				}
 
 				AddText(row, (i + 1).ToString(), F(22), FontStyle.Bold, isSelected ? amberHigh : muted, new Rect(14 * sx, 0, 40 * sx, rowHeight), TextAnchor.MiddleCenter);
-				AddText(row, GetServiceTitle(type), F(18), FontStyle.Bold, isSelected ? amberHigh : text, new Rect(62 * sx, 0, rowWidth - 150 * sx, rowHeight), TextAnchor.MiddleLeft);
-				AddText(row, $"x{FireSupportAuthorizations.GetDeployableCount(type)}", F(17), FontStyle.Bold, green, new Rect(rowWidth - 76 * sx, 0, 60 * sx, rowHeight), TextAnchor.MiddleRight);
+				AddText(row, GetServiceTitle(type), F(18), FontStyle.Bold, isEnabled && isSelected ? amberHigh : isEnabled ? text : muted, new Rect(62 * sx, 0, rowWidth - 150 * sx, rowHeight), TextAnchor.MiddleLeft);
+				AddText(
+					row,
+					isEnabled ? $"x{FireSupportAuthorizations.Get(type)}" : "LOCKED",
+					F(17),
+					FontStyle.Bold,
+					isEnabled ? green : muted,
+					new Rect(rowWidth - 92 * sx, 0, 76 * sx, rowHeight),
+					TextAnchor.MiddleRight);
+				AddPointerRegion(TerraGroupPhoneState.DeploySelect, root, new Rect(28 * sx, y, rowWidth, rowHeight),
+					new PhonePointerAction(PhonePointerActionKind.SelectDeployment, type, i),
+					() => NativeAvailable(type) && FireSupportAuthorizations.Get(type) > 0);
 				y += rowHeight + rowSpacing;
 			}
 		}
@@ -1477,11 +1473,22 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		if (entries.Count == 0)
 		{
 			AddText(footer, "BACKSPACE  CLOSE", F(14), FontStyle.Bold, muted, new Rect(0, 0, w - 56 * sx, 60 * sx), TextAnchor.MiddleCenter);
+			AddPointerRegion(TerraGroupPhoneState.DeploySelect, root, new Rect(28 * sx, h - 96 * sx, w - 56 * sx, 60 * sx),
+				new PhonePointerAction(PhonePointerActionKind.Close));
 		}
 		else
 		{
 			AddText(footer, "TAP TO DEPLOY", F(14), FontStyle.Bold, green, new Rect(0, 0, (w - 56 * sx) / 2f, 60 * sx), TextAnchor.MiddleCenter);
 			AddText(footer, "BACKSPACE  CANCEL", F(14), FontStyle.Bold, muted, new Rect((w - 56 * sx) / 2f, 0, (w - 56 * sx) / 2f, 60 * sx), TextAnchor.MiddleCenter);
+			int selected = Mathf.Clamp(_deploySelectionIndex, 0, entries.Count - 1);
+			ESupportType selectedType = entries[selected];
+			AddPointerRegion(TerraGroupPhoneState.DeploySelect, root,
+				new Rect(28 * sx, h - 96 * sx, (w - 56 * sx) / 2f, 60 * sx),
+				new PhonePointerAction(PhonePointerActionKind.DeploySelected, selectedType, selected),
+				() => NativeAvailable(selectedType) && FireSupportAuthorizations.Get(selectedType) > 0);
+			AddPointerRegion(TerraGroupPhoneState.DeploySelect, root,
+				new Rect(w / 2f, h - 96 * sx, (w - 56 * sx) / 2f, 60 * sx),
+				new PhonePointerAction(PhonePointerActionKind.Close));
 		}
 	}
 
@@ -1502,6 +1509,458 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		AddText(root, "TERRAGROUP", 46, FontStyle.Bold, text, new Rect(0, h / 2f - 70f, w, 56f), TextAnchor.MiddleCenter);
 		AddText(root, "UPLINK DEPLOY", 22, FontStyle.Bold, green, new Rect(0, h / 2f - 8f, w, 32f), TextAnchor.MiddleCenter);
 		AddText(root, "ESTABLISHING SECURE LINK", 15, FontStyle.Normal, muted, new Rect(0, h / 2f + 30f, w, 26f), TextAnchor.MiddleCenter);
+	}
+
+	private void BuildUavRadarLiveScreen()
+	{
+		RectTransform root = CreateScreenRoot("TerraGroup UAV Radar Live Screen", portrait: true);
+		_uavRadarGroup = root.gameObject.AddComponent<CanvasGroup>();
+
+		float w = root.sizeDelta.x;
+		float h = root.sizeDelta.y;
+		float scale = Mathf.Max(0.1f, Mathf.Min(w / 432f, h / 768f));
+		float left = (w - 432f * scale) * 0.5f;
+		_uavRadarUiScale = scale;
+		int F(int size) => Mathf.Max(8, Mathf.RoundToInt(size * scale));
+		Rect R(float x, float y, float width, float height) =>
+			new(left + x * scale, y * scale, width * scale, height * scale);
+		Rect L(float x, float y, float width, float height) =>
+			new(x * scale, y * scale, width * scale, height * scale);
+
+		Color text = new(0.863f, 0.847f, 0.784f);
+		Color muted = new(0.616f, 0.600f, 0.549f);
+		Color greenHigh = new(0.58f, 0.82f, 0.36f);
+		Color amber = new(0.804f, 0.620f, 0.329f);
+		Color panel = new(0.041f, 0.055f, 0.052f, 0.98f);
+		Color radarBackground = new(0.025f, 0.055f, 0.05f, 0.98f);
+		Color grid = new(0.30f, 0.56f, 0.39f, 0.24f);
+		Color line = new(0.282f, 0.294f, 0.278f, 0.55f);
+
+		AddText(root, "TERRAGROUP", F(22), FontStyle.Bold, text, R(26, 18, 240, 28), TextAnchor.MiddleLeft);
+		AddText(root, "TACTICAL SERVICES", F(10), FontStyle.Bold, muted, R(27, 44, 220, 18), TextAnchor.MiddleLeft);
+		AddText(root, "OS v2.4.1.7", F(12), FontStyle.Normal, muted, R(126, 26, 180, 20), TextAnchor.MiddleCenter);
+		AddText(root, DateTime.Now.ToString("HH:mm"), F(15), FontStyle.Bold, text, R(316, 24, 90, 24), TextAnchor.MiddleRight);
+		AddLine(root, R(20, 70, 392, 1), line);
+
+		AddText(root, "UAV RECON LINK", F(24), FontStyle.Bold, text, R(28, 88, 250, 34), TextAnchor.MiddleLeft);
+		RectTransform statusPanel = AddPanel(root, R(28, 126, 376, 32), panel);
+		_uavRadarStatusText = AddText(statusPanel, "ACTIVE", F(14), FontStyle.Bold, greenHigh, L(12, 0, 112, 32), TextAnchor.MiddleLeft);
+		AddText(statusPanel, "ENCRYPTED // LIVE FEED", F(11), FontStyle.Bold, muted, L(128, 0, 236, 32), TextAnchor.MiddleRight);
+
+		float radarSize = RadarHudPlotSize * scale;
+		_uavRadarPlot = AddPanel(
+			root,
+			R(
+				RadarHudPlotX,
+				RadarHudPlotTop,
+				RadarHudPlotSize,
+				RadarHudPlotSize),
+			radarBackground);
+		_uavRadarPlotRadius = radarSize * 0.5f - 14f * scale;
+
+		AddLine(_uavRadarPlot, new Rect(radarSize * 0.5f, 10f * scale, 1f, radarSize - 20f * scale), grid);
+		AddLine(_uavRadarPlot, new Rect(10f * scale, radarSize * 0.5f, radarSize - 20f * scale, 1f), grid);
+		AddRadarGridSquare(_uavRadarPlot, 52f * scale, radarSize - 104f * scale, grid);
+		AddRadarGridSquare(_uavRadarPlot, 104f * scale, radarSize - 208f * scale, grid);
+		AddText(_uavRadarPlot, "FWD", F(9), FontStyle.Bold, greenHigh, new Rect(radarSize * 0.5f - 28f * scale, 8f * scale, 56f * scale, 18f * scale), TextAnchor.MiddleCenter);
+		AddText(_uavRadarPlot, "R", F(10), FontStyle.Bold, muted, new Rect(radarSize - 28f * scale, radarSize * 0.5f - 9f * scale, 18f * scale, 18f * scale), TextAnchor.MiddleCenter);
+		AddText(_uavRadarPlot, "AFT", F(9), FontStyle.Bold, muted, new Rect(radarSize * 0.5f - 28f * scale, radarSize - 27f * scale, 56f * scale, 18f * scale), TextAnchor.MiddleCenter);
+		AddText(_uavRadarPlot, "L", F(10), FontStyle.Bold, muted, new Rect(10f * scale, radarSize * 0.5f - 9f * scale, 18f * scale, 18f * scale), TextAnchor.MiddleCenter);
+
+		GameObject sweepObject = new("UAV Radar Sweep");
+		sweepObject.layer = RenderLayer;
+		sweepObject.transform.SetParent(_uavRadarPlot, false);
+		_uavRadarSweepTransform = sweepObject.AddComponent<RectTransform>();
+		_uavRadarSweepTransform.anchorMin = new Vector2(0.5f, 0.5f);
+		_uavRadarSweepTransform.anchorMax = new Vector2(0.5f, 0.5f);
+		_uavRadarSweepTransform.pivot = new Vector2(0.5f, 0f);
+		_uavRadarSweepTransform.anchoredPosition = Vector2.zero;
+		_uavRadarSweepTransform.sizeDelta = new Vector2(Mathf.Max(1f, 2f * scale), _uavRadarPlotRadius);
+		Image sweepImage = sweepObject.AddComponent<Image>();
+		sweepImage.sprite = WhiteSprite;
+		sweepImage.color = new Color(greenHigh.r, greenHigh.g, greenHigh.b, 0.58f);
+		sweepImage.raycastTarget = false;
+
+		GameObject playerMarkerObject = new("Local Player Marker");
+		playerMarkerObject.layer = RenderLayer;
+		playerMarkerObject.transform.SetParent(_uavRadarPlot, false);
+		RectTransform playerMarker = playerMarkerObject.AddComponent<RectTransform>();
+		playerMarker.anchorMin = new Vector2(0.5f, 0.5f);
+		playerMarker.anchorMax = new Vector2(0.5f, 0.5f);
+		playerMarker.pivot = new Vector2(0.5f, 0.5f);
+		playerMarker.anchoredPosition = Vector2.zero;
+		playerMarker.sizeDelta = Vector2.one * (12f * scale);
+		playerMarker.localRotation = Quaternion.Euler(0f, 0f, 45f);
+		Image playerMarkerImage = playerMarkerObject.AddComponent<Image>();
+		playerMarkerImage.sprite = WhiteSprite;
+		playerMarkerImage.color = greenHigh;
+		playerMarkerImage.raycastTarget = false;
+
+		RectTransform metrics = AddPanel(root, R(28, 558, 376, 46), panel);
+		AddText(metrics, "TIME", F(9), FontStyle.Bold, muted, L(12, 4, 102, 14), TextAnchor.MiddleLeft);
+		AddText(metrics, "RANGE", F(9), FontStyle.Bold, muted, L(137, 4, 102, 14), TextAnchor.MiddleCenter);
+		AddText(metrics, "CONTACTS", F(9), FontStyle.Bold, muted, L(262, 4, 102, 14), TextAnchor.MiddleRight);
+		_uavRadarRemainingText = AddText(metrics, "--:--", F(18), FontStyle.Bold, greenHigh, L(12, 18, 102, 24), TextAnchor.MiddleLeft);
+		_uavRadarRangeText = AddText(metrics, "--- M", F(17), FontStyle.Bold, text, L(137, 18, 102, 24), TextAnchor.MiddleCenter);
+		_uavRadarContactsText = AddText(metrics, "0", F(18), FontStyle.Bold, amber, L(262, 18, 102, 24), TextAnchor.MiddleRight);
+
+		RectTransform scanPanel = AddPanel(root, R(28, 614, 376, 46), panel);
+		_uavRadarNextScanText = AddText(scanPanel, "NEXT SWEEP --.-s", F(11), FontStyle.Bold, muted, L(12, 3, 352, 20), TextAnchor.MiddleCenter);
+		GameObject progressObject = new("UAV Sweep Progress");
+		progressObject.layer = RenderLayer;
+		progressObject.transform.SetParent(scanPanel, false);
+		RectTransform progressTransform = progressObject.AddComponent<RectTransform>();
+		progressTransform.anchorMin = new Vector2(0f, 1f);
+		progressTransform.anchorMax = new Vector2(0f, 1f);
+		progressTransform.pivot = new Vector2(0f, 1f);
+		progressTransform.anchoredPosition = new Vector2(12f * scale, -29f * scale);
+		progressTransform.sizeDelta = new Vector2(352f * scale, 4f * scale);
+		_uavRadarScanProgressImage = progressObject.AddComponent<Image>();
+		_uavRadarScanProgressImage.sprite = WhiteSprite;
+		_uavRadarScanProgressImage.color = greenHigh;
+		_uavRadarScanProgressImage.type = Image.Type.Filled;
+		_uavRadarScanProgressImage.fillMethod = Image.FillMethod.Horizontal;
+		_uavRadarScanProgressImage.fillOrigin = 0;
+		_uavRadarScanProgressImage.fillAmount = 0f;
+		_uavRadarScanProgressImage.raycastTarget = false;
+
+		string radarKey = PluginSettings.OpenUavRadarKey != null
+			? PluginSettings.OpenUavRadarKey.Value.ToString().ToUpperInvariant()
+			: "J";
+		RectTransform footer = AddPanel(root, new Rect(left + 28f * scale, h - 74f * scale, 376f * scale, 50f * scale), panel);
+		string footerText = _radarHudMode
+			? "REQUESTER-LOCAL // LIVE HUD"
+			: $"RELEASE [{radarKey}] TO RESTORE WEAPON";
+		AddText(footer, footerText, F(12), FontStyle.Bold, greenHigh, new Rect(0, 0, 376f * scale, 50f * scale), TextAnchor.MiddleCenter);
+
+		_uavRadarNextTextRefreshAt = 0f;
+	}
+
+	private void BuildDangerCloseWarningScreen()
+	{
+		RectTransform root = CreateScreenRoot(
+			"TerraGroup Danger Close Warning Screen",
+			portrait: true);
+		_dangerCloseWarningGroup = root.gameObject.AddComponent<CanvasGroup>();
+
+		float w = root.sizeDelta.x;
+		float h = root.sizeDelta.y;
+		float scale = Mathf.Max(0.1f, Mathf.Min(w / 432f, h / 768f));
+		float left = (w - 432f * scale) * 0.5f;
+		int F(int size) => Mathf.Max(8, Mathf.RoundToInt(size * scale));
+		Rect R(float x, float y, float width, float height) =>
+			new(left + x * scale, y * scale, width * scale, height * scale);
+		Rect L(float x, float y, float width, float height) =>
+			new(x * scale, y * scale, width * scale, height * scale);
+
+		Color text = new(0.863f, 0.847f, 0.784f);
+		Color muted = new(0.616f, 0.600f, 0.549f);
+		Color amber = new(0.95f, 0.64f, 0.22f);
+		Color warning = new(0.92f, 0.26f, 0.16f);
+		Color panel = new(0.065f, 0.045f, 0.038f, 0.98f);
+		Color urgentPanel = new(0.13f, 0.035f, 0.025f, 0.98f);
+		Color line = new(0.55f, 0.24f, 0.18f, 0.72f);
+
+		AddText(root, "TERRAGROUP", F(22), FontStyle.Bold, text, R(26, 18, 240, 28), TextAnchor.MiddleLeft);
+		AddText(root, "TACTICAL SERVICES", F(10), FontStyle.Bold, muted, R(27, 44, 220, 18), TextAnchor.MiddleLeft);
+		AddText(root, DateTime.Now.ToString("HH:mm"), F(15), FontStyle.Bold, text, R(316, 24, 90, 24), TextAnchor.MiddleRight);
+		AddLine(root, R(20, 70, 392, 1), line);
+
+		AddText(root, "DANGER CLOSE", F(31), FontStyle.Bold, warning, R(28, 90, 376, 42), TextAnchor.MiddleCenter);
+		AddText(root, "LOCAL SAFETY ADVISORY", F(11), FontStyle.Bold, amber, R(28, 132, 376, 22), TextAnchor.MiddleCenter);
+
+		RectTransform taskingPanel = AddPanel(root, R(28, 174, 376, 104), panel);
+		AddText(taskingPanel, "A-10 STRAFE TASKED", F(24), FontStyle.Bold, text, L(12, 14, 352, 34), TextAnchor.MiddleCenter);
+		AddText(taskingPanel, "GUN RUN APPROACHING YOUR AREA", F(11), FontStyle.Bold, muted, L(12, 54, 352, 22), TextAnchor.MiddleCenter);
+		AddText(taskingPanel, "INBOUND SOON", F(14), FontStyle.Bold, amber, L(12, 77, 352, 20), TextAnchor.MiddleCenter);
+
+		RectTransform coverPanel = AddPanel(root, R(28, 306, 376, 238), urgentPanel);
+		AddText(coverPanel, "SEEK", F(45), FontStyle.Bold, text, L(12, 22, 352, 58), TextAnchor.MiddleCenter);
+		AddText(coverPanel, "COVER NOW", F(45), FontStyle.Bold, warning, L(12, 78, 352, 62), TextAnchor.MiddleCenter);
+		AddLine(coverPanel, L(24, 151, 328, 2), line);
+		_dangerCloseEtaText = AddText(
+			coverPanel,
+			$"ETA ~{Mathf.Max(0, _context.DurationSeconds)} SEC",
+			F(27),
+			FontStyle.Bold,
+			amber,
+			L(12, 166, 352, 46),
+			TextAnchor.MiddleCenter);
+
+		RectTransform footer = AddPanel(root, R(28, 574, 376, 76), panel);
+		AddText(footer, "THIS CALL DOES NOT DELAY THE STRIKE", F(10), FontStyle.Bold, muted, L(10, 8, 356, 24), TextAnchor.MiddleCenter);
+		string answerKey = PluginSettings.OpenUavRadarKey != null
+			? PluginSettings.OpenUavRadarKey.Value.ToString().ToUpperInvariant()
+			: "J";
+		AddText(footer, $"[{answerKey}] STOW / REOPEN UNTIL INBOUND", F(12), FontStyle.Bold, text, L(10, 35, 356, 30), TextAnchor.MiddleCenter);
+
+		_dangerCloseLastEtaSeconds = int.MinValue;
+		UpdateDangerCloseWarningScreen();
+	}
+
+	private void UpdateDangerCloseWarningScreen()
+	{
+		int secondsRemaining = Mathf.Max(
+			0,
+			UavPhoneHotkeyController.DangerCloseSecondsRemaining);
+		if (secondsRemaining == _dangerCloseLastEtaSeconds)
+		{
+			return;
+		}
+
+		_dangerCloseLastEtaSeconds = secondsRemaining;
+		SetTextIfChanged(_dangerCloseEtaText, $"ETA ~{secondsRemaining} SEC");
+	}
+
+	private static void AddRadarGridSquare(RectTransform parent, float inset, float size, Color color)
+	{
+		if (parent == null || size <= 0f)
+		{
+			return;
+		}
+
+		AddStaticLine(parent, new Rect(inset, inset, size, 1f), color);
+		AddStaticLine(parent, new Rect(inset, inset + size - 1f, size, 1f), color);
+		AddStaticLine(parent, new Rect(inset, inset, 1f, size), color);
+		AddStaticLine(parent, new Rect(inset + size - 1f, inset, 1f, size), color);
+	}
+
+	private static void AddStaticLine(RectTransform parent, Rect rect, Color color)
+	{
+		GameObject gameObject = new("Radar Grid Line");
+		gameObject.layer = RenderLayer;
+		gameObject.transform.SetParent(parent, false);
+
+		RectTransform rt = gameObject.AddComponent<RectTransform>();
+		rt.anchorMin = new Vector2(0f, 1f);
+		rt.anchorMax = new Vector2(0f, 1f);
+		rt.pivot = new Vector2(0f, 1f);
+		rt.anchoredPosition = new Vector2(rect.x, -rect.y);
+		rt.sizeDelta = new Vector2(rect.width, rect.height);
+
+		Image image = gameObject.AddComponent<Image>();
+		image.sprite = WhiteSprite;
+		image.color = color;
+		image.raycastTarget = false;
+	}
+
+	private void UpdateUavRadarLiveScreen()
+	{
+		if (!UavReconOverlay.TryGetSessionSnapshot(out UavReconOverlay.ReconSessionSnapshot snapshot))
+		{
+			SetUavRadarLinkLost();
+			return;
+		}
+
+		if (_uavRadarStatusText != null)
+		{
+			SetTextIfChanged(_uavRadarStatusText, "ACTIVE");
+			_uavRadarStatusText.color = new Color(0.58f, 0.82f, 0.36f);
+		}
+
+		float scanInterval = Mathf.Max(0.1f, snapshot.ScanIntervalSeconds);
+		float sweepProgress = 1f - Mathf.Clamp01(snapshot.NextScanInSeconds / scanInterval);
+		if (_uavRadarScanProgressImage != null)
+		{
+			_uavRadarScanProgressImage.fillAmount = sweepProgress;
+		}
+
+		if (_uavRadarSweepTransform != null)
+		{
+			_uavRadarSweepTransform.gameObject.SetActive(true);
+			_uavRadarSweepTransform.localEulerAngles = new Vector3(0f, 0f, -360f * sweepProgress);
+		}
+
+		Player player = Singleton<GameWorld>.Instance?.MainPlayer;
+		if (player?.Transform == null || _uavRadarPlot == null)
+		{
+			_uavRadarContactSnapshots.Clear();
+			HideUavRadarBlips(0);
+		}
+		else
+		{
+			UavReconOverlay.CopyContactSnapshots(_uavRadarContactSnapshots);
+			UpdateUavRadarContacts(player, Mathf.Max(1f, snapshot.RangeMeters));
+		}
+
+		if (Time.unscaledTime < _uavRadarNextTextRefreshAt)
+		{
+			return;
+		}
+
+		_uavRadarNextTextRefreshAt = Time.unscaledTime + UavRadarTextRefreshSeconds;
+		RefreshUavRadarText(snapshot, _uavRadarContactSnapshots.Count);
+	}
+
+	private void RefreshUavRadarText(UavReconOverlay.ReconSessionSnapshot snapshot, int visibleContactCount)
+	{
+		int remainingSeconds = Mathf.Max(0, Mathf.CeilToInt(snapshot.RemainingSeconds));
+		if (remainingSeconds != _uavRadarLastRemainingSeconds)
+		{
+			_uavRadarLastRemainingSeconds = remainingSeconds;
+			SetTextIfChanged(_uavRadarRemainingText, $"{remainingSeconds / 60:00}:{remainingSeconds % 60:00}");
+		}
+
+		int rangeMeters = Mathf.Max(0, Mathf.RoundToInt(snapshot.RangeMeters));
+		if (rangeMeters != _uavRadarLastRangeMeters)
+		{
+			_uavRadarLastRangeMeters = rangeMeters;
+			SetTextIfChanged(_uavRadarRangeText, $"{rangeMeters} M");
+		}
+
+		if (visibleContactCount != _uavRadarLastContactCount)
+		{
+			_uavRadarLastContactCount = visibleContactCount;
+			SetTextIfChanged(_uavRadarContactsText, visibleContactCount.ToString(CultureInfo.InvariantCulture));
+		}
+
+		int nextScanTenths = Mathf.Max(0, Mathf.CeilToInt(snapshot.NextScanInSeconds * 10f));
+		if (nextScanTenths != _uavRadarLastNextScanTenths)
+		{
+			_uavRadarLastNextScanTenths = nextScanTenths;
+			SetTextIfChanged(_uavRadarNextScanText, $"NEXT SWEEP {nextScanTenths / 10f:0.0}s");
+		}
+	}
+
+	private void UpdateUavRadarContacts(Player player, float rangeMeters)
+	{
+		int count = _uavRadarContactSnapshots.Count;
+		EnsureUavRadarBlipCapacity(count);
+
+		Vector3 origin = player.Transform.position;
+		Vector3 right = player.Transform.right;
+		Vector3 forward = player.Transform.forward;
+		right.y = 0f;
+		forward.y = 0f;
+		if (right.sqrMagnitude < 0.001f || forward.sqrMagnitude < 0.001f)
+		{
+			right = Vector3.right;
+			forward = Vector3.forward;
+		}
+		else
+		{
+			right.Normalize();
+			forward.Normalize();
+		}
+
+		for (int i = 0; i < count; i++)
+		{
+			UavReconOverlay.ReconContactSnapshot contact = _uavRadarContactSnapshots[i];
+			Vector3 relative = contact.WorldPosition - origin;
+			relative.y = 0f;
+			Vector2 normalized = new(
+				Vector3.Dot(relative, right) / rangeMeters,
+				Vector3.Dot(relative, forward) / rangeMeters);
+			if (normalized.sqrMagnitude > 1f)
+			{
+				normalized.Normalize();
+			}
+
+			Image blip = _uavRadarBlips[i];
+			blip.enabled = true;
+			blip.rectTransform.anchoredPosition = normalized * _uavRadarPlotRadius;
+			Color color = contact.Color;
+			color.a = Mathf.Max(0.9f, color.a);
+			blip.color = color;
+		}
+
+		HideUavRadarBlips(count);
+	}
+
+	private void EnsureUavRadarBlipCapacity(int requiredCount)
+	{
+		while (_uavRadarBlips.Count < requiredCount && _uavRadarPlot != null)
+		{
+			GameObject blipObject = new($"UAV Radar Contact {_uavRadarBlips.Count + 1}");
+			blipObject.layer = RenderLayer;
+			blipObject.transform.SetParent(_uavRadarPlot, false);
+
+			RectTransform rt = blipObject.AddComponent<RectTransform>();
+			rt.anchorMin = new Vector2(0.5f, 0.5f);
+			rt.anchorMax = new Vector2(0.5f, 0.5f);
+			rt.pivot = new Vector2(0.5f, 0.5f);
+			rt.sizeDelta = Vector2.one * (10f * _uavRadarUiScale);
+			rt.localRotation = Quaternion.Euler(0f, 0f, 45f);
+
+			Image image = blipObject.AddComponent<Image>();
+			image.sprite = WhiteSprite;
+			image.color = Color.white;
+			image.raycastTarget = false;
+			image.enabled = false;
+			_uavRadarBlips.Add(image);
+		}
+	}
+
+	private void HideUavRadarBlips(int firstHiddenIndex)
+	{
+		for (int i = Mathf.Max(0, firstHiddenIndex); i < _uavRadarBlips.Count; i++)
+		{
+			Image blip = _uavRadarBlips[i];
+			if (blip != null)
+			{
+				blip.enabled = false;
+			}
+		}
+	}
+
+	private void SetUavRadarLinkLost()
+	{
+		if (_uavRadarStatusText != null)
+		{
+			SetTextIfChanged(_uavRadarStatusText, "LINK LOST");
+			_uavRadarStatusText.color = new Color(0.804f, 0.620f, 0.329f);
+		}
+
+		SetTextIfChanged(_uavRadarRemainingText, "--:--");
+		SetTextIfChanged(_uavRadarRangeText, "--- M");
+		SetTextIfChanged(_uavRadarContactsText, "0");
+		SetTextIfChanged(_uavRadarNextScanText, "NEXT SWEEP --.-s");
+		if (_uavRadarScanProgressImage != null)
+		{
+			_uavRadarScanProgressImage.fillAmount = 0f;
+		}
+
+		if (_uavRadarSweepTransform != null)
+		{
+			_uavRadarSweepTransform.gameObject.SetActive(false);
+		}
+
+		_uavRadarContactSnapshots.Clear();
+		HideUavRadarBlips(0);
+		_uavRadarLastRemainingSeconds = int.MinValue;
+		_uavRadarLastRangeMeters = int.MinValue;
+		_uavRadarLastContactCount = int.MinValue;
+		_uavRadarLastNextScanTenths = int.MinValue;
+	}
+
+	private static void SetTextIfChanged(Text label, string value)
+	{
+		if (label != null && !string.Equals(label.text, value, StringComparison.Ordinal))
+		{
+			label.text = value;
+		}
+	}
+
+	private void ResetUavRadarUiReferences()
+	{
+		_uavRadarGroup = null;
+		_uavRadarPlot = null;
+		_uavRadarSweepTransform = null;
+		_uavRadarScanProgressImage = null;
+		_uavRadarStatusText = null;
+		_uavRadarRemainingText = null;
+		_uavRadarRangeText = null;
+		_uavRadarContactsText = null;
+		_uavRadarNextScanText = null;
+		_uavRadarContactSnapshots.Clear();
+		_uavRadarBlips.Clear();
+		_uavRadarPlotRadius = 0f;
+		_uavRadarUiScale = 1f;
+		_uavRadarNextTextRefreshAt = 0f;
+		_uavRadarLastRemainingSeconds = int.MinValue;
+		_uavRadarLastRangeMeters = int.MinValue;
+		_uavRadarLastContactCount = int.MinValue;
+		_uavRadarLastNextScanTenths = int.MinValue;
 	}
 
 	private void AddDeniedReasonOverlay(RectTransform root, bool portrait)
@@ -1742,9 +2201,11 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 			"priority_exfil" => FormatServicePrice(ESupportType.PriorityExfil),
 			"uav" => FormatServicePrice(ESupportType.Uav),
 			"focused_sweep" => FormatServicePrice(ESupportType.FocusedSweep),
-			"carried_roubles" => FormatLayoutRoubles(FireSupportPayment.GetEffectiveBalance()),
-			"effective_roubles" => FormatLayoutRoubles(FireSupportPayment.GetEffectiveBalance()),
-			"effective_balance" => FormatLayoutRoubles(FireSupportPayment.GetEffectiveBalance()),
+			"carried_roubles" => FormatLayoutCurrency(FireSupportPayment.GetEffectiveBalance()),
+			"carried_currency" => FormatLayoutCurrency(FireSupportPayment.GetEffectiveBalance()),
+			"effective_roubles" => FormatLayoutCurrency(FireSupportPayment.GetEffectiveBalance()),
+			"effective_currency" => FormatLayoutCurrency(FireSupportPayment.GetEffectiveBalance()),
+			"effective_balance" => FormatLayoutCurrency(FireSupportPayment.GetEffectiveBalance()),
 			"duration" => FormatDynamicDuration(field.Format),
 			"coverage_radius" => FormatCoverageRadius(),
 			_ => string.Empty
@@ -1770,7 +2231,9 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 	private static string FormatServicePrice(ESupportType supportType)
 	{
 		return FireSupportServiceAvailability.IsServiceEnabled(supportType)
-			? FormatLayoutRoubles(FireSupportPayment.GetActiveCost(supportType))
+			? FormatLayoutCurrency(
+				FireSupportPayment.GetActiveCost(supportType),
+				FireSupportPayment.GetActivePaymentCurrency())
 			: "LOCKED";
 	}
 
@@ -1781,14 +2244,23 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 			: ESupportType.Uav;
 	}
 
-	private static string FormatLayoutRoubles(int amount)
+	private string FormatLayoutCurrency(int amount)
+	{
+		return FormatLayoutCurrency(amount, _context.Currency);
+	}
+
+	private static string FormatLayoutCurrency(
+		int amount,
+		PaymentCurrency currency)
 	{
 		if (amount < 0)
 		{
 			return "SYNC";
 		}
 
-		return "\u20BD " + Mathf.Max(0, amount).ToString("N0", CultureInfo.InvariantCulture).Replace(',', ' ');
+		return PaymentCurrencyInfo.GetSymbol(currency) +
+		       " " +
+		       Mathf.Max(0, amount).ToString("N0", CultureInfo.InvariantCulture).Replace(',', ' ');
 	}
 
 	private static TextAlignmentOptions ToTmpAlignment(string alignment)
@@ -1924,6 +2396,11 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		{
 			PluginSettings.FocusedSweepRangeMeters.SettingChanged += OnDynamicSettingChanged;
 		}
+
+		if (PluginSettings.OpenUavRadarKey != null)
+		{
+			PluginSettings.OpenUavRadarKey.SettingChanged += OnDynamicSettingChanged;
+		}
 	}
 
 	private void UnsubscribeSettingChanges()
@@ -1988,6 +2465,11 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		{
 			PluginSettings.FocusedSweepRangeMeters.SettingChanged -= OnDynamicSettingChanged;
 		}
+
+		if (PluginSettings.OpenUavRadarKey != null)
+		{
+			PluginSettings.OpenUavRadarKey.SettingChanged -= OnDynamicSettingChanged;
+		}
 	}
 
 	private void OnDynamicSettingChanged(object sender, EventArgs args)
@@ -2002,7 +2484,8 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 				_context.SupportType,
 				FireSupportPayment.GetActiveCost(_context.SupportType),
 				FireSupportPayment.GetEffectiveBalance(),
-			UavReconSettings.GetDurationSeconds(_context.SupportType)),
+				UavReconSettings.GetDurationSeconds(_context.SupportType),
+				FireSupportPayment.GetActivePaymentCurrency()),
 			_currentState);
 	}
 
@@ -2284,7 +2767,9 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		AddText(card, GetCategoryName(supportType), 19, FontStyle.Bold, selected ? Teal() : Color.white, new Rect(0, 20, rect.width, 30), TextAnchor.MiddleCenter);
 		AddText(card, GetServiceTitle(supportType), 18, FontStyle.Bold, Color.white, new Rect(12, 60, rect.width - 24, 30), TextAnchor.MiddleCenter);
 		AddText(card, FireSupportServiceAvailability.IsServiceEnabled(supportType)
-				? FormatRoubles(FireSupportPayment.GetActiveCost(supportType))
+				? FormatCurrency(
+					FireSupportPayment.GetActiveCost(supportType),
+					FireSupportPayment.GetActivePaymentCurrency())
 				: "LOCKED",
 			18,
 			FontStyle.Bold,
@@ -2404,6 +2889,8 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		SetGroup(_deniedGroup, _deniedGroup == activeGroup);
 		SetGroup(_deployGroup, _deployGroup == activeGroup);
 		SetGroup(_deployBootGroup, _deployBootGroup == activeGroup);
+		SetGroup(_uavRadarGroup, _uavRadarGroup == activeGroup);
+		SetGroup(_dangerCloseWarningGroup, _dangerCloseWarningGroup == activeGroup);
 	}
 
 	private IEnumerator FadeToStateCoroutine(TerraGroupPhoneState state, float durationSeconds)
@@ -2429,7 +2916,9 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 			_authorizedGroup,
 			_deniedGroup,
 			_deployGroup,
-			_deployBootGroup
+			_deployBootGroup,
+			_uavRadarGroup,
+			_dangerCloseWarningGroup
 		};
 
 		foreach (CanvasGroup group in groups)
@@ -2465,6 +2954,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 
 	private void HandleVisibleState(TerraGroupPhoneState state)
 	{
+		RefreshNativeState(state);
 		if (state != TerraGroupPhoneState.ConfirmPaymentPortrait)
 		{
 			StopSwipeAnimation();
@@ -2473,6 +2963,18 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		if (state == TerraGroupPhoneState.Denied)
 		{
 			UpdateDeniedReasonText();
+		}
+
+		if (state == TerraGroupPhoneState.UavRadarLive)
+		{
+			_uavRadarNextTextRefreshAt = 0f;
+			UpdateUavRadarLiveScreen();
+		}
+
+		if (state == TerraGroupPhoneState.DangerCloseWarning)
+		{
+			_dangerCloseLastEtaSeconds = int.MinValue;
+			UpdateDangerCloseWarningScreen();
 		}
 	}
 
@@ -2491,6 +2993,8 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 			TerraGroupPhoneState.Denied => _deniedGroup,
 			TerraGroupPhoneState.DeploySelect => _deployGroup,
 			TerraGroupPhoneState.DeployBoot => _deployBootGroup,
+			TerraGroupPhoneState.UavRadarLive => _uavRadarGroup,
+			TerraGroupPhoneState.DangerCloseWarning => _dangerCloseWarningGroup,
 			_ => _homeGroup
 		};
 	}
@@ -2519,7 +3023,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 
 	public void SetConfirmSwipeAnimationProgress(float progress)
 	{
-		if (_swipeArrowImage == null)
+		if (_swipeArrowImage == null && _nativeSwipeArrow == null)
 		{
 			return;
 		}
@@ -2530,7 +3034,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 
 	private void StartSwipeAnimation()
 	{
-		if (_swipeArrowImage == null)
+		if (_swipeArrowImage == null && _nativeSwipeArrow == null)
 		{
 			return;
 		}
@@ -2546,6 +3050,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 			StopCoroutine(_swipeAnimationCoroutine);
 			_swipeAnimationCoroutine = null;
 		}
+		if (_nativeSwipeVisual != null) _nativeSwipeVisual.alpha = 0f;
 
 		if (_swipeArrowImage != null)
 		{
@@ -2558,7 +3063,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 	private IEnumerator AnimateSwipeArrow()
 	{
 		float startedAt = Time.unscaledTime;
-		while (_swipeArrowImage != null &&
+		while ((_swipeArrowImage != null || _nativeSwipeArrow != null) &&
 		       _currentState == TerraGroupPhoneState.ConfirmPaymentPortrait)
 		{
 			float t = Mathf.Clamp01((Time.unscaledTime - startedAt) / SwipeArrowAnimationSeconds);
@@ -2571,7 +3076,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 			yield return null;
 		}
 
-		if (_swipeArrowImage != null)
+		if (_swipeArrowImage != null || _nativeSwipeArrow != null)
 		{
 			SetSwipeArrowProgress(1f);
 		}
@@ -2581,6 +3086,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 
 	private void SetSwipeArrowProgress(float progress)
 	{
+		SetNativeSwipeProgress(progress);
 		if (_swipeArrowImage == null)
 		{
 			return;
@@ -2757,8 +3263,8 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 	{
 		return supportType switch
 		{
-			ESupportType.Extract => "EXTRACTION",
-			ESupportType.PriorityExfil => "EXTRACTION",
+			ESupportType.Extract => "UH-60 SERVICES",
+			ESupportType.PriorityExfil => "UH-60 SERVICES",
 			ESupportType.Strafe => "FIRE SUPPORT",
 			ESupportType.DoubleStrafe => "FIRE SUPPORT",
 			ESupportType.Uav => "RECON",
@@ -2772,7 +3278,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		return supportType switch
 		{
 			ESupportType.Extract => "UH-60 EXTRACTION",
-			ESupportType.PriorityExfil => "PRIORITY EXFIL",
+			ESupportType.PriorityExfil => "UH-60 CARGO TRANSFER",
 			ESupportType.Strafe => "A-10 STRAFE",
 			ESupportType.DoubleStrafe => "A-10 DOUBLE PASS",
 			ESupportType.Uav => "UAV RECON",
@@ -2786,7 +3292,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		return supportType switch
 		{
 			ESupportType.Extract => "Authorize helicopter pickup. Aim to mark the LZ.",
-			ESupportType.PriorityExfil => "Authorize expedited pickup. Aim to mark the LZ.",
+			ESupportType.PriorityExfil => "Dispatch cargo pickup. Handling is charged when items are loaded.",
 			ESupportType.Strafe => "Authorize autocannon pass. Aim to mark the gun run.",
 			ESupportType.DoubleStrafe => "Authorize two autocannon passes. Aim to mark the gun run.",
 			ESupportType.Uav => "Authorize local recon scan from the Uplink.",
@@ -2800,7 +3306,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		return _context.SupportType switch
 		{
 			ESupportType.Extract => "PICKUP",
-			ESupportType.PriorityExfil => "EXPEDITED",
+			ESupportType.PriorityExfil => "CARGO ONLY",
 			ESupportType.Strafe => "ONE PASS",
 			ESupportType.DoubleStrafe => "TWO PASSES",
 			ESupportType.FocusedSweep => FormatDuration(_context.DurationSeconds),
@@ -2823,14 +3329,19 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		};
 	}
 
-	private static string FormatRoubles(int amount)
+	private string FormatCurrency(int amount)
+	{
+		return FormatCurrency(amount, _context.Currency);
+	}
+
+	private static string FormatCurrency(int amount, PaymentCurrency currency)
 	{
 		if (amount < 0)
 		{
 			return "SYNC";
 		}
 
-		return $"{amount:N0} \u20BD";
+		return PaymentCurrencyInfo.Format(amount, currency);
 	}
 
 	private static Color Teal()

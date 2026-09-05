@@ -1,15 +1,17 @@
 {
+  "configSchemaVersion": 3,
   "revision": 1,
   "paymentMode": "PhoneAuthorizations",
   "paymentSource": "CarriedRoubles",
+  "paymentCurrency": "RUB",
   "requestCooldownSeconds": 300,
   "prices": {
     "A10": 250000,
     "DoublePass": 450000,
-    "Extraction": 50000,
-    "PriorityExfil": 150000,
-    "Uav": 100000,
-    "FocusedSweep": 75000
+    "Extraction": 300000,
+    "PriorityExfil": 450000,
+    "Uav": 125000,
+    "FocusedSweep": 90000
   },
   "enabled": {
     "A10": true,
@@ -29,23 +31,23 @@
     "mode": "PersistentAuthorizations",
     "consumeOn": "AuthorizationAccepted",
     "refundFailedDispatch": true,
-    "maxStoredAuthorizationsPerService": 3,
+    "maxStoredAuthorizationsPerService": 2,
     "pendingUseTimeoutSeconds": 180,
     "spendCreditsBeforeCash": true,
     "allowAutoPurchaseOnUse": true
   },
   "uav": {
-    "durationSeconds": 45,
+    "durationSeconds": 480,
     "rangeMeters": 200,
-    "scanIntervalSeconds": 1
+    "scanIntervalSeconds": 5
   },
   "focusedSweep": {
-    "durationSeconds": 30,
+    "durationSeconds": 90,
     "rangeMeters": 100,
-    "scanIntervalSeconds": 0.5
+    "scanIntervalSeconds": 0.75
   },
   "extraction": {
-    "dispatchDelaySeconds": 0,
+    "dispatchDelaySeconds": 8,
     "waitTimeSeconds": 30,
     "extractTimeSeconds": 10,
     "speedMultiplier": 1

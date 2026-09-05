@@ -12,9 +12,10 @@ internal sealed class UavDeviceClientUsableItemControllerPatch : ModulePatch
 {
 	protected override MethodBase GetTargetMethod()
 	{
-		return typeof(ClientUsableItemController).GetMethod(
-			"smethod_11",
-			BindingFlags.Public | BindingFlags.Static);
+		return AccessTools.Method(
+			typeof(ClientUsableItemController),
+			nameof(ClientUsableItemController.CreateAsync),
+			new[] { typeof(ClientPlayer), typeof(string) });
 	}
 
 	[PatchPrefix]
@@ -44,7 +45,7 @@ internal sealed class UavDeviceClientUsableItemControllerPatch : ModulePatch
 		TscDiagnostics.LogPhone(
 			$"TerraGroup TSC Uplink client usable controller intercepted. itemId={itemId}, tpl={item.StringTemplateId}, type={item.GetType().FullName}.");
 
-		__result = Player.UsableItemController.smethod_7<ClientUsableItemController>(player, item);
+		__result = Task.FromResult(ClientUsableItemController.Create(player, item));
 		return false;
 	}
 }

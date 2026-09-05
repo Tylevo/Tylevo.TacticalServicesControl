@@ -1,5 +1,324 @@
 # Changelog
 
+## 1.3.8 - Public Beta
+
+Published September 5, 2026 for SPT 4.1.4. This release includes the preceding
+1.3.0–1.3.7 development updates listed below; see the cumulative
+[release notes](docs/release-notes-v1.3.8.md) for the full upgrade overview.
+
+- Move the physical TSC Uplink offer from Jaeger to UH-60 Pilot, preserving
+  its ₽50,000 price, loyalty level 1 requirement, and five-per-restock limit.
+- Make Pilot available by default and unlock existing locked Pilot profile
+  entries without resetting standing, sales, loyalty, or other traders.
+- Use the supplied Pilot portrait for both Trading and cargo mail, with a
+  new avatar URL to avoid the cached temporary icon.
+- Register Pilot before importing the offer and preserve his existing shop
+  on repeat identity initialization. Keep native BTR delivery separate.
+
+See `docs/release-notes-v1.3.8.md`; validation is recorded externally.
+
+## 1.3.7 - Public Beta (unreleased)
+
+- Move the pre-raid TSC Uplink entry to the bottom bar immediately left of
+  Character. Use EFT's native tab wrapper and horizontal layout.
+- Remove center-menu insertion and position rewrites, preserving EFT's
+  normal main-menu spacing.
+- Give the cloned shortcut its own toggle group and action so opening TSC
+  cannot select Character or modify the native navigation registrations.
+- Hide the shortcut outside the active main menu and reject disabled, stale,
+  and in-raid callbacks. Preserve Seasonal client suppression and purchase
+  authentication, confirmation, and recovery behavior.
+
+See `docs/release-notes-v1.3.7.md`; verification results are recorded in the
+candidate's external evidence sidecars.
+
+## 1.3.6 - Public Beta (unreleased)
+
+- Remove the pale rounded perimeter frames baked into the six service icons.
+- Keep the aircraft, pickup, cargo, and recon symbols and their tactical palette.
+  Update both icon variants and the cargo asset alias used by the package.
+- Preserve the store card outlines and all runtime code and layouts.
+
+The edited PNGs retain the image tool's native resolution and may differ in
+fine shading and antialiasing. See `docs/release-notes-v1.3.6.md`; verification
+results are recorded in the candidate's external evidence sidecars.
+
+## 1.3.5 - Public Beta (unreleased)
+
+Tactical icon pack refresh for SPT 4.1.4.
+
+- Replace the store and native phone icon assets with the supplied 512-pixel
+  artwork, preserving its ivory, amber, and olive colors and dark rounded tiles.
+- Use the pickup helicopter for extraction and the helicopter carrying a crate
+  for Cargo Transfer, including the UH-60 Pilot mail avatar.
+- Keep the same artwork in normal and selected icon slots; selection remains
+  visible through the existing UI borders, text, and controls.
+- Refresh the matching status and supporting icons. Runtime code, phone
+  animations, controls, payment behavior, and A-10 targeting are unchanged.
+
+Build, asset, package, and installation results are recorded in the candidate's
+external evidence sidecars. See `docs/release-notes-v1.3.5.md`.
+
+## 1.3.4 - Public Beta (unreleased)
+
+Pre-raid TSC Uplink storefront redesign for SPT 4.1.4.
+
+- Replace the six plain purchase rows with selectable service cards, existing
+  aircraft artwork, and a selected-service detail panel in the phone's palette.
+- Show price, owned authorizations, storage limit, availability, and purchase
+  status together. Keep the separate confirmation step before spending.
+- Fit the store and confirmation dialog to the available menu canvas when
+  the resolution changes.
+- Preserve authenticated stash purchases, original-term payment recovery,
+  service restrictions, and the UH-60 cargo handling-fee disclosure.
+- Retain the in-raid phone UI, Alt selection, eased zoom, and A-10 corrections.
+
+Build, layout, regression, package, and installation results are recorded in
+the candidate's external evidence sidecars. See `docs/release-notes-v1.3.4.md`.
+
+## 1.3.3 - Public Beta (unreleased)
+
+Native phone purchase screens and optional mouse selection for SPT 4.1.4.
+
+- Draw the purchase interface with native panels, text, and existing service
+  artwork in the deploy menu's dark, ivory, amber, and green palette.
+- Keep purchase browsing and review in landscape, with the existing portrait
+  hand swipe and payment commit sequence at final confirmation.
+- Add hold-Alt mouse selection through a cursor drawn on the phone. Selection
+  and explicit review/confirmation controls share the existing authorization
+  and deployment validation paths. Keyboard shortcuts remain available.
+- Scope mouse input to the active phone; cancel pending clicks when releasing
+  the modifier, changing screens, closing the phone, or losing input ownership.
+- Retain the v1.3.2 eased zoom and v1.3.1 A-10 targeting corrections.
+
+Build, package, and regression results are recorded in the candidate's
+external evidence sidecars. In-game phone and Fika acceptance remain separate
+checks. See `docs/release-notes-v1.3.3.md`.
+
+## 1.3.2 - Public Beta (unreleased)
+
+Authorization-phone zoom polish for SPT 4.1.4 / EFT 0.16.9.5.40743.
+
+- Add a 0.08-second lead-in before the incoming authorization phone begins its
+  zoom, followed by eased camera FOV and hand framing over 0.75 seconds by
+  default.
+- Add F12 **Phone zoom in seconds** (0.25-1.5, default 0.75) and
+  **Phone zoom out seconds** (0.15-0.8, default 0.35). Zoom-out uses the native
+  FOV transition.
+- Preserve the original raid FOV when restoring the view or reopening the
+  phone quickly. Deploy and radar phone presentation retain their existing
+  behavior.
+- Retain the v1.3.1 A-10 ballistic targeting corrections. The proposed native
+  purchase interface remains a concept preview and is not included in v1.3.2.
+
+The regression suite passes 198/198 tests. Build and package results are
+recorded in the candidate's external evidence sidecars; in-game phone
+acceptance remains pending. See `docs/release-notes-v1.3.2.md`.
+
+## 1.3.1 - Public Beta (unreleased)
+
+A-10 targeting correction for SPT 4.1.4 / EFT 0.16.9.5.40743.
+
+- Solve each GAU-8 launch direction using EFT's native gravity and drag
+  calculation, the loaded ammunition, and the actual weapon speed factor.
+- Preserve the moving muzzle and seeded strike footprint. Unreachable rounds
+  are skipped instead of reverting to uncompensated straight-line aim.
+- Trace curved trajectories against EFT's ballistic collision layers and time
+  terminal tracer/impact replay for arrival. Keep the existing packet layout.
+- Carry the confirmed laser position directly into the strike. Use nearby
+  terrain/low-poly surfaces closest to its elevation instead of overhead roofs.
+- Align headless visual/damage arrival times; wait for projectile arrival before
+  the existing fallback health check and suppress synthetic fallback when paths
+  are invalid, obstructed, or native firing fails.
+- Add bounded, sampled actual-collision diagnostics with explicit unavailable
+  results when EFT's shot pooling prevents observation.
+
+Live solo and multiplayer acceptance remain required; see
+`docs/a10-ballistics-v1.3.1.md` for validation and limitations.
+
+## 1.3.0 - Public Beta (unreleased)
+
+SPT 4.1.4 warning-and-Uplink integration release for Tylevo Seasonal
+Modifiers. The candidate filename is
+`Tylevo.TacticalServicesControl-v1.3.0-SPT4.1.4-TESTER.zip`.
+
+### Added
+
+- Raised the optional Danger Close client bridge and server marker to API v3.
+  Host-authored advance, cancellation, and accepted inbound alerts use one
+  replay-protected opportunity identity.
+- Added reliable ordered Fika warning delivery. Each peer independently checks
+  its own Uplink equipment for the advance notice; the accepted inbound alert
+  remains universal.
+- Added a bounded incoming Danger Close call for eligible peers. The configured
+  UAV-radar key answers it, the existing upright phone pose shows A-10 ETA and
+  cover guidance, and subsequent presses stow or reopen the countdown through
+  its original ETA. The local ringtone stops on answer, timeout, stand-down,
+  accepted inbound, or raid/network reset without changing strike timing.
+- Added a data-driven, Uplink-only `SpecialSlot4` to the standard and Unheard
+  pockets templates. The device is never granted, forced, or locked in place.
+- Added an idempotent profile migration that moves one directly equipped legacy
+  Uplink from slots 1-3 into slot 4, while leaving stash/backpack devices and
+  ambiguous or occupied destinations untouched.
+
+### Changed
+
+- Retargeted the v1.3.0 tester to SPT 4.1.4 / EFT 0.16.9.5.40743, with WTT
+  CommonLib 3.0.6 and optional Fika client 2.4.2. UnityToolkit remains the
+  existing SPT 4.1 rebuild of 2.0.1. The published 4.1.4 serialized-field
+  renames have no matching TSC source references.
+- Manual TSC services still recognize a carried Uplink outside slot 4. Only the
+  90-second Danger Close advance notice requires the dedicated slot.
+- Ambient A-10 shots use a validated real EFT player bridge so impact handling
+  remains functional; the request retains its separate Seasonal origin and
+  bypasses payment, authorizations, and manual service controls.
+
+### Fixed
+
+- Re-decode the local Danger Close ringtone for every incoming call and release
+  its runtime clip when ringing stops. This prevents a disposed, process-cached
+  Unity audio clip from making later raids silently ring without sound.
+- Restored the soft main-menu handoff to Seasonal Modifiers. When its client
+  plugin is loaded, TSC removes its redundant **TSC UPLINK** row, restores the
+  native menu stack, and stops its layout scanner; standalone and in-raid TSC
+  behavior is unchanged.
+- Corrected A-10 GAU-8 shot origins in solo and human-host raids. The first
+  round now starts at the visible muzzle instead of a point 515 metres ahead,
+  and every later origin advances with the aircraft at the same strafe speed.
+- Fika headless visual replay and authoritative damage now derive from one
+  deterministic intended-impact plan. The gated headless executor retains its
+  shorter experimental damage origin, so this aligns impact intent rather than
+  claiming exact ballistic-path or replay-arrival parity.
+
+### Validation Status
+
+- Historical SPT 4.1.2 local verification passed 160 regression tests. The
+  user-supplied ringtone remains excluded from public release archives pending
+  redistribution rights.
+- All four runtime projects compiled against the historical SPT 4.1.2, Fika
+  2.4.1, and WTT pins with deployment disabled.
+- The combined SPT 4.1.4 candidate passes 168/168 regression tests and its
+  exact-version five-project build with 0 errors and four existing warnings.
+  Final package, server bootstrap, solo and Fika warning, migration UI, and
+  in-raid ballistic acceptance are pending in
+  `docs/port/SPT-4.1.4-PORT-LOG.md`.
+
+## 1.2.0 - Public Beta (unreleased)
+
+SPT 4.1.2 integration release for Tylevo Seasonal Modifiers. The candidate
+filename is `Tylevo.TacticalServicesControl-v1.2.0-SPT4.1.2-TESTER.zip`.
+
+### Added
+
+- Added a versioned, optional Seasonal Modifiers bridge and matching server
+  capability marker. TSC remains fully usable when Seasonal Modifiers is not
+  installed.
+- Added host-authoritative ambient A-10 dispatch with explicit packet origin,
+  replay fingerprints, peer-spoof rejection, and one-pass-at-a-time lifecycle
+  tracking. Ambient passes retain their distinct Seasonal origin while using a
+  validated real-player ballistic owner required by EFT 4.1 impact processing.
+- Added source-leased Danger Close state so independent integrations cannot
+  release each other's A-10 tasking lock.
+- Raised the Danger Close bridge and server marker to API v2 and added an
+  optional ambient-dispatch acknowledgement callback so integration
+  callers commit strike caps and success feedback only after the authority or
+  local executor accepts the pass, not merely when the async request is queued.
+
+### Changed
+
+- While Danger Close is active, manual A-10 Strafe and Double Pass entries are
+  visibly locked. UAV Recon, Focused Sweep, UH-60 Extraction, and UH-60 Cargo
+  Transfer remain available.
+- Hardened A-10 teardown so temporary flares, audio, particles, reservations,
+  and pooled aircraft state are cleaned up across cancellation and raid exit.
+
+### Validation Status
+
+- Proprietary-free verification passes 111 regression tests.
+- All four runtime projects compile against the pinned SPT 4.1.2, Fika 2.4.1,
+  and WTT references with deployment disabled. Solo/listen-host and Fika
+  behavior still require live raid acceptance before a stable release.
+
+## 1.1.0 - Public Beta
+
+Beta 1 tester prerelease: `v1.1.0-beta.1`, published 2026-07-31.
+
+SPT 4.1.2 port tester: in progress. The candidate filename is
+`Tylevo.TacticalServicesControl-v1.1.0-SPT4.1.2-TESTER.zip`; this does not
+declare build, server-boot, client, raid, or Fika acceptance.
+
+### Added
+
+- Added a curated native SPT config-editor provider using TSC's canonical
+  validation, revision-conflict checks, normalization, and atomic save path.
+- Added one-time targeting guidance for middle-mouse/Enter confirmation and
+  made the F12 dashboard address follow the active SPT host and port.
+- Added an authenticated pre-raid authorization store to the main menu. **TSC UPLINK** is placed below **Records**, with a fallback below **Character**, and shows the active PMC stash balance, server prices, service availability, and persistent authorization counts.
+- Added an explicit pre-raid purchase confirmation showing the selected service, authoritative price, and projected balance. Cancelling creates no request, while duplicate delivery of a confirmed request cannot charge or grant twice.
+- Added a dashboard shortcut derived from the active SPT backend connection instead of a hard-coded host.
+- Added configurable UAV presentation in F12. `Phone` raises the physical Uplink while the radar key is held; `HUD` renders only the live scanner square in any selected corner.
+- Added server-authoritative RUB, USD, and EUR purchasing across carried cash, stash debit, the pre-raid store, persistent journal replay, and Fika settings sync.
+- Added requester-local loading to **UH-60 Cargo Transfer** for solo players and human Fika hosts using EFT's canonical Transit/BTR transfer controller. Accepted cargo uses the native RUB fee and post-raid mail delivery; loading spends no additional TSC authorization and does not use configured TSC currencies or immediate stash insertion. Valid TSC-marked cargo is isolated under a **UH-60 Pilot** messenger, while unmarked native cargo remains under **BTR Driver** and marker/routing failure safely falls back to that stock delivery path. Non-host Fika clients fail closed until native item-dependent pricing has an authoritative host synchronization contract.
+- Added focused proprietary-free regression coverage and CI verification for authorization hydration, ledger lifecycle, Fika request state, extraction timing, package layout, source wiring, and tracked-file hygiene.
+
+### Fixed
+
+- Repaired the Uplink container's serialized default-state list and `OutUse`
+  event hash. Packaging overlays only the reviewed, hash-pinned repair while
+  retaining the immutable v1.0.8 asset archive as provenance.
+- Missing UH-60 Pilot artwork preserves the cloned native BTR Driver avatar
+  instead of requesting a guessed 4.1 file route.
+- Targeting resolves the exact four-parameter `InputManager.Create` overload
+  and fails readiness after five seconds if no manager is captured.
+- Main-menu placement prefers measured adjacent rows over the potentially
+  multi-row Play-to-Character gap, with bounded spacing fallbacks.
+- Persistent authorization hydration now distinguishes omitted state from an authoritative empty ledger, updates an already-open deploy menu, and does not depend on the retired server-URL toggle.
+- Persistent use now follows one server-backed begin, accept, commit, or refund lifecycle instead of decrementing only the client mirror.
+- Networked support requests now wait for raid-authority acceptance. Rejections, timeouts, cancellation, and executor-start failures converge on one idempotent refund/settlement result.
+- Duplicate Fika request, acceptance, commit, refund, tracer, and replay packets are keyed by `SupportRequestId` and cannot execute or settle the same request twice.
+- Dedicated-headless A-10 fallback damage now resolves the target through Fika's authoritative player registry. Headless-owned bots enter `FikaBot.ApplyDamageInfo`, while remote humans enter `ObservedPlayer.HandleExplosive`; the raw health-controller call that could leave a bot upright in a half-dead state has been removed. A short sync-settle and current-health comparison suppress the fallback when the ballistic volley already damaged or killed that target.
+- UAV contracts now carry authoritative requester identity, duration, range, and scan cadence. Requester phone/HUD state and the visible loiter aircraft share one lifetime, while headless hosts create no presentation objects.
+- Hardened physical-phone equip, release-during-equip, death, raid teardown, render-texture, input, and previous-weapon restoration paths.
+- Restored the direct upright presentation for the `K` deployment phone and held `J` radar phone without exposing a ghost landscape phone first.
+- Standard Extraction and Cargo Transfer retain distinct dispatch, wait, and speed settings through server config, Fika sync, and runtime use. Only standard Extraction creates a countdown or ends the raid.
+- A successful paid Cargo item move now makes the UH-60 depart immediately with the successful-pickup voice. Cancelled and rejected submissions retain the remaining wait, while human-host Fika mirrors the one request-bound departure to every observer visual.
+- Hardened currency changes during in-flight purchases so quotes, retries, prepared transactions, and accepted replay remain bound to their original currency.
+
+### Changed
+
+- Retargeted the active tester contract to SPT 4.1.2 / EFT
+  0.16.9.5.40743, .NET SDK 10.0.201, the `SPT-4.1 Release` build
+  configuration, and the SPT 4.1 server runtime layout.
+- The SPT 4.1.2 tester archive now has exactly two top-level roots,
+  `BepInEx/` and `SPT_Runtime/`, and installs the server half below
+  `SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/`.
+- The SPT 4.1 port requires a pinned WTT CommonLib 3.x pair and a verified
+  4.1-compatible UnityToolkit build. Fika remains optional but must use one
+  coherent 4.1 client/server pair when multiplayer is tested.
+- Beta 1 aligns its package, plugin, server, assembly, and file versions on one `1.1.0` identity and is published separately under prerelease tag `v1.1.0-beta.1`, leaving `v1.1.0` available for the final release. All four DLLs must be installed as one matched set.
+- The published v1.0.8/4.0.13 archive remains the immutable asset baseline;
+  its name, size, SHA-256, contents, and historical layout are preserved.
+- The redundant legacy `raidops-firesupport.json` template is no longer shipped. Existing installs using that filename still migrate to `tsc-config.json`.
+- The mutable `tsc-config.json` is no longer shipped in the installer, preventing overlay upgrades from replacing custom settings. Clean installs create current defaults on first server start.
+- **UH-60 Cargo Transfer** replaces Priority Exfil in the released `PriorityExfil` authorization/config slot. Existing authorizations carry forward one-for-one, while the legacy key, enum value, and existing Priority artwork remain intact for compatibility.
+
+### Validation Status
+
+- The pre-port 4.0.13 baseline's 101-test regression suite passed, including
+  dedicated guards for Fika ownership-safe A-10 damage routing, and its full
+  deploy-suppressed solution build passed for Core, Server, Fika Interop, Fika
+  bootstrap, and the regression project.
+- The pre-port solo SPT and main-menu purchase flow have user-reported smoke
+  coverage; those reports are not 4.1.2 evidence.
+- The later SPT 4.1.2 CI-safe suite passed 109/109 tests; the exact five-project
+  solution built with 0 errors and two obsolete Core inventory-API warnings.
+  Exact server boot and dashboard shell smoke passed.
+- A client session reached the menu and a solo raid but exposed input/menu
+  defects. Corrected DLL deployment and the repaired Uplink bundle still
+  needed an equip/stow, menu, and solo-raid acceptance run. These historical
+  findings do not certify the SPT 4.1.4 candidate.
+- Matched-version human-host, Fika-client, and dedicated-headless live acceptance remains open. Dedicated-headless A-10 damage is separately gated and experimental.
+
 ## 0.9.8 - Public Beta (released as v1.0.8)
 
 ### Added

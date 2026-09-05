@@ -18,6 +18,13 @@ public class GameWorldStartPatch : ModulePatch
 	[PatchPostfix]
 	private static void PostfixPatch()
 	{
+		UavDeviceHandsService.CancelAllPending("raid started");
+		UavPhoneHotkeyController.ResetForRaidBoundary("raid started");
+		UavDeviceActivationController.ResetForRaidBoundary("raid started");
+		UavReconOverlay.Deactivate("raid started");
+		UavAircraftLoiterController.ResetAll("raid started");
+		FireSupportItemTransfer.ResetForRaidBoundary("raid started");
+		MainMenuPurchaseController.CloseForRaidStart();
 		FireSupportAuthorizations.Reset();
 		FireSupportServerConfigClient.OnRaidStarted();
 

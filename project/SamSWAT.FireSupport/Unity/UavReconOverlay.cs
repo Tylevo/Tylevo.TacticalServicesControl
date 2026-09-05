@@ -17,6 +17,42 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 		public RectTransform RectTransform;
 		public Image Image;
 		public Vector3 Position;
+		public Color Color;
+	}
+
+	public readonly struct ReconSessionSnapshot
+	{
+		public readonly float RemainingSeconds;
+		public readonly float RangeMeters;
+		public readonly float ScanIntervalSeconds;
+		public readonly float NextScanInSeconds;
+		public readonly int ContactCount;
+
+		internal ReconSessionSnapshot(
+			float remainingSeconds,
+			float rangeMeters,
+			float scanIntervalSeconds,
+			float nextScanInSeconds,
+			int contactCount)
+		{
+			RemainingSeconds = remainingSeconds;
+			RangeMeters = rangeMeters;
+			ScanIntervalSeconds = scanIntervalSeconds;
+			NextScanInSeconds = nextScanInSeconds;
+			ContactCount = contactCount;
+		}
+	}
+
+	public readonly struct ReconContactSnapshot
+	{
+		public readonly Vector3 WorldPosition;
+		public readonly Color Color;
+
+		internal ReconContactSnapshot(Vector3 worldPosition, Color color)
+		{
+			WorldPosition = worldPosition;
+			Color = color;
+		}
 	}
 
 	private sealed class RadarAssets
@@ -45,6 +81,7 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 	private const float RadarIntroScaleMultiplier = 0.82f;
 	private const float RadarOutroDurationSeconds = 0.24f;
 	private const float RadarOutroScaleMultiplier = 0.92f;
+	private static readonly bool s_legacyScreenHudEnabled = false;
 	private static readonly Vector2 s_radarAnchoredPosition = new(-255f, 205f);
 	private static readonly Vector2 s_radarIntroOffset = new(10f, -8f);
 
@@ -54,6 +91,9 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 
 	private GameObject _radarHud;
 	private GameObject _blipPrefab;
+	private GameObject _phoneStyleHudObject;
+	private UavPhoneScreenRenderer _phoneStyleHudRenderer;
+	private bool _phoneStyleHudInitializationFailed;
 	private RectTransform _radarBaseTransform;
 	private RectTransform _radarBackgroundTransform;
 	private RectTransform _radarBorderTransform;
@@ -79,12 +119,94 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 	private float _introStartedAt;
 	private float _outroStartedAt;
 	private bool _isClosing;
+	private bool _destroyRequested;
 	private static Sprite s_timerBackgroundSprite;
 	private static Sprite s_solidSprite;
 	private static UniTask<RadarAssets>? s_radarAssetsLoadTask;
 	private static RadarAssets s_radarAssets;
 
 	public static UavReconOverlay Instance { get; private set; }
+
+	public static bool IsReconActive
+	{
+		get
+		{
+			UavReconOverlay instance = Instance;
+			return instance != null && instance.HasActiveSession;
+		}
+	}
+
+	/// <summary>
+	/// Returns the live recon timing/settings without allocating. Intended for
+	/// a physical-phone renderer polling from Unity's main thread.
+	/// </summary>
+	public static bool TryGetSessionSnapshot(out ReconSessionSnapshot snapshot)
+	{
+		UavReconOverlay instance = Instance;
+		if (instance == null || !instance.HasActiveSession)
+		{
+			snapshot = default;
+			return false;
+		}
+
+		float now = Time.time;
+		snapshot = new ReconSessionSnapshot(
+			Mathf.Max(0f, instance._activeUntil - now),
+			instance.GetActiveRangeMeters(),
+			instance.GetActiveScanInterval(),
+			Mathf.Max(0f, instance._nextScanTime - now),
+			instance._contacts.Count);
+		return true;
+	}
+
+	/// <summary>
+	/// Copies the latest scan into a caller-owned buffer. Reusing a list with
+	/// sufficient capacity avoids steady-state allocations.
+	/// </summary>
+	public static int CopyContactSnapshots(List<ReconContactSnapshot> destination)
+	{
+		if (destination == null)
+		{
+			throw new ArgumentNullException(nameof(destination));
+		}
+
+		destination.Clear();
+		UavReconOverlay instance = Instance;
+		if (instance == null || !instance.HasActiveSession)
+		{
+			return 0;
+		}
+
+		foreach (Contact contact in instance._contacts.Values)
+		{
+			destination.Add(new ReconContactSnapshot(contact.Position, contact.Color));
+		}
+
+		return destination.Count;
+	}
+
+	/// <summary>
+	/// Ends the local requester's recon session immediately. Fika disconnect
+	/// and raid-boundary paths use this instead of waiting for the normal
+	/// duration so a private feed cannot survive its owning session.
+	/// </summary>
+	public static void Deactivate(string reason)
+	{
+		UavReconOverlay instance = Instance;
+		if (instance == null)
+		{
+			return;
+		}
+
+		FireSupportPlugin.LogSource?.LogInfo(
+			$"TSC UAV recon link deactivated. reason={reason ?? "unspecified"}.");
+		instance.Close();
+	}
+
+	private bool HasActiveSession =>
+		!_isClosing &&
+		!_cancellationToken.IsCancellationRequested &&
+		Time.time < _activeUntil;
 
 	public static void Activate(
 		float durationSeconds,
@@ -100,9 +222,16 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 
 		void StartRadar()
 		{
+			if (Instance != null && Instance.HasActiveSession)
+			{
+				TscDiagnostics.LogDashboard(
+					$"UAV radar activation ignored because a recon link is already active ({Instance._activeUntil - Time.time:0.0}s remaining).");
+				return;
+			}
+
 			if (Instance != null)
 			{
-				TscDiagnostics.LogDashboard($"UAV radar activate reuse duration={durationSeconds:0.#}s scan={scanInterval:0.##} range={rangeMeters:0.#}");
+				TscDiagnostics.LogDashboard($"UAV radar activate reuse after close duration={durationSeconds:0.#}s scan={scanInterval:0.##} range={rangeMeters:0.#}");
 				Instance.StartRecon(durationSeconds, cancellationToken, scanInterval, rangeMeters);
 				return;
 			}
@@ -139,6 +268,8 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 			return;
 		}
 
+		UpdateConfiguredRadarHud();
+
 		if (_isClosing)
 		{
 			UpdateOutroVisuals();
@@ -151,10 +282,13 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 			return;
 		}
 
-		UpdateIntroVisuals();
-		UpdateTimer();
-		RefreshPaletteIfChanged();
-		UpdatePulse();
+		if (s_legacyScreenHudEnabled)
+		{
+			UpdateIntroVisuals();
+			UpdateTimer();
+			RefreshPaletteIfChanged();
+			UpdatePulse();
+		}
 
 		if (Time.time >= _nextScanTime)
 		{
@@ -162,7 +296,10 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 			_nextScanTime = Time.time + GetActiveScanInterval();
 		}
 
-		UpdateContactPositions();
+		if (s_legacyScreenHudEnabled)
+		{
+			UpdateContactPositions();
+		}
 	}
 
 	protected override void OnAwake()
@@ -170,7 +307,7 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 		Instance = this;
 		if (TryResolveWorldAndPlayer())
 		{
-			CreateUi().Forget();
+			CompleteInitialization();
 			return;
 		}
 
@@ -192,7 +329,7 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 			if (TryResolveWorldAndPlayer())
 			{
 				FireSupportPlugin.LogSource?.LogInfo("UAV radar delayed initialization completed after GameWorld/MainPlayer became available.");
-				CreateUi().Forget();
+				CompleteInitialization();
 				return;
 			}
 
@@ -203,10 +340,25 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 		Close();
 	}
 
+	private void CompleteInitialization()
+	{
+		if (s_legacyScreenHudEnabled)
+		{
+			CreateUi().Forget();
+			return;
+		}
+
+		HasFinishedInitialization = true;
+	}
+
 	protected override void OnDisable()
 	{
 		base.OnDisable();
-		Instance = null;
+		DestroyConfiguredRadarHud();
+		if (ReferenceEquals(Instance, this))
+		{
+			Instance = null;
+		}
 	}
 
 	private void StartRecon(
@@ -216,8 +368,8 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 		float rangeMeters)
 	{
 		_cancellationToken = cancellationToken;
-		_activeUntil = Mathf.Max(_activeUntil, Time.time + durationSeconds);
-		_activeDuration = Mathf.Max(1f, _activeUntil - Time.time);
+		_activeUntil = Time.time + durationSeconds;
+		_activeDuration = Mathf.Max(1f, durationSeconds);
 		_activeScanInterval = scanInterval > 0f
 			? scanInterval
 			: UavReconSettings.GetScanInterval(ESupportType.Uav);
@@ -225,8 +377,85 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 			? rangeMeters
 			: UavReconSettings.GetRangeMeters(ESupportType.Uav);
 		_nextScanTime = 0f;
+		_phoneStyleHudInitializationFailed = false;
+		FireSupportPlugin.LogSource?.LogInfo(
+			$"TSC UAV recon link started. duration={_activeDuration:0.#}s, scan={_activeScanInterval:0.##}s, range={_activeRangeMeters:0.#}m.");
 		RestartIntroAnimation();
 		gameObject.SetActive(true);
+		UpdateConfiguredRadarHud();
+	}
+
+	private void UpdateConfiguredRadarHud()
+	{
+		bool shouldShow =
+			HasActiveSession &&
+			PluginSettings.Enabled?.Value != false &&
+			PluginSettings.RadarDisplayMode?.Value ==
+				UavRadarDisplayMode.HUD &&
+			_player?.IsYourPlayer == true &&
+			!_player.IsInventoryOpened &&
+			!UavPhoneHotkeyController.IsAnyPhonePresentationActive;
+
+		if (!shouldShow || _phoneStyleHudInitializationFailed)
+		{
+			if (_phoneStyleHudObject != null &&
+			    _phoneStyleHudObject.activeSelf)
+			{
+				_phoneStyleHudObject.SetActive(false);
+				TscDiagnostics.LogPhone(
+					"TSC phone-style UAV radar HUD hidden.");
+			}
+
+			return;
+		}
+
+		if (_phoneStyleHudObject == null ||
+		    _phoneStyleHudRenderer == null)
+		{
+			try
+			{
+				var hudObject = new GameObject(
+					"TSC Phone-Style UAV Radar HUD");
+				hudObject.transform.SetParent(transform, false);
+				var renderer =
+					hudObject.AddComponent<UavPhoneScreenRenderer>();
+				_phoneStyleHudObject = hudObject;
+				_phoneStyleHudRenderer = renderer;
+				renderer.InitializeRadarHud(
+					PluginSettings.RadarHudPosition?.Value ??
+					UavRadarHudPosition.BottomRight);
+			}
+			catch (Exception ex)
+			{
+				_phoneStyleHudInitializationFailed = true;
+				FireSupportPlugin.LogSource.LogError(
+					$"TSC phone-style UAV radar HUD failed to initialize. {ex}");
+				DestroyConfiguredRadarHud();
+				return;
+			}
+		}
+
+		if (!_phoneStyleHudObject.activeSelf)
+		{
+			_phoneStyleHudObject.SetActive(true);
+			TscDiagnostics.LogPhone(
+				"TSC phone-style UAV radar HUD shown.");
+		}
+	}
+
+	private void DestroyConfiguredRadarHud()
+	{
+		if (_phoneStyleHudRenderer != null)
+		{
+			_phoneStyleHudRenderer.Shutdown();
+			_phoneStyleHudRenderer = null;
+		}
+
+		if (_phoneStyleHudObject != null)
+		{
+			Destroy(_phoneStyleHudObject);
+			_phoneStyleHudObject = null;
+		}
 	}
 
 	private async UniTaskVoid CreateUi()
@@ -557,6 +786,7 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 
 		_isClosing = true;
 		_outroStartedAt = Time.time;
+		FireSupportPlugin.LogSource?.LogInfo("TSC UAV recon link expired.");
 		UpdateOutroVisuals();
 	}
 
@@ -685,7 +915,12 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 
 		foreach (string id in _contactsToRemove)
 		{
-			Destroy(_contacts[id].Image.gameObject);
+			Contact contact = _contacts[id];
+			if (contact.Image != null)
+			{
+				Destroy(contact.Image.gameObject);
+			}
+
 			_contacts.Remove(id);
 		}
 	}
@@ -710,20 +945,28 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 
 	private Contact CreateContact(Player target)
 	{
+		Color color = GetContactColor(target);
+		var contact = new Contact
+		{
+			Position = target.Transform.position,
+			Color = color
+		};
+
+		if (!s_legacyScreenHudEnabled || _blipPrefab == null || _radarBorderTransform == null)
+		{
+			return contact;
+		}
+
 		Sprite blipSprite = _blipPrefab.transform.Find("Blip/RadarEnemyBlip")?.GetComponent<Image>()?.sprite;
-		Image image = CreateImage("UAV Contact", _radarBorderTransform, blipSprite, GetContactColor(target));
+		Image image = CreateImage("UAV Contact", _radarBorderTransform, blipSprite, color);
 		image.rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
 		image.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
 		image.rectTransform.pivot = new Vector2(0.5f, 0.5f);
 		image.rectTransform.sizeDelta = new Vector2(16f, 16f);
 		image.transform.SetAsLastSibling();
-
-		return new Contact
-		{
-			RectTransform = image.rectTransform,
-			Image = image,
-			Position = target.Transform.position
-		};
+		contact.RectTransform = image.rectTransform;
+		contact.Image = image;
+		return contact;
 	}
 
 	private static Color GetContactColor(Player target)
@@ -739,6 +982,11 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 
 	private void UpdateContactPositions()
 	{
+		if (_radarBorderTransform == null || _player?.Transform == null)
+		{
+			return;
+		}
+
 		_radarBorderTransform.localEulerAngles = new Vector3(0f, 0f, _player.Transform.rotation.eulerAngles.y);
 		float eulerZ = _radarBorderTransform.rotation.eulerAngles.z;
 		Vector3 rotatedDirection = _radarBorderTransform.rotation * Vector3.forward;
@@ -752,6 +1000,11 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 
 		foreach (Contact contact in _contacts.Values)
 		{
+			if (contact.RectTransform == null || contact.Image == null)
+			{
+				continue;
+			}
+
 			Vector3 relative = contact.Position - _player.Transform.position;
 			float distance = Mathf.Sqrt(relative.x * relative.x + relative.z * relative.z);
 			float offsetRadius = Mathf.Pow(Mathf.Clamp01(distance / radarRange), 0.645f);
@@ -763,7 +1016,7 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 				Mathf.Cos(targetAngle - radarAngle),
 				-0.01f) * offsetRadius * graphicRadius;
 
-			Color color = contact.Image.color;
+			Color color = contact.Color;
 			color.a = Mathf.Abs(relative.y) > 3.5f ? 0.58f : 0.95f;
 			contact.Image.color = color;
 		}
@@ -859,7 +1112,17 @@ public sealed class UavReconOverlay : UpdatableComponentBase
 
 	private void Close()
 	{
-		Instance = null;
+		if (_destroyRequested)
+		{
+			return;
+		}
+
+		_destroyRequested = true;
+		if (ReferenceEquals(Instance, this))
+		{
+			Instance = null;
+		}
+
 		Destroy(gameObject);
 	}
 }

@@ -1,5 +1,6 @@
 using BepInEx.Configuration;
 using SamSWAT.FireSupport.ArysReloaded.Unity;
+using System;
 using UnityEngine;
 
 namespace SamSWAT.FireSupport.ArysReloaded;
@@ -14,11 +15,38 @@ internal enum UavRadarPalette
 	IceBlue
 }
 
+internal enum UavRadarDisplayMode
+{
+	Phone = 0,
+	HUD = 1
+}
+
+internal enum UavRadarHudPosition
+{
+	TopLeft = 0,
+	TopRight = 1,
+	BottomLeft = 2,
+	BottomRight = 3
+}
+
 internal static class PluginSettings
 {
+	private sealed class ConfigurationManagerAttributes
+	{
+		public bool? Browsable;
+	}
+
 	private static ConfigDescription HiddenDescription(string description, AcceptableValueBase acceptableValues = null)
 	{
 		return new ConfigDescription(description, acceptableValues);
+	}
+
+	private static ConfigDescription PersistentHiddenDescription(string description)
+	{
+		return new ConfigDescription(
+			description,
+			null,
+			new ConfigurationManagerAttributes { Browsable = false });
 	}
 
 	internal static ConfigEntry<bool> Enabled { get; private set; }
@@ -32,6 +60,7 @@ internal static class PluginSettings
 	internal static ConfigEntry<bool> RequireServerConfigInFika { get; private set; }
 	internal static ConfigEntry<int> ServerConfigRefreshSeconds { get; private set; }
 	internal static ConfigEntry<PaymentSource> PaymentSource { get; private set; }
+	internal static ConfigEntry<PaymentCurrency> PaymentCurrency { get; private set; }
 	internal static ConfigEntry<int> StrafeRequestCostRoubles { get; private set; }
 	internal static ConfigEntry<int> DoubleStrafeRequestCostRoubles { get; private set; }
 	internal static ConfigEntry<int> ExtractionRequestCostRoubles { get; private set; }
@@ -57,11 +86,20 @@ internal static class PluginSettings
 	internal static ConfigEntry<float> FocusedSweepScanInterval { get; private set; }
 	internal static ConfigEntry<float> FocusedSweepRangeMeters { get; private set; }
 	internal static ConfigEntry<UavRadarPalette> UavRadarPalette { get; private set; }
+	internal static ConfigEntry<UavRadarDisplayMode> RadarDisplayMode { get; private set; }
+	internal static ConfigEntry<UavRadarHudPosition> RadarHudPosition { get; private set; }
+	private static ConfigEntry<bool> UavPhoneReconDefaultsMigrated { get; set; }
 	internal static ConfigEntry<KeyboardShortcut> OpenUplinkKey { get; private set; }
 	internal static ConfigEntry<KeyboardShortcut> OpenDeployKey { get; private set; }
+	internal static ConfigEntry<KeyboardShortcut> OpenUavRadarKey { get; private set; }
 	internal static ConfigEntry<KeyboardShortcut> SpotterConfirmKey { get; private set; }
+	internal static ConfigEntry<bool> PhoneMouseEnabled { get; private set; }
+	internal static ConfigEntry<KeyCode> PhoneMouseModifier { get; private set; }
+	internal static ConfigEntry<float> PhoneMouseSensitivity { get; private set; }
 	internal static ConfigEntry<bool> PhoneAutoZoomEnabled { get; private set; }
 	internal static ConfigEntry<float> PhoneZoomFov { get; private set; }
+	internal static ConfigEntry<float> PhoneZoomInSeconds { get; private set; }
+	internal static ConfigEntry<float> PhoneZoomOutSeconds { get; private set; }
 	internal static ConfigEntry<float> PhoneZoomVerticalFraming { get; private set; }
 	internal static ConfigEntry<float> PhoneZoomHorizontalFraming { get; private set; }
 	private static ConfigEntry<bool> PhoneFramingDefaultsMigrated { get; set; }
@@ -97,10 +135,16 @@ internal static class PluginSettings
 	internal static ConfigEntry<float> UavA10LoiterModelRollOffset { get; private set; }
 	internal static ConfigEntry<int> HelicopterWaitTime { get; private set; }
 	internal static ConfigEntry<int> PriorityExfilHelicopterWaitTime { get; private set; }
+	internal static ConfigEntry<float> HelicopterDispatchDelay { get; private set; }
 	internal static ConfigEntry<float> PriorityExfilDispatchDelay { get; private set; }
 	internal static ConfigEntry<float> HelicopterExtractTime { get; private set; }
+	internal static ConfigEntry<float> PriorityExfilHelicopterExtractTime { get; private set; }
 	internal static ConfigEntry<float> HelicopterSpeedMultiplier { get; private set; }
 	internal static ConfigEntry<float> PriorityExfilHelicopterSpeedMultiplier { get; private set; }
+	internal static ConfigEntry<bool> EnableHelicopterItemTransfer { get; private set; }
+	internal static ConfigEntry<HelicopterTransferFeeSource> HelicopterTransferFeeSource { get; private set; }
+	internal static ConfigEntry<string> Uh60TransferFeeRecoveryJournal { get; private set; }
+	internal static ConfigEntry<string> Uh60TransferFeeRecoveryQuarantine { get; private set; }
 	internal static ConfigEntry<int> RequestCooldown { get; private set; }
 	internal static ConfigEntry<int> VoiceoverVolume { get; private set; }
 	internal static ConfigEntry<bool> VerbosePhoneLogs { get; private set; }
@@ -171,7 +215,12 @@ internal static class PluginSettings
 			"TerraGroup Payment",
 			"Payment source",
 			global::SamSWAT.FireSupport.ArysReloaded.Unity.PaymentSource.CarriedRoubles,
-			new ConfigDescription("Rouble wallet used for TerraGroup phone purchases."));
+			new ConfigDescription("Wallet location used for TerraGroup phone purchases."));
+		PaymentCurrency = config.Bind(
+			"TerraGroup Payment",
+			"Payment currency",
+			global::SamSWAT.FireSupport.ArysReloaded.Unity.PaymentCurrency.RUB,
+			new ConfigDescription("Local fallback currency used only when no server or Fika host currency is available."));
 		RequestCooldown = config.Bind(
 			"Main Settings",
 			"Cooldown between support requests",
@@ -182,43 +231,46 @@ internal static class PluginSettings
 			"Main Settings",
 			"Autocannon strafe cost",
 			250000,
-			new ConfigDescription("Carried roubles required to request an A-10 autocannon strafe",
+			new ConfigDescription("Selected currency units required to request an A-10 autocannon strafe",
 				new AcceptableValueRange<int>(0, 10000000)));
 		DoubleStrafeRequestCostRoubles = config.Bind(
 			"Main Settings",
 			"A-10 double pass cost",
 			450000,
-			new ConfigDescription("Carried roubles required to request two A-10 autocannon passes on the same target",
+			new ConfigDescription("Selected currency units required to request two A-10 autocannon passes on the same target",
 				new AcceptableValueRange<int>(0, 10000000)));
 		ExtractionRequestCostRoubles = config.Bind(
 			"Main Settings",
 			"Helicopter extraction cost",
 			300000,
-			new ConfigDescription("Carried roubles required to request a UH-60 extraction",
+			new ConfigDescription("Selected currency units required to request a UH-60 extraction",
 				new AcceptableValueRange<int>(0, 10000000)));
 		PriorityExfilRequestCostRoubles = config.Bind(
 			"Main Settings",
+			// Legacy config key retained so existing operator values continue
+			// to price the replacement Cargo Transfer authorization.
 			"Priority exfil cost",
 			450000,
-			new ConfigDescription("Carried roubles required to request an expedited UH-60 extraction authorization",
+			new ConfigDescription("Selected currency units required to dispatch the UH-60 Cargo Transfer service",
 				new AcceptableValueRange<int>(0, 10000000)));
 		UavRequestCostRoubles = config.Bind(
 			"Main Settings",
 			"UAV recon cost",
 			125000,
-			new ConfigDescription("Carried roubles required to request a timed UAV recon scan",
+			new ConfigDescription("Selected currency units required to request a timed UAV recon scan",
 				new AcceptableValueRange<int>(0, 10000000)));
 		FocusedSweepRequestCostRoubles = config.Bind(
 			"Main Settings",
 			"Focused sweep cost",
 			90000,
-			new ConfigDescription("Carried roubles required to request a shorter, narrower, faster-refresh UAV sweep",
+			new ConfigDescription("Selected currency units required to request a shorter, narrower, faster-refresh UAV sweep",
 				new AcceptableValueRange<int>(0, 10000000)));
 		EnablePriorityExfil = config.Bind(
 			"Main Settings",
+			// Legacy config key retained for released configurations.
 			"Enable Priority Exfil",
 			true,
-			HiddenDescription("Allows TerraGroup phone purchases for the expedited UH-60 extraction authorization"));
+			HiddenDescription("Allows TerraGroup phone purchases for the UH-60 Cargo Transfer authorization"));
 		EnableDoublePass = config.Bind(
 			"Main Settings",
 			"Enable A-10 Double Pass",
@@ -282,13 +334,13 @@ internal static class PluginSettings
 		UavDurationSeconds = config.Bind(
 			"UAV Recon Settings",
 			"UAV duration",
-			45,
-			HiddenDescription("How long the UAV radar overlay stays active (seconds)",
-				new AcceptableValueRange<int>(5, 300)));
+			480,
+			HiddenDescription("How long the UAV recon link stays active (seconds)",
+				new AcceptableValueRange<int>(5, 1800)));
 		UavScanInterval = config.Bind(
 			"UAV Recon Settings",
 			"UAV scan interval",
-			1f,
+			5f,
 			HiddenDescription("How often the UAV refreshes target positions (seconds)",
 				new AcceptableValueRange<float>(0.1f, 10f)));
 		UavRangeMeters = config.Bind(
@@ -300,13 +352,13 @@ internal static class PluginSettings
 		FocusedSweepDurationSeconds = config.Bind(
 			"UAV Recon Settings",
 			"Focused sweep duration",
-			30,
-			HiddenDescription("How long the focused UAV sweep radar overlay stays active (seconds)",
-				new AcceptableValueRange<int>(5, 300)));
+			90,
+			HiddenDescription("How long the focused UAV recon link stays active (seconds)",
+				new AcceptableValueRange<int>(5, 1800)));
 		FocusedSweepScanInterval = config.Bind(
 			"UAV Recon Settings",
 			"Focused sweep scan interval",
-			0.5f,
+			0.75f,
 			HiddenDescription("How often the focused sweep refreshes target positions (seconds)",
 				new AcceptableValueRange<float>(0.1f, 10f)));
 		FocusedSweepRangeMeters = config.Bind(
@@ -315,11 +367,55 @@ internal static class PluginSettings
 			100f,
 			HiddenDescription("Maximum focused sweep display range in meters",
 				new AcceptableValueRange<float>(25f, 1000f)));
+		UavPhoneReconDefaultsMigrated = config.Bind(
+			"Internal",
+			"UAV phone recon defaults migrated",
+			false,
+			HiddenDescription("Internal migration flag for aligning old local UAV timing defaults with the physical-phone recon contracts."));
+		MigrateUavPhoneReconDefaults();
 		UavRadarPalette = config.Bind(
 			"UAV Recon Settings",
 			"UAV radar palette",
 			global::SamSWAT.FireSupport.ArysReloaded.UavRadarPalette.MintGlass,
 			new ConfigDescription("Color palette used by the UAV radar overlay"));
+		RadarDisplayMode = config.Bind(
+			"UAV Radar Display",
+			"Display mode",
+			global::SamSWAT.FireSupport.ArysReloaded.UavRadarDisplayMode.Phone,
+			new ConfigDescription(
+				"Choose whether an active UAV recon feed is viewed on the physical TSC Uplink phone or displayed continuously as a screen HUD."));
+		RadarHudPosition = config.Bind(
+			"UAV Radar Display",
+			"HUD position",
+			global::SamSWAT.FireSupport.ArysReloaded.UavRadarHudPosition.BottomRight,
+			new ConfigDescription(
+				"Screen corner used in HUD mode. This setting has no effect in Phone mode."));
+		EnableHelicopterItemTransfer = config.Bind(
+			"Helicopter Cargo",
+			"Enable mid-raid item transfer",
+			true,
+			new ConfigDescription(
+				"Enables the UH-60 Cargo Transfer service and its requester-only loading interaction in solo raids and for a human Fika host. Turning this off also blocks Cargo purchase and deployment so an authorization cannot be spent on an unusable helicopter. Standard Extraction helicopters never offer cargo. The native EFT transfer screen and delivery ledger are used; transferred items are returned through the native delivery message after the raid. Non-host Fika clients remain fail-closed until native transfer pricing can be synchronized with the host."));
+		EnableHelicopterItemTransfer.SettingChanged +=
+			OnHelicopterItemTransferSettingChanged;
+		HelicopterTransferFeeSource = config.Bind(
+			"Helicopter Cargo",
+			"Transfer fee source",
+			global::SamSWAT.FireSupport.ArysReloaded.HelicopterTransferFeeSource.Carried,
+			new ConfigDescription(
+				"Chooses where EFT's native RUB handling fee is paid when cargo is sent. Carried preserves EFT's original carried-cash purchase. Stash debits the authenticated PMC stash through the TSC server, while leaving the native item-delivery and messenger flow unchanged. Stash mode fails closed when the server does not support its idempotent transfer-fee endpoint."));
+		Uh60TransferFeeRecoveryJournal = config.Bind(
+			"Internal",
+			"UH-60 transfer fee recovery journal",
+			"[]",
+			PersistentHiddenDescription(
+				"Internal durable recovery journal for UH-60 stash-fee commit/refund intents."));
+		Uh60TransferFeeRecoveryQuarantine = config.Bind(
+			"Internal",
+			"UH-60 transfer fee recovery quarantine",
+			string.Empty,
+			PersistentHiddenDescription(
+				"Internal fail-safe backup of a corrupt UH-60 transfer-fee recovery journal."));
 
 		OpenUplinkKey = config.Bind(
 			"TerraGroup Phone",
@@ -331,22 +427,42 @@ internal static class PluginSettings
 			"Open deploy key",
 			new KeyboardShortcut(KeyCode.K),
 			HiddenDescription("Equips the carried TerraGroup TSC Uplink in deploy mode to use purchased support authorizations"));
+		OpenUavRadarKey = config.Bind(
+			"TerraGroup Phone",
+			"Hold UAV radar key",
+			new KeyboardShortcut(KeyCode.J),
+			HiddenDescription("In Phone display mode, hold to raise the TerraGroup TSC Uplink and view an active UAV recon link; release to restore your weapon"));
 		SpotterConfirmKey = config.Bind(
 			"TerraGroup Phone",
 			"Spotter confirm key",
 			new KeyboardShortcut(KeyCode.Mouse2),
 			HiddenDescription("Confirms spotter targeting steps (position, direction). LMB also confirms while the rangefinder is in hands, but with a weapon out it would fire, so this key is the safe confirm. Enter always works too."));
+		PhoneMouseEnabled = config.Bind(
+			"TerraGroup Phone",
+			"Phone mouse selection",
+			true,
+			new ConfigDescription("Hold the phone mouse key to move a cursor on interactive phone screens. Click a service to select it, then use its review or confirmation button. Keyboard shortcuts remain available."));
+		PhoneMouseModifier = config.Bind(
+			"TerraGroup Phone",
+			"Phone mouse key",
+			KeyCode.LeftAlt,
+			new ConfigDescription("Hold this key while using the phone to control its cursor. Release to return mouse movement to looking around. Right-click goes back while held."));
+		PhoneMouseSensitivity = config.Bind(
+			"TerraGroup Phone",
+			"Phone mouse sensitivity",
+			20f,
+			new ConfigDescription("Speed of the cursor drawn on the phone screen.", new AcceptableValueRange<float>(1f, 80f)));
 		PhoneAutoZoomEnabled = config.Bind(
 			"TerraGroup Phone",
 			"Automatic phone zoom",
 			true,
-			new ConfigDescription("Temporarily narrows the camera FOV while the local TerraGroup TSC Uplink is in your hands, then restores the previous FOV when it is stowed."));
+			new ConfigDescription("Optionally narrows the camera FOV on authorization purchase screens and enables phone framing. Deploy and held UAV radar screens always preserve the current raid FOV."));
 		PhoneZoomFov = config.Bind(
 			"TerraGroup Phone",
 			"Phone zoom FOV",
 			45f,
 			new ConfigDescription(
-				"Camera FOV used while the TerraGroup TSC Uplink is raised. Lower values make the phone appear larger. Applies the next time the phone is raised.",
+				"Camera FOV used on authorization purchase screens. Deploy and held UAV radar screens do not zoom. Lower values make the authorization phone appear larger.",
 				new AcceptableValueRange<float>(20f, 75f)));
 		PhoneZoomVerticalFraming = config.Bind(
 			"TerraGroup Phone",
@@ -355,6 +471,20 @@ internal static class PluginSettings
 			new ConfigDescription(
 				"Raises or lowers the first-person phone while automatic phone zoom is active. Positive values raise the phone toward screen center; negative values lower it.",
 				new AcceptableValueRange<float>(-0.25f, 0.25f)));
+		PhoneZoomInSeconds = config.Bind(
+			"TerraGroup Phone",
+			"Phone zoom in seconds",
+			0.75f,
+			new ConfigDescription(
+				"Time for authorization phone zoom and framing to ease into place as the phone is raised. Higher values give a slower, smoother approach. Deploy and held UAV radar screens retain their current FOV.",
+				new AcceptableValueRange<float>(0.25f, 1.5f)));
+		PhoneZoomOutSeconds = config.Bind(
+			"TerraGroup Phone",
+			"Phone zoom out seconds",
+			0.35f,
+			new ConfigDescription(
+				"Camera transition time when restoring your original FOV after closing the authorization phone.",
+				new AcceptableValueRange<float>(0.15f, 0.8f)));
 		PhoneZoomHorizontalFraming = config.Bind(
 			"TerraGroup Phone",
 			"Phone horizontal framing",
@@ -555,21 +685,34 @@ internal static class PluginSettings
 				new AcceptableValueRange<int>(10, 300)));
 		PriorityExfilHelicopterWaitTime = config.Bind(
 			"Helicopter Extraction Settings",
+			// The legacy key now controls the Cargo Transfer landing window.
 			"Priority exfil helicopter wait time",
 			20,
-			HiddenDescription("Priority exfil helicopter wait time on extraction location (seconds)",
+			HiddenDescription("UH-60 Cargo Transfer wait time at the marked loading zone (seconds)",
 				new AcceptableValueRange<int>(5, 300)));
+		HelicopterDispatchDelay = config.Bind(
+			"Helicopter Extraction Settings",
+			"Helicopter dispatch delay",
+			8f,
+			HiddenDescription("Seconds before the standard extraction helicopter is dispatched after target confirmation",
+				new AcceptableValueRange<float>(0f, 120f)));
 		PriorityExfilDispatchDelay = config.Bind(
 			"Helicopter Extraction Settings",
 			"Priority exfil dispatch delay",
 			3f,
-			HiddenDescription("Seconds before the priority exfil helicopter is dispatched after target confirmation",
+			HiddenDescription("Seconds before the UH-60 Cargo Transfer helicopter is dispatched after target confirmation",
 				new AcceptableValueRange<float>(0f, 30f)));
 		HelicopterExtractTime = config.Bind(
 			"Helicopter Extraction Settings",
 			"Extraction time",
 			10f,
-			HiddenDescription("How long you will need to stay in the exfil zone before extraction (seconds)",
+			HiddenDescription("How long you will need to stay in the standard exfil zone before extraction (seconds)",
+				new AcceptableValueRange<float>(1f, 30f)));
+		PriorityExfilHelicopterExtractTime = config.Bind(
+			"Helicopter Extraction Settings",
+			"Priority exfil extraction time",
+			10f,
+			HiddenDescription("Legacy compatibility value retained in the PriorityExfil config slot. Cargo Transfer never extracts the PMC.",
 				new AcceptableValueRange<float>(1f, 30f)));
 		HelicopterSpeedMultiplier = config.Bind(
 			"Helicopter Extraction Settings",
@@ -581,7 +724,7 @@ internal static class PluginSettings
 			"Helicopter Extraction Settings",
 			"Priority exfil helicopter speed multiplier",
 			1.35f,
-			new ConfigDescription("How fast the priority exfil helicopter arrival animation will be played",
+			new ConfigDescription("How fast the UH-60 Cargo Transfer arrival animation will be played",
 				new AcceptableValueRange<float>(0.8f, 2f)));
 
 		VoiceoverVolume = config.Bind(
@@ -620,11 +763,29 @@ internal static class PluginSettings
 		DashboardConfigInfo = config.Bind(
 			"TSC Dashboard",
 			"Configure TSC at",
-			"https://127.0.0.1:6969/tsc/admin",
+			GetDashboardUrl(),
 			new ConfigDescription("TSC server, payment, UAV, helicopter, and support pricing settings are managed by the local web dashboard. Localhost-only by default; do not port-forward it."));
 
 		HideFileOnlySettings(config);
 		SubscribeEffectiveSettingChanges();
+	}
+
+	private static string GetDashboardUrl()
+	{
+		string host = SPT.Common.Http.RequestHandler.Host;
+		if (!string.IsNullOrWhiteSpace(host) &&
+		    Uri.TryCreate(host, UriKind.Absolute, out Uri hostUri) &&
+		    (hostUri.Scheme == Uri.UriSchemeHttp || hostUri.Scheme == Uri.UriSchemeHttps))
+		{
+			return new UriBuilder(hostUri)
+			{
+				Path = "/tsc/admin",
+				Query = string.Empty,
+				Fragment = string.Empty
+			}.Uri.AbsoluteUri;
+		}
+
+		return "https://127.0.0.1:6969/tsc/admin";
 	}
 
 	private static void HideFileOnlySettings(ConfigFile config)
@@ -640,6 +801,7 @@ internal static class PluginSettings
 		RemoveFromConfigManager(config, RequireServerConfigInFika);
 		RemoveFromConfigManager(config, ServerConfigRefreshSeconds);
 		RemoveFromConfigManager(config, PaymentSource);
+		RemoveFromConfigManager(config, PaymentCurrency);
 		RemoveFromConfigManager(config, RequestCooldown);
 		RemoveFromConfigManager(config, StrafeRequestCostRoubles);
 		RemoveFromConfigManager(config, DoubleStrafeRequestCostRoubles);
@@ -665,6 +827,7 @@ internal static class PluginSettings
 		RemoveFromConfigManager(config, FocusedSweepDurationSeconds);
 		RemoveFromConfigManager(config, FocusedSweepScanInterval);
 		RemoveFromConfigManager(config, FocusedSweepRangeMeters);
+		RemoveFromConfigManager(config, UavPhoneReconDefaultsMigrated);
 		RemoveFromConfigManager(config, UavRadarPalette);
 		RemoveFromConfigManager(config, PhoneFramingDefaultsMigrated);
 		RemoveFromConfigManager(config, PhoneHorizontalDefaultMigrated);
@@ -697,8 +860,10 @@ internal static class PluginSettings
 		RemoveFromConfigManager(config, UavA10LoiterModelRollOffset);
 		RemoveFromConfigManager(config, HelicopterWaitTime);
 		RemoveFromConfigManager(config, PriorityExfilHelicopterWaitTime);
+		RemoveFromConfigManager(config, HelicopterDispatchDelay);
 		RemoveFromConfigManager(config, PriorityExfilDispatchDelay);
 		RemoveFromConfigManager(config, HelicopterExtractTime);
+		RemoveFromConfigManager(config, PriorityExfilHelicopterExtractTime);
 		RemoveFromConfigManager(config, HelicopterSpeedMultiplier);
 		RemoveFromConfigManager(config, PriorityExfilHelicopterSpeedMultiplier);
 		RemoveFromConfigManager(config, VoiceoverVolume);
@@ -725,6 +890,51 @@ internal static class PluginSettings
 		if (A10HeadlessRequesterSelfDamageDefaultMigrated != null)
 		{
 			A10HeadlessRequesterSelfDamageDefaultMigrated.Value = true;
+		}
+	}
+
+	private static void MigrateUavPhoneReconDefaults()
+	{
+		if (UavPhoneReconDefaultsMigrated?.Value == true)
+		{
+			return;
+		}
+
+		bool changed = false;
+		if (UavDurationSeconds?.Value == 45)
+		{
+			UavDurationSeconds.Value = 480;
+			changed = true;
+		}
+
+		if (UavScanInterval != null && Mathf.Approximately(UavScanInterval.Value, 1f))
+		{
+			UavScanInterval.Value = 5f;
+			changed = true;
+		}
+
+		if (FocusedSweepDurationSeconds?.Value == 30)
+		{
+			FocusedSweepDurationSeconds.Value = 90;
+			changed = true;
+		}
+
+		if (FocusedSweepScanInterval != null &&
+		    Mathf.Approximately(FocusedSweepScanInterval.Value, 0.5f))
+		{
+			FocusedSweepScanInterval.Value = 0.75f;
+			changed = true;
+		}
+
+		if (changed)
+		{
+			FireSupportPlugin.LogSource?.LogInfo(
+				"TSC migrated legacy local UAV timing defaults to match the physical-phone recon contracts.");
+		}
+
+		if (UavPhoneReconDefaultsMigrated != null)
+		{
+			UavPhoneReconDefaultsMigrated.Value = true;
 		}
 	}
 
@@ -806,6 +1016,7 @@ internal static class PluginSettings
 		TrackEffectiveSetting(RequireServerConfigInFika);
 		TrackEffectiveSetting(ServerConfigRefreshSeconds);
 		TrackEffectiveSetting(PaymentSource);
+		TrackEffectiveSetting(PaymentCurrency);
 		TrackEffectiveSetting(StrafeRequestCostRoubles);
 		TrackEffectiveSetting(DoubleStrafeRequestCostRoubles);
 		TrackEffectiveSetting(ExtractionRequestCostRoubles);
@@ -831,8 +1042,10 @@ internal static class PluginSettings
 		TrackEffectiveSetting(FocusedSweepRangeMeters);
 		TrackEffectiveSetting(HelicopterWaitTime);
 		TrackEffectiveSetting(PriorityExfilHelicopterWaitTime);
+		TrackEffectiveSetting(HelicopterDispatchDelay);
 		TrackEffectiveSetting(PriorityExfilDispatchDelay);
 		TrackEffectiveSetting(HelicopterExtractTime);
+		TrackEffectiveSetting(PriorityExfilHelicopterExtractTime);
 		TrackEffectiveSetting(HelicopterSpeedMultiplier);
 		TrackEffectiveSetting(PriorityExfilHelicopterSpeedMultiplier);
 		TrackEffectiveSetting(RequestCooldown);
@@ -848,6 +1061,14 @@ internal static class PluginSettings
 
 	private static void OnEffectiveSettingChanged(object sender, System.EventArgs args)
 	{
+		FireSupportPayment.NotifySettingsChanged(sender);
+	}
+
+	private static void OnHelicopterItemTransferSettingChanged(
+		object sender,
+		System.EventArgs args)
+	{
+		FireSupportItemTransfer.RefreshInteractionAvailability();
 		FireSupportPayment.NotifySettingsChanged(sender);
 	}
 }

@@ -9,7 +9,10 @@ Tylevo's Tactical Services Control is a derivative rework of SamSWAT's original 
 
 This project is distributed as a separate derivative/continuation project with upstream permission recorded by the maintainer. TSC retains visible credit to SamSWAT and Arys in the README, Forge page, source repository, release archive, and this notice file.
 
-TSC-specific additions include the TerraGroup TSC Uplink, phone authorization flow, stash/carry payment support, Fika sync work, dashboard configuration, UAV Recon, Focused Sweep, Priority Exfil, Double Pass, phone UI assets, and release maintenance.
+TSC-specific additions include the TerraGroup TSC Uplink, phone authorization
+flow, stash/carry payment support, Fika sync work, dashboard configuration, UAV
+Recon, Focused Sweep, Cargo Transfer (released `PriorityExfil` compatibility
+slot), Double Pass, phone UI assets, and release maintenance.
 
 ## Project License
 
@@ -62,6 +65,16 @@ The UAV radar HUD bundle and blip styling are adapted from Accurate Circular Rad
 The maintainer has reviewed the redistributed assets for this public beta release. If any additional upstream restrictions are identified later, affected assets should be replaced or removed in a follow-up release.
 
 Bundled assets may include material derived from or compatible with the upstream Fire Support/Arys Reloaded basis. Third-party assets keep their own notices and permission requirements.
+
+## User-Provided Danger Close Ringtone
+
+`project/SamSWAT.FireSupport/LocalOnly/danger-close-ringtone.mp3` was supplied
+by the maintainer for local/test use. Local deployment copies it to
+`assets/content/ui/phone/audio/danger-close-ringtone.mp3`. Its filename
+identifies it as a Dokkaebi-themed sound effect, but no source or redistribution
+license has been documented. It is excluded from release archives and must be
+replaced with an original or explicitly licensed recording, or have its
+redistribution rights confirmed, before any public release.
 
 ## Disclaimer
 

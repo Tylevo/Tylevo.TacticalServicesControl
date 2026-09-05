@@ -25,17 +25,59 @@ public class FireSupportController : UIInputNode
 	[NonSerialized] private readonly FireSupportServiceMappings _services = new(new SupportTypeComparer());
 
 	[NonSerialized] private bool _canCallSupport = true;
+	[NonSerialized] private bool _initialized;
 	[NonSerialized] private int _cooldownTimer;
+
+	private static int s_creationGeneration;
 
 	public static FireSupportController Instance { get; private set; }
 
 	public int CooldownSecondsRemaining => _cooldownTimer;
+	public bool IsInitialized => _initialized;
 
 	public static async UniTask<FireSupportController> Create(GesturesMenu gesturesMenu)
 	{
-		Instance = new GameObject("FireSupportController").AddComponent<FireSupportController>();
-		await Instance.Initialize(gesturesMenu);
-		return Instance;
+		int generation = Interlocked.Increment(ref s_creationGeneration);
+		var controller = new GameObject("FireSupportController").AddComponent<FireSupportController>();
+		Instance = controller;
+
+		try
+		{
+			await controller.Initialize(gesturesMenu, generation);
+			controller.ThrowIfCreationIsStale(generation);
+			return controller;
+		}
+		catch
+		{
+			if (controller != null)
+			{
+				DestroyImmediate(controller);
+			}
+
+			// OnDestroy may have run before an awaited runtime initialization
+			// completed. If no replacement owns the runtime, dispose that late
+			// completion instead of carrying it into the menu or next raid.
+			if (Instance == null)
+			{
+				FireSupportRuntime.Dispose();
+			}
+
+			throw;
+		}
+	}
+
+	public static void DestroyCurrent(string reason)
+	{
+		Interlocked.Increment(ref s_creationGeneration);
+		FireSupportController controller = Instance;
+		if (controller == null)
+		{
+			return;
+		}
+
+		FireSupportPlugin.LogSource?.LogInfo(
+			$"TSC fire-support controller ending. reason={reason ?? "unspecified"}.");
+		DestroyImmediate(controller);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -47,26 +89,33 @@ public class FireSupportController : UIInputNode
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public bool IsSupportAvailable()
 	{
-		return _cooldownTimer == 0 && _canCallSupport;
+		return _initialized && _cooldownTimer == 0 && _canCallSupport;
 	}
 
-	private async UniTask Initialize(GesturesMenu gesturesMenu)
+	private async UniTask Initialize(GesturesMenu gesturesMenu, int generation)
 	{
 		_gesturesMenu = gesturesMenu;
 		await FireSupportRuntime.EnsureInitialized();
+		ThrowIfCreationIsStale(generation);
 		_audio = FireSupportAudio.Instance;
-		_spotter = await FireSupportSpotter.Load();
+
+		FireSupportSpotter loadedSpotter =
+			await FireSupportSpotter.Load(destroyCancellationToken);
+		if (!IsCreationCurrent(generation))
+		{
+			ThrowIfCreationIsStale(generation);
+		}
+
+		_spotter = loadedSpotter;
 
 		var heliExfil = new HeliExfiltrationService(
 			_spotter,
-			PluginSettings.AmountOfExtractionRequests.Value,
-			ESupportType.Extract);
+			PluginSettings.AmountOfExtractionRequests.Value);
 		_services[heliExfil.SupportType] = heliExfil;
-		var priorityExfil = new HeliExfiltrationService(
+		var cargoTransfer = new HeliCargoTransferService(
 			_spotter,
-			PluginSettings.AmountOfExtractionRequests.Value,
-			ESupportType.PriorityExfil);
-		_services[priorityExfil.SupportType] = priorityExfil;
+			PluginSettings.AmountOfExtractionRequests.Value);
+		_services[cargoTransfer.SupportType] = cargoTransfer;
 
 		var jetStrafe = new JetStrafeService(
 			_spotter,
@@ -88,13 +137,44 @@ public class FireSupportController : UIInputNode
 			ESupportType.FocusedSweep);
 		_services[focusedSweep.SupportType] = focusedSweep;
 
-		_ui = await FireSupportUI.Load(_services, gesturesMenu);
-		_ui.SupportRequested += OnSupportRequested;
+		FireSupportUI loadedUi =
+			await FireSupportUI.Load(
+				_services,
+				gesturesMenu,
+				destroyCancellationToken);
+		if (!IsCreationCurrent(generation))
+		{
+			loadedUi?.Dispose();
+			ThrowIfCreationIsStale(generation);
+		}
 
+		_ui = loadedUi;
+		_ui.SupportRequested += OnSupportRequested;
+		_initialized = true;
+		FireSupportPlugin.LogSource.LogInfo("TSC fire-support controller ready.");
+	}
+
+	private bool IsCreationCurrent(int generation)
+	{
+		return this != null &&
+		       ReferenceEquals(Instance, this) &&
+		       Volatile.Read(ref s_creationGeneration) == generation &&
+		       !destroyCancellationToken.IsCancellationRequested;
+	}
+
+	private void ThrowIfCreationIsStale(int generation)
+	{
+		if (!IsCreationCurrent(generation))
+		{
+			throw new OperationCanceledException("Fire-support controller creation was superseded or its raid ended.");
+		}
 	}
 
 	private void OnDestroy()
 	{
+		_initialized = false;
+		bool ownsCurrentController = ReferenceEquals(Instance, this);
+
 		if (_ui != null)
 		{
 			_ui.SupportRequested -= OnSupportRequested;
@@ -108,10 +188,15 @@ public class FireSupportController : UIInputNode
 			_spotter = null;
 		}
 
-		FireSupportRuntime.Dispose();
-		if (Instance == this)
+		// A superseded controller can finish an awaited load after its
+		// replacement is already live. Its teardown owns only the objects it
+		// captured above; disposing the shared runtime here would pull the
+		// replacement's audio, pools, and bundles out from underneath it.
+		if (ownsCurrentController)
 		{
+			FireSupportRuntime.Dispose();
 			Instance = null;
+			Interlocked.Increment(ref s_creationGeneration);
 		}
 	}
 
@@ -149,6 +234,14 @@ public class FireSupportController : UIInputNode
 	{
 		try
 		{
+			if (!FireSupportServiceAvailability.IsServiceEnabled(supportType))
+			{
+				FireSupportPlugin.LogSource.LogInfo(
+					$"TSC deploy request blocked: service disabled for {supportType}.");
+				FireSupportPayment.NotifyServiceUnavailable(supportType);
+				return;
+			}
+
 			if (!_services.TryGetValue(supportType, out IFireSupportService service))
 			{
 				FireSupportPlugin.LogSource.LogWarning($"TSC deploy request had no service registered for {supportType}.");
@@ -159,7 +252,7 @@ public class FireSupportController : UIInputNode
 			{
 				FireSupportPlugin.LogSource.LogInfo(
 					$"TSC deploy request blocked: support unavailable (cooldown={_cooldownTimer}, canCall={_canCallSupport}).");
-				NotificationManagerClass.DisplayWarningNotification(
+				NotificationManager.DisplayWarningNotification(
 					"Support station is busy. Wait for the current request or cooldown to finish.",
 					ENotificationDurationType.Default);
 				return;
@@ -168,7 +261,7 @@ public class FireSupportController : UIInputNode
 			if (!service.IsRequestAvailable())
 			{
 				FireSupportPlugin.LogSource.LogInfo($"TSC deploy request blocked: no request available for {supportType}.");
-				NotificationManagerClass.DisplayWarningNotification(
+				NotificationManager.DisplayWarningNotification(
 					$"{FireSupportPayment.GetSupportName(supportType)} is not available right now.",
 					ENotificationDurationType.Default);
 				return;
@@ -197,6 +290,12 @@ public class FireSupportController : UIInputNode
 	{
 		try
 		{
+			if (!FireSupportServiceAvailability.IsServiceEnabled(supportType))
+			{
+				FireSupportPayment.NotifyServiceUnavailable(supportType);
+				return;
+			}
+
 			ESupportType requestedSupportType = supportType;
 			supportType = FireSupportDeploymentSelection.ResolveRadialRequest(
 				supportType,

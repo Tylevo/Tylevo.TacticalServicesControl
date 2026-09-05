@@ -12,7 +12,7 @@ public static class A10TracerNetworking
 	public delegate void TracerBurstCreatedHandler(A10TracerBurst burst);
 
 	private const float PendingBurstFallbackSeconds = 10f;
-	public const float ClientVisualFireDelaySeconds = 8f;
+	public const float ClientVisualFireDelaySeconds = A10ShotPlanner.GunFireDelaySeconds;
 
 	private static int s_nextBurstId;
 	private static readonly object s_predictionGate = new();
@@ -20,15 +20,11 @@ public static class A10TracerNetworking
 	private static readonly HashSet<string> s_confirmedBursts = new(StringComparer.Ordinal);
 	private static readonly Dictionary<string, float> s_clientVisualFireStartTimes = new(StringComparer.Ordinal);
 	private static readonly Dictionary<string, List<PendingTracerBurst>> s_pendingHostBursts = new(StringComparer.Ordinal);
-	private static string s_currentSupportRequestId = string.Empty;
-	private static string s_currentRequesterProfileId = string.Empty;
 
 	public static event TracerBurstCreatedHandler TracerBurstCreated;
 
 	public static bool IsNetworkAuthorityActive { get; private set; }
 	public static string CurrentAuthorityRole { get; private set; } = "Singleplayer";
-	public static string CurrentSupportRequestId => s_currentSupportRequestId;
-	public static string CurrentRequesterProfileId => s_currentRequesterProfileId;
 
 	public static void SetNetworkAuthorityActive(bool active, string reason)
 	{
@@ -51,21 +47,6 @@ public static class A10TracerNetworking
 	public static void SetAuthorityRole(string role)
 	{
 		CurrentAuthorityRole = string.IsNullOrWhiteSpace(role) ? "Singleplayer" : role.Trim();
-	}
-
-	public static void PushSupportRequestContext(string supportRequestId, string requesterProfileId)
-	{
-		s_currentSupportRequestId = supportRequestId ?? string.Empty;
-		s_currentRequesterProfileId = requesterProfileId ?? string.Empty;
-	}
-
-	public static void PopSupportRequestContext(string supportRequestId)
-	{
-		if (string.IsNullOrWhiteSpace(supportRequestId) || string.Equals(s_currentSupportRequestId, supportRequestId, StringComparison.Ordinal))
-		{
-			s_currentSupportRequestId = string.Empty;
-			s_currentRequesterProfileId = string.Empty;
-		}
 	}
 
 	public static int NextBurstId()
@@ -241,7 +222,7 @@ public static class A10TracerNetworking
 	{
 		try
 		{
-			await UniTask.WaitForSeconds(8f, cancellationToken: cancellationToken);
+			await UniTask.WaitForSeconds(ClientVisualFireDelaySeconds, cancellationToken: cancellationToken);
 			lock (s_predictionGate)
 			{
 				if (s_confirmedBursts.Contains(key) || !s_localPredictions.Remove(key))
@@ -255,7 +236,7 @@ public static class A10TracerNetworking
 				$"{message} requestId={A10AuthorityDiagnostics.ShortId(supportRequestId)} pass={passIndex} seed={visualSeed} center={A10AuthorityDiagnostics.FormatVector(centerPosition)}");
 			try
 			{
-				NotificationManagerClass.DisplayWarningNotification(message, ENotificationDurationType.Long);
+				NotificationManager.DisplayWarningNotification(message, ENotificationDurationType.Long);
 			}
 			catch
 			{

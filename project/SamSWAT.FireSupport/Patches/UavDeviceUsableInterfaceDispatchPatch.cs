@@ -1,4 +1,5 @@
 using EFT.InventoryLogic;
+using EFT.NextObservedPlayer;
 using HarmonyLib;
 using SamSWAT.FireSupport.ArysReloaded.Unity;
 using SPT.Reflection.Patching;
@@ -10,13 +11,14 @@ internal sealed class UavDeviceUsableInterfaceDispatchPatch : ModulePatch
 {
 	protected override MethodBase GetTargetMethod()
 	{
-		return typeof(GClass2970).GetMethod(
-			"smethod_0",
-			BindingFlags.Public | BindingFlags.Static);
+		return AccessTools.Method(
+			typeof(ObservedPlayerUsableItemController),
+			nameof(ObservedPlayerUsableItemController.GetObservedUsableItem),
+			new[] { typeof(Item) });
 	}
 
 	[PatchPrefix]
-	private static bool Prefix(ref GInterface323 __result, Item item)
+	private static bool Prefix(ref IObservedUsableItem __result, Item item)
 	{
 		if (item is not UavDeviceItem)
 		{

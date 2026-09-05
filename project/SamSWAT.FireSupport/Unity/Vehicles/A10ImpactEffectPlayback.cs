@@ -11,11 +11,8 @@ public static class A10ImpactEffectPlayback
 {
 	private const string DefaultEffectName = "big_smoky_explosion";
 	private const float ImpactRaycastPadding = 2f;
-	private const float EndpointProbeHeight = 6f;
-	private const float EndpointProbeDistance = 14f;
-	private const float EndpointProbeRadius = 1.5f;
 	private const float SoloGau8ExplosionVolume = 1f;
-	private const string NamedEffectsFieldName = "dictionary_1";
+	private const string NamedEffectsFieldName = "_names";
 	private static bool s_failureLogged;
 	private static bool s_soloImpactPathLogged;
 	private static bool s_soloImpactUnavailableLogged;
@@ -94,26 +91,12 @@ public static class A10ImpactEffectPlayback
 
 	private static bool TryResolveImpactHit(A10TracerSegment segment, out RaycastHit hit)
 	{
-		Vector3 direction = segment.ProjectileDirection.normalized;
-		Vector3 endpointProbeStart = segment.TracerEnd + Vector3.up * EndpointProbeHeight;
-		if (Physics.Raycast(endpointProbeStart, Vector3.down, out hit, EndpointProbeDistance, ~0, QueryTriggerInteraction.Ignore))
-		{
-			return true;
-		}
-
-		if (Physics.SphereCast(endpointProbeStart, EndpointProbeRadius, Vector3.down, out hit, EndpointProbeDistance, ~0, QueryTriggerInteraction.Ignore))
-		{
-			return true;
-		}
-
-		float distance = Vector3.Distance(segment.ProjectileOrigin, segment.TracerEnd) + ImpactRaycastPadding;
-		if (Physics.Raycast(segment.ProjectileOrigin, direction, out hit, distance, ~0, QueryTriggerInteraction.Ignore))
-		{
-			return true;
-		}
-
+		// Use the descending terminal tangent. The compensated launch direction
+		// points above this surface, and an overhead probe can select another roof.
+		Vector3 direction = (segment.TracerEnd - segment.TracerStart).normalized;
 		Vector3 probeStart = segment.TracerEnd - direction * ImpactRaycastPadding;
-		return Physics.Raycast(probeStart, direction, out hit, ImpactRaycastPadding * 2f, ~0, QueryTriggerInteraction.Ignore);
+		return Physics.Raycast(probeStart, direction, out hit, ImpactRaycastPadding * 2f,
+			EFT.Ballistics.BallisticsCalculatorConstants.HitMask, QueryTriggerInteraction.UseGlobal);
 	}
 
 	private static bool HasNamedEffect(Effects effects, string effectName)

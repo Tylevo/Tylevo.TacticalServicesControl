@@ -1,18 +1,20 @@
 <Project>
   <PropertyGroup>
-    <Version>0.9.8</Version>
+    <Version>1.3.8</Version>
     <AssemblyVersion>$(Version)</AssemblyVersion>
     <FileVersion>$(Version)</FileVersion>
-    <TargetSptVersion>4.0.13</TargetSptVersion>
+    <TargetSptVersion>4.1.4</TargetSptVersion>
     <Authors>Tylevo</Authors>
     <Copyright>Tylevo, SamSWAT, Arys</Copyright>
     <LangVersion>latest</LangVersion>
-    <Configurations>Debug;SPT-3.10 Release;SPT-3.11 Release;SPT-4.0 Release</Configurations>
+    <Configurations>Debug;SPT-3.10 Release;SPT-3.11 Release;SPT-4.0 Release;SPT-4.1 Release</Configurations>
     <Platforms>AnyCPU</Platforms>
     <SolutionName>Tylevo.TacticalServicesControl</SolutionName>
     <DistributionDir>$(MSBuildThisFileDirectory)dist\</DistributionDir>
-    <ReleaseArchive>$(DistributionDir)$(SolutionName)-v$(Version)-SPT$(TargetSptVersion).zip</ReleaseArchive>
-    <SevenZipPath Condition=" '$(SevenZipPath)' == '' ">C:\Program Files\7-Zip\7z.exe</SevenZipPath>
+    <ReleaseArchive>$(DistributionDir)$(SolutionName)-v$(Version)-SPT$(TargetSptVersion)-TESTER.zip</ReleaseArchive>
+    <!-- Custom Build outputs must never become SDK CandidateAssemblyFiles;
+         stale configurations can otherwise outrank explicit HintPaths. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);Build\**</DefaultItemExcludes>
   </PropertyGroup>
   <PropertyGroup>
     <SptDir Condition=" '$(SptDir)' == '' ">$(MSBuildThisFileDirectory)..\..\SPT\</SptDir>
@@ -28,17 +30,18 @@
         ↳ 310x
         ↳ 311x
     -->
-    <SptSharedAssembliesDir>..\..\..\..\SPT Assemblies\</SptSharedAssembliesDir>
+    <SptSharedAssembliesDir Condition=" '$(SptSharedAssembliesDir)' == '' ">..\..\..\..\SPT Assemblies\</SptSharedAssembliesDir>
 
     <!--
       The SPT version to target.
       This is used to find the corresponding SPT version's assembles in <SptSharedAssembliesDir>.
       The value here is mostly a fallback value if you do not have a build configuration set up yet.
     -->
-    <SptVersion Condition=" '$(SptVersion)' == '' ">400x</SptVersion>
+    <SptVersion Condition=" '$(SptVersion)' == '' ">410x</SptVersion>
     <SptBepInExPluginsDir>$(SptDir)BepInEx\plugins\</SptBepInExPluginsDir>
     <SptBepInExPatchersDir>$(SptDir)BepInEx\patchers\</SptBepInExPatchersDir>
-    <SptServerModsDir>$(SptDir)SPT\user\mods\</SptServerModsDir>
+    <SptServerRuntimeDir>$(SptDir)SPT_Runtime\</SptServerRuntimeDir>
+    <SptServerModsDir>$(SptServerRuntimeDir)user\mods\</SptServerModsDir>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <OutputPath>Build\Debug\</OutputPath>
@@ -65,6 +68,12 @@
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'SPT-4.0 Release|AnyCPU' ">
     <OutputPath>Build\SPT-4.0\</OutputPath>
     <SptVersion>400x</SptVersion>
+    <Optimize>true</Optimize>
+    <NoWarn>1701;1702;0649</NoWarn>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'SPT-4.1 Release|AnyCPU' ">
+    <OutputPath>Build\SPT-4.1\</OutputPath>
+    <SptVersion>410x</SptVersion>
     <Optimize>true</Optimize>
     <NoWarn>1701;1702;0649</NoWarn>
   </PropertyGroup>

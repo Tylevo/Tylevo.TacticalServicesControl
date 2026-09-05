@@ -13,9 +13,18 @@ public class FireSupportRequestPacket : INetSerializable
 	public Vector3 Rotation;
 	public int VisualSeed;
 	public float DurationSeconds;
+	public float ScanIntervalSeconds;
+	public float RangeMeters;
 	public int PassIndex;
 	public string SupportRequestId = string.Empty;
 	public string RequesterProfileId = string.Empty;
+	public int HelicopterTimingRevision;
+	public float HelicopterDispatchDelaySeconds;
+	public int HelicopterWaitTimeSeconds;
+	public float HelicopterExtractTimeSeconds;
+	public float HelicopterSpeedMultiplier;
+	public int ServiceSemanticsVersion = FireSupportServiceSemantics.CurrentVersion;
+	public FireSupportRequestOrigin RequestOrigin = FireSupportRequestOrigin.Manual;
 
 	public FireSupportRequestPacket()
 	{
@@ -30,7 +39,12 @@ public class FireSupportRequestPacket : INetSerializable
 		float durationSeconds,
 		int passIndex = 0,
 		string requesterProfileId = "",
-		string supportRequestId = "")
+		string supportRequestId = "",
+		float scanIntervalSeconds = 0f,
+		float rangeMeters = 0f,
+		HelicopterTimingSnapshot? helicopterTimingSnapshot = null,
+		int helicopterTimingRevision = 0,
+		FireSupportRequestOrigin requestOrigin = FireSupportRequestOrigin.Manual)
 	{
 		SupportType = supportType;
 		Position = position;
@@ -38,11 +52,46 @@ public class FireSupportRequestPacket : INetSerializable
 		Rotation = rotation;
 		VisualSeed = visualSeed;
 		DurationSeconds = durationSeconds;
+		ScanIntervalSeconds = scanIntervalSeconds;
+		RangeMeters = rangeMeters;
 		PassIndex = passIndex;
 		RequesterProfileId = requesterProfileId ?? string.Empty;
 		SupportRequestId = string.IsNullOrWhiteSpace(supportRequestId)
 			? Guid.NewGuid().ToString("N")
 			: supportRequestId.Trim();
+		RequestOrigin = requestOrigin;
+		if (helicopterTimingSnapshot.HasValue)
+		{
+			SetHelicopterTiming(
+				helicopterTimingSnapshot.Value,
+				helicopterTimingRevision);
+		}
+	}
+
+	public void SetHelicopterTiming(
+		HelicopterTimingSnapshot timingSnapshot,
+		int revision)
+	{
+		HelicopterTimingRevision = revision;
+		HelicopterDispatchDelaySeconds = timingSnapshot.DispatchDelaySeconds;
+		HelicopterWaitTimeSeconds = timingSnapshot.WaitTimeSeconds;
+		HelicopterExtractTimeSeconds =
+			SupportType == ESupportType.PriorityExfil
+				? 0f
+				: timingSnapshot.ExtractTimeSeconds;
+		HelicopterSpeedMultiplier = timingSnapshot.SpeedMultiplier;
+	}
+
+	public HelicopterTimingSnapshot GetHelicopterTiming()
+	{
+		return new HelicopterTimingSnapshot(
+			SupportType,
+			HelicopterDispatchDelaySeconds,
+			HelicopterWaitTimeSeconds,
+			SupportType == ESupportType.PriorityExfil
+				? 0f
+				: HelicopterExtractTimeSeconds,
+			HelicopterSpeedMultiplier);
 	}
 
 	public void Serialize(NetDataWriter writer)
@@ -53,9 +102,18 @@ public class FireSupportRequestPacket : INetSerializable
 		writer.PutUnmanaged(Rotation);
 		writer.Put(VisualSeed);
 		writer.Put(DurationSeconds);
+		writer.Put(ScanIntervalSeconds);
+		writer.Put(RangeMeters);
 		writer.Put(PassIndex);
 		writer.Put(SupportRequestId ?? string.Empty);
 		writer.Put(RequesterProfileId ?? string.Empty);
+		writer.Put(HelicopterTimingRevision);
+		writer.Put(HelicopterDispatchDelaySeconds);
+		writer.Put(HelicopterWaitTimeSeconds);
+		writer.Put(HelicopterExtractTimeSeconds);
+		writer.Put(HelicopterSpeedMultiplier);
+		writer.Put(ServiceSemanticsVersion);
+		writer.Put((int)RequestOrigin);
 	}
 
 	public void Deserialize(NetDataReader reader)
@@ -66,10 +124,26 @@ public class FireSupportRequestPacket : INetSerializable
 		Rotation = reader.GetUnmanaged<Vector3>();
 		VisualSeed = reader.GetInt();
 		DurationSeconds = reader.GetFloat();
+		ScanIntervalSeconds = reader.GetFloat();
+		RangeMeters = reader.GetFloat();
 		PassIndex = reader.GetInt();
 		SupportRequestId = reader.GetString() ?? string.Empty;
 		RequesterProfileId = reader.GetString() ?? string.Empty;
-		EnsureRequestId();
+		HelicopterTimingRevision = reader.GetInt();
+		HelicopterDispatchDelaySeconds = reader.GetFloat();
+		HelicopterWaitTimeSeconds = reader.GetInt();
+		float legacyHelicopterExtractTimeSeconds = reader.GetFloat();
+		HelicopterExtractTimeSeconds =
+			SupportType == ESupportType.PriorityExfil
+				? 0f
+				: legacyHelicopterExtractTimeSeconds;
+		HelicopterSpeedMultiplier = reader.GetFloat();
+		ServiceSemanticsVersion = reader.AvailableBytes >= sizeof(int)
+			? reader.GetInt()
+			: FireSupportServiceSemantics.LegacyVersion;
+		RequestOrigin = reader.AvailableBytes >= sizeof(int)
+			? (FireSupportRequestOrigin)reader.GetInt()
+			: FireSupportRequestOrigin.Manual;
 	}
 
 	public void EnsureRequestId()

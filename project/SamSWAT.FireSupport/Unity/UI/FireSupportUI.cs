@@ -7,6 +7,7 @@ using SamSWAT.FireSupport.ArysReloaded.Utils;
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -39,17 +40,48 @@ public class FireSupportUI : UpdatableComponentBase, IPointerEnterHandler, IPoin
 
 	public static async UniTask<FireSupportUI> Load(
 		FireSupportServiceMappings services,
-		GesturesMenu gesturesMenu)
+		GesturesMenu gesturesMenu,
+		CancellationToken cancellationToken = default)
 	{
-		Instance = Instantiate(await AssetLoader.LoadAssetAsync("assets/content/ui/firesupport_ui.bundle"))
-			.GetComponent<FireSupportUI>();
-		Instance.Initialize(services, gesturesMenu);
-		return Instance;
+		GameObject prefab =
+			await AssetLoader.LoadAssetAsync("assets/content/ui/firesupport_ui.bundle");
+		cancellationToken.ThrowIfCancellationRequested();
+
+		GameObject uiObject = null;
+		try
+		{
+			uiObject = Instantiate(prefab);
+			FireSupportUI instance = uiObject.GetComponent<FireSupportUI>();
+			if (instance == null)
+			{
+				throw new InvalidOperationException(
+					"Fire-support UI prefab did not contain FireSupportUI.");
+			}
+
+			cancellationToken.ThrowIfCancellationRequested();
+			instance.Initialize(services, gesturesMenu);
+			cancellationToken.ThrowIfCancellationRequested();
+			Instance = instance;
+			return instance;
+		}
+		catch
+		{
+			if (uiObject != null)
+			{
+				DestroyImmediate(uiObject);
+			}
+
+			throw;
+		}
 	}
 
 	public void Dispose()
 	{
-		Instance = null;
+		if (ReferenceEquals(Instance, this))
+		{
+			Instance = null;
+		}
+
 		DestroyImmediate(gameObject);
 	}
 
@@ -231,6 +263,11 @@ public class FireSupportUI : UpdatableComponentBase, IPointerEnterHandler, IPoin
 
 	private string GetRequestDisplayText(ESupportType supportType, IFireSupportService service)
 	{
+		if (!FireSupportServiceAvailability.IsServiceEnabled(supportType))
+		{
+			return "LOCKED";
+		}
+
 		ESupportType displaySupportType = FireSupportDeploymentSelection.ResolveRadialRequest(
 			supportType,
 			_services,

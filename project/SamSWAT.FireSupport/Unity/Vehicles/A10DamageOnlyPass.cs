@@ -2,7 +2,6 @@ using Comfort.Common;
 using Cysharp.Threading.Tasks;
 using EFT;
 using EFT.Ballistics;
-using EFT.HealthSystem;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -31,9 +30,100 @@ public static class A10DamageOnlyPass
 	private const float DirectFallbackPenetrationPower = 100f;
 	private const float DirectFallbackArmorDamage = 150f;
 	private const float DirectFallbackStaminaBurnRate = 0.432f;
+	private const float DirectFallbackBallisticSettleSeconds = 0.35f;
+	private const float DirectFallbackHealthChangeEpsilon = 0.01f;
+
+	/// <summary>
+	/// Verifies that the headless pass can construct its ballistic weapon and
+	/// produce a non-empty shot plan without publishing tracers or applying
+	/// damage. Fika uses this to make Accepted the terminal authority decision
+	/// before launching the irreversible pass.
+	/// </summary>
+	public static bool TryPreflight(
+		A10StrikeRequest request,
+		out string reason)
+	{
+		reason = string.Empty;
+		if (request == null)
+		{
+			reason = "A10RequestNull";
+			return false;
+		}
+
+		GameWorld gameWorld = Singleton<GameWorld>.Instance;
+		if (gameWorld == null)
+		{
+			reason = "A10GameWorldUnavailable";
+			return false;
+		}
+
+		try
+		{
+			A10ProjectileOwnerMode ownerMode = GetProjectileOwnerMode(request);
+			int seed = request.VisualSeed != 0
+				? request.VisualSeed
+				: Environment.TickCount;
+			OwnerResolution owner = ResolveOwner(
+				gameWorld,
+				request.RequesterProfileId);
+			string shotOwnerProfileId = ResolveShotOwnerProfileId(
+				gameWorld,
+				request,
+				owner,
+				ownerMode);
+			var weapon = new VehicleWeapon(
+				shotOwnerProfileId,
+				ItemConstants.GAU8_WEAPON_TPL,
+				ItemConstants.GAU8_AMMO_TPL);
+			float timeBetweenShots = weapon?.timeBetweenShots > 0f
+				? weapon.timeBetweenShots
+				: FallbackTimeBetweenShots;
+			Vector3 aircraftForward = A10ShotPlanner.GetAircraftForward(request.Direction);
+			IReadOnlyList<Vector3> impactPlan = A10ShotPlanner.BuildImpactPlan(
+				request.Position,
+				aircraftForward,
+				seed);
+			Vector3 damageOrigin = A10ShotPlanner.GetHeadlessDamageOrigin(
+				request.Position,
+				request.Direction);
+			using var trajectoryEvaluator = weapon.CreateTrajectoryEvaluator();
+			List<A10TracerSegment> visualShotPlan = A10ShotPlanner.BuildMovingMuzzlePlan(
+				A10ShotPlanner.GetAircraftPositionAtFire(request.Position, request.Direction),
+				aircraftForward,
+				impactPlan,
+				timeBetweenShots,
+				trajectoryEvaluator);
+			List<A10TracerSegment> damageShotPlan = A10ShotPlanner.BuildMovingMuzzlePlan(
+				damageOrigin,
+				aircraftForward,
+				impactPlan,
+				timeBetweenShots,
+				trajectoryEvaluator);
+			AlignHeadlessShotPlans(visualShotPlan, damageShotPlan);
+			if (!damageShotPlan.Any(static segment => segment.IsValid))
+			{
+				reason = "A10ShotPlanEmpty";
+				return false;
+			}
+
+			return true;
+		}
+		catch (Exception ex)
+		{
+			reason = $"A10PreflightFailed:{ex.GetType().Name}";
+			A10AuthorityDiagnostics.LogWarning(
+				$"TSC A-10 headless preflight failed requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} pass={request.PassIndex}. {ex.Message}");
+			return false;
+		}
+	}
 
 	public static async UniTask<bool> ExecuteAsync(A10StrikeRequest request, CancellationToken cancellationToken)
 	{
+		if (cancellationToken.IsCancellationRequested)
+		{
+			return false;
+		}
+
 		int seed = request.VisualSeed != 0 ? request.VisualSeed : Environment.TickCount;
 		GameWorld gameWorld = Singleton<GameWorld>.Instance;
 		if (gameWorld == null)
@@ -43,8 +133,10 @@ public static class A10DamageOnlyPass
 			return false;
 		}
 
-		OwnerResolution owner = ResolveOwner(gameWorld, request.RequesterProfileId);
-		A10ProjectileOwnerMode ownerMode = FireSupportTuningSettings.GetA10HeadlessProjectileOwnerMode();
+		A10ProjectileOwnerMode ownerMode = GetProjectileOwnerMode(request);
+		OwnerResolution owner = ResolveOwner(
+			gameWorld,
+			request.RequesterProfileId);
 		string shotOwnerProfileId = ResolveShotOwnerProfileId(gameWorld, request, owner, ownerMode);
 		LogOwnerResolution(request, seed, owner, ownerMode, shotOwnerProfileId);
 		if (string.IsNullOrWhiteSpace(shotOwnerProfileId))
@@ -66,24 +158,70 @@ public static class A10DamageOnlyPass
 		}
 
 		float timeBetweenShots = weapon?.timeBetweenShots > 0f ? weapon.timeBetweenShots : FallbackTimeBetweenShots;
-		Vector3 visualOrigin = A10ShotPlanner.GetOriginalGau8VisualOrigin(request.Position, request.Direction);
+		Vector3 aircraftForward = A10ShotPlanner.GetAircraftForward(request.Direction);
+		IReadOnlyList<Vector3> impactPlan = A10ShotPlanner.BuildImpactPlan(
+			request.Position,
+			aircraftForward,
+			seed);
+		Vector3 visualOrigin = A10ShotPlanner.GetAircraftPositionAtFire(request.Position, request.Direction);
 		Vector3 damageOrigin = A10ShotPlanner.GetHeadlessDamageOrigin(request.Position, request.Direction);
-		List<A10TracerSegment> visualShotPlan = A10ShotPlanner.BuildImpactAnchoredReplay(visualOrigin, request.Position, request.Direction, seed, timeBetweenShots);
-		List<A10TracerSegment> damageShotPlan = A10ShotPlanner.Build(damageOrigin, request.Position, seed, timeBetweenShots);
+		using var trajectoryEvaluator = weapon.CreateTrajectoryEvaluator();
+		List<A10TracerSegment> visualShotPlan = A10ShotPlanner.BuildMovingMuzzlePlan(
+			visualOrigin,
+			aircraftForward,
+			impactPlan,
+			timeBetweenShots,
+			trajectoryEvaluator);
+		List<A10TracerSegment> damageShotPlan = A10ShotPlanner.BuildMovingMuzzlePlan(
+			damageOrigin,
+			aircraftForward,
+			impactPlan,
+			timeBetweenShots,
+			trajectoryEvaluator);
+		bool directFallbackTrajectoryClear = AlignHeadlessShotPlans(visualShotPlan, damageShotPlan);
 		A10TracerSegment[] visualSegments = visualShotPlan.Where(static segment => segment.IsValid).ToArray();
 		A10TracerSegment[] damageSegments = damageShotPlan.Where(static segment => segment.IsValid).ToArray();
-		HitAccounting hitAccounting = ProbeHitCandidates(gameWorld, damageSegments, owner, request.Position, request.Direction);
+		if (damageSegments.Length == 0)
+		{
+			A10AuthorityDiagnostics.LogWarning(
+				$"TSC A-10 authoritative damage skipped requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} pass={request.PassIndex}; no valid paired ballistic solutions.");
+			return false;
+		}
+
+		// Broad legacy fallback probes cannot establish a hit through an obstruction.
+		// Native projectiles still collide normally, but synthetic fallback is disabled
+		// whenever either representation misses the intended surface or is unreachable.
+		HitAccounting hitAccounting = directFallbackTrajectoryClear
+			? ProbeHitCandidates(gameWorld, damageSegments, owner, request.Position, request.Direction)
+			: default;
+		if (!directFallbackTrajectoryClear)
+		{
+			FireSupportPlugin.LogSource?.LogInfo(
+				$"TSC A-10 direct fallback suppressed requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} pass={request.PassIndex} reason=InvalidOrObstructedShotPlan");
+		}
 		bool publishTracerBurst = A10TracerNetworking.IsNetworkAuthorityActive && visualSegments.Length > 0;
 
 		FireSupportPlugin.LogSource?.LogInfo(
 			$"TSC A-10 damage context role={request.Role} requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} requester={A10AuthorityDiagnostics.ShortId(owner.RequesterProfileId)} projectileOwnerMode={ownerMode} shotOwner={A10AuthorityDiagnostics.ShortId(shotOwnerProfileId)} resolvedOwner={owner.OwnerPlayer?.GetType().Name ?? "<none>"}:{A10AuthorityDiagnostics.ShortId(owner.OwnerProfileId)}");
 		FireSupportPlugin.LogSource?.LogInfo(
-			$"TSC A-10 shot plan role={request.Role} requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} pass={request.PassIndex} seed={seed} damageOnly=True visualReplayMode=MarkerAnchored shots={damageShotPlan.Count} visualSegments={visualSegments.Length} damageSegments={damageSegments.Length} colliderHits={hitAccounting.ColliderHitCount} ownerCandidatePlayers={hitAccounting.OwnerPlayerHitCount} nonOwnerCandidatePlayers={hitAccounting.NonOwnerPlayerHitCount} aliveOwnerCandidatePlayers={hitAccounting.AliveOwnerPlayerHitCount} aliveNonOwnerCandidatePlayers={hitAccounting.AliveNonOwnerPlayerHitCount} totalCandidatePlayersIncludingOwner={hitAccounting.TotalPlayerHitCount} colliderResolvedPlayers={hitAccounting.ColliderResolvedPlayerHitCount} geometricCandidatePlayers={hitAccounting.GeometricPlayerHitCount} unresolvedColliderHits={hitAccounting.UnresolvedColliderHitCount} visualOriginDistance={Vector3.Distance(visualOrigin, request.Position):0.0}m damageOriginDistance={Vector3.Distance(damageOrigin, request.Position):0.0}m damageApplications=unavailable damageConfirmed=unavailable");
+			$"TSC A-10 shot plan role={request.Role} requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} pass={request.PassIndex} seed={seed} damageOnly=True visualReplayMode=CorrelatedMovingMuzzle shots={damageShotPlan.Count} visualSegments={visualSegments.Length} damageSegments={damageSegments.Length} colliderHits={hitAccounting.ColliderHitCount} ownerCandidatePlayers={hitAccounting.OwnerPlayerHitCount} nonOwnerCandidatePlayers={hitAccounting.NonOwnerPlayerHitCount} aliveOwnerCandidatePlayers={hitAccounting.AliveOwnerPlayerHitCount} aliveNonOwnerCandidatePlayers={hitAccounting.AliveNonOwnerPlayerHitCount} totalCandidatePlayersIncludingOwner={hitAccounting.TotalPlayerHitCount} colliderResolvedPlayers={hitAccounting.ColliderResolvedPlayerHitCount} geometricCandidatePlayers={hitAccounting.GeometricPlayerHitCount} unresolvedColliderHits={hitAccounting.UnresolvedColliderHitCount} visualOriginDistance={Vector3.Distance(visualOrigin, request.Position):0.0}m damageOriginDistance={Vector3.Distance(damageOrigin, request.Position):0.0}m damageApplications=unavailable damageConfirmed=unavailable");
+		if (visualShotPlan.Count > 0 && damageShotPlan.Count > 0)
+		{
+			A10TracerSegment visualLast = visualShotPlan[visualShotPlan.Count - 1];
+			A10TracerSegment damageLast = damageShotPlan[damageShotPlan.Count - 1];
+			FireSupportPlugin.LogSource?.LogInfo(
+				$"TSC A-10 correlated paths requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} visualMuzzleFirst={A10AuthorityDiagnostics.FormatVector(visualShotPlan[0].ProjectileOrigin)} visualMuzzleLast={A10AuthorityDiagnostics.FormatVector(visualLast.ProjectileOrigin)} damageMuzzleFirst={A10AuthorityDiagnostics.FormatVector(damageShotPlan[0].ProjectileOrigin)} damageMuzzleLast={A10AuthorityDiagnostics.FormatVector(damageLast.ProjectileOrigin)} intendedImpactFirst={A10AuthorityDiagnostics.FormatVector(impactPlan[0])} intendedImpactLast={A10AuthorityDiagnostics.FormatVector(impactPlan[impactPlan.Count - 1])}");
+		}
 
 		if (hitAccounting.TotalPlayerHitCount == hitAccounting.OwnerPlayerHitCount && hitAccounting.OwnerPlayerHitCount > 0 && !FireSupportTuningSettings.IsA10HeadlessRequesterSelfDamageEnabled())
 		{
 			FireSupportPlugin.LogSource?.LogInfo(
 				$"TSC A-10 strike intersected requester only; self-damage is disabled. requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} ownerCandidates={hitAccounting.OwnerPlayerHitCount}");
+		}
+
+		if (cancellationToken.IsCancellationRequested)
+		{
+			return false;
 		}
 
 		if (publishTracerBurst)
@@ -117,21 +255,41 @@ public static class A10DamageOnlyPass
 
 		int fired = 0;
 		int fireFailures = 0;
+		float ballisticFireStartTime = Time.time;
+		float latestFiredImpactTime = ballisticFireStartTime;
 		FireSupportPlugin.LogSource?.LogInfo(
 			$"TSC A-10 authoritative fire started role={request.Role} requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} pass={request.PassIndex} seed={seed} shots={damageShotPlan.Count} damageOrigin={A10AuthorityDiagnostics.FormatVector(damageOrigin)} damageOriginDistance={Vector3.Distance(damageOrigin, request.Position):0.0}m nonOwnerCandidates={hitAccounting.NonOwnerPlayerHitCount} ownerCandidates={hitAccounting.OwnerPlayerHitCount} damageConfirmed=unavailable");
 		try
 		{
-			foreach (A10TracerSegment shot in damageShotPlan)
+			int shotIndex = -1;
+			foreach (A10TracerSegment shot in damageShotPlan.OrderBy(static segment => segment.DelaySeconds))
 			{
+				shotIndex++;
+				if (!shot.IsValid)
+				{
+					continue;
+				}
+
 				if (cancellationToken.IsCancellationRequested)
 				{
 					break;
 				}
 
+				float waitSeconds = ballisticFireStartTime + shot.DelaySeconds - Time.time;
+				if (waitSeconds > 0f)
+				{
+					await UniTask.WaitForSeconds(waitSeconds, cancellationToken: cancellationToken);
+				}
+
 				try
 				{
-					weapon.FireProjectile(shot.ProjectileOrigin, shot.ProjectileDirection);
+					Shot bullet = weapon.FireProjectile(shot.ProjectileOrigin, shot.ProjectileDirection);
+					latestFiredImpactTime = Mathf.Max(latestFiredImpactTime, Time.time + shot.FlightTimeSeconds);
 					fired++;
+					if (shotIndex == 0 || shotIndex == damageShotPlan.Count / 2 || shotIndex == damageShotPlan.Count - 1)
+					{
+						A10ShotDiagnostics.Observe(bullet, shot, request.SupportRequestId, request.PassIndex, shotIndex, cancellationToken);
+					}
 				}
 				catch (Exception ex)
 				{
@@ -142,21 +300,102 @@ public static class A10DamageOnlyPass
 							$"TSC A-10 authoritative fire failed role={request.Role} requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} pass={request.PassIndex} seed={seed} shot={fired + fireFailures} origin={A10AuthorityDiagnostics.FormatVector(shot.ProjectileOrigin)} direction={A10AuthorityDiagnostics.FormatVector(shot.ProjectileDirection)}. {ex.Message}");
 					}
 				}
-
-				await UniTask.WaitForSeconds(timeBetweenShots, cancellationToken: cancellationToken);
 			}
 		}
 		catch (OperationCanceledException)
 		{
 		}
 
-		DirectDamageFallbackResult fallbackResult = ApplyDirectDamageFallback(request, seed, fired, hitAccounting, damageOrigin);
+		if (cancellationToken.IsCancellationRequested)
+		{
+			FireSupportPlugin.LogSource?.LogInfo(
+				$"TSC A-10 authoritative fire cancelled before direct fallback role={request.Role} requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} pass={request.PassIndex} seed={seed} fired={fired}/{damageShotPlan.Count}.");
+			return fired > 0;
+		}
+		if (fired == 0)
+		{
+			return false;
+		}
+		if (fireFailures > 0)
+		{
+			hitAccounting = default;
+			FireSupportPlugin.LogSource?.LogInfo(
+				$"TSC A-10 direct fallback suppressed requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} pass={request.PassIndex} reason=ProjectileCreationFailure");
+		}
+
+		if (request.Role == A10AuthorityRole.FikaHeadlessHost &&
+		    hitAccounting.TotalPlayerHitCount > 0 &&
+		    FireSupportTuningSettings.IsA10HeadlessDirectDamageFallbackEnabled())
+		{
+			try
+			{
+				await UniTask.WaitForSeconds(
+					A10HeadlessShotTiming.GetSettleWaitSeconds(
+						Time.time,
+						latestFiredImpactTime,
+						DirectFallbackBallisticSettleSeconds),
+					cancellationToken: cancellationToken);
+			}
+			catch (OperationCanceledException)
+			{
+				return fired > 0;
+			}
+		}
+
+		DirectDamageFallbackResult fallbackResult = ApplyDirectDamageFallback(
+			request,
+			seed,
+			fired,
+			hitAccounting,
+			damageOrigin,
+			cancellationToken);
 		FireSupportPlugin.LogSource?.LogInfo(
 			$"TSC A-10 authoritative fire complete role={request.Role} requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} pass={request.PassIndex} seed={seed} fired={fired}/{damageShotPlan.Count} fireProjectileFailures={fireFailures} colliderHits={hitAccounting.ColliderHitCount} ownerCandidatePlayers={hitAccounting.OwnerPlayerHitCount} nonOwnerCandidatePlayers={hitAccounting.NonOwnerPlayerHitCount} aliveOwnerCandidatePlayers={hitAccounting.AliveOwnerPlayerHitCount} aliveNonOwnerCandidatePlayers={hitAccounting.AliveNonOwnerPlayerHitCount} colliderResolvedPlayers={hitAccounting.ColliderResolvedPlayerHitCount} geometricCandidatePlayers={hitAccounting.GeometricPlayerHitCount} unresolvedColliderHits={hitAccounting.UnresolvedColliderHitCount} directFallbackApplied={fallbackResult.AppliedCount} directFallbackCommanded={fallbackResult.CommandedCount} directFallbackFailures={fallbackResult.FailureCount} damageApplications={(fallbackResult.Attempted ? fallbackResult.AppliedCount + fallbackResult.CommandedCount : 0)} damageConfirmed=unavailable");
 		return fired > 0;
 	}
 
-	private static OwnerResolution ResolveOwner(GameWorld gameWorld, string requesterProfileId)
+	private static bool AlignHeadlessShotPlans(
+		List<A10TracerSegment> visualShotPlan,
+		List<A10TracerSegment> damageShotPlan)
+	{
+		bool allIntendedImpactsReachable = visualShotPlan.Count == damageShotPlan.Count;
+		int count = Math.Min(visualShotPlan.Count, damageShotPlan.Count);
+		for (int index = 0; index < count; index++)
+		{
+			A10TracerSegment visual = visualShotPlan[index];
+			A10TracerSegment damage = damageShotPlan[index];
+			bool paired = A10HeadlessShotTiming.TryAlignArrival(ref visual, ref damage);
+			allIntendedImpactsReachable &= paired &&
+			                              A10HeadlessShotTiming.ReachesIntendedImpact(visual) &&
+			                              A10HeadlessShotTiming.ReachesIntendedImpact(damage);
+			visualShotPlan[index] = visual;
+			damageShotPlan[index] = damage;
+		}
+
+		for (int index = count; index < visualShotPlan.Count; index++)
+		{
+			A10TracerSegment shot = visualShotPlan[index];
+			shot.IsValid = false;
+			visualShotPlan[index] = shot;
+		}
+		for (int index = count; index < damageShotPlan.Count; index++)
+		{
+			A10TracerSegment shot = damageShotPlan[index];
+			shot.IsValid = false;
+			damageShotPlan[index] = shot;
+		}
+		return allIntendedImpactsReachable;
+	}
+
+	private static A10ProjectileOwnerMode GetProjectileOwnerMode(A10StrikeRequest request)
+	{
+		return request.ProjectileOwnerModeOverride ??
+		       FireSupportTuningSettings.GetA10HeadlessProjectileOwnerMode();
+	}
+
+	private static OwnerResolution ResolveOwner(
+		GameWorld gameWorld,
+		string requesterProfileId)
 	{
 		string requestedProfileId = requesterProfileId?.Trim() ?? string.Empty;
 		Player mainPlayer = gameWorld.MainPlayer;
@@ -217,7 +456,7 @@ public static class A10DamageOnlyPass
 	{
 		return ownerMode switch
 		{
-			A10ProjectileOwnerMode.NeutralSupport => "TSC_A10_SUPPORT",
+			A10ProjectileOwnerMode.NeutralSupport => owner.OwnerProfileId ?? request.RequesterProfileId ?? string.Empty,
 			A10ProjectileOwnerMode.AuthorityProfile => gameWorld.MainPlayer?.ProfileId ?? owner.OwnerProfileId ?? request.RequesterProfileId ?? string.Empty,
 			_ => owner.OwnerProfileId ?? request.RequesterProfileId ?? string.Empty
 		};
@@ -705,8 +944,14 @@ public static class A10DamageOnlyPass
 		int seed,
 		int fired,
 		HitAccounting hitAccounting,
-		Vector3 damageOrigin)
+		Vector3 damageOrigin,
+		CancellationToken cancellationToken)
 	{
+		if (cancellationToken.IsCancellationRequested)
+		{
+			return default;
+		}
+
 		bool fallbackEnabled = FireSupportTuningSettings.IsA10HeadlessDirectDamageFallbackEnabled();
 		if (!fallbackEnabled || request.Role != A10AuthorityRole.FikaHeadlessHost)
 		{
@@ -728,6 +973,13 @@ public static class A10DamageOnlyPass
 		IReadOnlyList<HitCandidateSnapshot> candidates = hitAccounting.Candidates ?? Array.Empty<HitCandidateSnapshot>();
 		foreach (HitCandidateSnapshot candidate in candidates)
 		{
+			if (cancellationToken.IsCancellationRequested)
+			{
+				FireSupportPlugin.LogSource?.LogInfo(
+					$"TSC A-10 headless direct damage fallback cancelled requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} applied={applied} commanded={commanded} skipped={skipped} failures={failures}.");
+				break;
+			}
+
 			if (candidate.Player == null)
 			{
 				skipped++;
@@ -740,6 +992,29 @@ public static class A10DamageOnlyPass
 				continue;
 			}
 
+			if (TryReadPlayerDamageState(
+				    candidate.Player,
+				    out bool currentlyAlive,
+				    out float currentHealth))
+			{
+				if (!currentlyAlive)
+				{
+					skipped++;
+					FireSupportPlugin.LogSource?.LogInfo(
+						$"TSC A-10 headless direct damage fallback skipped requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} target={A10AuthorityDiagnostics.ShortId(candidate.ProfileId)} reason=TargetKilledByBallistics");
+					continue;
+				}
+
+				if (!float.IsNaN(candidate.InitialHealth) &&
+				    currentHealth < candidate.InitialHealth - DirectFallbackHealthChangeEpsilon)
+				{
+					skipped++;
+					FireSupportPlugin.LogSource?.LogInfo(
+						$"TSC A-10 headless direct damage fallback skipped requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} target={A10AuthorityDiagnostics.ShortId(candidate.ProfileId)} reason=BallisticHealthChanged before={candidate.InitialHealth:0.0} after={currentHealth:0.0}");
+					continue;
+				}
+			}
+
 			if (candidate.IsOwner && !FireSupportTuningSettings.IsA10HeadlessRequesterSelfDamageEnabled())
 			{
 				skipped++;
@@ -750,21 +1025,21 @@ public static class A10DamageOnlyPass
 			float damage = CalculateDirectFallbackDamage(candidate.Distance);
 			EBodyPart bodyPart = EBodyPart.Chest;
 			EBodyPartColliderType colliderType = EBodyPartColliderType.RibcageUp;
-			DamageInfoStruct damageInfo = BuildDirectDamageInfo(
+			DamageInfo damageInfo = BuildDirectDamageInfo(
 				request,
 				candidate,
 				damageOrigin,
 				damage,
 				colliderType);
 
-			if (TryApplyActiveHealthDamage(candidate.Player, damageInfo, bodyPart, out float appliedDamage, out string localReason))
+			if (cancellationToken.IsCancellationRequested)
 			{
-				applied++;
-				FireSupportPlugin.LogSource?.LogInfo(
-					$"TSC A-10 headless direct damage applied method=ActiveHealthController requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} target={A10AuthorityDiagnostics.ShortId(candidate.ProfileId)} netId={targetNetId} type={candidate.Player.GetType().Name} source={candidate.Source} distance={candidate.Distance:0.0}m bodyPart={bodyPart} collider={colliderType} damage={damage:0.0} applied={appliedDamage:0.0}");
-				continue;
+				break;
 			}
 
+			string commandReason = targetNetId > 0
+				? string.Empty
+				: "MissingTargetNetId";
 			if (targetNetId > 0 &&
 			    A10HeadlessDamageCommandDispatcher.TryDispatch(
 				    new A10HeadlessDamageCommand
@@ -779,17 +1054,17 @@ public static class A10DamageOnlyPass
 					    MaterialType = MaterialType.Body,
 					    Absorbed = 0f
 				    },
-				    out string commandReason))
+				    out commandReason))
 			{
 				commanded++;
 				FireSupportPlugin.LogSource?.LogInfo(
-					$"TSC A-10 headless direct damage commanded method=FikaDamagePacket requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} target={A10AuthorityDiagnostics.ShortId(candidate.ProfileId)} netId={targetNetId} type={candidate.Player.GetType().Name} source={candidate.Source} distance={candidate.Distance:0.0}m bodyPart={bodyPart} collider={colliderType} damage={damage:0.0} reason={commandReason}");
+					$"TSC A-10 headless direct damage routed method=FikaPlayerBridge requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} target={A10AuthorityDiagnostics.ShortId(candidate.ProfileId)} netId={targetNetId} type={candidate.Player.GetType().Name} source={candidate.Source} distance={candidate.Distance:0.0}m bodyPart={bodyPart} collider={colliderType} damage={damage:0.0} route={commandReason}");
 				continue;
 			}
 
 			failures++;
-			FireSupportPlugin.LogSource?.LogInfo(
-				$"TSC A-10 headless direct damage failed requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} target={A10AuthorityDiagnostics.ShortId(candidate.ProfileId)} netId={targetNetId} type={candidate.Player.GetType().Name} source={candidate.Source} distance={candidate.Distance:0.0}m localReason={localReason}");
+			FireSupportPlugin.LogSource?.LogWarning(
+				$"TSC A-10 headless direct damage failed requestId={A10AuthorityDiagnostics.ShortId(request.SupportRequestId)} target={A10AuthorityDiagnostics.ShortId(candidate.ProfileId)} netId={targetNetId} type={candidate.Player.GetType().Name} source={candidate.Source} distance={candidate.Distance:0.0}m reason={commandReason}");
 		}
 
 		FireSupportPlugin.LogSource?.LogInfo(
@@ -814,7 +1089,7 @@ public static class A10DamageOnlyPass
 		return string.Empty;
 	}
 
-	private static DamageInfoStruct BuildDirectDamageInfo(
+	private static DamageInfo BuildDirectDamageInfo(
 		A10StrikeRequest request,
 		HitCandidateSnapshot candidate,
 		Vector3 damageOrigin,
@@ -832,7 +1107,7 @@ public static class A10DamageOnlyPass
 			direction.Normalize();
 		}
 
-		return new DamageInfoStruct
+		return new DamageInfo
 		{
 			DamageType = EFT.EDamageType.Artillery,
 			Damage = damage,
@@ -848,79 +1123,6 @@ public static class A10DamageOnlyPass
 		};
 	}
 
-	private static bool TryApplyActiveHealthDamage(
-		Player player,
-		DamageInfoStruct damageInfo,
-		EBodyPart bodyPart,
-		out float appliedDamage,
-		out string reason)
-	{
-		appliedDamage = 0f;
-		reason = string.Empty;
-		if (player == null)
-		{
-			reason = "PlayerNull";
-			return false;
-		}
-
-		if (!IsLocalOrAiDamageTarget(player))
-		{
-			reason = "RemoteHumanRequiresFikaDamagePacket";
-			return false;
-		}
-
-		ActiveHealthController activeHealthController;
-		try
-		{
-			activeHealthController = player.ActiveHealthController;
-		}
-		catch (Exception ex)
-		{
-			reason = $"ActiveHealthControllerReadFailed:{ex.GetType().Name}:{ex.Message}";
-			return false;
-		}
-
-		if (activeHealthController == null)
-		{
-			reason = "NoActiveHealthController";
-			return false;
-		}
-
-		try
-		{
-			appliedDamage = activeHealthController.ApplyDamage(bodyPart, damageInfo.Damage, damageInfo);
-			if (appliedDamage <= 0f)
-			{
-				reason = "ActiveHealthControllerAppliedZero";
-				return false;
-			}
-
-			return true;
-		}
-		catch (Exception ex)
-		{
-			reason = $"ActiveHealthControllerApplyFailed:{ex.GetType().Name}:{ex.Message}";
-			return false;
-		}
-	}
-
-	private static bool IsLocalOrAiDamageTarget(Player player)
-	{
-		if (player == null)
-		{
-			return false;
-		}
-
-		try
-		{
-			return player.IsAI || player.IsYourPlayer;
-		}
-		catch
-		{
-			return false;
-		}
-	}
-
 	private static float CalculateDirectFallbackDamage(float distance)
 	{
 		if (distance <= DirectFallbackFullDamageDistance)
@@ -930,6 +1132,37 @@ public static class A10DamageOnlyPass
 
 		float t = Mathf.InverseLerp(DirectFallbackFullDamageDistance, DirectFallbackMaxDamageDistance, distance);
 		return Mathf.Lerp(DirectFallbackMaxDamage, DirectFallbackMinDamage, Mathf.Clamp01(t));
+	}
+
+	private static bool TryReadPlayerDamageState(
+		Player player,
+		out bool alive,
+		out float commonHealth)
+	{
+		alive = false;
+		commonHealth = float.NaN;
+		if (player == null)
+		{
+			return false;
+		}
+
+		try
+		{
+			if (player.HealthController == null)
+			{
+				return false;
+			}
+
+			alive = player.HealthController.IsAlive;
+			commonHealth = player.HealthController
+				.GetBodyPartHealth(EBodyPart.Common, false)
+				.Current;
+			return true;
+		}
+		catch
+		{
+			return false;
+		}
 	}
 
 	private static int TryGetPlayerNetId(Player player)
@@ -1069,7 +1302,10 @@ public static class A10DamageOnlyPass
 			HashSet<string> playerSet = isOwner ? _ownerPlayerIds : _nonOwnerPlayerIds;
 			HashSet<string> aliveSet = isOwner ? _aliveOwnerPlayerIds : _aliveNonOwnerPlayerIds;
 			bool firstSeen = playerSet.Add(profileId);
-			bool alive = player.HealthController?.IsAlive == true;
+			bool alive = TryReadPlayerDamageState(
+				player,
+				out bool initialAlive,
+				out float initialHealth) && initialAlive;
 			if (alive)
 			{
 				aliveSet.Add(profileId);
@@ -1095,6 +1331,7 @@ public static class A10DamageOnlyPass
 					profileId,
 					isOwner,
 					alive,
+					initialHealth,
 					resolvedFromCollider || existing.ResolvedFromCollider,
 					distance < existing.Distance || string.IsNullOrWhiteSpace(existing.Source) ? source : existing.Source,
 					Mathf.Min(distance, existing.Distance > 0f ? existing.Distance : distance),
@@ -1223,6 +1460,7 @@ public static class A10DamageOnlyPass
 		public readonly string ProfileId;
 		public readonly bool IsOwner;
 		public readonly bool Alive;
+		public readonly float InitialHealth;
 		public readonly bool ResolvedFromCollider;
 		public readonly string Source;
 		public readonly float Distance;
@@ -1233,6 +1471,7 @@ public static class A10DamageOnlyPass
 			string profileId,
 			bool isOwner,
 			bool alive,
+			float initialHealth,
 			bool resolvedFromCollider,
 			string source,
 			float distance,
@@ -1242,6 +1481,7 @@ public static class A10DamageOnlyPass
 			ProfileId = profileId ?? string.Empty;
 			IsOwner = isOwner;
 			Alive = alive;
+			InitialHealth = initialHealth;
 			ResolvedFromCollider = resolvedFromCollider;
 			Source = source ?? string.Empty;
 			Distance = distance;

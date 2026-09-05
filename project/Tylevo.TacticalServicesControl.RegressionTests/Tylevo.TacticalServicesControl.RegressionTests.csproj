@@ -1,0 +1,116 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Tylevo.TacticalServicesControl.RegressionTests</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!--
+    Deliberately source-link the small production seams under test. This project
+    has no NuGet packages and no references to EFT, SPT, BepInEx, Unity, WTT, or
+    Fika binaries, so it is safe to run in public CI.
+  -->
+  <ItemGroup>
+    <Compile Include="..\SamSWAT.FireSupport.Server\FireSupportAuthorizationLedger.cs"
+             Link="Production\FireSupportAuthorizationLedger.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Server\FireSupportServerConfigMigration.cs"
+             Link="Production\FireSupportServerConfigMigration.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\CargoTimingPolicy.cs"
+             Link="Production\CargoTimingPolicy.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\MainMenuSlotStepPolicy.cs"
+             Link="Production\MainMenuSlotStepPolicy.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\PhonePresentationTransition.cs"
+             Link="Production\PhonePresentationTransition.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\PhonePointerAction.cs"
+             Link="Production\PhonePointerAction.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\PhonePointerGesture.cs"
+             Link="Production\PhonePointerGesture.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\Uh60CargoDepartureNetworking.cs"
+             Link="Production\Uh60CargoDepartureNetworking.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Server\FireSupportUh60TransferMarkerStore.cs"
+             Link="Production\FireSupportUh60TransferMarkerStore.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Server\FireSupportUh60TransferFeeJournal.cs"
+             Link="Production\FireSupportUh60TransferFeeJournal.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Server\FireSupportUh60TransferFeeService.cs"
+             Link="Production\FireSupportUh60TransferFeeService.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Server\FireSupportProfileMutationGate.cs"
+             Link="Production\FireSupportProfileMutationGate.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Server\TscUplinkSpecialSlotService.cs"
+             Link="Production\TscUplinkSpecialSlotService.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Server\TscUplinkProfileMigrationOnLoad.cs"
+             Link="Production\TscUplinkProfileMigrationOnLoad.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Server\TscPilotProfileMigrationOnLoad.cs"
+             Link="Production\TscPilotProfileMigrationOnLoad.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\ESupportType.cs"
+             Link="Production\ESupportType.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\FireSupportRequestOrigin.cs"
+             Link="Production\FireSupportRequestOrigin.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Integration\DangerCloseLeaseRegistry.cs"
+             Link="Production\DangerCloseLeaseRegistry.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Integration\DangerCloseIncomingCallState.cs"
+             Link="Production\DangerCloseIncomingCallState.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Integration\DangerCloseWarningContract.cs"
+             Link="Production\DangerCloseWarningContract.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Integration\DangerCloseWarningRegistry.cs"
+             Link="Production\DangerCloseWarningRegistry.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Server\Integration\SeasonalModifiersServerBridge.cs"
+             Link="Production\SeasonalModifiersServerBridge.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\RaidOpsFireSupportServerConfig.cs"
+             Link="Production\RaidOpsFireSupportServerConfig.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\FireSupportAuthorizationUse.cs"
+             Link="Production\FireSupportAuthorizationUse.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\PaymentCurrency.cs"
+             Link="Production\PaymentCurrency.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\PaymentMode.cs"
+             Link="Production\PaymentMode.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\PaymentSource.cs"
+             Link="Production\PaymentSource.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\AuthorizationSnapshotPresence.cs"
+             Link="Production\AuthorizationSnapshotPresence.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\FireSupportTuningSettings.cs"
+             Link="Production\FireSupportTuningSettings.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\Vehicles\A10HeadlessFikaMode.cs"
+             Link="Production\A10HeadlessFikaMode.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\Vehicles\A10ProjectileOwnerMode.cs"
+             Link="Production\A10ProjectileOwnerMode.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\Vehicles\A10TracerSegment.cs"
+             Link="Production\A10TracerSegment.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\Vehicles\A10ShotPlanner.cs"
+             Link="Production\A10ShotPlanner.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\Vehicles\A10BallisticSolver.cs"
+             Link="Production\A10BallisticSolver.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\Vehicles\A10EftTrajectoryEvaluator.cs"
+             Link="Production\A10EftTrajectoryEvaluator.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\Vehicles\A10HeadlessShotTiming.cs"
+             Link="Production\A10HeadlessShotTiming.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\Vehicles\A10TracerBurst.cs"
+             Link="Production\A10TracerBurst.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Fika.Interop\A10TracerBurstPacket.cs"
+             Link="Production\A10TracerBurstPacket.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Fika.Interop\FireSupportSettingsPacket.cs"
+             Link="Production\FireSupportSettingsPacket.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Fika.Interop\FireSupportRequestPacket.cs"
+             Link="Production\FireSupportRequestPacket.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Fika.Interop\FireSupportAuthorityResultPacket.cs"
+             Link="Production\FireSupportAuthorityResultPacket.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Fika.Interop\FireSupportCancelPacket.cs"
+             Link="Production\FireSupportCancelPacket.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Fika.Interop\DangerCloseWarningPacket.cs"
+             Link="Production\DangerCloseWarningPacket.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Fika.Interop\Uh60CargoDeparturePacket.cs"
+             Link="Production\Uh60CargoDeparturePacket.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Fika.Interop\FireSupportServiceSemantics.cs"
+             Link="Production\FireSupportServiceSemantics.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Fika.Interop\RequestLifecycle.cs"
+             Link="Production\RequestLifecycle.cs" />
+
+    <!-- Dependency-free extraction seams shared with runtime production code. -->
+    <Compile Include="..\SamSWAT.FireSupport\Unity\ExtractionTimingPolicy.cs"
+             Link="Production\ExtractionTimingPolicy.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\ExtractionCountdownClock.cs"
+             Link="Production\ExtractionCountdownClock.cs" />
+  </ItemGroup>
+</Project>

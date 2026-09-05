@@ -33,7 +33,7 @@ public static class A10TracerPlayback
 
 		A10TracerSegment[] orderedSegments = new A10TracerSegment[segments.Length];
 		Array.Copy(segments, orderedSegments, segments.Length);
-		Array.Sort(orderedSegments, (left, right) => left.DelaySeconds.CompareTo(right.DelaySeconds));
+		Array.Sort(orderedSegments, (left, right) => left.ImpactDelaySeconds.CompareTo(right.ImpactDelaySeconds));
 		FireSupportPlugin.LogSource?.LogInfo(
 			$"TSC A-10 tracer playback scheduled reason={reason} segments={orderedSegments.Length} localFireStart={localPlaybackStartTime:0.000} now={Time.time:0.000} spawnImpactEffects={spawnImpactEffects}");
 		PlayAsync(orderedSegments, localPlaybackStartTime, cancellationToken, spawnImpactEffects).Forget();
@@ -56,7 +56,7 @@ public static class A10TracerPlayback
 					continue;
 				}
 
-				float waitSeconds = localPlaybackStartTime + segment.DelaySeconds - Time.time;
+				float waitSeconds = localPlaybackStartTime + segment.ImpactDelaySeconds - Time.time;
 				if (waitSeconds > 0f)
 				{
 					await UniTask.WaitForSeconds(waitSeconds, cancellationToken: cancellationToken);

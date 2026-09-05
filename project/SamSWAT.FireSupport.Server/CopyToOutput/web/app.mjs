@@ -37,19 +37,20 @@ const serviceMetaRules = [
 	{ key: "uav", title: "UAV Recon", code: "REC", summary: "Wide-area scan", pattern: /\buav\b/i },
 	{ key: "focused", title: "Focused Sweep", code: "REC+", summary: "Tighter scan radius", pattern: /focused/i },
 	{ key: "extraction", title: "UH-60 Extraction", code: "EXT", summary: "Combat pickup", pattern: /extraction(?!.*priority)|extract(?!.*priority)/i },
-	{ key: "priority", title: "Priority Exfil", code: "EXT+", summary: "Expedited pickup", pattern: /priority/i },
+	// The persisted config path remains PriorityExfil for released-config
+	// compatibility; the product occupying that slot is now Cargo Transfer.
+	{ key: "priority", title: "UH-60 Cargo Transfer", code: "CGO", summary: "Mid-raid item delivery", pattern: /cargo|priority/i },
 	{ key: "payment", title: "Payment", code: "PAY", summary: "Authorization source", pattern: /payment|source|mode/i },
 	{ key: "cooldown", title: "Cooldown", code: "CD", summary: "Request pacing", pattern: /cooldown/i }
 ];
 
 const sectionIntros = {
 	main: "Host identity, revisioning, and request pacing.",
-	payment: "Select how authorizations consume roubles.",
-	"service-pricing": "Displayed phone prices and the authoritative cost used at payment time.",
-	"service-toggles": "Enable or lock service packages before players can purchase them.",
-	"recon-services": "UAV and focused sweep scan timing, range, and refresh behavior.",
-	"extraction-services": "UH-60 dispatch, wait, arrival, and priority exfil tuning.",
-	"fire-support": "A-10, double-pass, and fire support behavior.",
+	payment: "Select which wallet supplies the configured payment currency.",
+	services: "Enable or lock service packages before players can purchase them.",
+	recon: "UAV and focused sweep scan timing, range, and refresh behavior.",
+	extraction: "UH-60 extraction and cargo-transfer dispatch, wait, and arrival tuning.",
+	fire: "A-10, double-pass, and fire support behavior.",
 	diagnostics: "Live route and server state."
 };
 
@@ -121,7 +122,13 @@ async function loadConfig() {
 async function saveConfig() {
 	requireAdminToken();
 	const body = cloneConfig(state.config);
+	delete body.playerStateIncluded;
+	delete body.stashCurrencyBalance;
 	delete body.stashRoubleBalance;
+	delete body.authorizations;
+	delete body.preparedPurchases;
+	delete body.preparedPurchaseDetails;
+	delete body.preparedPurchaseQuotes;
 	let updated;
 	try {
 		updated = await requestJson(`${BASE_PATH}/config`, {
@@ -206,7 +213,9 @@ function renderStatus() {
 	elements.routeStatus.textContent = state.health?.ok ? "Online" : "Unavailable";
 	elements.routeStatus.classList.toggle("is-online", Boolean(state.health?.ok));
 	elements.revisionStatus.textContent = `Revision ${state.config?.revision ?? "--"}`;
-	elements.paymentStatus.textContent = state.config?.paymentSource || "Payment --";
+	elements.paymentStatus.textContent = state.config
+		? `${getPaymentSourceName()} / ${getPaymentCurrency()}`
+		: "Payment --";
 }
 
 function renderTokenHint() {
@@ -263,7 +272,7 @@ function renderSections() {
 		title.textContent = section.label;
 		const intro = document.createElement("p");
 		intro.className = "section-intro";
-		intro.textContent = sectionIntros[section.id] || "Server-authoritative service configuration.";
+		intro.textContent = getSectionIntro(section);
 		headingText.append(kicker, title, intro);
 		heading.appendChild(headingText);
 		panel.appendChild(heading);
@@ -281,21 +290,77 @@ function renderSections() {
 }
 
 function shouldUseServiceDeck(section) {
-	return section.id === "service-pricing" ||
-		section.id === "service-toggles" ||
-		section.id === "recon-services" ||
-		section.id === "extraction-services" ||
-		section.id === "fire-support";
+	return section.id === "pricing" ||
+		section.id === "services" ||
+		section.id === "recon" ||
+		section.id === "extraction" ||
+		section.id === "fire";
 }
 
 function getSectionKicker(section) {
-	if (section.id?.includes("pricing")) return "Roubles";
-	if (section.id?.includes("toggle")) return "Availability";
+	if (section.id?.includes("pricing")) return getPaymentCurrency();
+	if (section.id === "services") return "Availability";
 	if (section.id?.includes("recon")) return "Recon";
 	if (section.id?.includes("extraction")) return "Extraction";
 	if (section.id?.includes("fire")) return "Fire Support";
 	if (section.id?.includes("payment")) return "Wallet";
 	return "Main";
+}
+
+function getSectionIntro(section) {
+	if (section.id?.includes("pricing")) {
+		return `Displayed phone prices and authoritative payment costs in ${getPaymentCurrencyName()}.`;
+	}
+	if (section.id?.includes("payment")) {
+		return `Select which wallet supplies the configured ${getPaymentCurrencyName()}.`;
+	}
+	return sectionIntros[section.id] || "Server-authoritative service configuration.";
+}
+
+function getPaymentCurrency() {
+	const value = String(state.config?.paymentCurrency || "RUB").trim().toUpperCase();
+	return value === "RUB" || value === "USD" || value === "EUR"
+		? value
+		: "INVALID";
+}
+
+function getPaymentCurrencyName() {
+	return {
+		RUB: "roubles (RUB)",
+		USD: "US dollars (USD)",
+		EUR: "euros (EUR)",
+		INVALID: "an invalid payment currency"
+	}[getPaymentCurrency()];
+}
+
+function getPaymentSourceName(value = state.config?.paymentSource) {
+	return {
+		CarriedRoubles: "Carried",
+		StashRoubles: "Stash",
+		PreferCarriedThenStash: "Carried, then stash",
+		PreferStashThenCarried: "Stash, then carried"
+	}[value] || value || "Payment --";
+}
+
+function getSelectOptionLabel(path, value) {
+	if (path === "paymentSource") {
+		return getPaymentSourceName(value);
+	}
+	if (path === "paymentCurrency") {
+		return {
+			RUB: "RUB — Roubles",
+			USD: "USD — US Dollars",
+			EUR: "EUR — Euros"
+		}[value] || value;
+	}
+	return value;
+}
+
+function getFieldStep(field) {
+	if (field.path?.startsWith("prices.") && getPaymentCurrency() !== "RUB") {
+		return 1;
+	}
+	return field.step ?? 1;
 }
 
 function renderField(field, section) {
@@ -352,25 +417,30 @@ function renderField(field, section) {
 		for (const option of field.options) {
 			const optionEl = document.createElement("option");
 			optionEl.value = option;
-			optionEl.textContent = option;
+			optionEl.textContent = getSelectOptionLabel(field.path, option);
 			select.appendChild(optionEl);
 		}
 		select.value = value ?? "";
 		select.addEventListener("change", () => {
 			setPath(state.config, field.path, select.value);
 			markDirty(field.path);
+			if (field.path === "paymentCurrency") {
+				renderStatus();
+				renderSections();
+				renderDiagnostics();
+			}
 		});
 		controlWrap.appendChild(select);
 	} else {
 		const number = document.createElement("input");
 		number.type = "number";
 		number.value = value ?? 0;
-		number.step = field.step ?? 1;
+		number.step = getFieldStep(field);
 		if (field.min !== null && field.min !== undefined) number.min = field.min;
 		if (field.max !== null && field.max !== undefined) number.max = field.max;
 		number.readOnly = field.type === "readonly";
 		number.addEventListener("input", () => {
-			const numericValue = normalizeNumber(number.value, field.step, field.min, field.max);
+			const numericValue = normalizeNumber(number.value, getFieldStep(field), field.min, field.max);
 			setPath(state.config, field.path, numericValue);
 			if (range) range.value = numericValue;
 			markDirty(field.path);
@@ -382,11 +452,11 @@ function renderField(field, section) {
 			range = document.createElement("input");
 			range.type = "range";
 			range.value = value ?? 0;
-			range.step = field.step ?? 1;
+			range.step = getFieldStep(field);
 			range.min = field.min ?? 0;
 			range.max = field.max ?? Math.max(Number(value ?? 0), 1);
 			range.addEventListener("input", () => {
-				const numericValue = normalizeNumber(range.value, field.step, field.min, field.max);
+				const numericValue = normalizeNumber(range.value, getFieldStep(field), field.min, field.max);
 				number.value = numericValue;
 				setPath(state.config, field.path, numericValue);
 				markDirty(field.path);
@@ -427,7 +497,8 @@ function renderDiagnostics() {
 	const rows = [
 		["Route Status", state.health?.ok ? "Online" : "Unavailable"],
 		["Config Revision", state.config?.revision ?? "--"],
-		["Payment Source", state.config?.paymentSource ?? "--"],
+		["Payment Source", getPaymentSourceName()],
+		["Payment Currency", getPaymentCurrency()],
 		["Payment Mode", state.config?.paymentMode ?? "--"],
 		["Request Cooldown", `${state.config?.requestCooldownSeconds ?? "--"} sec`],
 		["Admin Token", state.health?.adminTokenConfigured ? "Configured" : "Missing"],

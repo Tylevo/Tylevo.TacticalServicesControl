@@ -1,6 +1,7 @@
 using EFT;
 using HarmonyLib;
 using JetBrains.Annotations;
+using SamSWAT.FireSupport.ArysReloaded.Integration;
 using SamSWAT.FireSupport.ArysReloaded.Unity;
 using SPT.Reflection.Patching;
 using System.Reflection;
@@ -18,15 +19,21 @@ public class GameWorldDisposePatch : ModulePatch
 	[PatchPrefix]
 	private static void PatchPrefix()
 	{
+		SeasonalModifiersBridge.ResetForRaidBoundary("raid disposed");
+		UavDeviceHandsService.CancelAllPending("raid disposed");
+		UavPhoneHotkeyController.ResetForRaidBoundary("raid disposed");
+		UavDeviceActivationController.ResetForRaidBoundary("raid disposed");
+		UavReconOverlay.Deactivate("raid disposed");
+		UavAircraftLoiterController.ResetAll("raid disposed");
+		FireSupportItemTransfer.ResetForRaidBoundary("raid disposed");
 		FireSupportAuthorizations.Reset();
 		FireSupportServerConfigClient.OnRaidEnded();
 
-		if (FireSupportController.Instance != null)
+		bool hadController = FireSupportController.Instance != null;
+		FireSupportController.DestroyCurrent("raid disposed");
+		if (!hadController)
 		{
-			UnityEngine.Object.DestroyImmediate(FireSupportController.Instance);
-			return;
+			FireSupportRuntime.Dispose();
 		}
-
-		FireSupportRuntime.Dispose();
 	}
 }

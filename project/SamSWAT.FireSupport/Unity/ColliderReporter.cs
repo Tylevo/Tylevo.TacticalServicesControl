@@ -48,7 +48,7 @@ public class ColliderReporter : UpdatableComponentBase
 		_transform = transform;
 		_intersectedColliders = new Collider[5];
 		_colliders = GetComponents<BoxCollider>();
-		_mask = LayerMaskClass.LowPolyColliderLayerMask | LayerMaskClass.HighPolyCollider;
+		_mask = LayersMaskController.LowPolyColliderLayerMask | LayersMaskController.HighPolyCollider;
 
 		HasFinishedInitialization = true;
 	}

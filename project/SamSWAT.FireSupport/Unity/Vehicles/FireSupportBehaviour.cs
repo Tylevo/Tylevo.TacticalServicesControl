@@ -18,6 +18,13 @@ public abstract class FireSupportBehaviour : UpdatableComponentBase, IFireSuppor
 
 	public void ReturnToPool()
 	{
-		FireSupportPoolManager.Instance.ReturnToPool(this);
+		FireSupportPoolManager manager = FireSupportPoolManager.Instance;
+		if (manager == null)
+		{
+			DestroyImmediate(gameObject);
+			return;
+		}
+
+		manager.ReturnToPool(this);
 	}
 }

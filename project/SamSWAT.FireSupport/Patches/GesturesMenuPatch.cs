@@ -29,26 +29,45 @@ public class GesturesMenuPatch : ModulePatch
 	{
 		try
 		{
-			if (FireSupportController.Instance != null)
-			{
-				UnityEngine.Object.DestroyImmediate(FireSupportController.Instance);
-			}
+			FireSupportController.DestroyCurrent("battle UI reinitialized");
 			
 			if (!IsFireSupportAvailable())
 			{
 				return;
 			}
 
-			var owner = Singleton<GameWorld>.Instance.MainPlayer.GetComponent<GamePlayerOwner>();
+			GameWorld gameWorld = Singleton<GameWorld>.Instance;
+			Player player = gameWorld?.MainPlayer;
+			var owner = player?.GetComponent<GamePlayerOwner>();
+			if (player == null || owner == null)
+			{
+				return;
+			}
 			
 			GesturesMenu gesturesMenu = ___BattleUIScreenController.GesturesQuickPanel.GesturesMenu;
 			
 			var fireSupportController = await FireSupportController.Create(gesturesMenu);
+			if (fireSupportController == null ||
+			    !ReferenceEquals(FireSupportController.Instance, fireSupportController) ||
+			    Singleton<GameWorld>.Instance != gameWorld ||
+			    gameWorld.MainPlayer != player ||
+			    owner == null)
+			{
+				if (fireSupportController != null)
+				{
+					UnityEngine.Object.DestroyImmediate(fireSupportController);
+				}
+
+				return;
+			}
 			
-			Traverse.Create(owner)
+			List<InputNode> children = Traverse.Create(owner)
 				.Field<List<InputNode>>("_children")
-				.Value
-				.Add(fireSupportController);
+				.Value;
+			if (children != null && !children.Contains(fireSupportController))
+			{
+				children.Add(fireSupportController);
+			}
 
 			if (FireSupportUI.IsRadialWorkflowEnabled())
 			{

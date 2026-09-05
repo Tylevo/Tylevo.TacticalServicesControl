@@ -1,15 +1,8 @@
 using SPTarkov.DI.Annotations;
-using SPTarkov.Server.Core.Helpers;
 using SPTarkov.Server.Core.Models.Common;
 using SPTarkov.Server.Core.Models.Eft.Common.Tables;
 using SPTarkov.Server.Core.Models.Spt.Config;
 using SPTarkov.Server.Core.Models.Spt.Mod;
-using SPTarkov.Server.Core.Models.Spt.Server;
-using SPTarkov.Server.Core.Models.Utils;
-using SPTarkov.Server.Core.Servers;
-using SPTarkov.Server.Core.Services;
-using SPTarkov.Server.Core.Services.Mod;
-using SPTarkov.Server.Core.Utils.Cloners;
 using System.Reflection;
 using Path = System.IO.Path;
 
@@ -17,26 +10,17 @@ namespace SamSWAT.FireSupport.ArysReloaded;
 
 [Injectable]
 public class CustomItemServiceExtended(
-	ISptLogger<CustomItemService> logger,
-	ConfigServer configServer,
-	DatabaseService databaseService,
-	ItemHelper itemHelper,
-	ItemBaseClassService itemBaseClassService,
-	ModItemCacheService modItemCacheService,
-	ICloner cloner)
-	: CustomItemService(logger, databaseService, itemHelper, itemBaseClassService, modItemCacheService, cloner)
+	ISptLogger<CustomItemServiceExtended> logger,
+	CustomItemService customItemService,
+	TemplateTable templateTable,
+	ItemConfig itemConfig,
+	TraderConfig traderConfig,
+	RagfairConfig ragfairConfig,
+	ScavCaseConfig scavCaseConfig)
 {
 	private const string UavDeviceTpl = "66f51f3a0000000000000a01";
 	private const string HackerModLootBundlePath = "manimal/hacker_loot.bundle";
 	private const string HackerModContainerBundlePath = "manimal/hacker_container.bundle";
-
-	private readonly ItemConfig _itemConfig = configServer.GetConfig<ItemConfig>();
-	private readonly TraderConfig _traderConfig = configServer.GetConfig<TraderConfig>();
-	private readonly RagfairConfig _ragfairConfig = configServer.GetConfig<RagfairConfig>();
-	private readonly ScavCaseConfig _scavCaseConfig = configServer.GetConfig<ScavCaseConfig>();
-	
-	private static readonly MethodInfo s_addModItem =
-		typeof(ModItemCacheService).GetMethod("AddModItem", BindingFlags.NonPublic | BindingFlags.Instance)!;
 
 	public void ApplyHackerModBundleCompatibility(string pathToMod)
 	{
@@ -84,8 +68,7 @@ public class CustomItemServiceExtended(
 				continue;
 			}
 
-			DatabaseTables tables = databaseService.GetTables();
-			if (!tables.Templates.Items.TryGetValue(UavDeviceTpl, out TemplateItem? uavDevice) ||
+			if (!templateTable.Items.TryGetValue(UavDeviceTpl, out TemplateItem? uavDevice) ||
 			    uavDevice.Properties?.Prefab == null ||
 			    uavDevice.Properties.UsePrefab == null)
 			{
@@ -109,29 +92,25 @@ public class CustomItemServiceExtended(
 		}
 	}
 
-	// Thanks to SPT Devs for the code, I've borrowed the CustomItemService logic and modified it for my own use.
 	public void CreateItem(NewCustomItemDetails newItemDetails)
 	{
-		DatabaseTables tables = databaseService.GetTables();
-
-		TemplateItem newItem = newItemDetails.NewItem!;
-
-		// Fail if itemId already exists
-		if (tables.Templates.Items.TryGetValue(newItem.Id, out TemplateItem? item))
+		// TSC's historical item JSON adds only the template/locales. Explicitly
+		// disable the newer SPT helper's handbook, flea, and weapon-shelf defaults
+		// before delegating the actual database/cache registration.
+		newItemDetails.AddToHandbook = false;
+		newItemDetails.AddToFleaPriceDb = false;
+		newItemDetails.AddToWeaponShelf = false;
+		CreateItemResult result = customItemService.CreateItem(
+			newItemDetails,
+			Assembly.GetExecutingAssembly());
+		if (!result.Success)
 		{
-			logger.Warning($"ItemId already exists. {item.Name}");
+			logger.Warning(
+				$"TSC item {result.ItemId} could not be registered: {string.Join("; ", result.Errors)}");
 			return;
 		}
 
-		AddToItemsDb(newItem.Id, newItem);
-
-		AddToLocaleDbs(newItemDetails.Locales!, newItem.Id);
-		
-		AddToBlacklists(newItemDetails.BlacklistDetails, newItem.Id);
-
-		itemBaseClassService.HydrateItemBaseClassCache();
-
-		s_addModItem.Invoke(modItemCacheService, [Assembly.GetExecutingAssembly(), newItem.Id]);
+		AddToBlacklists(newItemDetails.BlacklistDetails, result.ItemId);
 	}
 
 	private void AddToBlacklists(BlacklistDetails? blacklistDetails, MongoId newItemId)
@@ -140,22 +119,22 @@ public class CustomItemServiceExtended(
 		
 		if (blacklistDetails.BlacklistGlobally)
 		{
-			_itemConfig.Blacklist.Add(newItemId);
+			itemConfig.Blacklist.Add(newItemId);
 		}
 		
 		if (blacklistDetails.BlacklistFromFence)
 		{
-			_traderConfig.Fence.Blacklist.Add(newItemId);
+			traderConfig.Fence.Blacklist.Add(newItemId);
 		}
 
 		if (blacklistDetails.BlacklistFromFlea)
 		{
-			_ragfairConfig.Dynamic.Blacklist.Custom.Add(newItemId);
+			ragfairConfig.Dynamic.Blacklist.Custom.Add(newItemId);
 		}
 
 		if (blacklistDetails.BlacklistFromScavCase)
 		{
-			_scavCaseConfig.RewardItemParentBlacklist.Add(newItemId);
+			scavCaseConfig.RewardItemParentBlacklist.Add(newItemId);
 		}
 	}
 }

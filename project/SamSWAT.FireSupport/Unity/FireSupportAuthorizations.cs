@@ -8,7 +8,7 @@ public static class FireSupportAuthorizations
 	// Two stores with different owners:
 	// - server credits mirror the server ledger and are replaced wholesale by
 	//   SetFromServer on every config sync;
-	// - local credits are purchases the server never saw (carried roubles,
+	// - local credits are purchases the server never saw (carried currency,
 	//   zero-cost grants). They must survive SetFromServer, and consuming them
 	//   must not round-trip the server ledger, or the server rejects the
 	//   consume and the credit becomes unusable.
@@ -158,7 +158,7 @@ public static class FireSupportAuthorizations
 			Grant(type, 1);
 		}
 
-		NotificationManagerClass.DisplayMessageNotification(
+		NotificationManager.DisplayMessageNotification(
 			$"{GetSupportName(type)} authorization refunded.",
 			ENotificationDurationType.Default,
 			ENotificationIconType.Default,
@@ -222,7 +222,7 @@ public static class FireSupportAuthorizations
 			ESupportType.Strafe => "A-10 strafe",
 			ESupportType.DoubleStrafe => "A-10 double pass",
 			ESupportType.Extract => "UH-60 extraction",
-			ESupportType.PriorityExfil => "priority exfil",
+			ESupportType.PriorityExfil => "UH-60 cargo transfer",
 			ESupportType.Uav => "UAV recon",
 			ESupportType.FocusedSweep => "focused sweep",
 			_ => "fire support"

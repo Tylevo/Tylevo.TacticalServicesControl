@@ -139,8 +139,8 @@ public static class UavReconSettings
 	public static int GetConfiguredDurationSeconds(ESupportType supportType)
 	{
 		return supportType == ESupportType.FocusedSweep
-			? PluginSettings.FocusedSweepDurationSeconds.Value
-			: PluginSettings.UavDurationSeconds.Value;
+			? _serverFocusedSweepDurationSeconds ?? PluginSettings.FocusedSweepDurationSeconds.Value
+			: _serverDurationSeconds ?? PluginSettings.UavDurationSeconds.Value;
 	}
 
 	public static float GetScanInterval(ESupportType supportType)
@@ -153,8 +153,8 @@ public static class UavReconSettings
 	public static float GetConfiguredScanInterval(ESupportType supportType)
 	{
 		return supportType == ESupportType.FocusedSweep
-			? PluginSettings.FocusedSweepScanInterval.Value
-			: PluginSettings.UavScanInterval.Value;
+			? _serverFocusedSweepScanInterval ?? PluginSettings.FocusedSweepScanInterval.Value
+			: _serverScanInterval ?? PluginSettings.UavScanInterval.Value;
 	}
 
 	public static float GetRangeMeters(ESupportType supportType)
@@ -167,7 +167,7 @@ public static class UavReconSettings
 	public static float GetConfiguredRangeMeters(ESupportType supportType)
 	{
 		return supportType == ESupportType.FocusedSweep
-			? PluginSettings.FocusedSweepRangeMeters.Value
-			: PluginSettings.UavRangeMeters.Value;
+			? _serverFocusedSweepRangeMeters ?? PluginSettings.FocusedSweepRangeMeters.Value
+			: _serverRangeMeters ?? PluginSettings.UavRangeMeters.Value;
 	}
 }

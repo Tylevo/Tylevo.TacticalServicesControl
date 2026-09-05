@@ -1,2 +1,2 @@
-global using ISessionStopper = CommonAssets.Scripts.Game.EndByExitTrigerScenario.GInterface146;
-global using IBattleUIScreenController = GInterface472;
+global using ISessionStopper = CommonAssets.Scripts.Game.EndByExitTrigerScenario.IGame;
+global using IBattleUIScreenController = EFT.UI.IBattleUIScreenController;

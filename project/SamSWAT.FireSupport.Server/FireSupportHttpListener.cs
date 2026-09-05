@@ -14,6 +14,8 @@ namespace SamSWAT.FireSupport.ArysReloaded;
 [Injectable(TypePriority = 0)]
 public sealed class FireSupportHttpListener(
 	FireSupportServerConfigService configService,
+	FireSupportUh60DeliveryService uh60DeliveryService,
+	FireSupportUh60TransferFeeService uh60TransferFeeService,
 	ISptLogger<FireSupportHttpListener> logger) : IHttpListener
 {
 	private const string PublicRoot = "/tsc";
@@ -33,16 +35,30 @@ public sealed class FireSupportHttpListener(
 		WriteIndented = false
 	};
 
-	public bool CanHandle(MongoId sessionId, HttpContext httpContext)
+	public bool CanHandle(HttpContext httpContext)
 	{
 		string? path = httpContext.Request.Path.Value;
 		return IsRouteRoot(path, PublicRoot) || IsRouteRoot(path, LegacyRoot);
 	}
 
-	public async Task Handle(MongoId sessionId, HttpContext httpContext)
+	public async Task HandleAsync(
+		MongoId sessionId,
+		HttpContext httpContext,
+		CancellationToken cancellationToken = default)
 	{
+		cancellationToken.ThrowIfCancellationRequested();
 		string path = NormalizeRoutePath(httpContext.Request.Path.Value);
 		string method = httpContext.Request.Method;
+
+		if (string.Equals(method, HttpMethods.Get, StringComparison.OrdinalIgnoreCase) &&
+		    string.Equals(
+			    path,
+			    FireSupportUh60DeliveryService.MessengerAvatarRoute,
+			    StringComparison.OrdinalIgnoreCase))
+		{
+			await HandleUh60MessengerAvatarAsync(httpContext);
+			return;
+		}
 
 		if (string.Equals(method, HttpMethods.Get, StringComparison.OrdinalIgnoreCase) &&
 		    string.Equals(path, "/tsc/health", StringComparison.OrdinalIgnoreCase))
@@ -92,6 +108,23 @@ public sealed class FireSupportHttpListener(
 		}
 
 		if (string.Equals(method, HttpMethods.Post, StringComparison.OrdinalIgnoreCase) &&
+		    string.Equals(path, "/tsc/uh60-transfer/mark", StringComparison.OrdinalIgnoreCase))
+		{
+			await HandleUh60TransferMarkerAsync(sessionId, httpContext);
+			return;
+		}
+
+		if (string.Equals(method, HttpMethods.Post, StringComparison.OrdinalIgnoreCase) &&
+		    string.Equals(
+			    path,
+			    FireSupportUh60TransferFeeService.Route,
+			    StringComparison.OrdinalIgnoreCase))
+		{
+			await HandleUh60TransferFeeAsync(sessionId, httpContext);
+			return;
+		}
+
+		if (string.Equals(method, HttpMethods.Post, StringComparison.OrdinalIgnoreCase) &&
 		    string.Equals(path, "/tsc/purchase", StringComparison.OrdinalIgnoreCase))
 		{
 			await HandlePurchaseAsync(sessionId, httpContext);
@@ -122,6 +155,118 @@ public sealed class FireSupportHttpListener(
 
 		httpContext.Response.Headers.Allow = "GET, POST";
 		await WriteJsonAsync(httpContext, 404, new { error = "Unknown TSC route." });
+	}
+
+	private async Task HandleUh60MessengerAvatarAsync(
+		HttpContext httpContext)
+	{
+		if (!uh60DeliveryService.TryGetMessengerAvatar(out byte[] avatar))
+		{
+			await WriteJsonAsync(
+				httpContext,
+				404,
+				new { error = "UH-60 Pilot artwork is not installed." });
+			return;
+		}
+
+		httpContext.Response.StatusCode = 200;
+		httpContext.Response.ContentType = "image/png";
+		httpContext.Response.ContentLength = avatar.Length;
+		httpContext.Response.Headers.CacheControl = "public, max-age=3600";
+		await httpContext.Response.StartAsync(httpContext.RequestAborted);
+		await httpContext.Response.Body.WriteAsync(
+			avatar.AsMemory(0, avatar.Length),
+			httpContext.RequestAborted);
+		await httpContext.Response.CompleteAsync();
+	}
+
+	private async Task HandleUh60TransferMarkerAsync(
+		MongoId sessionId,
+		HttpContext httpContext)
+	{
+		FireSupportUh60TransferMarkerRequest? request =
+			await ReadJsonAsync<FireSupportUh60TransferMarkerRequest>(
+				httpContext);
+		if (request == null)
+		{
+			await WriteJsonAsync(
+				httpContext,
+				400,
+				new FireSupportUh60TransferMarkerResponse
+				{
+					Ok = false,
+					Reason = "InvalidRequest"
+				});
+			return;
+		}
+
+		FireSupportUh60TransferMarkerResponse response =
+			uh60DeliveryService.TryMarkTransfer(sessionId, request);
+		int statusCode = response.Ok
+			? 200
+			: response.Reason switch
+			{
+				"AuthenticatedSessionRequired" or
+				"ProfileNotFound" or
+				"ProfileMismatch" => 403,
+				"MarkerStoreNotInitialized" or
+				"MarkerStoreSaveFailed" or
+				"MessengerUnavailable" => 503,
+				_ => 400
+			};
+		await WriteJsonAsync(httpContext, statusCode, response);
+	}
+
+	private async Task HandleUh60TransferFeeAsync(
+		MongoId sessionId,
+		HttpContext httpContext)
+	{
+		FireSupportUh60TransferFeeRequest? request =
+			await ReadJsonAsync<FireSupportUh60TransferFeeRequest>(
+				httpContext);
+		if (request == null)
+		{
+			await WriteJsonAsync(
+				httpContext,
+				400,
+				new FireSupportUh60TransferFeeResponse
+				{
+					Ok = false,
+					Reason = "InvalidRequest"
+				});
+			return;
+		}
+
+		FireSupportUh60TransferFeeResponse response;
+		try
+		{
+			response = await uh60TransferFeeService.TryHandleAsync(
+				sessionId,
+				request);
+		}
+		catch (OperationCanceledException)
+			when (httpContext.RequestAborted.IsCancellationRequested)
+		{
+			throw;
+		}
+		catch (Exception exception)
+		{
+			logger.Error(
+				"TSC UH-60 transfer-fee endpoint failed.",
+				exception);
+			response = new FireSupportUh60TransferFeeResponse
+			{
+				Ok = false,
+				Reason = "InternalServerError",
+				TransactionId = request.TransactionId,
+				AmountRoubles = request.AmountRoubles
+			};
+		}
+
+		// Transaction denials are protocol results rather than transport
+		// failures. Keeping HTTP 200 matches /tsc/purchase and lets old/new
+		// clients parse the same response DTO reliably.
+		await WriteJsonAsync(httpContext, 200, response);
 	}
 
 	private async Task HandleAdminAssetAsync(string path, HttpContext httpContext)

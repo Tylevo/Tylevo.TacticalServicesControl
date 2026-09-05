@@ -7,7 +7,7 @@ public sealed class A10ClientVisualPredictionExecutor : IA10StrikeExecutor
 {
 	private static readonly A10VisualRuntimeExecutor s_visualRuntime = new();
 
-	public UniTask<bool> ExecuteAsync(A10StrikeRequest request, CancellationToken cancellationToken)
+	public async UniTask<bool> ExecuteAsync(A10StrikeRequest request, CancellationToken cancellationToken)
 	{
 		var visualRequest = new A10StrikeRequest
 		{
@@ -19,9 +19,17 @@ public sealed class A10ClientVisualPredictionExecutor : IA10StrikeExecutor
 			VisualSeed = request.VisualSeed,
 			PassIndex = request.PassIndex,
 			RequesterProfileId = request.RequesterProfileId,
+			RequestOrigin = request.RequestOrigin,
+			ProjectileOwnerModeOverride = request.ProjectileOwnerModeOverride,
 			VisualOnly = true,
 			Role = A10AuthorityRole.FikaClient
 		};
+
+		bool visualStarted = await s_visualRuntime.ExecuteAsync(visualRequest, cancellationToken);
+		if (!visualStarted)
+		{
+			return false;
+		}
 
 		A10TracerNetworking.MarkClientVisualPassStarted(
 			visualRequest.SupportRequestId,
@@ -29,6 +37,6 @@ public sealed class A10ClientVisualPredictionExecutor : IA10StrikeExecutor
 			visualRequest.PassIndex,
 			cancellationToken);
 
-		return s_visualRuntime.ExecuteAsync(visualRequest, cancellationToken);
+		return true;
 	}
 }

@@ -9,10 +9,12 @@
     <Copyright>Copyright © Tylevo, SamSWAT, Arys 2026</Copyright>
     <Company />
     <IsPackable>false</IsPackable>
+    <AssemblyCSharpReferenceFile Condition=" '$(AssemblyCSharpReferenceFile)' == '' ">Assembly-CSharp.dll</AssemblyCSharpReferenceFile>
   </PropertyGroup>
 
   <PropertyGroup>
     <CopyToOutputDir>$(MSBuildThisFileDirectory)CopyToOutput</CopyToOutputDir>
+    <DangerCloseLocalRingtone>$(MSBuildThisFileDirectory)LocalOnly\danger-close-ringtone.mp3</DangerCloseLocalRingtone>
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'SPT-3.10 Release|AnyCPU' ">
@@ -24,13 +26,20 @@
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'SPT-4.0 Release|AnyCPU' ">
     <TargetFramework>netstandard2.1</TargetFramework>
   </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'SPT-4.1 Release|AnyCPU' ">
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <!-- SPT.Modules' exact-build hollowed reference exposes EFT's modding API
+         without shipping or loading the reference assembly at runtime. -->
+    <AssemblyCSharpReferenceFile>hollowed.dll</AssemblyCSharpReferenceFile>
+  </PropertyGroup>
   
   <ItemGroup>
     <Reference Include="0Harmony">
       <HintPath>$(SptSharedAssembliesDir)$(SptVersion)\0Harmony.dll</HintPath>
     </Reference>
     <Reference Include="Assembly-CSharp">
-      <HintPath>$(SptSharedAssembliesDir)$(SptVersion)\Assembly-CSharp.dll</HintPath>
+      <HintPath>$(SptSharedAssembliesDir)$(SptVersion)\$(AssemblyCSharpReferenceFile)</HintPath>
+      <Private>false</Private>
     </Reference>
     <Reference Include="BepInEx">
       <HintPath>$(SptSharedAssembliesDir)$(SptVersion)\BepInEx.dll</HintPath>
@@ -40,6 +49,12 @@
     </Reference>
     <Reference Include="DissonanceVoip">
       <HintPath>$(SptSharedAssembliesDir)$(SptVersion)\DissonanceVoip.dll</HintPath>
+    </Reference>
+    <Reference Include="ItemComponent.Types">
+      <HintPath>$(SptSharedAssembliesDir)$(SptVersion)\ItemComponent.Types.dll</HintPath>
+    </Reference>
+    <Reference Include="ItemTemplate.Types">
+      <HintPath>$(SptSharedAssembliesDir)$(SptVersion)\ItemTemplate.Types.dll</HintPath>
     </Reference>
     <Reference Include="Newtonsoft.Json">
       <HintPath>$(SptSharedAssembliesDir)$(SptVersion)\Newtonsoft.Json.dll</HintPath>
@@ -95,6 +110,12 @@
     <Reference Include="UnityEngine.UIElementsModule">
       <HintPath>$(SptSharedAssembliesDir)$(SptVersion)\UnityEngine.UIElementsModule.dll</HintPath>
     </Reference>
+    <Reference Include="UnityEngine.UnityWebRequestModule">
+      <HintPath>$(SptSharedAssembliesDir)$(SptVersion)\UnityEngine.UnityWebRequestModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.UnityWebRequestAudioModule">
+      <HintPath>$(SptSharedAssembliesDir)$(SptVersion)\UnityEngine.UnityWebRequestAudioModule.dll</HintPath>
+    </Reference>
     <Reference Include="UnityEngine.TextRenderingModule">
       <HintPath>$(SptSharedAssembliesDir)$(SptVersion)\UnityEngine.TextRenderingModule.dll</HintPath>
     </Reference>
@@ -130,23 +151,8 @@
     <EmbeddedResource Remove="obj\**" />
   </ItemGroup>
   
-  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent" Condition=" '$(SkipTscDeploy)' != 'true' ">
     <Exec Command="if not exist &quot;$(SptBepInExPluginsDir)$(SolutionName)&quot; (&#xA;    mkdir &quot;$(SptBepInExPluginsDir)$(SolutionName)&quot;&#xA;)&#xA;&#xA;copy &quot;$(TargetPath)&quot; &quot;$(SptBepInExPluginsDir)$(SolutionName)\$(TargetFileName)&quot;&#xA;(robocopy &quot;$(CopyToOutputDir)&quot; &quot;$(SptBepInExPluginsDir)$(SolutionName)&quot; /E /XD previews optional_highres /XF .gitkeep WHY_V7_IS_COMPONENT_BASED.txt) ^&amp; if %ERRORLEVEL% leq 3 exit 0" />
-  </Target>
-
-  <Target Name="RemoveReleaseExcludedContent" AfterTargets="PostBuild" BeforeTargets="CreateReleaseZip">
-    <ItemGroup>
-      <ReleaseExcludedFiles Include="$(SptBepInExPluginsDir)$(SolutionName)\assets\content\ui\phone\docs\WHY_V7_IS_COMPONENT_BASED.txt" />
-      <ReleaseExcludedFiles Include="$(SptBepInExPluginsDir)$(SolutionName)\assets\content\ui\.gitkeep" />
-      <ReleaseExcludedFiles Include="$(SptBepInExPluginsDir)$(SolutionName)\assets\content\vehicles\.gitkeep" />
-      <ReleaseExcludedDirs Include="$(SptBepInExPluginsDir)$(SolutionName)\assets\content\ui\phone\previews" />
-      <ReleaseExcludedDirs Include="$(SptBepInExPluginsDir)$(SolutionName)\assets\content\ui\phone\optional_highres" />
-    </ItemGroup>
-    <Delete Files="@(ReleaseExcludedFiles)" TreatErrorsAsWarnings="true" />
-    <RemoveDir Directories="@(ReleaseExcludedDirs)" />
-  </Target>
-
-  <Target Name="CreateReleaseZip" AfterTargets="PostBuild">
-    <Exec Command="if not &quot;$(ConfigurationName)&quot;==&quot;Debug&quot; (&#xA;    cd /D &quot;$(SptBepInExPluginsDir)..\..\&quot;&#xA;    &quot;$(SevenZipPath)&quot; a -tzip &quot;$(ReleaseArchive)&quot; &quot;BepInEx\plugins\$(SolutionName)\*&quot;&#xA;    &quot;$(SevenZipPath)&quot; a -tzip &quot;$(ReleaseArchive)&quot; &quot;SPT\user\mods\$(SolutionName)\*&quot;&#xA;)" />
+    <Exec Condition="Exists('$(DangerCloseLocalRingtone)')" Command="if not exist &quot;$(SptBepInExPluginsDir)$(SolutionName)\assets\content\ui\phone\audio&quot; mkdir &quot;$(SptBepInExPluginsDir)$(SolutionName)\assets\content\ui\phone\audio&quot;&#xA;copy /Y &quot;$(DangerCloseLocalRingtone)&quot; &quot;$(SptBepInExPluginsDir)$(SolutionName)\assets\content\ui\phone\audio\danger-close-ringtone.mp3&quot;" />
   </Target>
 </Project>

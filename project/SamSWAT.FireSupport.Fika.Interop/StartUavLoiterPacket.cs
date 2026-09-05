@@ -6,6 +6,9 @@ namespace SamSWAT.FireSupport.ArysReloaded.Fika;
 
 public class StartUavLoiterPacket : INetSerializable
 {
+	public ESupportType SupportType;
+	public string SupportRequestId = string.Empty;
+	public string RequesterProfileId = string.Empty;
 	public UavLoiterAircraftType AircraftType;
 	public Vector3 Center;
 	public float DurationSeconds;
@@ -18,14 +21,18 @@ public class StartUavLoiterPacket : INetSerializable
 	public Vector3 ModelRotationOffset;
 	public float StartAngle;
 	public int Direction;
-	public float StartTime;
 
 	public StartUavLoiterPacket()
 	{
 	}
 
-	public StartUavLoiterPacket(UavA10LoiterRequest request)
+	public StartUavLoiterPacket(
+		FireSupportRequestPacket acceptedSupport,
+		UavA10LoiterRequest request)
 	{
+		SupportType = acceptedSupport?.SupportType ?? ESupportType.Uav;
+		SupportRequestId = acceptedSupport?.SupportRequestId ?? string.Empty;
+		RequesterProfileId = acceptedSupport?.RequesterProfileId ?? string.Empty;
 		AircraftType = request.AircraftType;
 		Center = request.Center;
 		DurationSeconds = request.DurationSeconds;
@@ -38,7 +45,6 @@ public class StartUavLoiterPacket : INetSerializable
 		ModelRotationOffset = request.ModelRotationOffset;
 		StartAngle = request.StartAngle;
 		Direction = request.Direction;
-		StartTime = request.StartTime;
 	}
 
 	public UavA10LoiterRequest ToRequest()
@@ -56,11 +62,14 @@ public class StartUavLoiterPacket : INetSerializable
 			ModelRotationOffset,
 			StartAngle,
 			Direction,
-			StartTime);
+			Time.time);
 	}
 
 	public void Serialize(NetDataWriter writer)
 	{
+		writer.Put((int)SupportType);
+		writer.Put(SupportRequestId ?? string.Empty);
+		writer.Put(RequesterProfileId ?? string.Empty);
 		writer.Put((int)AircraftType);
 		writer.PutUnmanaged(Center);
 		writer.Put(DurationSeconds);
@@ -73,11 +82,13 @@ public class StartUavLoiterPacket : INetSerializable
 		writer.PutUnmanaged(ModelRotationOffset);
 		writer.Put(StartAngle);
 		writer.Put(Direction);
-		writer.Put(StartTime);
 	}
 
 	public void Deserialize(NetDataReader reader)
 	{
+		SupportType = (ESupportType)reader.GetInt();
+		SupportRequestId = reader.GetString() ?? string.Empty;
+		RequesterProfileId = reader.GetString() ?? string.Empty;
 		AircraftType = (UavLoiterAircraftType)reader.GetInt();
 		Center = reader.GetUnmanaged<Vector3>();
 		DurationSeconds = reader.GetFloat();
@@ -90,6 +101,5 @@ public class StartUavLoiterPacket : INetSerializable
 		ModelRotationOffset = reader.GetUnmanaged<Vector3>();
 		StartAngle = reader.GetFloat();
 		Direction = reader.GetInt();
-		StartTime = reader.GetFloat();
 	}
 }

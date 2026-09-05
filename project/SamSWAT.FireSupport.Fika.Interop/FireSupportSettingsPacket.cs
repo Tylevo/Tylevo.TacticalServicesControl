@@ -23,16 +23,20 @@ public class FireSupportSettingsPacket : INetSerializable
 	public float FocusedSweepScanIntervalSeconds;
 	public float FocusedSweepRangeMeters;
 	public float DoubleStrafeSecondPassDelaySeconds;
+	public float ExtractionDispatchDelaySeconds;
 	public int HelicopterWaitTimeSeconds;
-	public int PriorityExfilHelicopterWaitTimeSeconds;
-	public float PriorityExfilDispatchDelaySeconds;
-	public float HelicopterExtractTimeSeconds;
+	public float ExtractionExtractTimeSeconds;
 	public float HelicopterSpeedMultiplier;
+	public float PriorityExfilDispatchDelaySeconds;
+	public int PriorityExfilHelicopterWaitTimeSeconds;
+	public float PriorityExfilExtractTimeSeconds;
 	public float PriorityExfilHelicopterSpeedMultiplier;
 	public int RequestCooldownSeconds;
 	public PaymentMode PaymentMode;
 	public PaymentSource PaymentSource;
 	public string ServerConfigUrl;
+	public PaymentCurrency PaymentCurrency;
+	public int ServiceSemanticsVersion = FireSupportServiceSemantics.CurrentVersion;
 
 	public FireSupportSettingsPacket()
 	{
@@ -66,16 +70,20 @@ public class FireSupportSettingsPacket : INetSerializable
 		writer.Put(FocusedSweepScanIntervalSeconds);
 		writer.Put(FocusedSweepRangeMeters);
 		writer.Put(DoubleStrafeSecondPassDelaySeconds);
+		writer.Put(ExtractionDispatchDelaySeconds);
 		writer.Put(HelicopterWaitTimeSeconds);
-		writer.Put(PriorityExfilHelicopterWaitTimeSeconds);
-		writer.Put(PriorityExfilDispatchDelaySeconds);
-		writer.Put(HelicopterExtractTimeSeconds);
+		writer.Put(ExtractionExtractTimeSeconds);
 		writer.Put(HelicopterSpeedMultiplier);
+		writer.Put(PriorityExfilDispatchDelaySeconds);
+		writer.Put(PriorityExfilHelicopterWaitTimeSeconds);
+		writer.Put(PriorityExfilExtractTimeSeconds);
 		writer.Put(PriorityExfilHelicopterSpeedMultiplier);
 		writer.Put(RequestCooldownSeconds);
 		writer.Put((int)PaymentMode);
 		writer.Put((int)PaymentSource);
 		writer.Put(ServerConfigUrl ?? string.Empty);
+		writer.Put((int)PaymentCurrency);
+		writer.Put(ServiceSemanticsVersion);
 	}
 
 	public void Deserialize(NetDataReader reader)
@@ -98,15 +106,23 @@ public class FireSupportSettingsPacket : INetSerializable
 		FocusedSweepScanIntervalSeconds = reader.GetFloat();
 		FocusedSweepRangeMeters = reader.GetFloat();
 		DoubleStrafeSecondPassDelaySeconds = reader.GetFloat();
+		ExtractionDispatchDelaySeconds = reader.GetFloat();
 		HelicopterWaitTimeSeconds = reader.GetInt();
-		PriorityExfilHelicopterWaitTimeSeconds = reader.GetInt();
-		PriorityExfilDispatchDelaySeconds = reader.GetFloat();
-		HelicopterExtractTimeSeconds = reader.GetFloat();
+		ExtractionExtractTimeSeconds = reader.GetFloat();
 		HelicopterSpeedMultiplier = reader.GetFloat();
+		PriorityExfilDispatchDelaySeconds = reader.GetFloat();
+		PriorityExfilHelicopterWaitTimeSeconds = reader.GetInt();
+		PriorityExfilExtractTimeSeconds = reader.GetFloat();
 		PriorityExfilHelicopterSpeedMultiplier = reader.GetFloat();
 		RequestCooldownSeconds = reader.GetInt();
 		PaymentMode = (PaymentMode)reader.GetInt();
 		PaymentSource = (PaymentSource)reader.GetInt();
 		ServerConfigUrl = reader.GetString();
+		PaymentCurrency = reader.AvailableBytes >= sizeof(int)
+			? PaymentCurrencyInfo.Normalize((PaymentCurrency)reader.GetInt())
+			: global::SamSWAT.FireSupport.ArysReloaded.Unity.PaymentCurrency.RUB;
+		ServiceSemanticsVersion = reader.AvailableBytes >= sizeof(int)
+			? reader.GetInt()
+			: FireSupportServiceSemantics.LegacyVersion;
 	}
 }

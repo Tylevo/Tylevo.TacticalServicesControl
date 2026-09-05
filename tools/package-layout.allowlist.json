@@ -1,0 +1,356 @@
+{
+  "schemaVersion": 3,
+  "criticalReferencePins": [
+    {
+      "fileName": "hollowed.dll",
+      "sha256": "8E29BF643BA75530C82BD749D2814F3A45487257D4E9C544754C46E3A12D532D"
+    },
+    {
+      "fileName": "WTT-ClientCommonLib.dll",
+      "sha256": "40B345CDC5D509028023989EFA8D96DD7DD4753257338D1F9D37A024FE9A1A3C"
+    },
+    {
+      "fileName": "WTT-ServerCommonLib.dll",
+      "sha256": "DC765A67977C97315CE776D1042980894520FA02DDE35C67DBE80DE8CF4B15E8"
+    },
+    {
+      "fileName": "Fika.Core.dll",
+      "sha256": "7EBC9A97EF51719075CB2B888C54934E0AE47B1908CDAEB0A3656E6F415BD015"
+    },
+    {
+      "fileName": "UnityToolkit.dll",
+      "sha256": "DBA886D4C8B118C389795B1196EC13742DA42771C50D190209C370F69C416E75"
+    }
+  ],
+  "archiveRoots": [
+    "BepInEx",
+    "SPT_Runtime"
+  ],
+  "installRoots": [
+    "BepInEx/plugins/Tylevo.TacticalServicesControl",
+    "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl"
+  ],
+  "mirrors": [
+    {
+      "source": "project/SamSWAT.FireSupport/CopyToOutput",
+      "destination": "BepInEx/plugins/Tylevo.TacticalServicesControl",
+      "files": [
+        "assets/content/ui/phone/animations/swipe_up/frames_1024x2048/swipe_00.png",
+        "assets/content/ui/phone/animations/swipe_up/frames_1024x2048/swipe_01.png",
+        "assets/content/ui/phone/animations/swipe_up/frames_1024x2048/swipe_02.png",
+        "assets/content/ui/phone/animations/swipe_up/frames_1024x2048/swipe_03.png",
+        "assets/content/ui/phone/animations/swipe_up/frames_1024x2048/swipe_04.png",
+        "assets/content/ui/phone/animations/swipe_up/frames_1024x2048/swipe_05.png",
+        "assets/content/ui/phone/animations/swipe_up/frames_1024x2048/swipe_06.png",
+        "assets/content/ui/phone/animations/swipe_up/frames_1024x2048/swipe_07.png",
+        "assets/content/ui/phone/animations/swipe_up/frames_1024x2048/swipe_08.png",
+        "assets/content/ui/phone/animations/swipe_up/frames_1024x2048/swipe_09.png",
+        "assets/content/ui/phone/animations/swipe_up/frames_1024x2048/swipe_10.png",
+        "assets/content/ui/phone/animations/swipe_up/frames_1024x2048/swipe_11.png",
+        "assets/content/ui/phone/animations/swipe_up/frames_512x1024/swipe_00.png",
+        "assets/content/ui/phone/animations/swipe_up/frames_512x1024/swipe_01.png",
+        "assets/content/ui/phone/animations/swipe_up/frames_512x1024/swipe_02.png",
+        "assets/content/ui/phone/animations/swipe_up/frames_512x1024/swipe_03.png",
+        "assets/content/ui/phone/animations/swipe_up/frames_512x1024/swipe_04.png",
+        "assets/content/ui/phone/animations/swipe_up/frames_512x1024/swipe_05.png",
+        "assets/content/ui/phone/animations/swipe_up/frames_512x1024/swipe_06.png",
+        "assets/content/ui/phone/animations/swipe_up/frames_512x1024/swipe_07.png",
+        "assets/content/ui/phone/animations/swipe_up/frames_512x1024/swipe_08.png",
+        "assets/content/ui/phone/animations/swipe_up/frames_512x1024/swipe_09.png",
+        "assets/content/ui/phone/animations/swipe_up/frames_512x1024/swipe_10.png",
+        "assets/content/ui/phone/animations/swipe_up/frames_512x1024/swipe_11.png",
+        "assets/content/ui/phone/animations/swipe_up/swipe_arrow_sprite.png",
+        "assets/content/ui/phone/animations/swipe_up/swipe_motion.json",
+        "assets/content/ui/phone/components/landscape/base_header_footer.png",
+        "assets/content/ui/phone/components/landscape/card_locked.png",
+        "assets/content/ui/phone/components/landscape/card_offline.png",
+        "assets/content/ui/phone/components/landscape/card_selected.png",
+        "assets/content/ui/phone/components/landscape/card_unselected.png",
+        "assets/content/ui/phone/components/landscape/confirm_cta.png",
+        "assets/content/ui/phone/components/landscape/cost_panel.png",
+        "assets/content/ui/phone/components/landscape/price_field_selected.png",
+        "assets/content/ui/phone/components/landscape/price_field_unselected.png",
+        "assets/content/ui/phone/components/landscape/review_panel.png",
+        "assets/content/ui/phone/components/landscape/two_option_selection_left.png",
+        "assets/content/ui/phone/components/landscape/two_option_selection_right.png",
+        "assets/content/ui/phone/components/portrait/base_header_footer.png",
+        "assets/content/ui/phone/components/portrait/payment_panel_selected.png",
+        "assets/content/ui/phone/components/portrait/service_panel.png",
+        "assets/content/ui/phone/components/portrait/status_panel.png",
+        "assets/content/ui/phone/docs/component_manifest.json",
+        "assets/content/ui/phone/docs/design_system.json",
+        "assets/content/ui/phone/docs/dynamic_text_layout.json",
+        "assets/content/ui/phone/docs/selection_state_manifest.json",
+        "assets/content/ui/phone/docs/service_manifest.json",
+        "assets/content/ui/phone/icons/amber_512/a10_strafe.png",
+        "assets/content/ui/phone/icons/amber_512/clock.png",
+        "assets/content/ui/phone/icons/amber_512/coverage.png",
+        "assets/content/ui/phone/icons/amber_512/crosshair.png",
+        "assets/content/ui/phone/icons/amber_512/double_pass.png",
+        "assets/content/ui/phone/icons/amber_512/extraction.png",
+        "assets/content/ui/phone/icons/amber_512/fire_support_shells.png",
+        "assets/content/ui/phone/icons/amber_512/focused_sweep.png",
+        "assets/content/ui/phone/icons/amber_512/lock.png",
+        "assets/content/ui/phone/icons/amber_512/orbit_uav.png",
+        "assets/content/ui/phone/icons/amber_512/priority_exfil.png",
+        "assets/content/ui/phone/icons/amber_512/rotate.png",
+        "assets/content/ui/phone/icons/amber_512/safe_pickup.png",
+        "assets/content/ui/phone/icons/amber_512/signal_jam.png",
+        "assets/content/ui/phone/icons/amber_512/smoke_drop.png",
+        "assets/content/ui/phone/icons/amber_512/success.png",
+        "assets/content/ui/phone/icons/amber_512/supply_evac.png",
+        "assets/content/ui/phone/icons/amber_512/terragroup_logo.png",
+        "assets/content/ui/phone/icons/amber_512/uav_recon.png",
+        "assets/content/ui/phone/icons/amber_512/warning.png",
+        "assets/content/ui/phone/icons/mask_512/a10_strafe.png",
+        "assets/content/ui/phone/icons/mask_512/clock.png",
+        "assets/content/ui/phone/icons/mask_512/coverage.png",
+        "assets/content/ui/phone/icons/mask_512/crosshair.png",
+        "assets/content/ui/phone/icons/mask_512/double_pass.png",
+        "assets/content/ui/phone/icons/mask_512/extraction.png",
+        "assets/content/ui/phone/icons/mask_512/fire_support_shells.png",
+        "assets/content/ui/phone/icons/mask_512/focused_sweep.png",
+        "assets/content/ui/phone/icons/mask_512/lock.png",
+        "assets/content/ui/phone/icons/mask_512/orbit_uav.png",
+        "assets/content/ui/phone/icons/mask_512/priority_exfil.png",
+        "assets/content/ui/phone/icons/mask_512/rotate.png",
+        "assets/content/ui/phone/icons/mask_512/safe_pickup.png",
+        "assets/content/ui/phone/icons/mask_512/signal_jam.png",
+        "assets/content/ui/phone/icons/mask_512/smoke_drop.png",
+        "assets/content/ui/phone/icons/mask_512/success.png",
+        "assets/content/ui/phone/icons/mask_512/supply_evac.png",
+        "assets/content/ui/phone/icons/mask_512/terragroup_logo.png",
+        "assets/content/ui/phone/icons/mask_512/uav_recon.png",
+        "assets/content/ui/phone/icons/mask_512/warning.png",
+        "assets/content/ui/phone/icons/neutral_512/a10_strafe.png",
+        "assets/content/ui/phone/icons/neutral_512/clock.png",
+        "assets/content/ui/phone/icons/neutral_512/coverage.png",
+        "assets/content/ui/phone/icons/neutral_512/crosshair.png",
+        "assets/content/ui/phone/icons/neutral_512/double_pass.png",
+        "assets/content/ui/phone/icons/neutral_512/extraction.png",
+        "assets/content/ui/phone/icons/neutral_512/fire_support_shells.png",
+        "assets/content/ui/phone/icons/neutral_512/focused_sweep.png",
+        "assets/content/ui/phone/icons/neutral_512/lock.png",
+        "assets/content/ui/phone/icons/neutral_512/orbit_uav.png",
+        "assets/content/ui/phone/icons/neutral_512/priority_exfil.png",
+        "assets/content/ui/phone/icons/neutral_512/rotate.png",
+        "assets/content/ui/phone/icons/neutral_512/safe_pickup.png",
+        "assets/content/ui/phone/icons/neutral_512/signal_jam.png",
+        "assets/content/ui/phone/icons/neutral_512/smoke_drop.png",
+        "assets/content/ui/phone/icons/neutral_512/success.png",
+        "assets/content/ui/phone/icons/neutral_512/supply_evac.png",
+        "assets/content/ui/phone/icons/neutral_512/terragroup_logo.png",
+        "assets/content/ui/phone/icons/neutral_512/uav_recon.png",
+        "assets/content/ui/phone/icons/neutral_512/warning.png",
+        "assets/content/ui/phone/landscape_1024x512/TG_00_Boot_ResolvingDNS.png",
+        "assets/content/ui/phone/landscape_1024x512/TG_01_TacticalServices_Extraction_Selected.png",
+        "assets/content/ui/phone/landscape_1024x512/TG_01_TacticalServices_Fire_Selected.png",
+        "assets/content/ui/phone/landscape_1024x512/TG_01_TacticalServices_UAV_Selected.png",
+        "assets/content/ui/phone/landscape_1024x512/TG_02_ExtractionCategory.png",
+        "assets/content/ui/phone/landscape_1024x512/TG_02_ExtractionCategory_1_Selected.png",
+        "assets/content/ui/phone/landscape_1024x512/TG_02_ExtractionCategory_2_Selected.png",
+        "assets/content/ui/phone/landscape_1024x512/TG_02_ExtractionCategory_Neutral.png",
+        "assets/content/ui/phone/landscape_1024x512/TG_02_FireSupportCategory.png",
+        "assets/content/ui/phone/landscape_1024x512/TG_02_FireSupportCategory_1_Selected.png",
+        "assets/content/ui/phone/landscape_1024x512/TG_02_FireSupportCategory_2_Selected.png",
+        "assets/content/ui/phone/landscape_1024x512/TG_02_FireSupportCategory_Neutral.png",
+        "assets/content/ui/phone/landscape_1024x512/TG_02_ReconCategory.png",
+        "assets/content/ui/phone/landscape_1024x512/TG_02_ReconCategory_1_Selected.png",
+        "assets/content/ui/phone/landscape_1024x512/TG_02_ReconCategory_2_Selected.png",
+        "assets/content/ui/phone/landscape_1024x512/TG_02_ReconCategory_Neutral.png",
+        "assets/content/ui/phone/landscape_1024x512/TG_03_A10_Review_Rotate.png",
+        "assets/content/ui/phone/landscape_1024x512/TG_03_DoublePass_Review_Rotate.png",
+        "assets/content/ui/phone/landscape_1024x512/TG_03_Extraction_Review_Rotate.png",
+        "assets/content/ui/phone/landscape_1024x512/TG_03_FocusedSweep_Review_Rotate.png",
+        "assets/content/ui/phone/landscape_1024x512/TG_03_PriorityExfil_Review_Rotate.png",
+        "assets/content/ui/phone/landscape_1024x512/TG_03_UAV_Review_Rotate.png",
+        "assets/content/ui/phone/portrait_512x1024/TG_04_A10_ConfirmSwipe.png",
+        "assets/content/ui/phone/portrait_512x1024/TG_04_DoublePass_ConfirmSwipe.png",
+        "assets/content/ui/phone/portrait_512x1024/TG_04_Extraction_ConfirmSwipe.png",
+        "assets/content/ui/phone/portrait_512x1024/TG_04_FocusedSweep_ConfirmSwipe.png",
+        "assets/content/ui/phone/portrait_512x1024/TG_04_PriorityExfil_ConfirmSwipe.png",
+        "assets/content/ui/phone/portrait_512x1024/TG_04_UAV_ConfirmSwipe.png",
+        "assets/content/ui/phone/portrait_512x1024/TG_05_Authorizing.png",
+        "assets/content/ui/phone/portrait_512x1024/TG_06_A10_Authorized.png",
+        "assets/content/ui/phone/portrait_512x1024/TG_06_DoublePass_Authorized.png",
+        "assets/content/ui/phone/portrait_512x1024/TG_06_Extraction_Authorized.png",
+        "assets/content/ui/phone/portrait_512x1024/TG_06_FocusedSweep_Authorized.png",
+        "assets/content/ui/phone/portrait_512x1024/TG_06_PriorityExfil_Authorized.png",
+        "assets/content/ui/phone/portrait_512x1024/TG_06_UAV_Authorized.png",
+        "assets/content/ui/phone/portrait_512x1024/TG_07_PaymentDenied.png",
+        "THIRD_PARTY_NOTICES.txt"
+      ],
+      "excludedFiles": [
+        "assets/content/ui/.gitkeep",
+        "assets/content/vehicles/.gitkeep"
+      ]
+    },
+    {
+      "source": "project/SamSWAT.FireSupport.Server/CopyToOutput",
+      "destination": "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl",
+      "files": [
+        "assets/traders/uh60-pilot.png",
+        "bundles.json",
+        "database/ammo_30x173_gau8_avenger.json",
+        "database/weapon_ge_gau8_avenger_30x173.json",
+        "db/CustomAssortSchemes/jaeger_uav_uplink.json",
+        "db/CustomItems/RaidOpsUavDevice.json",
+        "db/CustomParents/RaidOpsUavDeviceParent.jsonc",
+        "THIRD_PARTY_NOTICES.txt",
+        "web/app.mjs",
+        "web/index.html",
+        "web/styles.css"
+      ]
+    }
+  ],
+  "buildArtifacts": [
+    {
+      "source": "project/SamSWAT.FireSupport/Build/SPT-4.1/netstandard2.1/SamSWAT.FireSupport.ArysReloaded.Core.dll",
+      "destination": "BepInEx/plugins/Tylevo.TacticalServicesControl/Tylevo.TacticalServicesControl.Core.dll",
+      "assemblyName": "SamSWAT.FireSupport.ArysReloaded.Core"
+    },
+    {
+      "source": "project/SamSWAT.FireSupport.Fika/Build/SPT-4.1/netstandard2.1/SamSWAT.FireSupport.ArysReloaded.Fika.dll",
+      "destination": "BepInEx/plugins/Tylevo.TacticalServicesControl/Tylevo.TacticalServicesControl.Fika.dll",
+      "assemblyName": "SamSWAT.FireSupport.ArysReloaded.Fika"
+    },
+    {
+      "source": "project/SamSWAT.FireSupport.Fika.Interop/Build/SPT-4.1/netstandard2.1/Tylevo.TacticalServicesControl.Fika.Interop.dll",
+      "destination": "BepInEx/plugins/Tylevo.TacticalServicesControl/Tylevo.TacticalServicesControl.Fika.Interop.dll",
+      "assemblyName": "Tylevo.TacticalServicesControl.Fika.Interop"
+    },
+    {
+      "source": "project/SamSWAT.FireSupport.Server/Build/SPT-4.1/net10.0/Tylevo.TacticalServicesControl.Server.dll",
+      "destination": "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/Tylevo.TacticalServicesControl.Server.dll",
+      "assemblyName": "Tylevo.TacticalServicesControl.Server"
+    }
+  ],
+  "copiedFiles": [
+    {
+      "source": "THIRD_PARTY_NOTICES.md",
+      "destination": "BepInEx/plugins/Tylevo.TacticalServicesControl/THIRD_PARTY_NOTICES.md"
+    },
+    {
+      "source": "THIRD_PARTY_NOTICES.md",
+      "destination": "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/THIRD_PARTY_NOTICES.md"
+    }
+  ],
+  "baselineAssetArchive": {
+    "fileName": "Tylevo.TacticalServicesControl-v1.0.8-SPT4.0.13.zip",
+    "length": 41236560,
+    "sha256": "C3C0390CC6641E5F82C99C3E57D8AEDA358FD0278E667E6616E53963EB2FCB8D",
+    "files": [
+      {
+        "path": "BepInEx/plugins/Tylevo.TacticalServicesControl/assets/content/ui/firesupport_audio.bundle",
+        "length": 2717509,
+        "sha256": "3A4DCADDEF6B0728469BAA6DE2B26CD6F68AF8C21F8C9F0EFB251B8C1097FE16"
+      },
+      {
+        "path": "BepInEx/plugins/Tylevo.TacticalServicesControl/assets/content/ui/firesupport_spotter.bundle",
+        "length": 1288200,
+        "sha256": "70917E30C2C565280255F209E5E7CE5752D1F4E05812FFC452D89A56B1AFB095"
+      },
+      {
+        "path": "BepInEx/plugins/Tylevo.TacticalServicesControl/assets/content/ui/firesupport_ui.bundle",
+        "length": 1144814,
+        "sha256": "342A672A4D3EBA0600000BB3D06C57ABD4CD52F808D325269C5723FB6C604A76"
+      },
+      {
+        "path": "BepInEx/plugins/Tylevo.TacticalServicesControl/assets/content/ui/uav_radarhud.bundle",
+        "length": 53703,
+        "sha256": "169D7EC22CFC4CDF3D7F009AF19EC694904C9E62A06794BA1B1342EE5CE62A53"
+      },
+      {
+        "path": "BepInEx/plugins/Tylevo.TacticalServicesControl/assets/content/vehicles/a10_warthog.bundle",
+        "length": 12429199,
+        "sha256": "3E8B1621F4830AEFFD34F7F340B99874C81B5E7E8EA7515AD976169FF8BB79D9"
+      },
+      {
+        "path": "BepInEx/plugins/Tylevo.TacticalServicesControl/assets/content/vehicles/uh60_blackhawk.bundle",
+        "length": 28272999,
+        "sha256": "A2336CF5D251C69E7D27E1E5C818E432B6719BE4671F255EBA20E5A22BEF1803"
+      },
+      {
+        "path": "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/bundles/raidops/uav_uplink_container.bundle",
+        "sourcePath": "SPT/user/mods/Tylevo.TacticalServicesControl/bundles/raidops/uav_uplink_container.bundle",
+        "length": 1181738,
+        "sha256": "F496805B01B0CBEC699435DE0B651BFED9F35595BE34312398A91DB600B66425",
+        "overrideSource": "tools/assets/spt-4.1.2/uav_uplink_container.bundle",
+        "overrideLength": 1167863,
+        "overrideSha256": "8C9F8D8878076D4FFCB2687D62609F606552B3E9F3529FBE584DF79E43365861"
+      },
+      {
+        "path": "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/bundles/raidops/uav_uplink_loot.bundle",
+        "sourcePath": "SPT/user/mods/Tylevo.TacticalServicesControl/bundles/raidops/uav_uplink_loot.bundle",
+        "length": 600863,
+        "sha256": "5C3F63D03EECE824FEA12FE25783D782EE76992F0AAFE41405D3BE863FD34068"
+      }
+    ]
+  },
+  "requiredFiles": [
+    "BepInEx/plugins/Tylevo.TacticalServicesControl/Tylevo.TacticalServicesControl.Core.dll",
+    "BepInEx/plugins/Tylevo.TacticalServicesControl/Tylevo.TacticalServicesControl.Fika.dll",
+    "BepInEx/plugins/Tylevo.TacticalServicesControl/Tylevo.TacticalServicesControl.Fika.Interop.dll",
+    "BepInEx/plugins/Tylevo.TacticalServicesControl/assets/content/ui/firesupport_audio.bundle",
+    "BepInEx/plugins/Tylevo.TacticalServicesControl/assets/content/ui/firesupport_spotter.bundle",
+    "BepInEx/plugins/Tylevo.TacticalServicesControl/assets/content/ui/firesupport_ui.bundle",
+    "BepInEx/plugins/Tylevo.TacticalServicesControl/assets/content/ui/uav_radarhud.bundle",
+    "BepInEx/plugins/Tylevo.TacticalServicesControl/assets/content/vehicles/a10_warthog.bundle",
+    "BepInEx/plugins/Tylevo.TacticalServicesControl/assets/content/vehicles/uh60_blackhawk.bundle",
+    "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/Tylevo.TacticalServicesControl.Server.dll",
+    "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/bundles/raidops/uav_uplink_container.bundle",
+    "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/bundles/raidops/uav_uplink_loot.bundle",
+    "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/web/app.mjs",
+    "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/web/index.html",
+    "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/web/styles.css"
+  ],
+  "exactCounts": {
+    ".dll": 4,
+    ".bundle": 8
+  },
+  "forbiddenExtensions": [
+    ".7z",
+    ".bak",
+    ".binlog",
+    ".cfg",
+    ".deps.json",
+    ".exe",
+    ".log",
+    ".nupkg",
+    ".pdb",
+    ".runtimeconfig.json",
+    ".snupkg",
+    ".tmp",
+    ".user",
+    ".zip"
+  ],
+  "forbiddenPathSegments": [
+    ".git",
+    ".github",
+    ".vs",
+    "BepInEx/config",
+    "SPT_Runtime/user/cache",
+    "SPT_Runtime/user/profiles",
+    "obj",
+    "storage"
+  ],
+  "forbiddenFileNamePatterns": [
+    "^(?:raidops-firesupport|tsc-config)\\.json$",
+    "^0Harmony\\.dll$",
+    "^Assembly-CSharp\\.dll$",
+    "^BepInEx(?:\\..+)?\\.dll$",
+    "^Comfort\\.dll$",
+    "^Fika\\.Core\\.dll$",
+    "^hollowed\\.dll$",
+    "^Newtonsoft\\.Json\\.dll$",
+    "^SemanticVersioning\\.dll$",
+    "^SPTarkov\\..+\\.dll$",
+    "^spt-(?:common|reflection)\\.dll$",
+    "^UniTask(?:\\..+)?\\.dll$",
+    "^UnityEngine(?:\\..+)?\\.dll$",
+    "^UnityToolkit\\.dll$",
+    "^WTT-.+\\.dll$",
+    "^ZLinq(?:\\..+)?\\.dll$",
+    "^ZString\\.dll$"
+  ]
+}
