@@ -284,13 +284,13 @@ Assert-SourceWiring `
     -Pattern 'AccessTools\s*\.\s*DeclaredMethod\s*\(\s*typeof\s*\(\s*InputManager\s*\)\s*,\s*nameof\s*\(\s*InputManager\s*\.\s*Create\s*\)\s*,\s*\[\s*typeof\s*\(\s*KeyGroup\s*\[\s*\]\s*\)\s*,\s*typeof\s*\(\s*AxisGroup\s*\[\s*\]\s*\)\s*,\s*typeof\s*\(\s*float\s*\)\s*,\s*typeof\s*\(\s*bool\s*\)\s*\]\s*\)' `
     -Expectation "The SPT 4.1 input-manager patch must select the exact four-parameter Create overload instead of performing an ambiguous name-only lookup."
 
-$mainMenuControllerSourcePath = "project\SamSWAT.FireSupport\Unity\MainMenuPurchaseController.cs"
+$mainMenuControllerSourcePath = "project\SamSWAT.FireSupport\Unity\MainMenuPurchaseController.TaskBar.cs"
 $mainMenuControllerSource = Get-NormalizedCSharpSource -RelativePath $mainMenuControllerSourcePath
 Assert-SourceWiring `
     -RelativePath $mainMenuControllerSourcePath `
     -NormalizedSource $mainMenuControllerSource `
-    -Pattern 'MainMenuSlotStepPolicy\s*\.\s*Resolve\s*\(' `
-    -Expectation "Main-menu placement must use the regression-tested row-spacing policy instead of applying the ambiguous Play-to-Character gap to every lower row."
+    -Pattern 'PreloaderUI\s*\.\s*Instance\s*\?\s*\.\s*MenuTaskBar' `
+    -Expectation "The Uplink shortcut must resolve EFT's persistent bottom bar through PreloaderUI instead of inserting or repositioning center-menu rows."
 
 $globalUsingsSourcePath = "project\SamSWAT.FireSupport\GlobalUsings.cs"
 $globalUsingsSource = Get-NormalizedCSharpSource -RelativePath $globalUsingsSourcePath
