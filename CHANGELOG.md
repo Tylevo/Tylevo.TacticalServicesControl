@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.3.9 - Public Beta (unreleased)
+
+- Add a Tactical Services Control mod-page link in SPT's SIC that opens the
+  existing themed dashboard. Add links back to SIC and its config editor.
+- Keep the dashboard's colors, typography, service cards, and controls.
+- Separate SIC's runtime Apply and disk Save actions. Load Disk now reads
+  the saved file, and each editor receives its own configuration snapshot.
+- Reject stale dashboard and SIC edits, preserving unsaved dashboard values
+  when another editor has changed the settings.
+- Write config files atomically before publishing changes to runtime.
+  Failed writes and invalid disk reloads leave the active settings intact.
+- Protect unsaved dashboard edits when navigating or reloading and prevent
+  simultaneous dashboard operations. Mark Fika as untested in the page.
+
+See [SIC and dashboard setup](docs/dashboard.md) and the
+[v1.3.9 notes](docs/release-notes-v1.3.9.md).
+
 ## 1.3.8 - Public Beta
 
 Published September 5, 2026 for SPT 4.1.4. This release includes the preceding

@@ -50,6 +50,7 @@ public sealed class FireSupportServerConfigService(
 	private string _storagePath = string.Empty;
 	private DateTimeOffset _lastLoadedUtc;
 	private DateTimeOffset _lastSavedUtc;
+	private int? _lastDiskOnlySaveBaseRevision;
 
 	public void Initialize(string pathToMod)
 	{
@@ -66,23 +67,25 @@ public sealed class FireSupportServerConfigService(
 
 		lock (_gate)
 		{
-			_config = LoadConfig();
-			NormalizeConfig(_config);
-			if (!TryValidateConfig(_config, out string validationError))
+			RaidOpsFireSupportServerConfig candidate = LoadConfig();
+			NormalizeConfig(candidate);
+			if (!TryValidateConfig(candidate, out string validationError))
 			{
 				logger.Error(
 					$"TSC config validation failed: {validationError} " +
 					"Unsafe UH-60 service timing is repaired automatically; an invalid " +
 					"payment currency remains fail-closed until corrected in the dashboard.");
-				RepairInvalidServiceTimings(_config);
+				RepairInvalidServiceTimings(candidate);
 			}
 
-			if (_config.Revision <= 0)
+			if (candidate.Revision <= 0)
 			{
-				_config.Revision = 1;
+				candidate.Revision = 1;
 			}
 
-			SaveConfig(_config);
+			SaveConfig(candidate);
+			_config = candidate;
+			_lastDiskOnlySaveBaseRevision = null;
 		}
 
 		logger.Success("TSC server config ready.");
@@ -1111,34 +1114,103 @@ public sealed class FireSupportServerConfigService(
 		out string error,
 		int? expectedRevision = null)
 	{
+		return TryUpdateConfig(incoming, out error, out _, expectedRevision);
+	}
+
+	public bool TryUpdateConfig(
+		RaidOpsFireSupportServerConfig incoming,
+		out string error,
+		out bool revisionConflict,
+		int? expectedRevision = null)
+	{
+		return TryEditConfig(incoming, out error, out revisionConflict,
+			expectedRevision, applyToRuntime: true, saveToDisk: true);
+	}
+
+	public bool TryApplyConfig(
+		RaidOpsFireSupportServerConfig incoming,
+		out string error,
+		int expectedRevision)
+	{
+		return TryEditConfig(incoming, out error, out _,
+			expectedRevision, applyToRuntime: true, saveToDisk: false);
+	}
+
+	public bool TrySaveConfig(
+		RaidOpsFireSupportServerConfig incoming,
+		out string error,
+		int expectedRevision)
+	{
+		return TryEditConfig(incoming, out error, out _,
+			expectedRevision, applyToRuntime: false, saveToDisk: true);
+	}
+
+	private bool TryEditConfig(
+		RaidOpsFireSupportServerConfig incoming,
+		out string error,
+		out bool revisionConflict,
+		int? expectedRevision,
+		bool applyToRuntime,
+		bool saveToDisk)
+	{
 		error = string.Empty;
+		revisionConflict = false;
 		try
 		{
-			NormalizeConfig(incoming);
-			if (!TryValidateConfig(incoming, out error))
+			RaidOpsFireSupportServerConfig candidate = CloneConfig(incoming);
+			NormalizeConfig(candidate);
+			if (!TryValidateConfig(candidate, out error))
 			{
 				return false;
 			}
 
 			lock (_gate)
 			{
-				if (ConfigsEquivalentExceptRevision(incoming, _config))
+				bool runtimeMatches = !applyToRuntime || ConfigsEquivalentExceptRevision(candidate, _config);
+				bool diskMatches = !saveToDisk || DiskConfigMatches(candidate);
+				if (runtimeMatches && diskMatches)
 				{
 					incoming.Revision = _config.Revision;
 					return true;
 				}
 
-				if (expectedRevision.HasValue && expectedRevision.Value != _config.Revision)
+				// SIC retains the original editor JSON after Save. Permit Apply
+				// of that exact saved draft only while this is still the latest
+				// edit; any intervening change invalidates the bridge.
+				bool appliesLatestSavedDraft = applyToRuntime && !saveToDisk &&
+					expectedRevision.HasValue && expectedRevision == _lastDiskOnlySaveBaseRevision &&
+					expectedRevision.Value == _config.Revision - 1 && DiskConfigMatches(candidate);
+				if (expectedRevision.HasValue && expectedRevision.Value != _config.Revision && !appliesLatestSavedDraft)
 				{
+					revisionConflict = true;
 					error =
 						$"Config revision changed from {expectedRevision.Value} to {_config.Revision}. " +
 						"Reload the editor before saving.";
 					return false;
 				}
 
-				incoming.Revision = Math.Max(incoming.Revision, _config.Revision + 1);
-				_config = CloneConfig(incoming);
-				SaveConfig(_config);
+				int previousRevision = _config.Revision;
+				candidate.Revision = checked(previousRevision + 1);
+				if (saveToDisk)
+				{
+					// Publish the file before changing any runtime state. A failed
+					// write leaves the active values and edit generation untouched.
+					SaveConfig(candidate);
+				}
+
+				if (applyToRuntime)
+				{
+					_config = candidate;
+				}
+				else
+				{
+					// Revision is also the shared editor generation. Disk-only edits
+					// must invalidate stale dashboard and SIC sessions.
+					_config.Revision = candidate.Revision;
+				}
+
+				incoming.Revision = candidate.Revision;
+				_lastDiskOnlySaveBaseRevision = !applyToRuntime && saveToDisk ? previousRevision : null;
 			}
 
 			logger.Success($"TSC config updated revision={incoming.Revision}");
@@ -1152,28 +1224,63 @@ public sealed class FireSupportServerConfigService(
 		}
 	}
 
+	private bool DiskConfigMatches(RaidOpsFireSupportServerConfig candidate)
+	{
+		try
+		{
+			RaidOpsFireSupportServerConfig saved = ReadConfigFile();
+			return ConfigsEquivalentExceptRevision(candidate, saved);
+		}
+		catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException or InvalidDataException)
+		{
+			// An explicit save may replace a missing or malformed file. It must
+			// still pass the revision check and succeed at atomic publication.
+			return false;
+		}
+	}
+
+	public bool TryGetDiskConfigSnapshot(out RaidOpsFireSupportServerConfig snapshot, out string error)
+	{
+		snapshot = CreateDefaultConfig();
+		error = string.Empty;
+		try
+		{
+			lock (_gate)
+			{
+				RaidOpsFireSupportServerConfig candidate = ReadConfigFile();
+				NormalizeConfig(candidate);
+				if (!TryValidateConfig(candidate, out error))
+				{
+					return false;
+				}
+
+				candidate.Revision = _config.Revision;
+				snapshot = candidate;
+				return true;
+			}
+		}
+		catch (Exception ex)
+		{
+			error = ex.Message;
+			return false;
+		}
+	}
+
 	public bool TryReloadConfig(out RaidOpsFireSupportServerConfig snapshot, out string error)
 	{
 		error = string.Empty;
 		snapshot = CreateDefaultConfig();
 		try
 		{
-			RaidOpsFireSupportServerConfig candidate = LoadConfig();
-			NormalizeConfig(candidate);
-			if (!TryValidateConfig(candidate, out error))
-			{
-				return false;
-			}
-
 			lock (_gate)
 			{
-				if (candidate.Revision <= 0)
+				if (!TryGetDiskConfigSnapshot(out RaidOpsFireSupportServerConfig candidate, out error) ||
+				    !TryUpdateConfig(candidate, out error, _config.Revision))
 				{
-					candidate.Revision = 1;
+					return false;
 				}
 
-				_config = candidate;
-				SaveConfig(_config);
+				_lastLoadedUtc = DateTimeOffset.UtcNow;
 				snapshot = CloneConfig(_config);
 			}
 
@@ -1196,10 +1303,11 @@ public sealed class FireSupportServerConfigService(
 		{
 			lock (_gate)
 			{
-				int nextRevision = Math.Max(1, _config.Revision + 1);
-				_config = CreateDefaultConfig();
-				_config.Revision = nextRevision;
-				SaveConfig(_config);
+				RaidOpsFireSupportServerConfig candidate = CreateDefaultConfig();
+				candidate.Revision = checked(_config.Revision + 1);
+				SaveConfig(candidate);
+				_config = candidate;
+				_lastDiskOnlySaveBaseRevision = null;
 				snapshot = CloneConfig(_config);
 			}
 
@@ -1223,10 +1331,9 @@ public sealed class FireSupportServerConfigService(
 
 		try
 		{
-			string json = File.ReadAllText(_configPath);
+			RaidOpsFireSupportServerConfig loaded = ReadConfigFile();
 			_lastLoadedUtc = DateTimeOffset.UtcNow;
-			return JsonSerializer.Deserialize<RaidOpsFireSupportServerConfig>(json, s_jsonOptions) ??
-			       CreateDefaultConfig();
+			return loaded;
 		}
 		catch (Exception ex)
 		{
@@ -1235,15 +1342,71 @@ public sealed class FireSupportServerConfigService(
 		}
 	}
 
+	private RaidOpsFireSupportServerConfig ReadConfigFile()
+	{
+		return JsonSerializer.Deserialize<RaidOpsFireSupportServerConfig>(
+			File.ReadAllText(_configPath), s_jsonOptions) ??
+			throw new InvalidDataException("TSC config must contain a JSON object.");
+	}
+
 	private void SaveConfig(RaidOpsFireSupportServerConfig config)
 	{
 		if (string.IsNullOrWhiteSpace(_configPath))
 		{
-			return;
+			throw new InvalidOperationException("TSC config storage has not been initialized.");
 		}
 
-		File.WriteAllText(_configPath, JsonSerializer.Serialize(config, s_jsonOptions));
-		_lastSavedUtc = DateTimeOffset.UtcNow;
+		string temporaryPath = _configPath + $".{Guid.NewGuid():N}.tmp";
+		try
+		{
+			using (var stream = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+			{
+				JsonSerializer.Serialize(stream, config, s_jsonOptions);
+				stream.Flush(flushToDisk: true);
+			}
+
+			if (File.Exists(_configPath))
+			{
+				ReplaceConfigFile(() => File.Replace(temporaryPath, _configPath, destinationBackupFileName: null));
+			}
+			else
+			{
+				File.Move(temporaryPath, _configPath);
+			}
+
+			_lastSavedUtc = DateTimeOffset.UtcNow;
+		}
+		finally
+		{
+			try
+			{
+				File.Delete(temporaryPath);
+			}
+			catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+			{
+				logger.Warning($"TSC could not remove temporary config file: {exception.Message}");
+			}
+		}
+	}
+
+	internal static void ReplaceConfigFile(Action replace, Action<int>? wait = null)
+	{
+		// Windows can briefly hold a just-written config open. Retry only errors
+		// that leave both original filenames intact; never fall back to truncating
+		// the live file or retry an ambiguous partial replacement (1176/1177).
+		for (int attempt = 0; ; attempt++)
+		{
+			try
+			{
+				replace();
+				return;
+			}
+			catch (IOException exception) when (attempt < 3 &&
+				(exception.HResult & 0xffff) is 32 or 33 or 1175)
+			{
+				(wait ?? Thread.Sleep)(50 * (attempt + 1));
+			}
+		}
 	}
 
 	private void EnsureAdminToken()

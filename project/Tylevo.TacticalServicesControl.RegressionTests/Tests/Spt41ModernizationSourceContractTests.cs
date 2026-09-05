@@ -10,8 +10,11 @@ internal static class Spt41ModernizationSourceContractTests
 		AssertEx.Contains("DisplayName = \"Tactical Services Control\"", provider);
 		AssertEx.Contains("IgnoredSectionPaths", provider);
 		AssertEx.Contains("LoadFromDiskAsync", provider);
-		AssertEx.Contains("ApplyToRuntimeAsync = ApplyAsync", provider);
-		AssertEx.Contains("SaveToDiskAsync = ApplyAsync", provider);
+		AssertEx.Contains("ApplyToRuntimeAsync = (edited, token) => ApplyAsync", provider);
+		AssertEx.Contains("SaveToDiskAsync = (edited, token) => SaveAsync", provider);
+		AssertEx.Contains("TryGetDiskConfigSnapshot", provider);
+		AssertEx.Contains("TryApplyConfig", provider);
+		AssertEx.Contains("TrySaveConfig", provider);
 		AssertEx.Contains("configService.GetConfigSnapshot()", provider);
 		AssertEx.Contains("edited.Revision", provider);
 		AssertEx.False(

@@ -217,6 +217,11 @@ namespace SPTarkov.Server.Core.Helpers
 		{
 			return ResolvePmcProfile?.Invoke(sessionId);
 		}
+
+		public virtual PmcData? GetProfileByPmcId(MongoId profileId)
+		{
+			return ResolvePmcProfile?.Invoke(profileId);
+		}
 	}
 }
 
