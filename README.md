@@ -2,12 +2,12 @@
 
 A BepInEx mod that reworks SamSWAT's Fire Support / Arys Reloaded into a TerraGroup-style tactical support system for SPT and Fika.
 
-> **SPT 4.1.4 phone zoom tester:** v1.3.2 targets SPT 4.1.4 / EFT
+> **SPT 4.1.4 phone interface tester:** v1.3.3 targets SPT 4.1.4 / EFT
 > 0.16.9.5.40743. The expected test artifact is
-> `Tylevo.TacticalServicesControl-v1.3.2-SPT4.1.4-TESTER.zip`.
-> This adds an eased incoming authorization-phone zoom and retains the v1.3.1
-> A-10 targeting corrections. The native purchase-UI concept is not included.
-> In-game phone acceptance remains pending; see `docs/release-notes-v1.3.2.md` and
+> `Tylevo.TacticalServicesControl-v1.3.3-SPT4.1.4-TESTER.zip`.
+> This adds native purchase screens, service artwork, and hold-Alt mouse
+> selection. The eased zoom and A-10 targeting corrections are retained.
+> In-game phone acceptance remains pending; see `docs/release-notes-v1.3.3.md` and
 > `docs/a10-ballistics-v1.3.1.md` for the retained ballistic acceptance checks.
 
 This mod adds a **TerraGroup TSC Uplink** phone that lets you buy support authorizations in raid, then deploy them later from the same device. The phone handles service selection and camera-based target designation, so the rangefinder and YY gesture wheel are no longer required for the primary workflow.
@@ -79,10 +79,10 @@ Pre-raid purchases require persistent authorizations and a server-backed stash p
 
 1. Bring the **TerraGroup TSC Uplink** into raid.
 2. Press `U` to open the Uplink in purchase mode.
-3. Press `1`, `2`, or `3` to open UH-60 Services, Fire Support, or UAV Recon. Inside a category, press `1` for the standard service or `2` for its alternate service when available.
-4. Press `Enter` on the confirmation screen to pay with the configured currency and wallet source. `RMB` returns to the previous screen and `Escape` closes the phone.
+3. Hold `Left Alt` to move a cursor on the phone and click a category or service. Release Alt to restore camera look. Keyboard shortcuts also work: `1`, `2`, or `3` opens UH-60 Services, Fire Support, or UAV Recon; inside a category, `1` chooses the standard service and `2` its alternate when available.
+4. Review the selected service, then use the confirmation control or press `Enter` to start the existing portrait hand swipe and pay with the configured currency and wallet source. `RMB` returns to the previous screen and `Escape` closes the phone.
 5. When you are ready to use an authorization, press `K` to open the Uplink in deployment mode. Only services you currently own are listed.
-6. Press `1`-`6` to select a service, then press `LMB` or `Enter` to deploy it. `RMB`, `Backspace`, or `Escape` stows the phone without spending the authorization.
+6. Hold `Left Alt` to select a service with the phone cursor and click the deploy control. Alternatively, press `1`-`6` to select, then `LMB` or `Enter` to deploy. `RMB`, `Backspace`, or `Escape` stows the phone without spending the authorization.
 7. A-10 and UH-60 services use camera-based target designation. Confirm each targeting step with `Mouse 2` (middle mouse) or `Enter`; cancel with `Alt + RMB` or `Backspace`.
 8. UAV Recon and Focused Sweep begin directly after deployment. The default `Phone` display mode uses `J`: hold it to raise the Uplink and view the live radar, then release it to return to your weapon. Walking and sprint keys do not lower it while the radar key remains held, and the recon timer keeps running while the phone is stowed. The optional `HUD` display mode keeps only the square live scanner visible in a selected screen corner for the active recon session.
 9. UH-60 Cargo Transfer lands at the marked loading zone and provides **SEND ITEMS VIA UH-60**. It never extracts your PMC. The authorization pays for dispatch; EFT calculates a separate RUB-only item-handling fee when cargo is submitted. In `F12`, **Transfer fee source** defaults to `Carried`, preserving EFT's native carried-RUB payment, or can use `Stash` to debit the authenticated PMC stash through the TSC server. This fee is independent of TSC's configured authorization currency. Once EFT confirms the paid items reached its persistent delivery grid, the helicopter departs immediately; cancelling or failing payment leaves the remaining landed window available for retry. Successfully marked cargo returns through post-raid mail from **UH-60 Pilot** without replacing the native **BTR Driver** contact; if TSC routing cannot be completed safely, the accepted native cargo falls back to BTR delivery instead of being discarded.
@@ -95,6 +95,11 @@ In `F12`, **Phone zoom in seconds** accepts 0.25-1.5 seconds, and **Phone zoom
 out seconds** accepts 0.15-0.8 seconds with a default of 0.35. Closing the phone
 restores the original raid FOV; quickly reopening it retains that original
 restore target. These settings do not change deploy or radar presentation.
+
+Phone mouse selection can be disabled or adjusted in `F12`, including its
+modifier and sensitivity. The cursor is part of the phone display and follows
+the handset. Purchase browsing remains landscape until final confirmation;
+the portrait swipe animation drives the payment commit as before.
 
 Server/host settings are changed from the local TSC Dashboard:
 
@@ -171,10 +176,9 @@ See `docs/dashboard.md`, `PRIVACY.md`, and `SECURITY.md`.
 
 ## Known Issues
 
-- v1.3.2 passes 198/198 regression tests. Build and package results are recorded
-  in the candidate's external evidence sidecars; in-game phone acceptance
-  remains pending. Check `docs/release-notes-v1.3.2.md` for this candidate's
-  scope. The proposed native purchase interface is a concept only.
+- v1.3.3 build, package, and regression results are recorded in the candidate's
+  external evidence sidecars; in-game phone acceptance remains pending.
+  Check `docs/release-notes-v1.3.3.md` for the interface and mouse-input scope.
 - The existing Uplink bundle repair and input/menu hardening are retained.
   The repaired equip/stow animation, targeting controls, and menu spacing
   still require a fresh SPT 4.1.4 client run.

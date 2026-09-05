@@ -93,6 +93,9 @@ internal static class PluginSettings
 	internal static ConfigEntry<KeyboardShortcut> OpenDeployKey { get; private set; }
 	internal static ConfigEntry<KeyboardShortcut> OpenUavRadarKey { get; private set; }
 	internal static ConfigEntry<KeyboardShortcut> SpotterConfirmKey { get; private set; }
+	internal static ConfigEntry<bool> PhoneMouseEnabled { get; private set; }
+	internal static ConfigEntry<KeyCode> PhoneMouseModifier { get; private set; }
+	internal static ConfigEntry<float> PhoneMouseSensitivity { get; private set; }
 	internal static ConfigEntry<bool> PhoneAutoZoomEnabled { get; private set; }
 	internal static ConfigEntry<float> PhoneZoomFov { get; private set; }
 	internal static ConfigEntry<float> PhoneZoomInSeconds { get; private set; }
@@ -434,6 +437,21 @@ internal static class PluginSettings
 			"Spotter confirm key",
 			new KeyboardShortcut(KeyCode.Mouse2),
 			HiddenDescription("Confirms spotter targeting steps (position, direction). LMB also confirms while the rangefinder is in hands, but with a weapon out it would fire, so this key is the safe confirm. Enter always works too."));
+		PhoneMouseEnabled = config.Bind(
+			"TerraGroup Phone",
+			"Phone mouse selection",
+			true,
+			new ConfigDescription("Hold the phone mouse key to move a cursor on interactive phone screens. Click a service to select it, then use its review or confirmation button. Keyboard shortcuts remain available."));
+		PhoneMouseModifier = config.Bind(
+			"TerraGroup Phone",
+			"Phone mouse key",
+			KeyCode.LeftAlt,
+			new ConfigDescription("Hold this key while using the phone to control its cursor. Release to return mouse movement to looking around. Right-click goes back while held."));
+		PhoneMouseSensitivity = config.Bind(
+			"TerraGroup Phone",
+			"Phone mouse sensitivity",
+			20f,
+			new ConfigDescription("Speed of the cursor drawn on the phone screen.", new AcceptableValueRange<float>(1f, 80f)));
 		PhoneAutoZoomEnabled = config.Bind(
 			"TerraGroup Phone",
 			"Automatic phone zoom",

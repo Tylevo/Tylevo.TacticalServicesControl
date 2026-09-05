@@ -52,7 +52,7 @@ public readonly struct UavPhoneScreenContext
 	public int BalanceRoubles => Balance;
 }
 
-public sealed class UavPhoneScreenRenderer : MonoBehaviour
+public sealed partial class UavPhoneScreenRenderer : MonoBehaviour
 {
 	private const int RenderLayer = 31;
 	private const int LongSide = 1024;
@@ -244,11 +244,18 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		}
 
 		StopSwipeAnimation();
+		if (_stateFadeCoroutine != null)
+		{
+			StopCoroutine(_stateFadeCoroutine);
+			_stateFadeCoroutine = null;
+		}
+		ResetNativeScreens();
 		_swipeArrowImage = null;
 		_swipeFrameSprites = null;
 		ResetUavRadarUiReferences();
 		for (int i = _canvas.transform.childCount - 1; i >= 0; i--)
 		{
+			_canvas.transform.GetChild(i).gameObject.SetActive(false);
 			Destroy(_canvas.transform.GetChild(i).gameObject);
 		}
 
@@ -270,6 +277,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 
 	public void ShowState(TerraGroupPhoneState state)
 	{
+		ResetPhonePointer();
 		if (_stateFadeCoroutine != null)
 		{
 			StopCoroutine(_stateFadeCoroutine);
@@ -283,7 +291,9 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 
 	public void FadeToState(TerraGroupPhoneState state, float durationSeconds)
 	{
-		if (_canvas == null || durationSeconds <= 0f)
+		ResetPhonePointer();
+		RefreshNativeState(state);
+		if (_canvas == null || durationSeconds <= 0f || GetGroupForState(state) == GetGroupForState(_currentState))
 		{
 			ShowState(state);
 			return;
@@ -314,6 +324,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 
 	private void Update()
 	{
+		UpdateNativeScreen();
 		if (_currentState == TerraGroupPhoneState.UavRadarLive &&
 		    _uavRadarGroup != null)
 		{
@@ -344,6 +355,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 			StopCoroutine(_stateFadeCoroutine);
 			_stateFadeCoroutine = null;
 		}
+		ResetNativeScreens();
 
 		RestoreDebugDisabledRenderers();
 		DestroyOpaqueScreenPlane();
@@ -1359,297 +1371,6 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		};
 	}
 
-	private void BuildHomeScreen()
-	{
-		if (TryBuildAssetScreen(
-			    "TerraGroup Home Asset Screen",
-			    "landscape_1024x512/TG_00_Boot_ResolvingDNS.png",
-			    portrait: false,
-			    out _homeGroup))
-		{
-			return;
-		}
-
-		RectTransform root = CreateScreenRoot("TerraGroup Home Screen");
-		_homeGroup = root.gameObject.AddComponent<CanvasGroup>();
-		BuildCommonChrome(root, "TERRAGROUP", "Secure Field Terminal");
-
-		AddText(root, "TACTICAL", 48, FontStyle.Bold, new Color(0.9f, 0.95f, 0.93f), new Rect(42, 120, 680, 58), TextAnchor.MiddleCenter);
-		AddText(root, "AUTHORIZATION NETWORK", 24, FontStyle.Bold, Teal(), new Rect(42, 174, 680, 34), TextAnchor.MiddleCenter);
-
-		RectTransform card = AddPanel(root, new Rect(114, 232, 540, 100), new Color(0.045f, 0.065f, 0.065f, 0.94f));
-		AddText(card, "PHONE AUTHORIZATIONS", 22, FontStyle.Bold, Color.white, new Rect(0, 18, 540, 34), TextAnchor.MiddleCenter);
-		AddText(card, "PURCHASE HERE. DEPLOY FROM UPLINK.", 18, FontStyle.Normal, Muted(), new Rect(0, 54, 540, 30), TextAnchor.MiddleCenter);
-
-		RectTransform footer = AddPanel(root, new Rect(150, 366, 468, 42), new Color(0.09f, 0.28f, 0.26f, 0.58f));
-		AddText(footer, "TAP TO OPEN SERVICES", 23, FontStyle.Bold, Teal(), new Rect(0, 4, 468, 32), TextAnchor.MiddleCenter);
-
-		BuildScanlineOverlay(root);
-	}
-
-	private void BuildTacticalServicesScreen()
-	{
-		if (TryBuildAssetScreen(
-			    "TerraGroup Tactical Services Asset Screen",
-			    GetTacticalServicesAssetPath(_context.SupportType),
-			    portrait: false,
-			    out _tacticalServicesGroup))
-		{
-			AddDynamicTextOverlays(
-				_tacticalServicesGroup.transform as RectTransform,
-				GetTacticalServicesAssetPath(_context.SupportType),
-				portrait: false);
-			return;
-		}
-
-		RectTransform root = CreateScreenRoot("TerraGroup Tactical Services Screen");
-		_tacticalServicesGroup = root.gameObject.AddComponent<CanvasGroup>();
-		BuildCommonChrome(root, "TERRAGROUP", "Tactical Services");
-
-		AddText(root, "SERVICE CATEGORY", 34, FontStyle.Bold, new Color(0.9f, 0.95f, 0.93f), new Rect(42, 110, 680, 44), TextAnchor.MiddleLeft);
-		AddText(root, "SELECT AN AUTHORIZATION TYPE", 18, FontStyle.Normal, Teal(), new Rect(44, 150, 420, 28), TextAnchor.MiddleLeft);
-
-		AddServiceCard(root, ESupportType.Extract, new Rect(42, 194, 206, 142));
-		AddServiceCard(root, ESupportType.Strafe, new Rect(281, 194, 206, 142));
-		AddServiceCard(root, ESupportType.Uav, new Rect(520, 194, 206, 142));
-
-		RectTransform footer = AddPanel(root, new Rect(42, 356, 684, 52), new Color(0.045f, 0.06f, 0.06f, 0.92f));
-		AddText(footer, "1 UH-60 SERVICES   2 FIRE SUPPORT   3 RECON", 22, FontStyle.Bold, new Color(0.9f, 0.93f, 0.9f), new Rect(0, 5, 684, 34), TextAnchor.MiddleCenter);
-
-		BuildScanlineOverlay(root);
-	}
-
-	private void BuildServiceCategoryScreen()
-	{
-		if (TryBuildAssetScreen(
-			    "TerraGroup Service Category Asset Screen",
-			    GetCategoryAssetPath(_context.SupportType),
-			    portrait: false,
-			    out _serviceCategoryGroup))
-		{
-			AddDynamicTextOverlays(
-				_serviceCategoryGroup.transform as RectTransform,
-				GetCategoryAssetPath(_context.SupportType),
-				portrait: false);
-			return;
-		}
-
-		RectTransform root = CreateScreenRoot("TerraGroup Service Category Screen");
-		_serviceCategoryGroup = root.gameObject.AddComponent<CanvasGroup>();
-		BuildCommonChrome(root, "TERRAGROUP", GetCategoryName(_context.SupportType));
-
-		AddText(root, GetCategoryName(_context.SupportType), 34, FontStyle.Bold, new Color(0.9f, 0.95f, 0.93f), new Rect(42, 110, 680, 44), TextAnchor.MiddleLeft);
-		AddText(root, "AVAILABLE SERVICE", 18, FontStyle.Normal, Teal(), new Rect(44, 150, 420, 28), TextAnchor.MiddleLeft);
-
-		RectTransform card = AddPanel(root, new Rect(82, 196, 604, 142), new Color(0.06f, 0.078f, 0.078f, 0.94f));
-		AddText(card, GetServiceTitle(_context.SupportType), 34, FontStyle.Bold, Color.white, new Rect(28, 20, 360, 44), TextAnchor.MiddleLeft);
-		AddText(card, GetServiceDescription(_context.SupportType), 18, FontStyle.Normal, Muted(), new Rect(30, 66, 390, 48), TextAnchor.MiddleLeft);
-		AddText(card, FormatCurrency(_context.Cost), 32, FontStyle.Bold, Amber(), new Rect(400, 44, 172, 42), TextAnchor.MiddleRight);
-		AddText(card, $"AUTH {FireSupportAuthorizations.Get(_context.SupportType)}", 18, FontStyle.Bold, Teal(), new Rect(400, 86, 172, 30), TextAnchor.MiddleRight);
-
-		RectTransform footer = AddPanel(root, new Rect(150, 366, 468, 42), new Color(0.09f, 0.28f, 0.26f, 0.58f));
-		AddText(footer, "TAP TO REVIEW SERVICE", 23, FontStyle.Bold, Teal(), new Rect(0, 4, 468, 32), TextAnchor.MiddleCenter);
-
-		BuildScanlineOverlay(root);
-	}
-
-	private void BuildRequestScreen()
-	{
-		if (TryBuildAssetScreen(
-			    "TerraGroup Request Review Asset Screen",
-			    GetReviewAssetPath(_context.SupportType),
-			    portrait: false,
-			    out _requestGroup))
-		{
-			AddDynamicTextOverlays(
-				_requestGroup.transform as RectTransform,
-				GetReviewAssetPath(_context.SupportType),
-				portrait: false);
-			return;
-		}
-
-		RectTransform root = CreateScreenRoot("Request Screen");
-		_requestGroup = root.gameObject.AddComponent<CanvasGroup>();
-		BuildCommonChrome(root, "TERRAGROUP", "Tactical Services");
-
-		AddText(root, $"{GetServiceTitle(_context.SupportType)} REQUEST", 40, FontStyle.Bold, new Color(0.9f, 0.95f, 0.93f), new Rect(40, 104, 660, 48), TextAnchor.MiddleLeft);
-		AddText(root, "REVIEW AND AUTHORIZE", 18, FontStyle.Normal, Teal(), new Rect(42, 150, 360, 24), TextAnchor.MiddleLeft);
-
-		RectTransform leftPanel = AddPanel(root, new Rect(42, 188, 330, 152), new Color(0.07f, 0.085f, 0.085f, 0.92f));
-		AddText(leftPanel, "MISSION SUMMARY", 18, FontStyle.Normal, Muted(), new Rect(18, 10, 250, 28), TextAnchor.MiddleLeft);
-		AddDetailRow(leftPanel, "DURATION", GetServiceDuration(), 44);
-		AddDetailRow(leftPanel, "DEPLOYMENT", GetDeploymentMode(_context.SupportType), 78);
-		AddDetailRow(leftPanel, "AUTH HELD", FireSupportAuthorizations.Get(_context.SupportType).ToString(), 112);
-
-		RectTransform rightPanel = AddPanel(root, new Rect(396, 188, 330, 152), new Color(0.07f, 0.085f, 0.085f, 0.92f));
-		AddText(rightPanel, "COST BREAKDOWN", 18, FontStyle.Normal, Muted(), new Rect(18, 10, 250, 28), TextAnchor.MiddleLeft);
-		AddDetailRow(rightPanel, "SERVICE FEE", FormatCurrency(_context.Cost), 44);
-		AddDetailRow(rightPanel, "BALANCE", FormatCurrency(_context.Balance), 78);
-		AddLine(rightPanel, new Rect(18, 108, rightPanel.sizeDelta.x - 36, 1), new Color(0.45f, 0.53f, 0.5f, 0.18f));
-		AddText(rightPanel, "TOTAL", 18, FontStyle.Bold, Muted(), new Rect(18, 114, 100, 28), TextAnchor.MiddleLeft);
-		AddText(rightPanel, FormatCurrency(_context.Cost), 25, FontStyle.Bold, Amber(), new Rect(124, 108, 188, 38), TextAnchor.MiddleRight);
-
-		RectTransform footer = AddPanel(root, new Rect(42, 356, 684, 52), new Color(0.045f, 0.06f, 0.06f, 0.92f));
-		AddText(footer, "TAP DEVICE TO AUTHORIZE", 28, FontStyle.Bold, new Color(0.9f, 0.93f, 0.9f), new Rect(0, 5, 684, 34), TextAnchor.MiddleCenter);
-
-		BuildScanlineOverlay(root);
-	}
-
-	private void BuildRotateToConfirmScreen()
-	{
-		if (TryBuildAssetScreen(
-			    "TerraGroup Rotate Confirm Asset Screen",
-			    GetReviewAssetPath(_context.SupportType),
-			    portrait: false,
-			    out _rotateGroup))
-		{
-			AddDynamicTextOverlays(
-				_rotateGroup.transform as RectTransform,
-				GetReviewAssetPath(_context.SupportType),
-				portrait: false);
-			return;
-		}
-
-		RectTransform root = CreateScreenRoot("Rotate Confirm Screen");
-		_rotateGroup = root.gameObject.AddComponent<CanvasGroup>();
-		BuildCommonChrome(root, "TERRAGROUP", "Secure Payment");
-
-		AddText(root, "ROTATE DEVICE", 44, FontStyle.Bold, new Color(0.9f, 0.95f, 0.93f), new Rect(42, 128, 682, 54), TextAnchor.MiddleCenter);
-		AddText(root, "TO CONFIRM PAYMENT", 23, FontStyle.Bold, Teal(), new Rect(42, 180, 682, 34), TextAnchor.MiddleCenter);
-
-		RectTransform card = AddPanel(root, new Rect(146, 246, 476, 86), new Color(0.055f, 0.07f, 0.075f, 0.94f));
-		AddText(card, GetServiceTitle(_context.SupportType), 24, FontStyle.Bold, Color.white, new Rect(22, 16, 260, 32), TextAnchor.MiddleLeft);
-		AddText(card, FormatCurrency(_context.Cost), 28, FontStyle.Bold, Amber(), new Rect(260, 14, 190, 36), TextAnchor.MiddleRight);
-		AddText(card, "PRESS ENTER TO CONTINUE", 17, FontStyle.Bold, Muted(), new Rect(22, 48, 428, 28), TextAnchor.MiddleCenter);
-
-		BuildScanlineOverlay(root);
-	}
-
-	private void BuildConfirmPaymentPortraitScreen()
-	{
-		if (TryBuildAssetScreen(
-			    "TerraGroup Confirm Payment Asset Screen",
-			    GetConfirmSwipeAssetPath(_context.SupportType),
-			    portrait: true,
-			    out _confirmPaymentGroup))
-		{
-			AddDynamicTextOverlays(
-				_confirmPaymentGroup.transform as RectTransform,
-				GetConfirmSwipeAssetPath(_context.SupportType),
-				portrait: true);
-			BuildSwipeAnimationOverlay(_confirmPaymentGroup.transform as RectTransform);
-			return;
-		}
-
-		RectTransform root = CreateScreenRoot("Confirm Payment Portrait Screen");
-		_confirmPaymentGroup = root.gameObject.AddComponent<CanvasGroup>();
-		BuildCommonChrome(root, "TERRAGROUP", "Secure Payment");
-
-		RectTransform card = AddPanel(root, new Rect(184, 94, 400, 286), new Color(0.055f, 0.07f, 0.075f, 0.95f));
-		AddText(card, "CONFIRM TRANSFER", 28, FontStyle.Bold, Color.white, new Rect(0, 20, 400, 38), TextAnchor.MiddleCenter);
-		AddText(card, GetServiceTitle(_context.SupportType), 25, FontStyle.Bold, new Color(0.9f, 0.95f, 0.93f), new Rect(30, 78, 220, 36), TextAnchor.MiddleLeft);
-		AddText(card, GetServiceDescription(_context.SupportType), 16, FontStyle.Normal, Muted(), new Rect(32, 114, 220, 54), TextAnchor.MiddleLeft);
-		AddText(card, FormatCurrency(_context.Cost), 31, FontStyle.Bold, Amber(), new Rect(226, 184, 140, 42), TextAnchor.MiddleRight);
-		AddLine(card, new Rect(28, 174, 344, 1), new Color(0.45f, 0.53f, 0.5f, 0.22f));
-		AddText(card, "TOTAL PAYMENT", 17, FontStyle.Bold, Muted(), new Rect(32, 188, 160, 28), TextAnchor.MiddleLeft);
-		AddText(card, "SWIPE UP", 30, FontStyle.Bold, Teal(), new Rect(0, 232, 400, 38), TextAnchor.MiddleCenter);
-
-		BuildSwipeAnimationOverlay(root);
-		BuildScanlineOverlay(root);
-	}
-
-	private void BuildAuthorizingScreen()
-	{
-		if (TryBuildAssetScreen(
-			    "TerraGroup Authorizing Asset Screen",
-			    "portrait_512x1024/TG_05_Authorizing.png",
-			    portrait: true,
-			    out _authorizingGroup))
-		{
-			return;
-		}
-
-		RectTransform root = CreateScreenRoot("Authorizing Screen");
-		_authorizingGroup = root.gameObject.AddComponent<CanvasGroup>();
-		BuildCommonChrome(root, "TERRAGROUP", "Secure Payment");
-
-		AddText(root, "CONFIRMING TRANSFER", 42, FontStyle.Bold, new Color(0.9f, 0.94f, 0.92f), new Rect(42, 118, 682, 54), TextAnchor.MiddleCenter);
-		AddText(root, "AUTHENTICATING DEVICE KEY", 21, FontStyle.Normal, Teal(), new Rect(42, 168, 682, 30), TextAnchor.MiddleCenter);
-
-		RectTransform card = AddPanel(root, new Rect(106, 222, 556, 132), new Color(0.055f, 0.07f, 0.075f, 0.94f));
-		AddText(card, "SERVICE", 18, FontStyle.Normal, Muted(), new Rect(22, 18, 180, 28), TextAnchor.MiddleLeft);
-		AddText(card, GetServiceTitle(_context.SupportType), 30, FontStyle.Bold, Color.white, new Rect(22, 54, 260, 38), TextAnchor.MiddleLeft);
-		AddText(card, GetServiceDescription(_context.SupportType), 18, FontStyle.Normal, new Color(0.76f, 0.8f, 0.78f), new Rect(22, 90, 310, 30), TextAnchor.MiddleLeft);
-		AddText(card, FormatCurrency(_context.Cost), 34, FontStyle.Bold, Amber(), new Rect(318, 54, 210, 44), TextAnchor.MiddleRight);
-		AddText(card, "TRANSFER PENDING", 18, FontStyle.Bold, Amber(), new Rect(318, 96, 210, 28), TextAnchor.MiddleRight);
-
-		RectTransform progress = AddPanel(root, new Rect(116, 372, 536, 46), new Color(0.09f, 0.28f, 0.26f, 0.58f));
-		AddText(progress, "SECURE LINK ESTABLISHED", 24, FontStyle.Bold, Teal(), new Rect(0, 5, 536, 34), TextAnchor.MiddleCenter);
-
-		BuildScanlineOverlay(root);
-	}
-
-	private void BuildAuthorizedScreen()
-	{
-		if (TryBuildAssetScreen(
-			    "TerraGroup Authorized Asset Screen",
-			    GetAuthorizedAssetPath(_context.SupportType),
-			    portrait: true,
-			    out _authorizedGroup))
-		{
-			return;
-		}
-
-		RectTransform root = CreateScreenRoot("Authorized Screen");
-		_authorizedGroup = root.gameObject.AddComponent<CanvasGroup>();
-		BuildCommonChrome(root, "TERRAGROUP", "Verified");
-
-		AddText(root, "REQUEST AUTHORIZED", 46, FontStyle.Bold, new Color(0.91f, 0.96f, 0.93f), new Rect(42, 120, 682, 58), TextAnchor.MiddleCenter);
-		AddText(root, $"{GetServiceTitle(_context.SupportType)} READY TO DEPLOY", 24, FontStyle.Bold, Teal(), new Rect(42, 176, 682, 34), TextAnchor.MiddleCenter);
-
-		RectTransform card = AddPanel(root, new Rect(118, 236, 532, 130), new Color(0.045f, 0.075f, 0.07f, 0.95f));
-		AddText(card, "ACTIVE SERVICE", 18, FontStyle.Normal, Muted(), new Rect(24, 18, 200, 28), TextAnchor.MiddleLeft);
-		AddText(card, GetServiceTitle(_context.SupportType), 32, FontStyle.Bold, Color.white, new Rect(24, 56, 320, 38), TextAnchor.MiddleLeft);
-		AddText(card, "Authorizations", 18, FontStyle.Normal, Muted(), new Rect(24, 98, 180, 26), TextAnchor.MiddleLeft);
-		AddText(card, FireSupportAuthorizations.Get(_context.SupportType).ToString(), 26, FontStyle.Bold, Teal(), new Rect(250, 92, 250, 32), TextAnchor.MiddleRight);
-
-		RectTransform footer = AddPanel(root, new Rect(116, 382, 536, 42), new Color(0.09f, 0.28f, 0.26f, 0.62f));
-		AddText(footer, "SECURE CHANNEL ACTIVE", 23, FontStyle.Bold, Teal(), new Rect(0, 4, 536, 32), TextAnchor.MiddleCenter);
-
-		BuildScanlineOverlay(root);
-	}
-
-	private void BuildDeniedScreen()
-	{
-		_deniedReasonText = null;
-		_deniedDetailText = null;
-		if (TryBuildAssetScreen(
-			    "TerraGroup Payment Denied Asset Screen",
-			    "portrait_512x1024/TG_07_PaymentDenied.png",
-			    portrait: true,
-			    out _deniedGroup))
-		{
-			AddDeniedReasonOverlay(_deniedGroup.transform as RectTransform, portrait: true);
-			return;
-		}
-
-		RectTransform root = CreateScreenRoot("Denied Screen");
-		_deniedGroup = root.gameObject.AddComponent<CanvasGroup>();
-		BuildCommonChrome(root, "TERRAGROUP", "Secure Payment");
-
-		AddText(root, "TRANSFER DENIED", 46, FontStyle.Bold, new Color(1f, 0.55f, 0.45f), new Rect(42, 124, 682, 58), TextAnchor.MiddleCenter);
-		_deniedReasonText = AddText(root, string.Empty, 22, FontStyle.Bold, Amber(), new Rect(42, 178, 682, 34), TextAnchor.MiddleCenter);
-
-		RectTransform card = AddPanel(root, new Rect(118, 236, 532, 120), new Color(0.08f, 0.045f, 0.04f, 0.94f));
-		AddText(card, "SERVICE", 18, FontStyle.Normal, Muted(), new Rect(24, 16, 180, 28), TextAnchor.MiddleLeft);
-		AddText(card, GetServiceTitle(_context.SupportType), 30, FontStyle.Bold, Color.white, new Rect(24, 52, 300, 38), TextAnchor.MiddleLeft);
-		AddText(card, FormatCurrency(_context.Balance), 24, FontStyle.Bold, Amber(), new Rect(286, 52, 214, 38), TextAnchor.MiddleRight);
-		_deniedDetailText = AddText(card, string.Empty, 16, FontStyle.Bold, Muted(), new Rect(24, 88, 476, 26), TextAnchor.MiddleCenter);
-		UpdateDeniedReasonText();
-
-		BuildScanlineOverlay(root);
-	}
-
 	public void SetDeploySelection(int index)
 	{
 		_deploySelectionIndex = Mathf.Max(0, index);
@@ -1659,10 +1380,11 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 	{
 		RectTransform root = CreateScreenRoot("TerraGroup Deploy Select Screen", portrait: true);
 		_deployGroup = root.gameObject.AddComponent<CanvasGroup>();
+		RegisterPointerRoot(TerraGroupPhoneState.DeploySelect, root, portrait: true);
 
 		float w = root.sizeDelta.x;
 		float h = root.sizeDelta.y;
-		float sx = w / 432f;
+		float sx = Mathf.Min(w / 432f, h / 768f);
 		int F(int size) => Mathf.RoundToInt(size * sx);
 
 		// Palette from assets/content/ui/phone/docs/design_system.json so the
@@ -1740,6 +1462,9 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 					isEnabled ? green : muted,
 					new Rect(rowWidth - 92 * sx, 0, 76 * sx, rowHeight),
 					TextAnchor.MiddleRight);
+				AddPointerRegion(TerraGroupPhoneState.DeploySelect, root, new Rect(28 * sx, y, rowWidth, rowHeight),
+					new PhonePointerAction(PhonePointerActionKind.SelectDeployment, type, i),
+					() => NativeAvailable(type) && FireSupportAuthorizations.Get(type) > 0);
 				y += rowHeight + rowSpacing;
 			}
 		}
@@ -1748,11 +1473,22 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 		if (entries.Count == 0)
 		{
 			AddText(footer, "BACKSPACE  CLOSE", F(14), FontStyle.Bold, muted, new Rect(0, 0, w - 56 * sx, 60 * sx), TextAnchor.MiddleCenter);
+			AddPointerRegion(TerraGroupPhoneState.DeploySelect, root, new Rect(28 * sx, h - 96 * sx, w - 56 * sx, 60 * sx),
+				new PhonePointerAction(PhonePointerActionKind.Close));
 		}
 		else
 		{
 			AddText(footer, "TAP TO DEPLOY", F(14), FontStyle.Bold, green, new Rect(0, 0, (w - 56 * sx) / 2f, 60 * sx), TextAnchor.MiddleCenter);
 			AddText(footer, "BACKSPACE  CANCEL", F(14), FontStyle.Bold, muted, new Rect((w - 56 * sx) / 2f, 0, (w - 56 * sx) / 2f, 60 * sx), TextAnchor.MiddleCenter);
+			int selected = Mathf.Clamp(_deploySelectionIndex, 0, entries.Count - 1);
+			ESupportType selectedType = entries[selected];
+			AddPointerRegion(TerraGroupPhoneState.DeploySelect, root,
+				new Rect(28 * sx, h - 96 * sx, (w - 56 * sx) / 2f, 60 * sx),
+				new PhonePointerAction(PhonePointerActionKind.DeploySelected, selectedType, selected),
+				() => NativeAvailable(selectedType) && FireSupportAuthorizations.Get(selectedType) > 0);
+			AddPointerRegion(TerraGroupPhoneState.DeploySelect, root,
+				new Rect(w / 2f, h - 96 * sx, (w - 56 * sx) / 2f, 60 * sx),
+				new PhonePointerAction(PhonePointerActionKind.Close));
 		}
 	}
 
@@ -3218,6 +2954,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 
 	private void HandleVisibleState(TerraGroupPhoneState state)
 	{
+		RefreshNativeState(state);
 		if (state != TerraGroupPhoneState.ConfirmPaymentPortrait)
 		{
 			StopSwipeAnimation();
@@ -3286,7 +3023,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 
 	public void SetConfirmSwipeAnimationProgress(float progress)
 	{
-		if (_swipeArrowImage == null)
+		if (_swipeArrowImage == null && _nativeSwipeArrow == null)
 		{
 			return;
 		}
@@ -3297,7 +3034,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 
 	private void StartSwipeAnimation()
 	{
-		if (_swipeArrowImage == null)
+		if (_swipeArrowImage == null && _nativeSwipeArrow == null)
 		{
 			return;
 		}
@@ -3313,6 +3050,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 			StopCoroutine(_swipeAnimationCoroutine);
 			_swipeAnimationCoroutine = null;
 		}
+		if (_nativeSwipeVisual != null) _nativeSwipeVisual.alpha = 0f;
 
 		if (_swipeArrowImage != null)
 		{
@@ -3325,7 +3063,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 	private IEnumerator AnimateSwipeArrow()
 	{
 		float startedAt = Time.unscaledTime;
-		while (_swipeArrowImage != null &&
+		while ((_swipeArrowImage != null || _nativeSwipeArrow != null) &&
 		       _currentState == TerraGroupPhoneState.ConfirmPaymentPortrait)
 		{
 			float t = Mathf.Clamp01((Time.unscaledTime - startedAt) / SwipeArrowAnimationSeconds);
@@ -3338,7 +3076,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 			yield return null;
 		}
 
-		if (_swipeArrowImage != null)
+		if (_swipeArrowImage != null || _nativeSwipeArrow != null)
 		{
 			SetSwipeArrowProgress(1f);
 		}
@@ -3348,6 +3086,7 @@ public sealed class UavPhoneScreenRenderer : MonoBehaviour
 
 	private void SetSwipeArrowProgress(float progress)
 	{
+		SetNativeSwipeProgress(progress);
 		if (_swipeArrowImage == null)
 		{
 			return;

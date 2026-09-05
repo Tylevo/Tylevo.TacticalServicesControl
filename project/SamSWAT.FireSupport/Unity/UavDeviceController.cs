@@ -2,6 +2,7 @@ using Comfort.Common;
 using EFT;
 using EFT.CameraControl;
 using EFT.InventoryLogic;
+using EFT.UI.Screens;
 using System;
 using System.Collections;
 using UnityEngine;
@@ -87,6 +88,11 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 	private float _phoneZoomTargetFov;
 	private int _phoneZoomFirstWritableFrame = -1;
 	private bool _phonePresentationOwnershipObserved;
+	private bool _phonePointerActive;
+	private bool _phonePointerNeedsModifierRelease;
+	private bool _phonePointerMouseOwned;
+	private int _phonePointerMouseFrame = -1;
+	private UavPhonePointerInputNode _phonePointerInputNode;
 
 	public Animator PhoneAnimator { get; private set; }
 	public UavPhoneLaunchMode LaunchMode { get; set; } = UavPhoneLaunchMode.ManualAuthorization;
@@ -188,6 +194,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 		{
 			_ownerPlayer = player;
 			base.InitializeController(player, weaponPrefab);
+			EnsurePhonePointerInputNode();
 			ApplyPhoneZoom();
 
 			if (weaponPrefab == null)
@@ -367,6 +374,15 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 
 	private void Update()
 	{
+		if (_ownerPlayer?.IsYourPlayer == true && ReferenceEquals(_ownerPlayer.HandsController, this) && !_finishNotified)
+		{
+			EnsurePhonePointerInputNode();
+		}
+		else
+		{
+			DetachPhonePointerInputNode();
+		}
+		bool pointerActionDispatched = UpdatePhonePointer();
 		if (s_phoneZoomOwner == this && !HasPhonePresentationOwnership())
 		{
 			RestorePhoneZoom();
@@ -414,9 +430,8 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 			return;
 		}
 
-		// While the inventory screen is open, mouse clicks and hotkeys belong to
-		// the inventory UI, not the phone.
-		if (_ownerPlayer != null && _ownerPlayer.IsInventoryOpened)
+		// Menus, focus loss and other cursor-owning overlays own their input.
+		if (!HasLocalPhoneInputOwnership())
 		{
 			return;
 		}
@@ -432,7 +447,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 				PhoneAnimator.Play("Outro Success", GetHandsLayer(PhoneAnimator), GetDeployPoseNormalizedTime());
 			}
 
-			if (!_authorizationInputLocked && _deployPoseReady)
+			if (!_authorizationInputLocked && _deployPoseReady && !pointerActionDispatched)
 			{
 				if (LaunchMode == UavPhoneLaunchMode.UavRadarMonitor)
 				{
@@ -451,11 +466,16 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 			return;
 		}
 
+		if (pointerActionDispatched)
+		{
+			return;
+		}
+
 		if (_confirmationSequenceRunning)
 		{
 			if (!_paymentAttempted &&
 			    !_restoreStarted &&
-			    (Input.GetKeyDown(KeyCode.Escape) || Input.GetMouseButtonDown(1)))
+			    (Input.GetKeyDown(KeyCode.Escape) || (!SuppressLegacyPhoneMouse && Input.GetMouseButtonDown(1))))
 			{
 				CancelConfirmationSequenceBeforeCommit();
 			}
@@ -476,7 +496,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 
 		// RMB steps back one screen instead of cancelling the whole session;
 		// Escape remains the full cancel.
-		if (Input.GetMouseButtonDown(1))
+		if (!SuppressLegacyPhoneMouse && Input.GetMouseButtonDown(1))
 		{
 			HandleBack();
 			return;
@@ -499,9 +519,258 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 			return;
 		}
 
-		if (Input.GetMouseButtonDown(0))
+		if (!SuppressLegacyPhoneMouse && Input.GetMouseButtonDown(0))
 		{
 			HandleTap();
+		}
+	}
+
+	private bool SuppressLegacyPhoneMouse =>
+		_phonePointerActive || _phonePointerMouseOwned || _phonePointerMouseFrame == Time.frameCount;
+
+	/// <summary>
+	/// Queried by EFT's input node before this component's Update. Read the live
+	/// modifier here so the first held frame cannot reach the player's look/fire input.
+	/// </summary>
+	internal void GetPhonePointerInputCapture(out bool capture, out bool suppressMouse)
+	{
+		capture = RefreshPhonePointerCapture();
+		suppressMouse = HasLocalPhoneInputOwnership() && SuppressLegacyPhoneMouse;
+	}
+
+	internal bool OwnsPhoneCancelInput()
+	{
+		if (!HasLocalPhoneInputOwnership() || !_authorizationSessionActive || _finishNotified || _restoreStarted)
+		{
+			return false;
+		}
+		if (IsUprightPhoneMode(LaunchMode))
+		{
+			return !_authorizationInputLocked && _deployPoseReady && Time.unscaledTime >= _deployInputArmedAt;
+		}
+		return _confirmationSequenceRunning ? !_paymentAttempted : !_authorizationInputLocked;
+	}
+
+	private void EnsurePhonePointerInputNode()
+	{
+		if (_phonePointerInputNode?.IsRegistered == true || _ownerPlayer?.IsYourPlayer != true ||
+		    LaunchMode == UavPhoneLaunchMode.InternalUavActivation || _finishNotified)
+		{
+			return;
+		}
+		DetachPhonePointerInputNode();
+		_phonePointerInputNode = gameObject.AddComponent<UavPhonePointerInputNode>();
+		if (!_phonePointerInputNode.Attach(_ownerPlayer, this))
+		{
+			DetachPhonePointerInputNode();
+		}
+	}
+
+	private void DetachPhonePointerInputNode()
+	{
+		ReleasePhonePointer();
+		if (_phonePointerInputNode != null)
+		{
+			_phonePointerInputNode.Detach();
+			Destroy(_phonePointerInputNode);
+			_phonePointerInputNode = null;
+		}
+	}
+
+	private bool HasLocalPhoneInputOwnership()
+	{
+		return isActiveAndEnabled && Application.isFocused &&
+		       !Cursor.visible && Cursor.lockState == CursorLockMode.Locked &&
+		       _ownerPlayer?.IsYourPlayer == true &&
+		       _ownerPlayer.ActiveHealthController?.IsAlive == true &&
+		       ReferenceEquals(_ownerPlayer.HandsController, this) &&
+		       Singleton<GameWorld>.Instantiated &&
+		       ReferenceEquals(Singleton<GameWorld>.Instance.MainPlayer, _ownerPlayer) &&
+		       !_ownerPlayer.IsInventoryOpened &&
+		       EftScreenManager.Instance != null &&
+		       EftScreenManager.Instance.CheckCurrentScreen(EEftScreenType.BattleUI);
+	}
+
+	private bool RefreshPhonePointerCapture()
+	{
+		KeyCode modifier = PluginSettings.PhoneMouseModifier?.Value ?? KeyCode.LeftAlt;
+		bool held = modifier != KeyCode.None && Input.GetKey(modifier);
+		if (Application.isFocused && !held)
+		{
+			_phonePointerNeedsModifierRelease = false;
+		}
+
+		bool eligible = HasLocalPhoneInputOwnership() &&
+		                _phonePointerInputNode?.IsRegistered == true &&
+		                (PluginSettings.PhoneMouseEnabled?.Value ?? true) &&
+		                _authorizationSessionActive && !_authorizationInputLocked &&
+		                !_confirmationSequenceRunning && !_restoreStarted && !_finishNotified &&
+		                _phoneScreen?.CanUsePointer == true &&
+		                (LaunchMode != UavPhoneLaunchMode.DeployMenu ||
+		                 (_uprightEquipCompleted && _deployPoseReady && Time.unscaledTime >= _deployInputArmedAt));
+		bool capture = eligible && held && !_phonePointerNeedsModifierRelease;
+		if (capture)
+		{
+			_phonePointerActive = true;
+			_phonePointerMouseFrame = Time.frameCount;
+			_phonePointerMouseOwned |= Input.GetMouseButton(0) || Input.GetMouseButton(1);
+			_phoneScreen.SetPointerActive(true);
+		}
+		else
+		{
+			ReleasePhonePointer();
+			if (!Input.GetMouseButton(0) && !Input.GetMouseButton(1))
+			{
+				if (_phonePointerMouseOwned)
+				{
+					_phonePointerMouseFrame = Time.frameCount;
+				}
+				_phonePointerMouseOwned = false;
+			}
+		}
+
+		return capture;
+	}
+
+	private void ReleasePhonePointer()
+	{
+		if (_phonePointerActive)
+		{
+			_phonePointerMouseFrame = Time.frameCount;
+			_phonePointerMouseOwned |= Input.GetMouseButton(0) || Input.GetMouseButton(1);
+		}
+		_phonePointerActive = false;
+		_phoneScreen?.SetPointerActive(false);
+	}
+
+	private bool UpdatePhonePointer()
+	{
+		if (!RefreshPhonePointerCapture())
+		{
+			return false;
+		}
+
+		float sensitivity = Mathf.Clamp(PluginSettings.PhoneMouseSensitivity?.Value ?? 20f, 1f, 80f);
+		_phoneScreen.MovePointer(Input.GetAxisRaw("Mouse X") * sensitivity, Input.GetAxisRaw("Mouse Y") * sensitivity);
+		if (Input.GetMouseButtonDown(1))
+		{
+			ReleasePhonePointer();
+			if (LaunchMode == UavPhoneLaunchMode.DeployMenu)
+			{
+				FinishDeploySession(success: false);
+			}
+			else
+			{
+				HandleBack();
+			}
+			return true;
+		}
+
+		if (Input.GetMouseButtonDown(0))
+		{
+			_phoneScreen.BeginPointerPress();
+		}
+		if (Input.GetMouseButtonUp(0) && _phoneScreen.EndPointerPress(out PhonePointerAction action))
+		{
+			DispatchPhonePointerAction(action);
+			return true;
+		}
+		return false;
+	}
+
+	private void DispatchPhonePointerAction(PhonePointerAction action)
+	{
+		// The renderer validates press/release against its current view. Validate
+		// the controller and live services again before any action can spend or deploy.
+		if (!RefreshPhonePointerCapture())
+		{
+			return;
+		}
+
+		if (LaunchMode == UavPhoneLaunchMode.DeployMenu)
+		{
+			if (_phoneState != TerraGroupPhoneState.DeploySelect)
+			{
+				return;
+			}
+			if (action.Kind == PhonePointerActionKind.Back || action.Kind == PhonePointerActionKind.Close)
+			{
+				FinishDeploySession(success: false);
+				return;
+			}
+			if (RefreshDeployEntries())
+			{
+				ShowDeployScreen();
+				return;
+			}
+			if (_deployEntries == null || action.Index < 0 || action.Index >= _deployEntries.Count ||
+			    _deployEntries[action.Index] != action.SupportType)
+			{
+				return;
+			}
+			if (action.Kind == PhonePointerActionKind.SelectDeployment)
+			{
+				_deploySelectionIndex = action.Index;
+				PlayDeployTapAudio();
+				ShowDeployScreen();
+			}
+			else if (action.Kind == PhonePointerActionKind.DeploySelected && action.Index == _deploySelectionIndex)
+			{
+				TryDeploySelectedService();
+			}
+			return;
+		}
+
+		switch (action.Kind)
+		{
+			case PhonePointerActionKind.OpenServices when _phoneState == TerraGroupPhoneState.Home:
+				PlayTap(0.05f);
+				ShowPhoneState(TerraGroupPhoneState.TacticalServices);
+				break;
+			case PhonePointerActionKind.OpenCategory when _phoneState == TerraGroupPhoneState.TacticalServices || _phoneState == TerraGroupPhoneState.ServiceCategory:
+				if (action.SupportType == ESupportType.Extract || action.SupportType == ESupportType.Strafe || action.SupportType == ESupportType.Uav)
+				{
+					OpenServiceCategory(action.SupportType);
+				}
+				break;
+			case PhonePointerActionKind.SelectService when _phoneState == TerraGroupPhoneState.ServiceCategory:
+				// Locked rows remain inspectable; proceeding and payment still
+				// require the current service to be enabled.
+				if (FireSupportDeploymentSelection.GetRadialSupportType(action.SupportType) != ESupportType.None &&
+				    FireSupportDeploymentSelection.GetRadialSupportType(action.SupportType) == FireSupportDeploymentSelection.GetRadialSupportType(_selectedSupportType))
+				{
+					PlayTap(0.05f);
+					SelectSupportType(action.SupportType);
+				}
+				break;
+			case PhonePointerActionKind.ReviewService when _phoneState == TerraGroupPhoneState.ServiceCategory:
+				if (action.SupportType == _selectedSupportType && CanProceedWithSelectedSupport())
+				{
+					PlayTap(0.05f);
+					ShowPhoneState(TerraGroupPhoneState.RotateToConfirm);
+				}
+				break;
+			case PhonePointerActionKind.ConfirmPurchase when IsRotatePromptState(_phoneState):
+				if (action.SupportType == _selectedSupportType)
+				{
+					BeginConfirmationSequence();
+				}
+				break;
+			case PhonePointerActionKind.Back:
+				HandleBack();
+				break;
+			case PhonePointerActionKind.Close:
+				FinishAuthorizationSession(playOutro: true, success: false);
+				break;
+		}
+	}
+
+	private void OnApplicationFocus(bool hasFocus)
+	{
+		if (!hasFocus)
+		{
+			_phonePointerNeedsModifierRelease = true;
+			ReleasePhonePointer();
 		}
 	}
 
@@ -893,7 +1162,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 		{
 			bool escape = Input.GetKeyDown(KeyCode.Escape);
 			bool backspace = Input.GetKeyDown(KeyCode.Backspace);
-			bool rightMouse = Input.GetMouseButtonDown(1);
+			bool rightMouse = !SuppressLegacyPhoneMouse && Input.GetMouseButtonDown(1);
 			if (escape || backspace || rightMouse)
 			{
 				FireSupportPlugin.LogSource.LogInfo(
@@ -928,39 +1197,52 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 		// LMB taps the screen to deploy, matching the ready-to-tap hand pose;
 		// Enter is kept as a keyboard alternative.
 		if (Time.unscaledTime >= _deployInputArmedAt &&
-		    (Input.GetMouseButtonDown(0) ||
+		    ((!SuppressLegacyPhoneMouse && Input.GetMouseButtonDown(0)) ||
 		     Input.GetKeyDown(KeyCode.Return) ||
 		     Input.GetKeyDown(KeyCode.KeypadEnter)))
 		{
-			int index = Mathf.Clamp(_deploySelectionIndex, 0, _deployEntries.Count - 1);
-			ESupportType selected = _deployEntries[index];
-			if (!FireSupportAuthorizations.HasDeployable(selected))
-			{
-				FireSupportPlugin.LogSource.LogInfo($"TSC deploy phone entry no longer deployable: {selected}.");
-				if (!FireSupportServiceAvailability.IsServiceEnabled(selected))
-				{
-					FireSupportPayment.NotifyServiceUnavailable(selected);
-					ShowDeployScreen();
-					return;
-				}
-				_deployEntries = FireSupportDeployMenu.GetOwnedEntries();
-				_deploySelectionIndex = 0;
-				ShowDeployScreen();
-				return;
-			}
-			if (FireSupportController.Instance?.IsInitialized != true)
-			{
-				FireSupportPlugin.LogSource.LogWarning(
-					$"TSC deploy phone kept open: fire-support controller is not ready for {selected}.");
-				ShowDeployScreen();
-				return;
-			}
-
-			PendingDeployment = selected;
-			PlayDeployTapAudio();
-			FireSupportPlugin.LogSource.LogInfo($"TSC deploy phone committed deployment: {selected}.");
-			FinishDeploySession(success: true);
+			TryDeploySelectedService();
 		}
+	}
+
+	private void TryDeploySelectedService()
+	{
+		if (LaunchMode != UavPhoneLaunchMode.DeployMenu ||
+		    _phoneState != TerraGroupPhoneState.DeploySelect ||
+		    !_authorizationSessionActive || _authorizationInputLocked || !_deployPoseReady ||
+		    Time.unscaledTime < _deployInputArmedAt || _deployEntries == null || _deployEntries.Count == 0)
+		{
+			return;
+		}
+
+		int index = Mathf.Clamp(_deploySelectionIndex, 0, _deployEntries.Count - 1);
+		ESupportType selected = _deployEntries[index];
+		if (!FireSupportAuthorizations.HasDeployable(selected))
+		{
+			FireSupportPlugin.LogSource.LogInfo($"TSC deploy phone entry no longer deployable: {selected}.");
+			if (!FireSupportServiceAvailability.IsServiceEnabled(selected))
+			{
+				FireSupportPayment.NotifyServiceUnavailable(selected);
+				ShowDeployScreen();
+				return;
+			}
+			_deployEntries = FireSupportDeployMenu.GetOwnedEntries();
+			_deploySelectionIndex = 0;
+			ShowDeployScreen();
+			return;
+		}
+		if (FireSupportController.Instance?.IsInitialized != true)
+		{
+			FireSupportPlugin.LogSource.LogWarning(
+				$"TSC deploy phone kept open: fire-support controller is not ready for {selected}.");
+			ShowDeployScreen();
+			return;
+		}
+
+		PendingDeployment = selected;
+		PlayDeployTapAudio();
+		FireSupportPlugin.LogSource.LogInfo($"TSC deploy phone committed deployment: {selected}.");
+		FinishDeploySession(success: true);
 	}
 
 	private bool RefreshDeployEntries()
@@ -1840,7 +2122,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 
 			if (twoPressed)
 			{
-				ESupportType variantSupportType = _selectedSupportType switch
+				ESupportType variantSupportType = FireSupportDeploymentSelection.GetRadialSupportType(_selectedSupportType) switch
 				{
 					ESupportType.Extract => ESupportType.PriorityExfil,
 					ESupportType.Strafe => ESupportType.DoubleStrafe,
@@ -2009,6 +2291,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 		}
 
 		_confirmationSequenceRunning = true;
+		ReleasePhonePointer();
 		PublishPhoneVisualPhase(UavPhoneVisualPhase.Confirming, duration: 4.0f);
 		_confirmationSequenceCoroutine = StartCoroutine(RunConfirmationSequence());
 	}
@@ -2445,12 +2728,14 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 
 	private void ShowPhoneState(TerraGroupPhoneState state)
 	{
+		ReleasePhonePointer();
 		_phoneState = state;
 		_phoneScreen?.Rebuild(BuildPhoneContext(), state);
 	}
 
 	private void ShowPhoneState(TerraGroupPhoneState state, float fadeSeconds)
 	{
+		ReleasePhonePointer();
 		_phoneState = state;
 		_phoneScreen?.FadeToState(state, fadeSeconds);
 	}
@@ -2475,6 +2760,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 
 	private void FinishAuthorizationSession(bool playOutro, bool success)
 	{
+		DetachPhonePointerInputNode();
 		if (_finishNotified)
 		{
 			return;
@@ -2525,6 +2811,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 
 	private void NotifyAuthorizationFinished(bool success)
 	{
+		DetachPhonePointerInputNode();
 		if (_finishNotified)
 		{
 			return;
@@ -2900,6 +3187,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 
 	private void ShutdownPhoneScreen()
 	{
+		DetachPhonePointerInputNode();
 		if (_phoneScreen == null)
 		{
 			return;
@@ -3020,6 +3308,9 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 
 	private void OnDisable()
 	{
+		_phonePointerNeedsModifierRelease = true;
+		DetachPhonePointerInputNode();
+		_phonePointerMouseOwned = false;
 		bool hasScopedPresentationState =
 			_uprightPhoneRenderers.Count > 0 ||
 			_uprightHandRenderers.Count > 0 ||
@@ -3051,6 +3342,8 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 
 	private void OnDestroy()
 	{
+		DetachPhonePointerInputNode();
+		_phonePointerMouseOwned = false;
 		if (!_finishNotified &&
 		    LaunchMode != UavPhoneLaunchMode.InternalUavActivation)
 		{

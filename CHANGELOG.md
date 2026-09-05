@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.3.3 - Public Beta (unreleased)
+
+Native phone purchase screens and optional mouse selection for SPT 4.1.4.
+
+- Draw the purchase interface with native panels, text, and existing service
+  artwork in the deploy menu's dark, ivory, amber, and green palette.
+- Keep purchase browsing and review in landscape, with the existing portrait
+  hand swipe and payment commit sequence at final confirmation.
+- Add hold-Alt mouse selection through a cursor drawn on the phone. Selection
+  and explicit review/confirmation controls share the existing authorization
+  and deployment validation paths. Keyboard shortcuts remain available.
+- Scope mouse input to the active phone; cancel pending clicks when releasing
+  the modifier, changing screens, closing the phone, or losing input ownership.
+- Retain the v1.3.2 eased zoom and v1.3.1 A-10 targeting corrections.
+
+Build, package, and regression results are recorded in the candidate's
+external evidence sidecars. In-game phone and Fika acceptance remain separate
+checks. See `docs/release-notes-v1.3.3.md`.
+
 ## 1.3.2 - Public Beta (unreleased)
 
 Authorization-phone zoom polish for SPT 4.1.4 / EFT 0.16.9.5.40743.

@@ -24,6 +24,10 @@
              Link="Production\MainMenuSlotStepPolicy.cs" />
     <Compile Include="..\SamSWAT.FireSupport\Unity\PhonePresentationTransition.cs"
              Link="Production\PhonePresentationTransition.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\PhonePointerAction.cs"
+             Link="Production\PhonePointerAction.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\PhonePointerGesture.cs"
+             Link="Production\PhonePointerGesture.cs" />
     <Compile Include="..\SamSWAT.FireSupport\Unity\Uh60CargoDepartureNetworking.cs"
              Link="Production\Uh60CargoDepartureNetworking.cs" />
     <Compile Include="..\SamSWAT.FireSupport.Server\FireSupportUh60TransferMarkerStore.cs"
