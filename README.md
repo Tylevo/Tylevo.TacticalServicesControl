@@ -2,12 +2,12 @@
 
 Call in an A-10 strafe, arrange a helicopter pickup, or check for nearby contacts from a TerraGroup TSC Uplink phone. TSC is a BepInEx mod for SPT, built on SamSWAT's Fire Support and Arys Reloaded.
 
-> **v1.3.9 public beta · SPT 4.1.4 / EFT 0.16.9.5.40743**
+> **v1.3.10 unreleased candidate · SPT 4.1.5 / EFT 0.16.9.5.40743**
 >
-> This release bundles UnityToolkit 2.0.1 rebuilt against SPT 4.1, with Arys's permission. No separate Toolkit or compatibility-overlay download is needed. WTT CommonLib is still required separately.
-> **SPT 4.1.5 and multiplayer on the current SPT/Fika versions have not been tested.** See the [v1.3.9 release notes](docs/release-notes-v1.3.9.md).
+> This candidate retains the bundled UnityToolkit 2.0.1 rebuilt against SPT 4.1, with Arys's permission. No separate Toolkit or compatibility-overlay download is needed. WTT CommonLib is still required separately.
+> **New SPT 4.1.5 client and raid checks are pending. Multiplayer on the current SPT/Fika versions remains untested.** See the [v1.3.10 candidate notes](docs/release-notes-v1.3.10.md).
 
-Published September 5, 2026. Download the [full v1.3.9 ZIP](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases/download/v1.3.9/Tylevo.TacticalServicesControl-v1.3.9-SPT4.1.4-TESTER.zip) from the [v1.3.9 release](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases/tag/v1.3.9). `SHA256SUMS.txt` is available alongside the ZIP.
+The latest published release is **v1.3.9 for SPT 4.1.4**, published September 5, 2026. Download its [full v1.3.9 ZIP](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases/download/v1.3.9/Tylevo.TacticalServicesControl-v1.3.9-SPT4.1.4-TESTER.zip) from the [v1.3.9 release](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases/tag/v1.3.9). `SHA256SUMS.txt` is available alongside the ZIP.
 
 The earlier [v1.3.8 release](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases/tag/v1.3.8) remains available; its Toolkit installation steps are preserved in the [dependency guide](docs/dependencies.md#historical-v138-installation-official-toolkit-plus-overlay).
 
@@ -24,9 +24,9 @@ Available services:
 
 This is a derivative of SamSWAT's original Fire Support and SamSWAT's Fire Support - Arys Reloaded by Arys. Upstream permission to redistribute the work is recorded in `PERMISSIONS.md`. Full credits are in `THIRD_PARTY_NOTICES.md` and `docs/credits.md`.
 
-## What's new for SPT 4.1.4
+## What's new for SPT 4.1.5
 
-The v1.3.9 release adds a SIC mod-page link to the existing themed dashboard, corrects native config Apply/Save behavior, and includes the complete UnityToolkit dependency in the TSC ZIP. Arys confirmed permission to bundle the rebuilt Toolkit on September 5, 2026.
+The v1.3.10 candidate targets SPT 4.1.5 and keeps the bundled UnityToolkit, themed SIC dashboard, and separate native config Apply/Save behavior introduced in v1.3.9. The target update adds no gameplay changes. Arys confirmed permission to bundle the rebuilt Toolkit on September 5, 2026.
 
 It also retains the v1.3.0 through v1.3.8 updates:
 
@@ -39,22 +39,22 @@ It also retains the v1.3.0 through v1.3.8 updates:
 
 ## Requirements
 
-- [SPT 4.1.4](https://github.com/sp-tushonka/build/releases/tag/4.1.4). SPT 4.1.5 has not been tested.
-- [UnityToolkit 2.0.1](docs/dependencies.md), included in the v1.3.9 TSC ZIP with its plugin and prepatcher rebuilt against SPT 4.1, companion libraries, and license notices. There is no separate Toolkit or overlay download for this release.
+- [SPT 4.1.5](https://github.com/SP-Tushonka/build/releases/tag/4.1.5). New client and raid validation for this candidate is pending.
+- [UnityToolkit 2.0.1](docs/dependencies.md), included in the full TSC ZIP since v1.3.9 and retained for this candidate with its plugin and prepatcher rebuilt against SPT 4.1, companion libraries, and license notices. There is no separate Toolkit or overlay download for this candidate.
 - [WTT CommonLib 3.0.6](https://github.com/WelcomeToThursday/WTT-CommonLib/releases/tag/v3.0.6), including its client, server, and serialization prepatcher components.
 - For experimental multiplayer testing, [Project Fika client 2.4.2](https://github.com/project-fika/Fika-Plugin/releases/tag/v2.4.2) and its corresponding server component. This version is a build reference only; multiplayer compatibility hasn't been tested with this SPT release. You don't need Fika for solo play; TSC detects it at runtime.
 
 Install WTT CommonLib separately, including all of its required components. Fika is optional and is also installed separately. The [dependency installation guide](docs/dependencies.md) has the package order and file locations.
 
-The [port log](docs/port/SPT-4.1.4-PORT-LOG.md) records the exact dependency commits, assembly versions, and SHA-256 hashes used for this beta. Use those versions when testing. A successful build against another dependency version doesn't establish that it works in game. Earlier SPT 4.1.2 results are in `docs/port/SPT-4.1-PORT-LOG.md`.
+The [SPT 4.1.4 port log](docs/port/SPT-4.1.4-PORT-LOG.md) records the previous reference baseline. New v1.3.10 checks are tracked in the [candidate notes](docs/release-notes-v1.3.10.md); the earlier build and test results do not establish SPT 4.1.5 gameplay compatibility. Earlier SPT 4.1.2 results remain in `docs/port/SPT-4.1-PORT-LOG.md`.
 
 TSC replaces the old SamSWAT Fire Support and Arys Reloaded packages. Don't install them alongside it.
 
-## Installation (v1.3.9)
+## Installation (v1.3.10 candidate)
 
 1. Back up your profiles. If you're updating TSC, also back up its `config/` and complete `storage/` directories.
 2. Close EFT, the launcher, the SPT server, and any Fika or headless processes.
-3. Install WTT CommonLib, then extract the **full v1.3.9 release ZIP** into your SPT 4.1.4 root folder. It includes UnityToolkit. GitHub's automatically generated source archives aren't installable mod packages.
+3. Update SPT to 4.1.5 and install WTT CommonLib, then extract the **full v1.3.10 candidate ZIP** into your SPT root folder. It includes UnityToolkit. GitHub's automatically generated source archives aren't installable mod packages.
 4. Check that extraction created the folders below. If updating an existing Toolkit installation, replace its files in these standard locations when prompted; don't keep additional copies in other plugin or patcher folders.
 5. Start the SPT server, then the launcher and game. Restarting both the server and game loads the updated trader, portrait, and cached UI icons.
 
@@ -71,7 +71,7 @@ Avoid an extra folder around the ZIP contents. Install all four TSC DLLs and the
 
 Extracting the release over the current TSC folders preserves your configuration and saved state. The ZIP doesn't contain configuration, storage, admin tokens, or profiles. Keep the **complete `storage/` directory**: it holds purchased authorizations and the records needed to recover payments and cargo deliveries. The server migrates existing configuration and ledger formats when it starts. To roll back an upgrade, restore matching backups of both the mod files and saved state.
 
-Older SPT installations used `SPT/user/mods/Tylevo.TacticalServicesControl/`. SPT 4.1.4 uses `SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/`.
+Older SPT installations used `SPT/user/mods/Tylevo.TacticalServicesControl/`. SPT 4.1.4 and 4.1.5 use `SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/`.
 
 If your TSC state is still in the old folder, back it up and copy its `config/` and complete `storage/` directories into the new TSC server folder. Do this with the server stopped, before the first launch. Keep the new release's DLLs, database, bundles, web files, and artwork. If both folders already contain state, choose the matching backup you want to use; don't merge two ledgers. TSC won't look in the old folder automatically.
 
@@ -137,7 +137,7 @@ Optional purchase-screen zoom starts after a 0.08-second delay and eases the cam
 
 ## Fika installation
 
-Fika integration is included, but it hasn't been tested on the current SPT/Fika versions. The Fika 2.4.2 reference used to build this release does not establish multiplayer compatibility with SPT 4.1.4. Treat the setup below as instructions for testing.
+Fika integration is included, but it hasn't been tested on the current SPT/Fika versions. Fika 2.4.2 remains the build reference for this candidate; it does not establish multiplayer compatibility with SPT 4.1.5. Treat the setup below as instructions for testing.
 
 Install the same TSC version on the host, any headless host, and every client. The integration is designed to use the host's settings while connected, sync host dashboard changes and support requests to clients, and clear the settings overrides on disconnect. Those behaviors still need checking in game on this release.
 
@@ -153,7 +153,7 @@ These settings apply to support authorizations. Cargo Transfer's separate EFT ha
 
 ## Dashboard
 
-The v1.3.9 release adds **Tactical Services Control** under SIC's
+Since v1.3.9, TSC has **Tactical Services Control** under SIC's
 **Mod pages**, opening the same TerraGroup dashboard. Its sidebar links back
 to SIC and the native config editor. This addition is not in the v1.3.8 ZIP
 linked above. See the [dashboard guide](docs/dashboard.md) for both editors
@@ -183,11 +183,11 @@ See `docs/dashboard.md`, `PRIVACY.md`, and `SECURITY.md`.
 
 ## Beta status and known issues
 
-The v1.3.9 release's build and integration results are tracked in the [validation notes](docs/validation/v1.3.9.md). Bundling the rebuilt Toolkit changes installation, but does not establish SPT 4.1.5 or current Fika compatibility.
+The v1.3.10 candidate targets SPT 4.1.5, with new build and runtime checks pending. The previous [v1.3.9 validation notes](docs/validation/v1.3.9.md) remain historical evidence for SPT 4.1.4. Inspecting the 4.1.5 startup version check does not replace client, raid, or multiplayer testing; current progress is recorded in the [candidate notes](docs/release-notes-v1.3.10.md).
 
 The earlier v1.3.8 release passed **216 regression tests**, a full local build with no errors, and checks on its **169-file package**. These historical checks do not confirm Fika compatibility; live multiplayer testing has not been done on the current SPT/Fika versions. Server checks confirmed Pilot's unlock, the Pilot-only Uplink listing, its price and purchase limit, the exact portrait bytes, and preserved profile and trader state. They didn't cover the Trading screen in game or a paid Uplink purchase.
 
-The phone interface and Alt controls received positive feedback from in-raid use. Layout harnesses and automated checks cover the store and bottom-bar integration. More testing across resolutions, animations, and combat is needed, and Fika testing has not started on the current versions. The [release notes](docs/release-notes-v1.3.9.md) track what remains.
+The phone interface and Alt controls received positive feedback from in-raid use. Layout harnesses and automated checks cover the store and bottom-bar integration. More testing across resolutions, animations, and combat is needed, and Fika testing has not started on the current versions. The [candidate notes](docs/release-notes-v1.3.10.md) track what remains.
 
 - A-10 aim compensation has been tested against EFT's trajectory model. Actual impacts, collisions, and replay effects still need broader solo testing and live Fika testing.
 - Pilot's appearance in Trading and a paid Uplink purchase still need checking in game.

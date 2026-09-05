@@ -1,32 +1,38 @@
 # Building
 
+The current source is the unreleased TSC v1.3.10 candidate for SPT 4.1.5.
+New client and raid checks are pending; current Fika multiplayer remains
+untested. The published v1.3.9 release continues to target SPT 4.1.4.
+
 This repository does not include proprietary EFT or SPT assemblies. Provide local references from your own SPT install.
 
 ## Requirements
 
 - .NET SDK 10.0.201, pinned by `global.json` and the CI workflow with SDK
   roll-forward disabled.
-- SPT 4.1.4 reference assemblies from a clean installation.
+- SPT 4.1.5 reference assemblies from a clean installation.
 - WTT Client CommonLib and WTT Server CommonLib `3.0.6`, installed separately
   from the official `v3.0.6` release, including its serialization prepatcher.
 - UnityToolkit `2.0.1` rebuilt for SPT 4.1 from tag/commit
   `3c27a9798dc4396ca0b3dc765448a4221ff3007b` with the documented SPT 4.1
   build settings, references, deployment guards, and string-based lookup for
   the existing player-loop target. The unmodified pre-4.1 binary is not a
-  substitute: SPT 4.1.4 rejects its older SPT assembly reference at startup.
+  substitute: the SPT 4.1.4 and 4.1.5 prepatch validators reject its older
+  SPT assembly reference at startup.
 - Project Fika client `2.4.2` from the official `v2.4.2` release when building
   the optional Fika interop. Multiplayer validation also requires its
   compatible server component.
 
-Exact dependency assembly identities, byte lengths, and SHA-256 values are in
-`docs/port/SPT-4.1.4-PORT-LOG.md`. The initial UnityToolkit input is the existing
-SPT 4.1 rebuild retained in the later 4.1.4 solo tests and bundled in the
-v1.3.9 release. The [Toolkit build guide](tools/dependencies/unitytoolkit/README.md)
+The previous dependency assembly identities, byte lengths, and SHA-256 values
+are recorded in `docs/port/SPT-4.1.4-PORT-LOG.md`. The v1.3.10 candidate must
+verify its SPT 4.1.5 references against the package pins before release.
+UnityToolkit keeps the reviewed SPT 4.1 rebuild bundled in v1.3.9. The [Toolkit build guide](tools/dependencies/unitytoolkit/README.md)
 records its source patch, provenance, and package preparation. Players do not
 need a separate Toolkit or overlay download. Historical 4.1.2 pins remain in
-`docs/port/SPT-4.1-PORT-LOG.md`; current test coverage and its remaining limits
-are in `docs/validation/v1.3.9.md`. SPT 4.1.5 and multiplayer on the current
-SPT/Fika versions have not been tested.
+`docs/port/SPT-4.1-PORT-LOG.md`. The v1.3.9 validation record is historical;
+new candidate checks and their remaining limits are recorded in
+`docs/release-notes-v1.3.10.md`. New SPT 4.1.5 client/raid acceptance and
+multiplayer on the current SPT/Fika versions remain unverified.
 
 TSC references WTT Common Lib from the local SPT dependency install. Do not copy WTT Common Lib source or binaries into the TSC source tree or release archive.
 
@@ -34,7 +40,7 @@ TSC references WTT Common Lib from the local SPT dependency install. Do not copy
 
 Create a local `Shared.User.props` or pass MSBuild properties:
 
-- `SptDir`: path to a local SPT 4.1.4 root used for reference lookup and
+- `SptDir`: path to a local SPT 4.1.5 root used for reference lookup and
   optional post-build output. The server runtime is below `SPT_Runtime/`.
 - `SptSharedAssembliesDir`: folder containing the versioned SPT reference
   assemblies. For `SPT-4.1 Release`, `410x/hollowed.dll` is the compile-only
@@ -42,9 +48,9 @@ Create a local `Shared.User.props` or pass MSBuild properties:
   `Shared/Hollowed` project. It must match the exact EFT build and must never be
   shipped in the mod. SPT 4.1.4 changes serialized fields despite retaining
   EFT build 40743, so the old 4.1.2 reference cannot certify this update.
-  Record the exact 4.1.4 assembly identities, provenance, and SHA-256 values in
-  `docs/port/SPT-4.1.4-PORT-LOG.md`. Historical reference hashes remain in
-  `docs/port/SPT-4.1-PORT-LOG.md`.
+  Record the exact 4.1.5 assembly identities, provenance, and SHA-256 values in
+  the candidate build evidence. The 4.1.4 and earlier reference records remain
+  historical; do not assume reference equivalence from the EFT build number.
 
 Use forward slashes or quote paths carefully when paths contain spaces.
 
@@ -91,10 +97,11 @@ Interop, the Fika bootstrap, and the regression runner. The build always passes
 the supplied SPT installation. Use `-Configuration` only when intentionally
 checking another configured target.
 
-The v1.3.9 release registers the themed dashboard with SIC and
-separates native editor runtime changes from disk saves. Build, regression,
-native API, package, and installation results are recorded in external
-evidence sidecars. See `docs/release-notes-v1.3.9.md` for scope and acceptance.
+The v1.3.10 candidate retains the themed SIC dashboard and separate native
+editor runtime/disk actions introduced in v1.3.9. Build, regression, native
+API, package, and installation results must identify the new target and
+candidate revision. See `docs/release-notes-v1.3.10.md` for scope and pending
+acceptance; previous 4.1.4 results are not new 4.1.5 test results.
 
 ### SPT 4.1 client and server contracts
 
@@ -175,7 +182,7 @@ staged files and ZIP entry streams. It rejects extra files, unpinned
 dependencies, profiles, storage, logs, build artifacts, archives, and
 `.gitkeep` files.
 
-The v1.3.9 package contract retains the verified public v1.0.8 asset layout:
+The v1.3.10 package contract retains the verified public v1.0.8 asset layout:
 
 - Extract the ZIP directly into the SPT installation root.
 - The archive contains exactly `BepInEx/` and `SPT_Runtime/` at top level.
@@ -202,7 +209,7 @@ repository:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\verify-local.ps1 `
   -SptDir "C:\Path\To\SPT" `
   -SptSharedAssembliesDir "C:\Path\To\SPT Assemblies" `
-  -EvidencePath "C:\External\TSC\v1.3.9-build-evidence.json"
+  -EvidencePath "C:\External\TSC\v1.3.10-build-evidence.json"
 ```
 
 `-EvidencePath` must not already exist and must be outside the repository. Once
@@ -212,8 +219,8 @@ directory:
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\New-ReleasePackage.ps1 `
   -BaselineAssetArchive "C:\Path\To\Tylevo.TacticalServicesControl-v1.0.8-SPT4.0.13.zip" `
-  -OutputDirectory "C:\External\TSC\v1.3.9-candidate" `
-  -BuildEvidencePath "C:\External\TSC\v1.3.9-build-evidence.json" `
+  -OutputDirectory "C:\External\TSC\v1.3.10-candidate" `
+  -BuildEvidencePath "C:\External\TSC\v1.3.10-build-evidence.json" `
   -UnityToolkitDirectory "C:\External\Dependencies\UnityToolkit"
 ```
 
@@ -257,7 +264,7 @@ The baseline ZIP remains immutable: its required name is
 `C3C0390CC6641E5F82C99C3E57D8AEDA358FD0278E667E6616E53963EB2FCB8D`.
 Its two server-side bundle entries retain their historical
 `SPT/user/mods/...` source paths in the allowlist. The packager verifies those
-exact entries and stages them at the 4.1.4 `SPT_Runtime/user/mods/...`
+exact entries and stages them at the current `SPT_Runtime/user/mods/...`
 destinations. The Uplink container uses the separately pinned override, while
 the loot bundle stays byte-identical. The baseline archive and its recorded
 history are never rewritten.
@@ -271,8 +278,8 @@ separate checks recorded in `docs/port/SPT-4.1.4-PORT-LOG.md`.
 
 The four TSC DLLs come only from the fixed project build-output paths recorded in
 the manifest. All four must have the reviewed assembly name,
-`AssemblyVersion`/`FileVersion` `1.3.9.0`, and
-`AssemblyInformationalVersion` `1.3.9+<current-clean-HEAD>`. This rejects old,
+`AssemblyVersion`/`FileVersion` `1.3.10.0`, and
+`AssemblyInformationalVersion` `1.3.10+<current-clean-HEAD>`. This rejects old,
 mixed, or locally modified build outputs. The packager requires the external
 build evidence and matches its HEAD/tree, SDK, configuration, output paths,
 sizes, SHA-256 values, and assembly metadata against those four DLLs. Run the
@@ -292,8 +299,8 @@ working-tree bytes, and the clean HEAD/tree identity is checked again before
 success.
 
 For this port the generated archive name is exactly
-`Tylevo.TacticalServicesControl-v1.3.9-SPT4.1.4-TESTER.zip`. The `TESTER`
-suffix must remain until the 4.1.4 runtime acceptance gates are complete.
+`Tylevo.TacticalServicesControl-v1.3.10-SPT4.1.5-TESTER.zip`. The `TESTER`
+suffix must remain until the 4.1.5 runtime acceptance gates are complete.
 
 The command also writes a new external `*.content-evidence.json` sidecar with
 the source HEAD/tree, manifest identity, verified baseline archive, complete

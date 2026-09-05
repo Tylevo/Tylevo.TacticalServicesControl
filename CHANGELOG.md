@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.3.10 - Public Beta (unreleased)
+
+- Target SPT 4.1.5 with one matched v1.3.10 identity for the four TSC DLLs.
+  Keep the `SPT-4.1 Release` build configuration and existing package layout.
+- Retain bundled UnityToolkit 2.0.1 rebuilt against SPT 4.1, its companion
+  libraries, and license notices. WTT CommonLib 3.0.6 remains separately
+  required; Fika 2.4.2 remains an optional build reference.
+- Carry forward the themed SIC dashboard and separate native config
+  Apply/Save behavior from v1.3.9. This target update adds no gameplay changes.
+- Mark new SPT 4.1.5 client and raid acceptance as pending. Multiplayer on
+  the current SPT/Fika versions remains untested.
+
+See the [v1.3.10 candidate notes](docs/release-notes-v1.3.10.md).
+
 ## 1.3.9 - Public Beta
 
 Published September 5, 2026 for SPT 4.1.4.
