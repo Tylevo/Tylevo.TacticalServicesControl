@@ -23,13 +23,16 @@ This repository does not include proprietary EFT or SPT assemblies. Provide loca
   the optional Fika interop. Multiplayer validation also requires its
   compatible server component.
 
-The previous dependency assembly identities, byte lengths, and SHA-256 values
-are recorded in `docs/port/SPT-4.1.4-PORT-LOG.md`. The v1.3.10 candidate must
-verify its SPT 4.1.5 references against the package pins before release.
+The verified SPT 4.1.5 archive, compile-reference identities, byte lengths, and
+SHA-256 values are recorded in the [4.1.5 port log](docs/port/SPT-4.1.5-PORT-LOG.md).
+All 42 required reference files are present and the five critical pins match.
+The official 4.1.4 and 4.1.5 modules tags identify the same source commit, so
+the pinned compile-only `hollowed.dll` remains unchanged.
 UnityToolkit keeps the reviewed SPT 4.1 rebuild bundled in v1.3.9. The [Toolkit build guide](tools/dependencies/unitytoolkit/README.md)
 records its source patch, provenance, and package preparation. Players do not
-need a separate Toolkit or overlay download. Historical 4.1.2 pins remain in
-`docs/port/SPT-4.1-PORT-LOG.md`. The v1.3.9 validation record is historical;
+need a separate Toolkit or overlay download. Historical pins remain in the
+[4.1.2](docs/port/SPT-4.1-PORT-LOG.md) and
+[4.1.4](docs/port/SPT-4.1.4-PORT-LOG.md) port logs. The v1.3.9 validation record is historical;
 new candidate checks and their remaining limits are recorded in
 `docs/release-notes-v1.3.10.md`. New SPT 4.1.5 client/raid acceptance and
 multiplayer on the current SPT/Fika versions remain unverified.

@@ -35,7 +35,14 @@ client prepatch DLL confirmed that its separate startup version check still
 accepts the rebuilt Toolkit's SPT 4.1 reference and rejects the original
 SPT 4.0 reference. That inspection is not a client or raid test.
 
-New SPT 4.1.5 build, server, package, client, and raid checks are pending for
-this candidate. The [v1.3.9 validation record](validation/v1.3.9.md) remains
-historical evidence for the earlier target; its successful checks do not
-establish v1.3.10 gameplay or multiplayer compatibility.
+The candidate passed its full build against verified SPT 4.1.5 references
+with four existing warnings and no errors. All 238 regression tests passed,
+as did 26 isolated server checks covering version and health, TSC configuration,
+the themed dashboard, SIC registration, and both server bundles. See the
+[v1.3.10 validation record](validation/v1.3.10.md) and
+[4.1.5 reference log](port/SPT-4.1.5-PORT-LOG.md).
+
+Client launch, phone controls, support services in raid, and current Fika
+multiplayer remain untested on 4.1.5. Server and build checks do not establish
+gameplay compatibility. The v1.3.9 validation record remains historical evidence
+for the earlier target.

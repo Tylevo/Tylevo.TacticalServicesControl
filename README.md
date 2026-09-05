@@ -46,7 +46,7 @@ It also retains the v1.3.0 through v1.3.8 updates:
 
 Install WTT CommonLib separately, including all of its required components. Fika is optional and is also installed separately. The [dependency installation guide](docs/dependencies.md) has the package order and file locations.
 
-The [SPT 4.1.4 port log](docs/port/SPT-4.1.4-PORT-LOG.md) records the previous reference baseline. New v1.3.10 checks are tracked in the [candidate notes](docs/release-notes-v1.3.10.md); the earlier build and test results do not establish SPT 4.1.5 gameplay compatibility. Earlier SPT 4.1.2 results remain in `docs/port/SPT-4.1-PORT-LOG.md`.
+The [SPT 4.1.5 port log](docs/port/SPT-4.1.5-PORT-LOG.md) records the verified reference and dependency hashes. New v1.3.10 checks are tracked in the [candidate notes](docs/release-notes-v1.3.10.md). Earlier port logs remain historical evidence; their results do not establish SPT 4.1.5 gameplay compatibility.
 
 TSC replaces the old SamSWAT Fire Support and Arys Reloaded packages. Don't install them alongside it.
 
@@ -183,7 +183,7 @@ See `docs/dashboard.md`, `PRIVACY.md`, and `SECURITY.md`.
 
 ## Beta status and known issues
 
-The v1.3.10 candidate targets SPT 4.1.5, with new build and runtime checks pending. The previous [v1.3.9 validation notes](docs/validation/v1.3.9.md) remain historical evidence for SPT 4.1.4. Inspecting the 4.1.5 startup version check does not replace client, raid, or multiplayer testing; current progress is recorded in the [candidate notes](docs/release-notes-v1.3.10.md).
+The v1.3.10 candidate passed its full SPT 4.1.5 build, all 238 regression tests, and 26 isolated server checks covering the dashboard, SIC registration, configuration, and bundles. Client, raid, and current Fika multiplayer testing remain pending. See the [candidate validation notes](docs/validation/v1.3.10.md) for the scope and limits; the previous v1.3.9 results remain historical evidence for SPT 4.1.4.
 
 The earlier v1.3.8 release passed **216 regression tests**, a full local build with no errors, and checks on its **169-file package**. These historical checks do not confirm Fika compatibility; live multiplayer testing has not been done on the current SPT/Fika versions. Server checks confirmed Pilot's unlock, the Pilot-only Uplink listing, its price and purchase limit, the exact portrait bytes, and preserved profile and trader state. They didn't cover the Trading screen in game or a paid Uplink purchase.
 
