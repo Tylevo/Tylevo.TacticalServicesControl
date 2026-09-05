@@ -11,18 +11,22 @@ This repository does not include proprietary EFT or SPT assemblies. Provide loca
   from the official `v3.0.6` release, including its serialization prepatcher.
 - UnityToolkit `2.0.1` rebuilt for SPT 4.1 from tag/commit
   `3c27a9798dc4396ca0b3dc765448a4221ff3007b` with the documented SPT 4.1
-  configuration, reference, deploy-guard, and player-loop target adaptations.
-  The unmodified pre-4.1 binary is not a substitute.
+  build settings, references, deployment guards, and string-based lookup for
+  the existing player-loop target. The unmodified pre-4.1 binary is not a
+  substitute: SPT 4.1.4 rejects its older SPT assembly reference at startup.
 - Project Fika client `2.4.2` from the official `v2.4.2` release when building
   the optional Fika interop. Multiplayer validation also requires its
   compatible server component.
 
 Exact dependency assembly identities, byte lengths, and SHA-256 values are in
 `docs/port/SPT-4.1.4-PORT-LOG.md`. The initial UnityToolkit input is the existing
-SPT 4.1 rebuild retained in the later 4.1.4 solo tests. Use the separate
-compatibility overlay and source patch described in `docs/dependencies.md`.
-Historical 4.1.2 pins remain in `docs/port/SPT-4.1-PORT-LOG.md`; current test
-coverage and its remaining limits are in `docs/validation/v1.3.8.md`.
+SPT 4.1 rebuild retained in the later 4.1.4 solo tests and bundled in the
+v1.3.9 release. The [Toolkit build guide](tools/dependencies/unitytoolkit/README.md)
+records its source patch, provenance, and package preparation. Players do not
+need a separate Toolkit or overlay download. Historical 4.1.2 pins remain in
+`docs/port/SPT-4.1-PORT-LOG.md`; current test coverage and its remaining limits
+are in `docs/validation/v1.3.9.md`. SPT 4.1.5 and multiplayer on the current
+SPT/Fika versions have not been tested.
 
 TSC references WTT Common Lib from the local SPT dependency install. Do not copy WTT Common Lib source or binaries into the TSC source tree or release archive.
 
@@ -87,7 +91,7 @@ Interop, the Fika bootstrap, and the regression runner. The build always passes
 the supplied SPT installation. Use `-Configuration` only when intentionally
 checking another configured target.
 
-The active v1.3.9 candidate registers the themed dashboard with SIC and
+The v1.3.9 release registers the themed dashboard with SIC and
 separates native editor runtime changes from disk saves. Build, regression,
 native API, package, and installation results are recorded in external
 evidence sidecars. See `docs/release-notes-v1.3.9.md` for scope and acceptance.

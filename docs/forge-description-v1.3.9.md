@@ -1,6 +1,6 @@
-# Tylevo's Tactical Services Control v1.3.9 (unreleased candidate)
+# Tylevo's Tactical Services Control v1.3.9 Public Beta
 
-SPT 4.1.4 beta candidate. Call in A-10 strafes, UH-60 extraction and cargo
+Published September 5, 2026 for SPT 4.1.4. Call in A-10 strafes, UH-60 extraction and cargo
 transfer, or UAV reconnaissance through the TerraGroup TSC Uplink.
 
 This update adds the existing TSC dashboard to SIC's **Mod pages**. It keeps

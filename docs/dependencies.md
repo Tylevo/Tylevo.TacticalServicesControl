@@ -1,6 +1,6 @@
 # SPT 4.1.4 dependencies
 
-## v1.3.9 unreleased candidate
+## v1.3.9 public beta
 
 The v1.3.9 TSC ZIP includes UnityToolkit 2.0.1 with its plugin and prepatcher
 rebuilt against SPT 4.1, companion libraries, and license notices. No separate
@@ -12,7 +12,7 @@ required separately; Fika is optional and also installed separately.
 2. Install WTT Client CommonLib and WTT Server CommonLib 3.0.6 from the
    [official WTT v3.0.6 release](https://github.com/WelcomeToThursday/WTT-CommonLib/releases/tag/v3.0.6),
    including its serialization prepatcher.
-3. Extract the complete v1.3.9 candidate ZIP into the SPT 4.1.4 root. Merge
+3. Extract the complete v1.3.9 release ZIP into the SPT 4.1.4 root. Merge
    its `BepInEx` and `SPT_Runtime` folders with the existing folders.
 4. If Toolkit is already installed, replace its files in the standard folders
    when prompted. Keep one installation; additional copies of the same plugin
@@ -38,6 +38,12 @@ check; it does not establish a Toolkit runtime defect. The
 [source and binary provenance](../tools/dependencies/unitytoolkit/README.md)
 records the rebuild inputs, source patch, and limits of the checks performed.
 
+The [SPT 4.1.5 release](https://github.com/SP-Tushonka/build/releases/tag/4.1.5)
+fixes server validation of older Unity bundles. Its
+[client prepatch validator](https://github.com/SP-Tushonka/modules/blob/4.1.5/SPT.PrePatch/PluginValidator.cs)
+still requires matching SPT major and minor assembly-reference versions, so
+that bundle fix does not remove the Toolkit startup check.
+
 ## Optional multiplayer
 
 Solo play does not require Fika. The current build reference is Project Fika
@@ -52,7 +58,7 @@ compatibility on another version.
 ## Historical v1.3.8 installation: official Toolkit plus overlay
 
 The published v1.3.8 ZIP is unchanged and does not include UnityToolkit.
-The steps and hashes below apply to that release. For the v1.3.9 candidate,
+The steps and hashes below apply to that release. For v1.3.9,
 use the bundled installation above.
 
 1. Close the game.

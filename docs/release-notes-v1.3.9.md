@@ -1,7 +1,10 @@
 # Tylevo's Tactical Services Control v1.3.9 Public Beta
 
-Unreleased SPT 4.1.4 beta candidate. SPT 4.1.5 and Fika multiplayer on the current
-SPT/Fika versions have not been tested.
+Published September 5, 2026 for SPT 4.1.4. SPT 4.1.5 and Fika multiplayer
+on the current SPT/Fika versions have not been tested.
+
+Download the full `Tylevo.TacticalServicesControl-v1.3.9-SPT4.1.4-TESTER.zip`
+and `SHA256SUMS.txt` from the [v1.3.9 release](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases/tag/v1.3.9).
 
 UnityToolkit 2.0.1 is now included in the TSC ZIP, with its plugin and
 prepatcher rebuilt against SPT 4.1, companion libraries, and license notices.
@@ -12,7 +15,7 @@ their own licenses.
 
 Install WTT CommonLib separately, including its client, server, and
 serialization prepatcher components. Fika is optional and also installed
-separately. Extract the complete candidate ZIP into the SPT 4.1.4 root with
+separately. Extract the complete release ZIP into the SPT 4.1.4 root with
 the game and server stopped, replacing existing Toolkit files in their
 standard folders when prompted. Keep one Toolkit installation. See the
 [dependency guide](dependencies.md) for the file layout.

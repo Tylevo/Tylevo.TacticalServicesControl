@@ -9,7 +9,7 @@ License: MIT License
 Project license posture: Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0), matching the upstream Arys Reloaded source license. Arys clarified that the Forge/SPT Hub BY-NC 3.0 listing was due to historical site limitations before the Forge migration. Third-party assets keep their own notices and license terms.
 
 Bundled UnityToolkit 2.0.1:
-The v1.3.9 unreleased candidate includes UnityToolkit with its plugin and prepatcher rebuilt against SPT 4.1, companion libraries, and license notices. No separate Toolkit or compatibility-overlay download is required. On 2026-09-05, the maintainer confirmed Arys's explicit permission to bundle the rebuilt dependency with TSC.
+The v1.3.9 release includes UnityToolkit with its plugin and prepatcher rebuilt against SPT 4.1, companion libraries, and license notices. No separate Toolkit or compatibility-overlay download is required. On 2026-09-05, the maintainer confirmed Arys's explicit permission to bundle the rebuilt dependency with TSC.
 Author: Arys
 Source: https://github.com/ArysWasTaken/UnityToolkit
 Upstream release: https://github.com/ArysWasTaken/UnityToolkit/releases/tag/v2.0.1

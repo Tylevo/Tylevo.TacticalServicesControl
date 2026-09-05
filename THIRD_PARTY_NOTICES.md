@@ -20,7 +20,7 @@ Tylevo's Tactical Services Control is released under Creative Commons Attributio
 
 ## Bundled UnityToolkit 2.0.1
 
-The v1.3.9 unreleased candidate bundles UnityToolkit 2.0.1, with the plugin and prepatcher rebuilt against SPT 4.1 and the companion libraries needed by the upstream package. No separate Toolkit or compatibility-overlay download is required. On 2026-09-05, the maintainer confirmed Arys's explicit permission to bundle this rebuilt dependency with TSC.
+The v1.3.9 release bundles UnityToolkit 2.0.1, with the plugin and prepatcher rebuilt against SPT 4.1 and the companion libraries needed by the upstream package. No separate Toolkit or compatibility-overlay download is required. On 2026-09-05, the maintainer confirmed Arys's explicit permission to bundle this rebuilt dependency with TSC.
 
 - Author: Arys
 - Source: https://github.com/ArysWasTaken/UnityToolkit

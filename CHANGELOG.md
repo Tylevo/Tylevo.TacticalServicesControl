@@ -1,10 +1,12 @@
 # Changelog
 
-## 1.3.9 - Public Beta (unreleased)
+## 1.3.9 - Public Beta
+
+Published September 5, 2026 for SPT 4.1.4.
 
 - Bundle UnityToolkit 2.0.1 with its plugin and prepatcher rebuilt against
   SPT 4.1, companion libraries, and license notices. No separate Toolkit or
-  compatibility-overlay download is needed for this candidate. The maintainer
+  compatibility-overlay download is needed for this release. The maintainer
   confirmed Arys's explicit bundling permission on 2026-09-05.
 - Keep WTT CommonLib separately required and Fika optional. SPT 4.1.5 and
   multiplayer on the current SPT/Fika versions remain untested.

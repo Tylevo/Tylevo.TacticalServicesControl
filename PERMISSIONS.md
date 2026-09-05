@@ -1,6 +1,6 @@
 # Permissions
 
-Permission status: **confirmed by the maintainer**. The existing Fire Support grants remain in place; the v1.3.9 unreleased candidate also includes the UnityToolkit bundling permission recorded below.
+Permission status: **confirmed by the maintainer**. The existing Fire Support grants remain in place; the v1.3.9 release also includes the UnityToolkit bundling permission recorded below.
 
 This file is the public release record for upstream permission and third-party attribution. Keep the private permission evidence archived outside the release package unless the grantor explicitly approves publishing the conversation.
 
@@ -32,7 +32,7 @@ Before each public release, keep a dated private copy of the permission evidence
 
 ## UnityToolkit Bundling Permission (2026-09-05)
 
-On September 5, 2026, the maintainer confirmed that Arys explicitly approved bundling the rebuilt UnityToolkit with TSC. The v1.3.9 unreleased candidate includes UnityToolkit 2.0.1 with its plugin and prepatcher rebuilt against SPT 4.1, so users do not need a separate Toolkit or compatibility-overlay download.
+On September 5, 2026, the maintainer confirmed that Arys explicitly approved bundling the rebuilt UnityToolkit with TSC. The v1.3.9 release includes UnityToolkit 2.0.1 with its plugin and prepatcher rebuilt against SPT 4.1, so users do not need a separate Toolkit or compatibility-overlay download.
 
 UnityToolkit remains licensed under MIT, copyright (c) 2025 Arys. The full upstream license is included in `THIRD_PARTY_NOTICES.md` and the packaged notices. Companion libraries retain their own licenses and notices; the Toolkit permission does not change those terms. WTT CommonLib remains a separate requirement, and optional Fika is not bundled.
 

@@ -12,7 +12,7 @@ Last updated: 2026-07-27
 > archive names, `SPT/user/mods` paths, or commands below to the 4.1.4 tester.
 > The remaining historical details are intentionally retained unchanged.
 
-**2026-09-05 packaging addendum for the v1.3.9 unreleased candidate:** Arys
+**2026-09-05 packaging addendum for the v1.3.9 release:** Arys
 approved bundling UnityToolkit 2.0.1 rebuilt against SPT 4.1, as confirmed
 by the maintainer. The reviewed, pinned Toolkit plugin, prepatcher, companion
 files, and required notices are now an explicit exception to the dependency
