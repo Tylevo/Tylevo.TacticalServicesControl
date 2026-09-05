@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.3.5 - Public Beta (unreleased)
+
+Tactical icon pack refresh for SPT 4.1.4.
+
+- Replace the store and native phone icon assets with the supplied 512-pixel
+  artwork, preserving its ivory, amber, and olive colors and dark rounded tiles.
+- Use the pickup helicopter for extraction and the helicopter carrying a crate
+  for Cargo Transfer, including the UH-60 Pilot mail avatar.
+- Keep the same artwork in normal and selected icon slots; selection remains
+  visible through the existing UI borders, text, and controls.
+- Refresh the matching status and supporting icons. Runtime code, phone
+  animations, controls, payment behavior, and A-10 targeting are unchanged.
+
+Build, asset, package, and installation results are recorded in the candidate's
+external evidence sidecars. See `docs/release-notes-v1.3.5.md`.
+
 ## 1.3.4 - Public Beta (unreleased)
 
 Pre-raid TSC Uplink storefront redesign for SPT 4.1.4.

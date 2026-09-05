@@ -86,11 +86,11 @@ Interop, the Fika bootstrap, and the regression runner. The build always passes
 the supplied SPT installation. Use `-Configuration` only when intentionally
 checking another configured target.
 
-The active v1.3.4 candidate redesigns the pre-raid Uplink storefront, retaining
-the native phone UI, Alt selection, eased zoom, and ballistic corrections.
-Build, regression, and package results are recorded in the candidate's
-external evidence sidecars; live storefront acceptance remains separate. See
-`docs/release-notes-v1.3.4.md` for controls and acceptance scope.
+The active v1.3.5 candidate refreshes the store and phone icon assets with
+the supplied tactical artwork. Runtime code and layouts are unchanged.
+Build, asset, and package results are recorded in the candidate's external
+evidence sidecars; in-game appearance remains a separate check. See
+`docs/release-notes-v1.3.5.md` for scope and acceptance.
 
 ### SPT 4.1 client and server contracts
 
@@ -165,7 +165,7 @@ named asset bundles. It asserts the exact archive-root set and rejects
 proprietary dependencies, profiles, storage, logs, build artifacts, archives,
 and `.gitkeep` files from the package.
 
-The v1.3.4 package contract follows the verified public v1.0.8 artifact:
+The v1.3.5 package contract follows the verified public v1.0.8 artifact:
 
 - Extract the ZIP directly into the SPT installation root.
 - The archive contains exactly `BepInEx/` and `SPT_Runtime/` at top level.
@@ -188,7 +188,7 @@ repository:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\verify-local.ps1 `
   -SptDir "C:\Path\To\SPT" `
   -SptSharedAssembliesDir "C:\Path\To\SPT Assemblies" `
-  -EvidencePath "C:\External\TSC\v1.3.4-build-evidence.json"
+  -EvidencePath "C:\External\TSC\v1.3.5-build-evidence.json"
 ```
 
 `-EvidencePath` must not already exist and must be outside the repository. Once
@@ -198,8 +198,8 @@ directory:
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\New-ReleasePackage.ps1 `
   -BaselineAssetArchive "C:\Path\To\Tylevo.TacticalServicesControl-v1.0.8-SPT4.0.13.zip" `
-  -OutputDirectory "C:\External\TSC\v1.3.4-candidate" `
-  -BuildEvidencePath "C:\External\TSC\v1.3.4-build-evidence.json"
+  -OutputDirectory "C:\External\TSC\v1.3.5-candidate" `
+  -BuildEvidencePath "C:\External\TSC\v1.3.5-build-evidence.json"
 ```
 
 The baseline archive is an explicit input for the eight historical Unity
@@ -231,8 +231,8 @@ separate checks recorded in `docs/port/SPT-4.1.4-PORT-LOG.md`.
 
 The four DLLs come only from the fixed project build-output paths recorded in
 the manifest. All four must have the reviewed assembly name,
-`AssemblyVersion`/`FileVersion` `1.3.4.0`, and
-`AssemblyInformationalVersion` `1.3.4+<current-clean-HEAD>`. This rejects old,
+`AssemblyVersion`/`FileVersion` `1.3.5.0`, and
+`AssemblyInformationalVersion` `1.3.5+<current-clean-HEAD>`. This rejects old,
 mixed, or locally modified build outputs. The packager requires the external
 build evidence and matches its HEAD/tree, SDK, configuration, output paths,
 sizes, SHA-256 values, and assembly metadata against those four DLLs. Run the
@@ -252,7 +252,7 @@ working-tree bytes, and the clean HEAD/tree identity is checked again before
 success.
 
 For this port the generated archive name is exactly
-`Tylevo.TacticalServicesControl-v1.3.4-SPT4.1.4-TESTER.zip`. The `TESTER`
+`Tylevo.TacticalServicesControl-v1.3.5-SPT4.1.4-TESTER.zip`. The `TESTER`
 suffix must remain until the 4.1.4 runtime acceptance gates are complete.
 
 The command also writes a new external `*.content-evidence.json` sidecar with
