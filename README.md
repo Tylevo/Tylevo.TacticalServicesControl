@@ -1,13 +1,13 @@
 # Tylevo's Tactical Services Control
 
-Call in an A-10 strafe, arrange a helicopter pickup, or check for nearby contacts from a TerraGroup TSC Uplink phone. TSC is a BepInEx mod for SPT, with optional Fika support, built on SamSWAT's Fire Support and Arys Reloaded.
+Call in an A-10 strafe, arrange a helicopter pickup, or check for nearby contacts from a TerraGroup TSC Uplink phone. TSC is a BepInEx mod for SPT, built on SamSWAT's Fire Support and Arys Reloaded.
 
 > **v1.3.8 public beta · SPT 4.1.4 / EFT 0.16.9.5.40743**
 >
 > Download `Tylevo.TacticalServicesControl-v1.3.8-SPT4.1.4-TESTER.zip` from the [v1.3.8 release](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases/tag/v1.3.8).
-> Multiplayer testing is still in progress. The [release notes](docs/release-notes-v1.3.8.md) cover the changes and what has been checked so far.
+> **Fika multiplayer has not been tested on the current SPT/Fika versions.** Compatibility is unverified for this SPT 4.1.4 release. The [release notes](docs/release-notes-v1.3.8.md) cover the changes and checks completed so far.
 
-Buy support authorizations before a raid or from the phone during one, then deploy them when you need them. The Uplink handles service selection and camera-based targeting; you don't need the rangefinder or YY gesture wheel.
+Press `U` in raid to open the Uplink. Hold `Left Alt` to browse and left-click to select; release Alt to look around again. For keyboard navigation, tap `LMB` on the home screen, then press `1`, `2`, or `3` for UH-60 Services, Fire Support, or UAV Recon. Within a category, use `1` for the standard service or `2` for its alternate. Review your choice, then hold Alt and click confirm, or press `Enter`. Press `K` to open deployment for services you own.
 
 Available services:
 
@@ -17,8 +17,6 @@ Available services:
 - UH-60 Cargo Transfer
 - UAV Recon
 - Focused Sweep
-
-TSC works on its own. If you also use Tylevo Seasonal Modifiers, it can schedule ambient A-10 passes as environmental events through TSC's Danger Close API. The host controls those passes. The [integration guide](docs/seasonal-modifiers-integration.md) explains API v3, warnings, dispatch, and the dedicated Uplink special slot.
 
 This is a derivative of SamSWAT's original Fire Support and SamSWAT's Fire Support - Arys Reloaded by Arys. Upstream permission to redistribute the work is recorded in `PERMISSIONS.md`. Full credits are in `THIRD_PARTY_NOTICES.md` and `docs/credits.md`.
 
@@ -32,14 +30,13 @@ The v1.3.8 package includes the updates from v1.3.0 through v1.3.8:
 - The pre-raid store matches the phone's style, with six service cards, a detail panel, and a separate purchase confirmation dialog. The new icons have no pale outer frames; selected cards still have an outline.
 - **TSC UPLINK** is on the main menu's bottom bar, immediately left of **Character**. It uses the game's existing footer layout and no longer adds a row to the center menu.
 - **UH-60 Pilot** sells the physical Uplink for **₽50,000** at loyalty level 1, up to five per restock. The server unlocks existing locked Pilot entries at startup. His new portrait also appears on cargo mail.
-- Seasonal Modifiers can use the dedicated Uplink special slot, host-issued A-10 warnings, and Danger Close API. It remains optional.
 
 ## Requirements
 
 - [SPT 4.1.4](https://github.com/sp-tushonka/build/releases/tag/4.1.4).
 - [UnityToolkit 2.0.1 with the SPT 4.1 compatibility overlay](docs/dependencies.md). Install the official upstream package first, then `UnityToolkit-v2.0.1-SPT4.1-compat-overlay.zip` from the [v1.3.8 release](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases/tag/v1.3.8). The overlay updates the plugin and prepatcher. The upstream binaries alone won't work with this version of SPT.
 - [WTT CommonLib 3.0.6](https://github.com/WelcomeToThursday/WTT-CommonLib/releases/tag/v3.0.6), including its client, server, and serialization prepatcher components.
-- For multiplayer, [Project Fika client 2.4.2](https://github.com/project-fika/Fika-Plugin/releases/tag/v2.4.2) and its compatible server component. You don't need Fika for solo play; TSC detects it at runtime.
+- For experimental multiplayer testing, [Project Fika client 2.4.2](https://github.com/project-fika/Fika-Plugin/releases/tag/v2.4.2) and its corresponding server component. This version is a build reference only; multiplayer compatibility hasn't been tested with this SPT release. You don't need Fika for solo play; TSC detects it at runtime.
 
 Install dependencies separately; they aren't included in the TSC ZIP. The [dependency installation guide](docs/dependencies.md) has the package order and file locations.
 
@@ -80,7 +77,7 @@ Buy the **TerraGroup TSC Uplink** from **UH-60 Pilot** in Trading for **₽50,00
 
 ### Pre-raid store
 
-Open **TSC UPLINK** on the main menu's bottom bar, immediately left of **Character**. The shortcut only appears on the main menu. If the Seasonal Modifiers client is loaded, this shortcut is hidden; buy services through the in-raid Uplink instead.
+Open **TSC UPLINK** on the main menu's bottom bar, immediately left of **Character**. The shortcut only appears on the main menu.
 
 1. Wait for your stash balance and purchased authorizations to load.
 2. Select a service card to see its artwork, description, price, availability, and how many authorizations you own.
@@ -120,7 +117,7 @@ The authorization pays for dispatch. EFT charges a separate item-handling fee wh
 
 The helicopter leaves as soon as EFT confirms the paid items reached its saved delivery grid. If you cancel or payment fails, you can try again during the remaining landed time. Cargo arrives after the raid through **UH-60 Pilot** mail. The **BTR Driver** contact stays unchanged; if TSC can't route an accepted delivery through Pilot safely, it falls back to BTR delivery so the items aren't discarded.
 
-Cargo Transfer currently works for solo players and a human Fika host requesting their own transfer. Other Fika clients and dedicated-headless requesters can't use it yet. See the Fika section below for details.
+Cargo Transfer is enabled for solo players and a human Fika host requesting their own transfer, but the Fika path hasn't been tested on this release. Other Fika clients and dedicated-headless requesters can't use it yet. See the Fika section below for details.
 
 ## Controls and phone settings
 
@@ -132,7 +129,9 @@ Optional purchase-screen zoom starts after a 0.08-second delay and eases the cam
 
 ## Fika installation
 
-Install the same TSC version on the host, any headless host, and every client. While you're connected, the host's settings take precedence over your local configuration. Dashboard changes on the host sync to clients, and disconnecting clears those overrides. TSC also syncs support requests between Fika players.
+Fika integration is included, but it hasn't been tested on the current SPT/Fika versions. The Fika 2.4.2 reference used to build this release does not establish multiplayer compatibility with SPT 4.1.4. Treat the setup below as instructions for testing.
+
+Install the same TSC version on the host, any headless host, and every client. The integration is designed to use the host's settings while connected, sync host dashboard changes and support requests to clients, and clear the settings overrides on disconnect. Those behaviors still need checking in game on this release.
 
 Cargo Transfer is limited to solo players and the requesting human host because its item-based handling fee still needs a way for the host to verify and synchronize prices for other requesters. On supported requesters, `Stash` fee mode requires the matching TSC server endpoint. With an older server, the transfer is blocked without moving cargo or charging carried cash.
 
@@ -170,16 +169,16 @@ See `docs/dashboard.md`, `PRIVACY.md`, and `SECURITY.md`.
 
 ## Beta status and known issues
 
-Version 1.3.8 passed **216 regression tests**, a full local build with no errors, and checks on the **169-file package**. Server checks confirmed Pilot's unlock, the Pilot-only Uplink listing, its price and purchase limit, the exact portrait bytes, and preserved profile and trader state. They didn't cover the Trading screen in game or a paid Uplink purchase.
+Version 1.3.8 passed **216 regression tests**, a full local build with no errors, and checks on the **169-file package**. These checks do not confirm Fika compatibility; live multiplayer testing has not been done on the current SPT/Fika versions. Server checks confirmed Pilot's unlock, the Pilot-only Uplink listing, its price and purchase limit, the exact portrait bytes, and preserved profile and trader state. They didn't cover the Trading screen in game or a paid Uplink purchase.
 
-The phone interface and Alt controls received positive feedback from in-raid use. Layout harnesses and automated checks cover the store and bottom-bar integration, but testing across resolutions, animations, combat, and multiplayer is still in progress. The [release notes](docs/release-notes-v1.3.8.md) track what remains.
+The phone interface and Alt controls received positive feedback from in-raid use. Layout harnesses and automated checks cover the store and bottom-bar integration. More testing across resolutions, animations, and combat is needed, and Fika testing has not started on the current versions. The [release notes](docs/release-notes-v1.3.8.md) track what remains.
 
-- A-10 aim compensation has been tested against EFT's trajectory model. Actual impacts, collisions, and replay effects still need broader solo and Fika testing.
+- A-10 aim compensation has been tested against EFT's trajectory model. Actual impacts, collisions, and replay effects still need broader solo testing and live Fika testing.
 - Pilot's appearance in Trading and a paid Uplink purchase still need checking in game.
 - The phone's inventory inspect model may need more polish.
 - Mortar/artillery support and remote third-person phone animation sync are planned but aren't included.
 - A-10 damage on dedicated-headless Fika hosts is experimental and must be enabled separately from the original solo and human-host path.
-- The new payment and request flow still needs a full round of live tests with human hosts, Fika clients, and dedicated-headless hosts.
+- The payment and request flow has not been tested in live sessions with human Fika hosts, Fika clients, or dedicated-headless hosts on the current SPT/Fika versions.
 - If both paths for confirming an accepted request fail and cancellation also times out, a service that already ran can still be refunded, making it free.
 - Payment commit and refund retries are kept in memory. A client crash, permanent logout, or backend outage lasting beyond the pending transaction's expiry can refund a service that was already delivered.
 
