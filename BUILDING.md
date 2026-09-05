@@ -19,9 +19,10 @@ This repository does not include proprietary EFT or SPT assemblies. Provide loca
 
 Exact dependency assembly identities, byte lengths, and SHA-256 values are in
 `docs/port/SPT-4.1.4-PORT-LOG.md`. The initial UnityToolkit input is the existing
-SPT 4.1.2 rebuild; its 4.1.4 compatibility still needs validation. Historical
-4.1.2 pins and results remain in `docs/port/SPT-4.1-PORT-LOG.md`; fresh 4.1.4
-compile and runtime evidence is required.
+SPT 4.1 rebuild retained in the later 4.1.4 solo tests. Use the separate
+compatibility overlay and source patch described in `docs/dependencies.md`.
+Historical 4.1.2 pins remain in `docs/port/SPT-4.1-PORT-LOG.md`; current test
+coverage and its remaining limits are in `docs/validation/v1.3.8.md`.
 
 TSC references WTT Common Lib from the local SPT dependency install. Do not copy WTT Common Lib source or binaries into the TSC source tree or release archive.
 
@@ -243,7 +244,7 @@ binaries and evidence identify that exact candidate revision.
 The output directory must be outside the entire repository and must be new or
 completely empty. The command creates a fresh `stage/`, validates it, creates a
 new archive without updating any prior ZIP, validates the ZIP directly,
-extracts it into a fresh `verify-extracted/`, and independently hashes all 168
+extracts it into a fresh `verify-extracted/`, and independently hashes all 169
 files to require exact path/size/SHA-256 equality with the stage.
 The repository root, manifest, checker, and build-output mappings are fixed by
 the tracked packaging script; release inputs must be tracked, clean, and equal
@@ -258,7 +259,7 @@ suffix must remain until the 4.1.4 runtime acceptance gates are complete.
 
 The command also writes a new external `*.content-evidence.json` sidecar with
 the source HEAD/tree, manifest identity, verified baseline archive, complete
-168-file content inventory, DLL identities and versions, bundle pins, archive
+169-file content inventory, DLL identities and versions, bundle pins, archive
 identity, and exact file/DLL/bundle counts. The sidecar is not included in the
 installer ZIP and is never overwritten.
 

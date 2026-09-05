@@ -2,12 +2,12 @@
 
 A BepInEx mod that reworks SamSWAT's Fire Support / Arys Reloaded into a TerraGroup-style tactical support system for SPT and Fika.
 
-> **SPT 4.1.4 Pilot trader tester:** v1.3.8 targets SPT 4.1.4 / EFT
-> 0.16.9.5.40743. The expected test artifact is
-> `Tylevo.TacticalServicesControl-v1.3.8-SPT4.1.4-TESTER.zip`.
-> Buy the physical TSC Uplink from the unlocked UH-60 Pilot trader for
-> ₽50,000. Pilot uses the supplied portrait and remains your cargo contact.
-> See `docs/release-notes-v1.3.8.md` for this candidate's scope.
+> **v1.3.8 public beta · SPT 4.1.4 / EFT 0.16.9.5.40743**
+>
+> Download the packaged mod from the [v1.3.8 release](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases/tag/v1.3.8).
+> Use `Tylevo.TacticalServicesControl-v1.3.8-SPT4.1.4-TESTER.zip`.
+> This is a preview release; the full multiplayer acceptance matrix remains open.
+> See the [v1.3.8 release notes](docs/release-notes-v1.3.8.md) for the cumulative update and verification status.
 
 This mod adds a **TerraGroup TSC Uplink** phone that lets you buy support authorizations in raid, then deploy them later from the same device. The phone handles service selection and camera-based target designation, so the rangefinder and YY gesture wheel are no longer required for the primary workflow.
 
@@ -28,38 +28,84 @@ for the API v3 dispatch, warning, and Uplink-slot semantics.
 
 This project is derivative of SamSWAT's original Fire Support and SamSWAT's Fire Support - Arys Reloaded by Arys. Public redistribution is prepared with upstream permission recorded in `PERMISSIONS.md`, with full credit retained in `THIRD_PARTY_NOTICES.md` and `docs/credits.md`.
 
+## What's New for SPT 4.1.4
+
+The v1.3.8 package includes every update from v1.3.0 through v1.3.8:
+
+- **Corrected A-10 aim:** each round uses EFT's native gravity and drag model from the moving gun position. Surface and cover checks follow the curved trajectory, and replay effects account for travel time. This corrects the uncompensated aim that could put rounds short of the marker; live impact accuracy remains part of beta testing.
+- **Native phone interface:** service cards, descriptions, prices, balances, availability, and recon parameters use live text and panels. Hold **Left Alt** to browse with the phone cursor, then review and confirm. Keyboard controls remain available.
+- **Smoother phone zoom:** authorization screens ease their FOV and hand framing into place, with configurable incoming and outgoing timing. Deploy and radar views preserve your raid FOV.
+- **Redesigned pre-raid store and icons:** six selectable service cards, a detail panel, and a separate purchase confirmation share the phone's visual style. The service artwork has no pale perimeter frames; card selection outlines remain.
+- **Native bottom navigation:** **TSC UPLINK** sits immediately left of **Character** on the main-menu footer. It no longer adds a center-menu row.
+- **UH-60 Pilot shop:** buy the physical Uplink from Pilot for **₽50,000**, at loyalty level 1, with a limit of five per restock. Existing locked Pilot entries unlock at server startup. His new portrait also appears on cargo mail.
+- **Optional Danger Close integration:** a dedicated Uplink special slot, host-authored A-10 warnings, and the versioned API support Seasonal Modifiers while preserving standalone TSC use.
+
 ## Requirements
 
-- SPT 4.1.4.
-- The SPT 4.1 rebuild of UnityToolkit 2.0.1 pinned in the port log. The old
-  unmodified v2.0.1/4.0 binary is not a valid substitute.
-- WTT Client CommonLib and WTT Server CommonLib 3.0.6, installed separately
-  as required dependencies, including its serialization prepatcher.
-- Project Fika client 2.4.2 with its compatible server line, optional and
+- [SPT 4.1.4](https://github.com/sp-tushonka/build/releases/tag/4.1.4).
+- [UnityToolkit 2.0.1 with the SPT 4.1 compatibility overlay](docs/dependencies.md).
+  Install the official upstream package first, then
+  `UnityToolkit-v2.0.1-SPT4.1-compat-overlay.zip` from the
+  [v1.3.8 release](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases/tag/v1.3.8).
+  The overlay updates the plugin and prepatcher; the unmodified upstream
+  binaries alone are not compatible with this target.
+- [WTT CommonLib 3.0.6](https://github.com/WelcomeToThursday/WTT-CommonLib/releases/tag/v3.0.6),
+  including the client, server, and serialization prepatcher components.
+- [Project Fika client 2.4.2](https://github.com/project-fika/Fika-Plugin/releases/tag/v2.4.2)
+  with its compatible server component, optional and
   required only for multiplayer/Fika use. Single-player installs do not need
   Fika; TSC detects it at runtime.
 
-The exact dependency commits, assembly versions, and SHA-256 values used for a
-tester are recorded in `docs/port/SPT-4.1.4-PORT-LOG.md`. Use those exact pins
+The exact dependency commits, assembly versions, and SHA-256 values used for this
+beta are recorded in [the port log](docs/port/SPT-4.1.4-PORT-LOG.md). Use those exact pins
 for acceptance testing; compiler compatibility with a different dependency
 build is not runtime evidence. Historical SPT 4.1.2 results remain in
 `docs/port/SPT-4.1-PORT-LOG.md`.
 
-TSC does not bundle WTT Common Lib. The client and server projects reference the installed WTT dependency DLLs at runtime/build time, so WTT should be listed as a dependency on Forge rather than redistributed inside the TSC package.
+Dependencies are installed separately and are not included in the TSC ZIP.
+Follow the [dependency installation guide](docs/dependencies.md) for the
+required package order and file locations.
 
 Do not install the old SamSWAT Fire Support or Arys Reloaded mod alongside TSC. TSC is a derivative replacement package.
 
 ## Installation
 
-1. Back up your profiles before testing the public beta.
-2. Install the required dependencies listed above.
-3. Extract the release ZIP directly into your SPT root.
+1. Back up your profiles. When updating TSC, also back up its `config/` and complete `storage/` directories.
+2. Close EFT, the launcher, the SPT server, and any Fika/headless processes before replacing files.
+3. Install the required dependencies, then extract the **full release ZIP** directly into your SPT 4.1.4 root. GitHub's automatically generated source archives are not installable mod packages.
 4. Confirm these folders exist after extraction:
    - `BepInEx/plugins/Tylevo.TacticalServicesControl/`
    - `SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/`
-5. Start SPT normally.
+5. Start the SPT server, then the launcher and game. Restarting both server and game loads the updated trader, portrait, and cached UI icons.
 
-Do not place the ZIP contents inside an extra nested folder.
+Do not place the ZIP contents inside an extra nested folder. Install all four
+TSC DLLs and the accompanying assets together. Fika peers must use the same TSC
+package. Do not leave another copy of an older TSC client/server DLL in a
+different mod folder.
+
+### Updating an Existing Installation
+
+The ZIP excludes mutable configuration, storage, admin tokens, and profiles.
+An overlay update within the current folders preserves those files. In
+particular, keep the complete `storage/` directory: it contains purchased
+authorizations and transaction/delivery recovery data. Existing configuration
+and ledger formats migrate when the server starts. Restore a matching backup
+of both mod files and state when reverting an upgrade.
+
+Older SPT layouts used `SPT/user/mods/Tylevo.TacticalServicesControl/`.
+SPT 4.1.4 loads this mod from `SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/`.
+If your TSC state still lives in the old folder, preserve a backup and copy
+its `config/` and complete `storage/` directories into the new TSC server
+folder while the server is stopped. Do this before the first launch, and
+keep the new release's DLLs, database, bundles, web files, and artwork. If
+both locations already contain state, choose the intended matching backup
+instead of merging two ledgers. TSC does not search the old server folder
+for configuration or storage automatically.
+
+This transfers TSC's own state only. Follow SPT's version-specific guidance
+for moving player profiles between installations; TSC does not perform that
+profile transfer. If starting with fresh profiles, let the new installation
+create fresh TSC state.
 
 ## How To Use
 
@@ -86,15 +132,15 @@ Pre-raid purchases require persistent authorizations and a server-backed stash p
 
 1. Bring the **TerraGroup TSC Uplink** into raid.
 2. Press `U` to open the Uplink in purchase mode.
-3. Hold `Left Alt` to move a cursor on the phone and click a category or service. Release Alt to restore camera look. Keyboard shortcuts also work: `1`, `2`, or `3` opens UH-60 Services, Fire Support, or UAV Recon; inside a category, `1` chooses the standard service and `2` its alternate when available.
-4. Review the selected service, then use the confirmation control or press `Enter` to start the existing portrait hand swipe and pay with the configured currency and wallet source. `RMB` returns to the previous screen and `Escape` closes the phone.
+3. Hold `Left Alt` to move the phone cursor, open **Tactical Services**, and choose a category and service. Release Alt to restore camera look. For keyboard navigation, tap `LMB` on the home screen to open Tactical Services, then press `1`, `2`, or `3` for UH-60 Services, Fire Support, or UAV Recon. Within a category, `1` chooses the standard service and `2` its alternate, opening its review.
+4. Review the selected service, then click the confirmation control while holding Alt or press `Enter` to start the portrait hand-swipe sequence and pay with the configured currency and wallet source. The swipe animation runs automatically; no manual drag is required. `RMB` returns to the previous screen and `Escape` closes the phone. Cancelling after a payment has committed does not undo the purchase.
 5. When you are ready to use an authorization, press `K` to open the Uplink in deployment mode. Only services you currently own are listed.
 6. Hold `Left Alt` to select a service with the phone cursor and click the deploy control. Alternatively, press `1`-`6` to select, then `LMB` or `Enter` to deploy. `RMB`, `Backspace`, or `Escape` stows the phone without spending the authorization.
 7. A-10 and UH-60 services use camera-based target designation. Confirm each targeting step with `Mouse 2` (middle mouse) or `Enter`; cancel with `Alt + RMB` or `Backspace`.
 8. UAV Recon and Focused Sweep begin directly after deployment. The default `Phone` display mode uses `J`: hold it to raise the Uplink and view the live radar, then release it to return to your weapon. Walking and sprint keys do not lower it while the radar key remains held, and the recon timer keeps running while the phone is stowed. The optional `HUD` display mode keeps only the square live scanner visible in a selected screen corner for the active recon session.
 9. UH-60 Cargo Transfer lands at the marked loading zone and provides **SEND ITEMS VIA UH-60**. It never extracts your PMC. The authorization pays for dispatch; EFT calculates a separate RUB-only item-handling fee when cargo is submitted. In `F12`, **Transfer fee source** defaults to `Carried`, preserving EFT's native carried-RUB payment, or can use `Stash` to debit the authenticated PMC stash through the TSC server. This fee is independent of TSC's configured authorization currency. Once EFT confirms the paid items reached its persistent delivery grid, the helicopter departs immediately; cancelling or failing payment leaves the remaining landed window available for retry. Successfully marked cargo returns through post-raid mail from **UH-60 Pilot** without replacing the native **BTR Driver** contact; if TSC routing cannot be completed safely, the accepted native cargo falls back to BTR delivery instead of being discarded.
 
-The `U`, `K`, `J`, and spotter-confirm controls are configurable in the BepInEx configuration manager opened with `F12`. `UAV Radar Display` also provides the `Phone`/`HUD` choice and four HUD positions, while `Helicopter Cargo` provides the `Carried`/`Stash` handling-fee source. Phone framing and optional authorization-screen zoom are available there as well; the `K` deploy view and held `J` radar preserve the current raid FOV and reveal directly in the upright presentation after EFT finishes the concealed equip transaction.
+The `U`, `K`, `J`, and spotter-confirm controls are configurable in the BepInEx configuration manager opened with `F12`. `UAV Radar Display` also provides the `Phone`/`HUD` choice and four HUD positions, while `Helicopter Cargo` provides the `Carried`/`Stash` handling-fee source. Phone framing and optional authorization-screen zoom are available there as well; the `K` deploy view and held `J` radar preserve the current raid FOV and open upright.
 
 When authorization-screen zoom is enabled, it begins after a 0.08-second
 lead-in and eases the camera FOV and hand framing over 0.75 seconds by default.
@@ -181,16 +227,22 @@ Remote dashboard access is disabled by default. If you enable remote access, kee
 
 See `docs/dashboard.md`, `PRIVACY.md`, and `SECURITY.md`.
 
-## Known Issues
+## Beta Status and Known Issues
 
-- v1.3.4 build, layout, package, and regression results are recorded in the
-  candidate's external evidence sidecars. The v1.3.3 phone interface and Alt
-  controls received positive in-raid user feedback; storefront acceptance
-  and the broader multiplayer checks remain separate.
-  Check `docs/release-notes-v1.3.4.md` for this interface update.
-- The existing Uplink bundle repair and input/menu hardening are retained.
-  The repaired equip/stow animation, targeting controls, and menu spacing
-  still require a fresh SPT 4.1.4 client run.
+The v1.3.8 implementation passed **216 regression tests**, a full local build
+with no errors, and verification of the **169-file package**. Installed-server
+checks confirmed Pilot's unlock, Pilot-only Uplink stock, unchanged price and
+purchase limit, exact portrait bytes, and preserved profile/trader state.
+Those checks did not submit a paid Uplink purchase or inspect its in-game UI.
+
+The native phone and Alt controls received positive in-raid user feedback.
+Layout harnesses and automated checks also cover the store and footer
+integration, but they do not establish every resolution, animation, combat,
+or multiplayer behavior. See the [release notes](docs/release-notes-v1.3.8.md)
+for the remaining acceptance work.
+
+- A-10 ballistic compensation is implemented and tested against the native trajectory model; real collision accuracy and replay still need the broader solo/Fika acceptance matrix.
+- Pilot's final Trading appearance and a paid Uplink purchase need an in-game acceptance check.
 - Phone inventory inspect model may still need polish.
 - Mortar/artillery support is planned but not included.
 - Dedicated-headless Fika A-10 damage is experimental and remains separately gated from the original single-player/human-host path.
@@ -201,8 +253,8 @@ See `docs/dashboard.md`, `PRIVACY.md`, and `SECURITY.md`.
 - Public beta: back up profiles before testing payment modes.
 
 Stash payment and non-host A-10 tracer visibility are implemented, but the
-current automated suite does not exercise either path end to end. Keep both in
-the live multiplayer acceptance matrix before public upload.
+automated suite does not exercise either path end to end. Both remain in the
+live multiplayer acceptance matrix for this beta.
 
 ## Credits
 

@@ -1,6 +1,10 @@
 # Changelog
 
-## 1.3.8 - Public Beta (unreleased)
+## 1.3.8 - Public Beta
+
+Published September 5, 2026 for SPT 4.1.4. This release includes the preceding
+1.3.0–1.3.7 development updates listed below; see the cumulative
+[release notes](docs/release-notes-v1.3.8.md) for the full upgrade overview.
 
 - Move the physical TSC Uplink offer from Jaeger to UH-60 Pilot, preserving
   its ₽50,000 price, loyalty level 1 requirement, and five-per-restock limit.

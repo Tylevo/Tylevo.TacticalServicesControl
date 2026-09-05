@@ -1,6 +1,6 @@
 # TSC Uplink special slot
 
-TSC adds a data-driven `SpecialSlot4` to both SPT 4.1.2 player pockets
+TSC adds a data-driven `SpecialSlot4` to both supported SPT 4.1 player pockets
 templates (standard and The Unheard Edition). The slot accepts only the
 TerraGroup TSC Uplink. The Uplink is removed from the filters for
 `SpecialSlot1` through `SpecialSlot3` on those templates.
@@ -19,7 +19,8 @@ Uplinks make the move ambiguous, TSC leaves every item in place and logs a
 warning. A failed profile save rolls the in-memory move back to its original
 slot.
 
-No lost-on-death configuration is changed. SPT 4.1.2 classifies slot IDs that
+No lost-on-death configuration is changed. The original SPT 4.1.2 port verified
+that SPT classifies slot IDs that
 contain `SpecialSlot` under `specialSlotItems`; with the stock
 `specialSlotItems: false` setting, an Uplink in `SpecialSlot4` is retained on
 death just like items in the three stock special slots.

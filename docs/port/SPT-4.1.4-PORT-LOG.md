@@ -1,5 +1,10 @@
 # SPT 4.1.4 Compatibility Log
 
+> This log preserves the initial v1.3.0 port audit and dependency provenance.
+> Current release behavior and validation are recorded in
+> [v1.3.8 release notes](../release-notes-v1.3.8.md) and
+> [v1.3.8 validation](../validation/v1.3.8.md).
+
 ## Candidate and scope
 
 - TSC version: `1.3.0` (unchanged).

@@ -1,5 +1,9 @@
 # Known Issues
 
+Current release: **TSC 1.3.8 for SPT 4.1.4**. The release remains a beta/tester
+build. See [current validation](validation/v1.3.8.md) for the automated,
+server, and user-reported gameplay evidence and its limits.
+
 - Phone inventory inspect model may still need polish.
 - Mortar/artillery support is planned but not included.
 - Dedicated-headless Fika A-10 damage remains experimental and separately gated from the original single-player/human-host path. The known raw-health half-death path has been replaced with Fika's player-owned damage routes, but lethal bot corpse sync and remote-human death/downed behavior still require matched-build live acceptance.
@@ -13,5 +17,9 @@
 
 Stash payment and non-host A-10 tracer visibility are implemented, but the
 current automated suite does not exercise either path end to end. Both remain
-in the live multiplayer acceptance matrix before the v1.1.0 release candidate
-is published.
+in the matched-version live multiplayer acceptance matrix.
+
+The Pilot shop's registration, saved unlock, listing, and portrait have passed
+native server checks. Final portrait framing and a paid purchase in the game
+UI remain to be checked. The bottom-bar shortcut has native prefab and
+lifecycle fixture coverage; resolution-specific rendering is still a live check.
