@@ -28,18 +28,19 @@ public sealed class FireSupportUh60DeliveryService(
 	ICloner cloner)
 {
 	public const string MessengerTraderId = "66f51f3a0000000000000a60";
-	public const string MessengerAvatarRoute = "/tsc/assets/uh60-pilot.png";
+	public const string MessengerAvatarRoute = "/tsc/assets/uh60-pilot-v2.png";
 
 	private const string BtrTraderId = "656f0f98d80a697f855d34b1";
 	private const string DeliveryMessagePrefix =
 		"Cargo delivered. Your transferred items are ready for collection.";
-	private const string PriorityExfilArtworkPath =
-		"assets/content/ui/phone/icons/amber_512/priority_exfil.png";
+	private const string PilotArtworkPath = "assets/traders/uh60-pilot.png";
 
 	private readonly FireSupportUh60TransferMarkerStore _markerStore = new();
 
 	private byte[]? _messengerAvatar;
 	private bool _messengerReady;
+
+	public bool IsPilotShopReady => _messengerReady;
 
 	public void Initialize(string pathToMod)
 	{
@@ -433,6 +434,7 @@ public sealed class FireSupportUh60DeliveryService(
 
 	private void InitializeMessengerIdentity()
 	{
+		_messengerReady = false;
 		try
 		{
 			Dictionary<MongoId, Trader> traders = tradersTable;
@@ -470,6 +472,15 @@ public sealed class FireSupportUh60DeliveryService(
 					return;
 				}
 
+				// The BTR is only a template. Never carry its inventory or quests into
+				// the Pilot, and never clear a shop already populated by WTT.
+				pilot.Assort = new TraderAssort
+				{
+					Items = [],
+					BarterScheme = [],
+					LoyalLevelItems = []
+				};
+				pilot.QuestAssort.Clear();
 				traders[MessengerTraderId] = pilot;
 			}
 
@@ -479,23 +490,42 @@ public sealed class FireSupportUh60DeliveryService(
 			pilot.Base.Surname = string.Empty;
 			pilot.Base.Location = "Tactical Services Control";
 			pilot.Base.AvailableInRaid = false;
-			pilot.Base.UnlockedByDefault = false;
+			// Temporary open access; a future quest can gate this same trader ID.
+			pilot.Base.UnlockedByDefault = true;
+			pilot.Base.IsAvailableInPVE = true;
+			pilot.Base.Currency = CurrencyType.RUB;
+			pilot.Base.LoyaltyLevels =
+			[
+				new TraderLoyaltyLevel
+				{
+					MinLevel = 1, MinSalesSum = 0, MinStanding = 0,
+					BuyPriceCoefficient = 0, ExchangePriceCoefficient = 0,
+					HealPriceCoefficient = 0, InsurancePriceCoefficient = 0,
+					RepairPriceCoefficient = 0
+				}
+			];
 			pilot.Base.IsCanTransferItems = false;
 			pilot.Base.IsCanTransferItemsFromPve = false;
 			pilot.Base.Avatar = _messengerAvatar is { Length: > 0 }
 				? MessengerAvatarRoute
 				: inheritedAvatar;
-			pilot.Assort.Items.Clear();
-			pilot.Assort.BarterScheme.Clear();
-			pilot.Assort.LoyalLevelItems.Clear();
-			pilot.QuestAssort.Clear();
 			pilot.Suits = [];
 			pilot.Services = [];
+			if (!traderConfig.UpdateTime.Any(entry => entry.TraderId == MessengerTraderId))
+			{
+				int restockSeconds = Math.Max(1, traderConfig.UpdateTimeDefault);
+				traderConfig.UpdateTime.Add(new UpdateTime
+				{
+					Name = "UH-60 Pilot",
+					TraderId = MessengerTraderId,
+					Seconds = new MinMax<int>(restockSeconds, restockSeconds)
+				});
+			}
 
 			AddMessengerLocales();
 			_messengerReady = true;
 			logger.Success(
-				"TSC UH-60 Pilot messenger identity registered independently of the native BTR Driver.");
+				"TSC UH-60 Pilot shop and cargo contact registered independently of the native BTR Driver.");
 		}
 		catch (Exception exception)
 		{
@@ -620,7 +650,7 @@ public sealed class FireSupportUh60DeliveryService(
 				localeData[$"{MessengerTraderId} Location"] =
 					"Tactical Services Control";
 				localeData[$"{MessengerTraderId} Description"] =
-					"TerraGroup tactical airlift pilot and cargo liaison.";
+					"TerraGroup tactical airlift pilot, TSC Uplink supplier, and cargo liaison.";
 				return localeData;
 			});
 		}
@@ -630,8 +660,8 @@ public sealed class FireSupportUh60DeliveryService(
 	{
 		try
 		{
-			string? avatarPath = FindPriorityExfilArtwork(pathToMod);
-			if (avatarPath == null)
+			string avatarPath = IOPath.Combine(pathToMod, PilotArtworkPath);
+			if (!File.Exists(avatarPath))
 			{
 				logger.Warning(
 					"TSC UH-60 Pilot artwork was not found; a neutral built-in trader portrait will be used temporarily.");
@@ -640,7 +670,7 @@ public sealed class FireSupportUh60DeliveryService(
 
 			_messengerAvatar = File.ReadAllBytes(avatarPath);
 			logger.Success(
-				"TSC UH-60 Pilot is using the shipped Priority Exfil artwork as its temporary messenger portrait.");
+				"TSC UH-60 Pilot portrait loaded for the trader and cargo contact.");
 		}
 		catch (Exception exception)
 		{
@@ -648,35 +678,6 @@ public sealed class FireSupportUh60DeliveryService(
 			logger.Warning(
 				$"TSC UH-60 Pilot artwork could not be loaded; a neutral built-in portrait will be used. {exception.Message}");
 		}
-	}
-
-	private static string? FindPriorityExfilArtwork(string pathToMod)
-	{
-		DirectoryInfo? directory = new(pathToMod);
-		for (int depth = 0; directory != null && depth < 7; depth++)
-		{
-			foreach (string pluginFolder in new[]
-			         {
-				         "Tylevo.TacticalServicesControl",
-				         "TylevoTacticalServicesControl"
-			         })
-			{
-				string candidate = IOPath.Combine(
-					directory.FullName,
-					"BepInEx",
-					"plugins",
-					pluginFolder,
-					PriorityExfilArtworkPath);
-				if (File.Exists(candidate))
-				{
-					return candidate;
-				}
-			}
-
-			directory = directory.Parent;
-		}
-
-		return null;
 	}
 
 	private static FireSupportUh60TransferMarkerResponse Rejected(

@@ -395,7 +395,7 @@ internal static class Uh60DeliveryServerTests
 			"pilot = existing",
 			"A pre-existing trader ID must be proven to belong to TSC before it can be reused or mutated.");
 		AssertEx.Contains(
-			"pilot.Base.UnlockedByDefault = false",
+			"pilot.Base.UnlockedByDefault = true",
 			service);
 		AssertEx.Contains(
 			"mailSendService.SendDirectNpcMessageToPlayer",
@@ -413,7 +413,7 @@ internal static class Uh60DeliveryServerTests
 			"MessageContainsExpectedItems",
 			service);
 		AssertEx.Contains(
-			"icons/amber_512/priority_exfil.png",
+			"assets/traders/uh60-pilot.png",
 			service);
 		AssertEx.False(
 			service.Contains(

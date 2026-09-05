@@ -189,6 +189,7 @@
       "source": "project/SamSWAT.FireSupport.Server/CopyToOutput",
       "destination": "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl",
       "files": [
+        "assets/traders/uh60-pilot.png",
         "bundles.json",
         "database/ammo_30x173_gau8_avenger.json",
         "database/weapon_ge_gau8_avenger_30x173.json",

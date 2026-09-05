@@ -129,6 +129,7 @@ namespace SPTarkov.Server.Core.Models.Eft.Common
 		public MongoId? Id { get; set; }
 		public MongoId? SessionId { get; set; }
 		public BotBaseInventory? Inventory { get; set; }
+		public Dictionary<MongoId, TraderInfo>? TradersInfo { get; set; }
 	}
 }
 

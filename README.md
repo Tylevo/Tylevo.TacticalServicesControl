@@ -2,12 +2,12 @@
 
 A BepInEx mod that reworks SamSWAT's Fire Support / Arys Reloaded into a TerraGroup-style tactical support system for SPT and Fika.
 
-> **SPT 4.1.4 bottom-bar Uplink tester:** v1.3.7 targets SPT 4.1.4 / EFT
+> **SPT 4.1.4 Pilot trader tester:** v1.3.8 targets SPT 4.1.4 / EFT
 > 0.16.9.5.40743. The expected test artifact is
-> `Tylevo.TacticalServicesControl-v1.3.7-SPT4.1.4-TESTER.zip`.
-> TSC Uplink now opens from the bottom bar immediately left of Character
-> while on the main menu. The center menu keeps its native spacing. See
-> `docs/release-notes-v1.3.7.md` for this candidate's scope.
+> `Tylevo.TacticalServicesControl-v1.3.8-SPT4.1.4-TESTER.zip`.
+> Buy the physical TSC Uplink from the unlocked UH-60 Pilot trader for
+> ₽50,000. Pilot uses the supplied portrait and remains your cargo contact.
+> See `docs/release-notes-v1.3.8.md` for this candidate's scope.
 
 This mod adds a **TerraGroup TSC Uplink** phone that lets you buy support authorizations in raid, then deploy them later from the same device. The phone handles service selection and camera-based target designation, so the rangefinder and YY gesture wheel are no longer required for the primary workflow.
 
@@ -62,6 +62,14 @@ Do not install the old SamSWAT Fire Support or Arys Reloaded mod alongside TSC. 
 Do not place the ZIP contents inside an extra nested folder.
 
 ## How To Use
+
+### Getting the Uplink
+
+Buy the **TerraGroup TSC Uplink** from **UH-60 Pilot** in Trading for
+**₽50,000**, at loyalty level 1, with the existing limit of five per restock.
+The offer has moved from Jaeger. Pilot is available without a quest for now;
+existing profiles with a locked Pilot entry are unlocked when the server starts.
+The same contact continues to deliver UH-60 cargo mail.
 
 ### Pre-Raid Store
 

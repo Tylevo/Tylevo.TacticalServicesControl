@@ -42,6 +42,8 @@
              Link="Production\TscUplinkSpecialSlotService.cs" />
     <Compile Include="..\SamSWAT.FireSupport.Server\TscUplinkProfileMigrationOnLoad.cs"
              Link="Production\TscUplinkProfileMigrationOnLoad.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Server\TscPilotProfileMigrationOnLoad.cs"
+             Link="Production\TscPilotProfileMigrationOnLoad.cs" />
     <Compile Include="..\SamSWAT.FireSupport\Unity\ESupportType.cs"
              Link="Production\ESupportType.cs" />
     <Compile Include="..\SamSWAT.FireSupport\Unity\FireSupportRequestOrigin.cs"

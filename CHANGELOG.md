@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.3.8 - Public Beta (unreleased)
+
+- Move the physical TSC Uplink offer from Jaeger to UH-60 Pilot, preserving
+  its ₽50,000 price, loyalty level 1 requirement, and five-per-restock limit.
+- Make Pilot available by default and unlock existing locked Pilot profile
+  entries without resetting standing, sales, loyalty, or other traders.
+- Use the supplied Pilot portrait for both Trading and cargo mail, with a
+  new avatar URL to avoid the cached temporary icon.
+- Register Pilot before importing the offer and preserve his existing shop
+  on repeat identity initialization. Keep native BTR delivery separate.
+
+See `docs/release-notes-v1.3.8.md`; validation is recorded externally.
+
 ## 1.3.7 - Public Beta (unreleased)
 
 - Move the pre-raid TSC Uplink entry to the bottom bar immediately left of

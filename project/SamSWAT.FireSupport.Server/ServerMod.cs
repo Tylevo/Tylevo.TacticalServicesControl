@@ -47,11 +47,15 @@ public class ServerMod(
 		await wttCommon.CustomItemServiceExtended.CreateCustomItems(assembly);
 		uplinkSpecialSlotService.ConfigurePocketTemplates();
 		customItemService.ApplyHackerModBundleCompatibility(pathToMod);
-		await wttCommon.CustomAssortSchemeService.CreateCustomAssortSchemes(assembly);
+		// Register the Pilot before WTT resolves the Uplink's trader ID.
+		uh60DeliveryService.Initialize(pathToMod);
+		if (uh60DeliveryService.IsPilotShopReady)
+		{
+			await wttCommon.CustomAssortSchemeService.CreateCustomAssortSchemes(assembly);
+		}
 		cancellationToken.ThrowIfCancellationRequested();
 
 		fireSupportServerConfigService.Initialize(pathToMod);
-		uh60DeliveryService.Initialize(pathToMod);
 		uh60TransferFeeService.Initialize(pathToMod);
 		AddCustomItems();
 	}
