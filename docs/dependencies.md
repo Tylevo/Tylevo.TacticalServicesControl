@@ -1,19 +1,21 @@
-# SPT 4.1.4 dependencies
+# SPT 4.1.5 dependencies
 
-## v1.3.9 public beta
+## v1.3.10 public beta
 
-The v1.3.9 TSC ZIP includes UnityToolkit 2.0.1 with its plugin and prepatcher
+The v1.3.10 release retains the UnityToolkit installation bundled since
+v1.3.9. The full TSC ZIP includes UnityToolkit 2.0.1 with its plugin and prepatcher
 rebuilt against SPT 4.1, companion libraries, and license notices. No separate
 Toolkit or compatibility-overlay download is needed. WTT CommonLib remains
 required separately; Fika is optional and also installed separately.
 
 1. Close the game, launcher, and SPT server. Back up profiles and TSC's
    configuration and complete storage directory before updating.
-2. Install WTT Client CommonLib and WTT Server CommonLib 3.0.6 from the
+2. Update SPT to 4.1.5, then install WTT Client CommonLib and WTT Server
+   CommonLib 3.0.6 from the
    [official WTT v3.0.6 release](https://github.com/WelcomeToThursday/WTT-CommonLib/releases/tag/v3.0.6),
    including its serialization prepatcher.
-3. Extract the complete v1.3.9 release ZIP into the SPT 4.1.4 root. Merge
-   its `BepInEx` and `SPT_Runtime` folders with the existing folders.
+3. Extract the [complete v1.3.10 ZIP](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases/download/v1.3.10/Tylevo.TacticalServicesControl-v1.3.10-SPT4.1.5-TESTER.zip) into that SPT root. Merge its
+   `BepInEx` and `SPT_Runtime` folders with the existing folders.
 4. If Toolkit is already installed, replace its files in the standard folders
    when prompted. Keep one installation; additional copies of the same plugin
    in other folders can conflict.
@@ -51,15 +53,26 @@ client 2.4.2 plus its compatible server component. For experimental testing,
 follow the [official Project Fika v2.4.2 release](https://github.com/project-fika/Fika-Plugin/releases/tag/v2.4.2)
 and the [TSC known issues](known-issues.md).
 
-**Multiplayer on the current SPT/Fika versions has not been tested. SPT 4.1.5
-has not been tested either.** A successful build does not establish live
-compatibility on another version.
+**Multiplayer on the current SPT/Fika versions remains untested.** The
+maintainer reports successful local use of v1.3.10 on SPT 4.1.5; individual
+service checks are not documented. Static inspection of SPT's version check
+does not establish gameplay compatibility. Follow the
+[release notes](release-notes-v1.3.10.md) for validation results and their limits.
+
+## Published v1.3.9 for SPT 4.1.4
+
+The [v1.3.9 release](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases/tag/v1.3.9)
+remains available for SPT 4.1.4. It already includes the same rebuilt Toolkit
+and companion libraries in the standard folders above; WTT is separately
+required and Fika is optional. Use that version's full ZIP when staying on
+SPT 4.1.4. Its [release notes](release-notes-v1.3.9.md) and
+[validation record](validation/v1.3.9.md) remain unchanged.
 
 ## Historical v1.3.8 installation: official Toolkit plus overlay
 
 The published v1.3.8 ZIP is unchanged and does not include UnityToolkit.
-The steps and hashes below apply to that release. For v1.3.9,
-use the bundled installation above.
+The steps and hashes below apply to that release. TSC v1.3.9 and
+v1.3.10 bundle Toolkit as described above.
 
 1. Close the game.
 2. Download and extract the official
