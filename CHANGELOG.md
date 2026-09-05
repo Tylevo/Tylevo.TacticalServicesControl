@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.6 - Public Beta (unreleased)
+
+- Remove the pale rounded perimeter frames baked into the six service icons.
+- Keep the aircraft, pickup, cargo, and recon symbols and their tactical palette.
+  Update both icon variants and the cargo asset alias used by the package.
+- Preserve the store card outlines and all runtime code and layouts.
+
+The edited PNGs retain the image tool's native resolution and may differ in
+fine shading and antialiasing. See `docs/release-notes-v1.3.6.md`; verification
+results are recorded in the candidate's external evidence sidecars.
+
 ## 1.3.5 - Public Beta (unreleased)
 
 Tactical icon pack refresh for SPT 4.1.4.

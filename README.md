@@ -2,13 +2,12 @@
 
 A BepInEx mod that reworks SamSWAT's Fire Support / Arys Reloaded into a TerraGroup-style tactical support system for SPT and Fika.
 
-> **SPT 4.1.4 tactical icon tester:** v1.3.5 targets SPT 4.1.4 / EFT
+> **SPT 4.1.4 tactical icon tester:** v1.3.6 targets SPT 4.1.4 / EFT
 > 0.16.9.5.40743. The expected test artifact is
-> `Tylevo.TacticalServicesControl-v1.3.5-SPT4.1.4-TESTER.zip`.
-> This refreshes the store and phone artwork with the supplied tactical icon
-> pack, including distinct extraction and cargo symbols. The supplied colors
-> and dark icon tiles are preserved. See `docs/release-notes-v1.3.5.md` for
-> this candidate's scope.
+> `Tylevo.TacticalServicesControl-v1.3.6-SPT4.1.4-TESTER.zip`.
+> This removes the pale rounded frames from the six service icon images.
+> The aircraft, cargo, and recon symbols retain the tactical palette. See
+> `docs/release-notes-v1.3.6.md` for this candidate's scope.
 
 This mod adds a **TerraGroup TSC Uplink** phone that lets you buy support authorizations in raid, then deploy them later from the same device. The phone handles service selection and camera-based target designation, so the rangefinder and YY gesture wheel are no longer required for the primary workflow.
 
