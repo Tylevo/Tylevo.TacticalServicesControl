@@ -18,9 +18,42 @@ slot), Double Pass, phone UI assets, and release maintenance.
 
 Tylevo's Tactical Services Control is released under Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0), matching the upstream Arys Reloaded source license. Arys clarified that the Forge/SPT Hub BY-NC 3.0 listing was due to historical site limitations before the Forge migration.
 
-## Runtime Dependencies Not Bundled
+## Bundled UnityToolkit 2.0.1
 
-TSC depends on UnityToolkit, WTT Client Common Lib, WTT Server Common Lib, and Project Fika for multiplayer use. These dependencies are not redistributed inside the TSC package and should be installed separately.
+The v1.3.9 unreleased candidate bundles UnityToolkit 2.0.1, with the plugin and prepatcher rebuilt against SPT 4.1 and the companion libraries needed by the upstream package. No separate Toolkit or compatibility-overlay download is required. On 2026-09-05, the maintainer confirmed Arys's explicit permission to bundle this rebuilt dependency with TSC.
+
+- Author: Arys
+- Source: https://github.com/ArysWasTaken/UnityToolkit
+- Upstream release: https://github.com/ArysWasTaken/UnityToolkit/releases/tag/v2.0.1
+- License: MIT License, reproduced below from the upstream source.
+
+UnityToolkit's companion libraries retain their respective licenses and attribution. TSC's CC BY-NC license and Arys's Toolkit permission do not replace those terms. The full companion-library notices are included at `BepInEx/plugins/UnityToolkit/THIRD_PARTY_NOTICES.txt` and `BepInEx/patchers/UnityToolkit/THIRD_PARTY_NOTICES.txt` in the release ZIP.
+
+MIT License
+
+Copyright (c) 2025 Arys
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+## Runtime Dependencies Installed Separately
+
+WTT CommonLib remains required, including its client, server, and serialization prepatcher components. Project Fika is optional for multiplayer testing. WTT and Fika are not bundled in the TSC ZIP. Multiplayer on the current SPT/Fika versions and SPT 4.1.5 have not been tested.
 
 ## Manimal Hacker Mod
 

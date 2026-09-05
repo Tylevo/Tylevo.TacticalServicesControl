@@ -1,6 +1,6 @@
 # Permissions
 
-Permission status for the 0.9.0 Public Beta release: **confirmed by the maintainer**.
+Permission status: **confirmed by the maintainer**. The existing Fire Support grants remain in place; the v1.3.9 unreleased candidate also includes the UnityToolkit bundling permission recorded below.
 
 This file is the public release record for upstream permission and third-party attribution. Keep the private permission evidence archived outside the release package unless the grantor explicitly approves publishing the conversation.
 
@@ -24,10 +24,19 @@ For this release, the maintainer has permission to:
 | --- | --- | --- | --- |
 | SamSWAT | Granted / confirmed by maintainer | Original Fire Support basis, derivative release credit, redistribution as part of TSC | Maintainer-held private message / permission record |
 | Arys | Granted / confirmed by maintainer | Arys Reloaded basis, derivative release credit, redistribution as part of TSC | Maintainer-held private message / permission record |
+| Arys / UnityToolkit | Explicit bundling permission confirmed by maintainer on 2026-09-05; MIT license retained | Bundle UnityToolkit 2.0.1 rebuilt against SPT 4.1 inside the TSC release ZIP | Dated maintainer permission record; upstream MIT license in `THIRD_PARTY_NOTICES.md` |
 | danauraborealis / Manimal Hacker Mod | Granted; MIT license notice included | Phone/use-device material used under MIT and author permission | Maintainer-held permission record + MIT notice |
 | Accurate Circular Radar / Tyrian Radar Standalone | Used under listed license/attribution if radar material remains | Radar HUD/material attribution | Source/license notice in `THIRD_PARTY_NOTICES.md` |
 
 Before each public release, keep a dated private copy of the permission evidence in the maintainer archive. Do not publish private DMs unless the author explicitly allows it.
+
+## UnityToolkit Bundling Permission (2026-09-05)
+
+On September 5, 2026, the maintainer confirmed that Arys explicitly approved bundling the rebuilt UnityToolkit with TSC. The v1.3.9 unreleased candidate includes UnityToolkit 2.0.1 with its plugin and prepatcher rebuilt against SPT 4.1, so users do not need a separate Toolkit or compatibility-overlay download.
+
+UnityToolkit remains licensed under MIT, copyright (c) 2025 Arys. The full upstream license is included in `THIRD_PARTY_NOTICES.md` and the packaged notices. Companion libraries retain their own licenses and notices; the Toolkit permission does not change those terms. WTT CommonLib remains a separate requirement, and optional Fika is not bundled.
+
+This record documents permission to redistribute the rebuilt dependency. It does not claim compatibility testing on SPT 4.1.5 or current Fika versions, or endorsement of TSC by Arys.
 
 ## Donation / Ko-fi Note
 

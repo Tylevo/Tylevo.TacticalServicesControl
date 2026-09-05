@@ -1,0 +1,2 @@
+# Preserve the published patch bytes and hash, including whitespace in diff context.
+tools/dependencies/unitytoolkit/*.patch -text -whitespace

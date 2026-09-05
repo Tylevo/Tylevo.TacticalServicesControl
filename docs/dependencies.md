@@ -1,9 +1,59 @@
 # SPT 4.1.4 dependencies
 
-Install dependencies separately before installing TSC. The TSC archive contains
-only TSC files; it does not include UnityToolkit, WTT, Fika, or game assemblies.
+## v1.3.9 unreleased candidate
 
-## UnityToolkit 2.0.1 compatibility overlay
+The v1.3.9 TSC ZIP includes UnityToolkit 2.0.1 with its plugin and prepatcher
+rebuilt against SPT 4.1, companion libraries, and license notices. No separate
+Toolkit or compatibility-overlay download is needed. WTT CommonLib remains
+required separately; Fika is optional and also installed separately.
+
+1. Close the game, launcher, and SPT server. Back up profiles and TSC's
+   configuration and complete storage directory before updating.
+2. Install WTT Client CommonLib and WTT Server CommonLib 3.0.6 from the
+   [official WTT v3.0.6 release](https://github.com/WelcomeToThursday/WTT-CommonLib/releases/tag/v3.0.6),
+   including its serialization prepatcher.
+3. Extract the complete v1.3.9 candidate ZIP into the SPT 4.1.4 root. Merge
+   its `BepInEx` and `SPT_Runtime` folders with the existing folders.
+4. If Toolkit is already installed, replace its files in the standard folders
+   when prompted. Keep one installation; additional copies of the same plugin
+   in other folders can conflict.
+
+The bundled dependency uses these standard locations:
+
+- `BepInEx/plugins/UnityToolkit/`: plugin, companion libraries, and `Assemblies.jsonc`.
+- `BepInEx/patchers/UnityToolkit/`: prepatcher and its companion library.
+- Both folders include `THIRD_PARTY_NOTICES.txt` with the dependency licenses.
+
+Arys remains the author of UnityToolkit. On September 5, 2026, the maintainer
+confirmed Arys's explicit permission to bundle the rebuilt dependency with
+TSC. It retains version 2.0.1 and the original plugin identity. This is a
+TSC-distributed rebuild, not a new official Arys release. UnityToolkit remains
+under MIT, and its companion libraries keep their respective licenses. See
+[permissions](../PERMISSIONS.md) and [third-party notices](../THIRD_PARTY_NOTICES.md).
+
+SPT 4.1.4's prepatch validator rejects the original plugin's SPT 4.0.1 assembly
+reference before Toolkit or TSC initializes. The bundled rebuild references
+SPT 4.1 and passes that version check. This identifies a startup compatibility
+check; it does not establish a Toolkit runtime defect. The
+[source and binary provenance](../tools/dependencies/unitytoolkit/README.md)
+records the rebuild inputs, source patch, and limits of the checks performed.
+
+## Optional multiplayer
+
+Solo play does not require Fika. The current build reference is Project Fika
+client 2.4.2 plus its compatible server component. For experimental testing,
+follow the [official Project Fika v2.4.2 release](https://github.com/project-fika/Fika-Plugin/releases/tag/v2.4.2)
+and the [TSC known issues](known-issues.md).
+
+**Multiplayer on the current SPT/Fika versions has not been tested. SPT 4.1.5
+has not been tested either.** A successful build does not establish live
+compatibility on another version.
+
+## Historical v1.3.8 installation: official Toolkit plus overlay
+
+The published v1.3.8 ZIP is unchanged and does not include UnityToolkit.
+The steps and hashes below apply to that release. For the v1.3.9 candidate,
+use the bundled installation above.
 
 1. Close the game.
 2. Download and extract the official
@@ -19,7 +69,7 @@ only TSC files; it does not include UnityToolkit, WTT, Fika, or game assemblies.
 
 The overlay is an unofficial TSC compatibility build of Arys's MIT-licensed
 UnityToolkit. It retains version 2.0.1 and supplies the SPT 4.1 build configuration,
-updated references, deployment guards, and player-loop patch target adaptation.
+updated references, deployment guards, and a string-based lookup for the existing player-loop patch target.
 It is not a complete UnityToolkit installation. Install the official archive
 first; installing it again afterward would overwrite the compatibility build.
 
@@ -36,61 +86,10 @@ patch and build-input manifest are included alongside the installation files.
 | `BepInEx/patchers/UnityToolkit/UnityToolkit-Prepatcher.dll` | 5120 | `730156D8360A0BCA9024CF20F3886FBBD9509A7D793760FDD75C3BE186DFBDDE` |
 | `UnityToolkit-v2.0.1-SPT4.1-compat.patch` | See archive | `1AD825EF63012A2EC9F2B6658A86E3F713AEDC1FE2C2E6DCD43701D28EE8283D` |
 
-### Building the compatibility source
+## Rebuilding and packaging the Toolkit dependency
 
-The patch applies to upstream commit
-`3c27a9798dc4396ca0b3dc765448a4221ff3007b` (`v2.0.1`). It changes five source/build
-files and includes no compiled references. Clone the upstream repository,
-check out that commit, and apply the patch from the overlay:
-
-```powershell
-git clone https://github.com/ArysWasTaken/UnityToolkit.git
-Set-Location UnityToolkit
-git checkout 3c27a9798dc4396ca0b3dc765448a4221ff3007b
-git apply --check ../UnityToolkit-v2.0.1-SPT4.1-compat.patch
-git apply ../UnityToolkit-v2.0.1-SPT4.1-compat.patch
-```
-
-Use Windows with the .NET SDK and .NET Framework 4.8 targeting pack. The
-clean-source checks used SDK 9.0.314. Copy the 11 library DLLs from the official
-archive's `BepInEx/plugins/UnityToolkit` folder, excluding `UnityToolkit.dll`,
-into `project/UnityToolkit/References`.
-
-Provide your own SPT 4.1.4 references under a local `410x` directory. The required
-names are `Assembly-CSharp.dll`, `0Harmony.dll`, `BepInEx.dll`,
-`Newtonsoft.Json.dll`, `spt-reflection.dll`, `System.Memory.dll`, `UnityEngine.dll`,
-`UnityEngine.CoreModule.dll`, `Mono.Cecil.dll`, `Mono.Cecil.Mdb.dll`,
-`Mono.Cecil.Pdb.dll`, `Mono.Cecil.Rocks.dll`, `MonoMod.RuntimeDetour.dll`, and
-`MonoMod.Utils.dll`. Use the matching SPT publicized/hollowed assembly as the
-compile-only `Assembly-CSharp.dll`, following [BUILDING.md](../BUILDING.md).
-
-Set `$toolkitReferences` to the parent of your `410x` folder, retaining a trailing
-slash. From the patched source root, run:
-
-```powershell
-$toolkitReferences = 'C:/SPT-Refs/'
-$toolkitBuild = @('--configuration', 'SPT-4.1 Release', '-p:Platform=AnyCPU', '-p:SptVersion=410x', '-p:SkipDeploy=true', "-p:SptSharedAssembliesDir=$toolkitReferences")
-dotnet build project/UnityToolkit/UnityToolkit.csproj @toolkitBuild
-dotnet build project/UnityToolkit.Prepatcher/UnityToolkit.Prepatcher.csproj @toolkitBuild
-```
-
-These commands only build; the `SkipDeploy` guard suppresses the upstream live
-copy and archive targets. The outputs are
-`project/UnityToolkit/Build/SPT-4.1/netstandard2.1/UnityToolkit.dll` and
-`project/UnityToolkit.Prepatcher/Build/SPT-4.1/UnityToolkit-Prepatcher.dll`.
-Both projects compiled from a clean patched source tree against SPT 4.1.4
-references with zero warnings or errors. This is a source/build check; compiler,
-reference, or source-path differences may change binary hashes. The shipped
-overlay preserves the existing installed build, originally compiled for SPT
-4.1.2; its original reference hashes are recorded in `build-inputs.json`.
-
-## WTT and multiplayer
-
-Install WTT Client CommonLib and WTT Server CommonLib 3.0.6 from the
-[official WTT v3.0.6 release](https://github.com/WelcomeToThursday/WTT-CommonLib/releases/tag/v3.0.6),
-including the serialization prepatcher supplied by that release.
-
-Solo play does not require Fika. For multiplayer, the current reference target is
-Project Fika client 2.4.2 plus its compatible server component. Follow the
-[official Project Fika v2.4.2 release](https://github.com/project-fika/Fika-Plugin/releases/tag/v2.4.2)
-and the [TSC known issues](known-issues.md) for remaining multiplayer tester limits.
+The current [Toolkit source and packaging guide](../tools/dependencies/unitytoolkit/README.md)
+contains the pinned upstream commit, compatibility patch, required local build
+references, deployment-suppressed build commands, and package-input contract.
+The source repository contains the patch and notices; compiled dependencies
+are supplied separately to the packager and checked against the reviewed pins.

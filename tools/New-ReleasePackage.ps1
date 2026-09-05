@@ -10,11 +10,16 @@ param(
 
     [Parameter(Mandatory)]
     [ValidateNotNullOrEmpty()]
-    [string] $BuildEvidencePath
+    [string] $BuildEvidencePath,
+
+    [Parameter(Mandatory)]
+    [ValidateNotNullOrEmpty()]
+    [string] $UnityToolkitDirectory
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot 'BundledDependencies.ps1')
 
 $RepositoryRoot = Split-Path $PSScriptRoot -Parent
 $ManifestPath = Join-Path $PSScriptRoot "package-layout.allowlist.json"
@@ -825,8 +830,13 @@ $ResolvedRepositoryRoot = (Resolve-Path -LiteralPath $RepositoryRoot).Path
 $resolvedManifestPath = (Resolve-Path -LiteralPath $ManifestPath).Path
 $resolvedBaselineArchive = (Resolve-Path -LiteralPath $BaselineAssetArchive).Path
 $resolvedBuildEvidencePath = (Resolve-Path -LiteralPath $BuildEvidencePath).Path
+$resolvedUnityToolkitDirectory = (Resolve-Path -LiteralPath $UnityToolkitDirectory).Path.TrimEnd('\', '/')
 $resolvedOutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 $repositoryPrefix = $ResolvedRepositoryRoot.TrimEnd("\", "/") + [IO.Path]::DirectorySeparatorChar
+if ($resolvedUnityToolkitDirectory.Equals($ResolvedRepositoryRoot, [StringComparison]::OrdinalIgnoreCase) -or
+    $resolvedUnityToolkitDirectory.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'UnityToolkitDirectory must be an external reviewed dependency directory; bundled DLLs are never tracked.'
+}
 if ($resolvedOutputDirectory.Equals(
     $ResolvedRepositoryRoot,
     [StringComparison]::OrdinalIgnoreCase
@@ -904,6 +914,7 @@ foreach ($releaseInput in @(
     "global.json",
     "tools/New-ReleasePackage.ps1",
     "tools/Test-PackageLayout.ps1",
+    "tools/BundledDependencies.ps1",
     "tools/package-layout.allowlist.json",
     "tools/verify-local.ps1"
 )) {
@@ -926,11 +937,18 @@ $expectedInformationalVersion = "$version+$sourceRevision"
 $manifestBytes = Get-HeadBlobBytes -RelativePath "tools/package-layout.allowlist.json"
 $manifestText = [Text.UTF8Encoding]::new($false, $true).GetString($manifestBytes)
 $manifest = $manifestText | ConvertFrom-Json
-if ($manifest.schemaVersion -ne 3) {
+if ($manifest.schemaVersion -ne 4) {
     throw "Unsupported package allowlist schema '$($manifest.schemaVersion)'."
 }
 
 $manifestHash = Get-ByteArraySha256 -Bytes $manifestBytes
+$dependencyContract = Get-BundledDependencyContract -Manifest $manifest
+$validatedDependencyFiles = @(Get-VerifiedBundledDependencyFiles -Root $resolvedUnityToolkitDirectory -Contract $dependencyContract)
+$dependencyPatch = $manifest.bundledDependencies[0].compatibilityPatch
+Assert-TrackedHeadFile -RelativePath ([string] $dependencyPatch.source)
+if ((Get-ByteArraySha256 -Bytes (Get-HeadBlobBytes -RelativePath ([string] $dependencyPatch.source))) -cne $dependencyPatch.sha256) {
+    throw 'Toolkit compatibility patch at HEAD differs from its provenance pin.'
+}
 
 $buildEvidenceFile = Get-Item -LiteralPath $resolvedBuildEvidencePath
 $buildEvidenceHash = (
@@ -986,10 +1004,10 @@ Assert-BuildEvidenceReferences `
     -CriticalReferencePins $criticalReferencePinsProperty.Value
 
 $buildEvidenceOutputs = @($buildEvidence.Build.Outputs)
-if ($buildEvidenceOutputs.Count -ne [int] $manifest.exactCounts.".dll") {
+if ($buildEvidenceOutputs.Count -ne [int] $manifest.exactCounts.builtDlls) {
     throw (
         "Build evidence contains $($buildEvidenceOutputs.Count) runtime outputs; " +
-        "expected exactly $($manifest.exactCounts.'.dll')."
+        "expected exactly $($manifest.exactCounts.builtDlls) freshly built TSC DLLs."
     )
 }
 
@@ -1293,6 +1311,11 @@ try {
             -DestinationRelative ([string] $artifact.Destination)
     }
 
+    foreach ($dependencyFile in $validatedDependencyFiles) {
+        Assert-BundledDependencyFile -Path ([string] $dependencyFile.Source) -Record $dependencyFile.Pin
+        Copy-ExactFile -Source ([string] $dependencyFile.Source) -DestinationRelative ([string] $dependencyFile.Destination)
+    }
+
     foreach ($specification in $baselineSpecifications) {
         $sourcePathProperty = $specification.PSObject.Properties["sourcePath"]
         $sourcePath = if ($null -eq $sourcePathProperty) {
@@ -1360,6 +1383,9 @@ if (-not $?) {
 }
 
 $stageInventory = @(Get-ContentInventory -Root $StagePath)
+# Recheck the entire external inventory after copying; additions or changed
+# source bytes during packaging are not silently accepted.
+$null = @(Get-VerifiedBundledDependencyFiles -Root $resolvedUnityToolkitDirectory -Contract $dependencyContract)
 New-DeterministicZip -SourceDirectory $StagePath -ArchivePath $archivePath
 
 $archiveGuard = [IO.File]::Open(
@@ -1583,9 +1609,12 @@ $evidence = [ordered] @{
         counts = [ordered] @{
             files = $fileCount
             dlls = $dllCount
+            builtDlls = $validatedArtifacts.Count
+            bundledDlls = @($validatedDependencyFiles | Where-Object { $_.Destination.EndsWith('.dll', [StringComparison]::Ordinal) }).Count
             bundles = $bundleCount
         }
         dlls = $dllEvidence
+        bundledDependencies = @($manifest.bundledDependencies)
         bundlePins = $bundleEvidence
         files = $stageInventory
     }

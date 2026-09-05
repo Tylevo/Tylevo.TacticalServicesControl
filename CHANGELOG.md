@@ -2,6 +2,12 @@
 
 ## 1.3.9 - Public Beta (unreleased)
 
+- Bundle UnityToolkit 2.0.1 with its plugin and prepatcher rebuilt against
+  SPT 4.1, companion libraries, and license notices. No separate Toolkit or
+  compatibility-overlay download is needed for this candidate. The maintainer
+  confirmed Arys's explicit bundling permission on 2026-09-05.
+- Keep WTT CommonLib separately required and Fika optional. SPT 4.1.5 and
+  multiplayer on the current SPT/Fika versions remain untested.
 - Add a Tactical Services Control mod-page link in SPT's SIC that opens the
   existing themed dashboard. Add links back to SIC and its config editor.
 - Keep the dashboard's colors, typography, service cards, and controls.

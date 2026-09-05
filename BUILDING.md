@@ -144,7 +144,8 @@ assembly names.
 
 `tools/package-layout.allowlist.json` is the closed package layout, source, and
 artifact-provenance contract. Its `archiveRoots` declare the only permitted
-top-level ZIP folders, while `installRoots` declare the exact TSC destinations
+top-level ZIP folders, while `installRoots` declare the exact TSC and bundled
+UnityToolkit destinations
 below them. Every mirrored source file and reviewed source-only exclusion is
 listed individually. The checker fails on a missing listed file, an untracked
 listed file, or any unreviewed extra below either `CopyToOutput` tree.
@@ -162,18 +163,25 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\Test-PackageLayout.p
 ```
 
 The checker normalizes and de-duplicates paths, requires the exact 154-file
-reviewed mirror inventory, exactly four TSC DLL mappings, and exactly eight
-named asset bundles. It asserts the exact archive-root set and rejects
-proprietary dependencies, profiles, storage, logs, build artifacts, archives,
-and `.gitkeep` files from the package.
+reviewed mirror inventory, four built TSC DLLs, fourteen pinned UnityToolkit
+DLLs, and eight named asset bundles. The complete package has 186 files,
+including the fifteen dependency files and two copies of their license notice.
+It verifies bundled dependency lengths and SHA-256 values directly from both
+staged files and ZIP entry streams. It rejects extra files, unpinned
+dependencies, profiles, storage, logs, build artifacts, archives, and
+`.gitkeep` files.
 
-The v1.3.8 package contract follows the verified public v1.0.8 artifact:
+The v1.3.9 package contract retains the verified public v1.0.8 asset layout:
 
 - Extract the ZIP directly into the SPT installation root.
 - The archive contains exactly `BepInEx/` and `SPT_Runtime/` at top level.
 - TSC files install only into
   `BepInEx/plugins/Tylevo.TacticalServicesControl/` and
   `SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/`.
+- Bundled UnityToolkit files install only into
+  `BepInEx/plugins/UnityToolkit/` and `BepInEx/patchers/UnityToolkit/`, using
+  their established paths. Do not retain another Toolkit plugin or prepatcher
+  under a renamed folder; duplicate copies can conflict during BepInEx startup.
 - The mutable `config/tsc-config.json` is intentionally not shipped. A new
   installation creates schema-3 defaults on first server start; an upgrade
   therefore preserves and migrates the administrator's existing file.
@@ -190,7 +198,7 @@ repository:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\verify-local.ps1 `
   -SptDir "C:\Path\To\SPT" `
   -SptSharedAssembliesDir "C:\Path\To\SPT Assemblies" `
-  -EvidencePath "C:\External\TSC\v1.3.8-build-evidence.json"
+  -EvidencePath "C:\External\TSC\v1.3.9-build-evidence.json"
 ```
 
 `-EvidencePath` must not already exist and must be outside the repository. Once
@@ -200,9 +208,35 @@ directory:
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\New-ReleasePackage.ps1 `
   -BaselineAssetArchive "C:\Path\To\Tylevo.TacticalServicesControl-v1.0.8-SPT4.0.13.zip" `
-  -OutputDirectory "C:\External\TSC\v1.3.8-candidate" `
-  -BuildEvidencePath "C:\External\TSC\v1.3.8-build-evidence.json"
+  -OutputDirectory "C:\External\TSC\v1.3.9-candidate" `
+  -BuildEvidencePath "C:\External\TSC\v1.3.9-build-evidence.json" `
+  -UnityToolkitDirectory "C:\External\Dependencies\UnityToolkit"
 ```
+
+`-UnityToolkitDirectory` is an explicit external input containing exactly the
+fifteen paths in the manifest's `bundledDependencies` contract. Prepare it
+from the official `UnityToolkit-v2.0.1.7z`, retaining the thirteen unchanged
+companion files and replacing `UnityToolkit.dll` and
+`UnityToolkit-Prepatcher.dll` with the reviewed SPT 4.1 compatibility overlay.
+The directory must include the upstream `Assemblies.jsonc` and its exact
+`ZLinq.Unity.UnityCollectoins.dll` spelling. Extra files or directories,
+missing files, changed bytes, and symlinks/junctions are rejected. A live SPT
+installation or an overlay containing only two DLLs is not a valid input.
+
+The manifest pins every original and shipped length/hash, upstream archive
+identity, source commit, and compatibility patch. The shipped plugin pin also
+has to match the critical UnityToolkit compile-reference pin. Toolkit binaries
+remain outside Git, and CI's tracked-binary ban is unchanged. The complete
+notice at `tools/dependencies/unitytoolkit/THIRD_PARTY_NOTICES.txt` is read from
+the release commit and copied into both Toolkit directories. The reviewed
+source patch and preparation notes are in `tools/dependencies/unitytoolkit/`.
+The original overlay compiler was not retained; the pins identify the reviewed
+binary inputs and do not claim a byte-identical rebuild from source.
+
+CI exercises the dependency inventory, hashes, staged-directory and ZIP checks
+with synthetic files. It verifies rejection of modified or missing dependencies,
+extra files, traversal, duplicates, and EFT/SPT/WTT/Fika files. It does not need
+to download or load any bundled binaries.
 
 The baseline archive is an explicit input for the eight historical Unity
 bundles. The packager requires the verified public v1.0.8 ZIP SHA-256 recorded
@@ -231,10 +265,10 @@ overwrites, changes outside the two approved Unity objects, or changed streamed
 resource bytes. The 4.1.4 serialized-field audit and equip/stow acceptance are
 separate checks recorded in `docs/port/SPT-4.1.4-PORT-LOG.md`.
 
-The four DLLs come only from the fixed project build-output paths recorded in
+The four TSC DLLs come only from the fixed project build-output paths recorded in
 the manifest. All four must have the reviewed assembly name,
-`AssemblyVersion`/`FileVersion` `1.3.8.0`, and
-`AssemblyInformationalVersion` `1.3.8+<current-clean-HEAD>`. This rejects old,
+`AssemblyVersion`/`FileVersion` `1.3.9.0`, and
+`AssemblyInformationalVersion` `1.3.9+<current-clean-HEAD>`. This rejects old,
 mixed, or locally modified build outputs. The packager requires the external
 build evidence and matches its HEAD/tree, SDK, configuration, output paths,
 sizes, SHA-256 values, and assembly metadata against those four DLLs. Run the
@@ -244,7 +278,7 @@ binaries and evidence identify that exact candidate revision.
 The output directory must be outside the entire repository and must be new or
 completely empty. The command creates a fresh `stage/`, validates it, creates a
 new archive without updating any prior ZIP, validates the ZIP directly,
-extracts it into a fresh `verify-extracted/`, and independently hashes all 169
+extracts it into a fresh `verify-extracted/`, and independently hashes all 186
 files to require exact path/size/SHA-256 equality with the stage.
 The repository root, manifest, checker, and build-output mappings are fixed by
 the tracked packaging script; release inputs must be tracked, clean, and equal
@@ -254,13 +288,14 @@ working-tree bytes, and the clean HEAD/tree identity is checked again before
 success.
 
 For this port the generated archive name is exactly
-`Tylevo.TacticalServicesControl-v1.3.8-SPT4.1.4-TESTER.zip`. The `TESTER`
+`Tylevo.TacticalServicesControl-v1.3.9-SPT4.1.4-TESTER.zip`. The `TESTER`
 suffix must remain until the 4.1.4 runtime acceptance gates are complete.
 
 The command also writes a new external `*.content-evidence.json` sidecar with
 the source HEAD/tree, manifest identity, verified baseline archive, complete
-169-file content inventory, DLL identities and versions, bundle pins, archive
-identity, and exact file/DLL/bundle counts. The sidecar is not included in the
+186-file content inventory, TSC DLL identities and versions, bundled dependency
+provenance and pins, bundle pins, archive identity, and separate built/bundled
+DLL counts. The sidecar is not included in the
 installer ZIP and is never overwritten.
 
 ZIP entries are sorted ordinally and receive one fixed timestamp, so identical
@@ -274,5 +309,7 @@ Verify the release identity independently:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\Test-ReleaseMetadata.ps1
 ```
 
-Never include EFT/SPT/Fika/WTT/UnityToolkit assemblies, local profiles, logs,
-build caches, source-only prompt files, or local machine paths in a release.
+Never include EFT/SPT/Fika/WTT assemblies, unpinned UnityToolkit files, local
+profiles, logs, build caches, source-only prompt files, or local machine paths
+in a release. Only the fifteen reviewed Toolkit files are exempted from the
+dependency filename restrictions, at their exact pinned paths and bytes.
