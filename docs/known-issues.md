@@ -2,7 +2,7 @@
 
 Prepared candidate: **TSC v1.3.11 for SPT 4.1.5**, with standalone
 **UnityToolkit 2.0.2**. Neither new package has been published. Build, package,
-and runtime checks for this pair are pending in the
+and isolated server checks passed; game testing remains pending. See the
 [validation record](validation/v1.3.11.md). Earlier local feedback for
 v1.3.10 does not validate the new pair.
 

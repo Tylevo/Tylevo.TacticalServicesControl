@@ -89,8 +89,10 @@ Toolkit and WTT remain separate downloads.
 ## Testing and limitations
 
 The standalone Toolkit 2.0.2 plugin and prepatcher built against SPT 4.1.5
-references with no warnings or errors. TSC v1.3.11 build, package, and runtime
-checks are pending in the [validation record](validation/v1.3.11.md).
+references with no warnings or errors. TSC v1.3.11 built successfully with
+four existing warnings and no errors. All 238 regression tests, package checks,
+and 26 isolated server checks passed. Game startup and raid checks for the new
+pair remain pending in the [validation record](validation/v1.3.11.md).
 Earlier local use of TSC 1.3.10 was reported working; that result does not
 validate the new TSC/Toolkit pair.
 

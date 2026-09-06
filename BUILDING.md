@@ -2,7 +2,7 @@
 
 The current source prepares **TSC v1.3.11 for SPT 4.1.5**, with
 **UnityToolkit 2.0.2 installed separately**. Neither new package is published.
-TSC build, package, and runtime validation are pending in the
+TSC build, package, and isolated server checks passed; game testing remains pending. See the
 [validation record](docs/validation/v1.3.11.md). Current Fika multiplayer
 remains untested.
 

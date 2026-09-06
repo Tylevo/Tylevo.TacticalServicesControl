@@ -75,7 +75,9 @@ With the SPT server running, open **SIC > Mod pages > Tactical Services Control*
 
 ## Testing and Fika
 
-The new TSC v1.3.11 and Toolkit 2.0.2 pair is being prepared for testing.
+TSC v1.3.11 built against Toolkit 2.0.2 and passed its regression, package,
+and isolated server checks. Game startup and raid testing with this new pair
+are still pending.
 Earlier local use of TSC 1.3.10 on SPT 4.1.5 was reported working, but does not
 validate this candidate. See the validation record for current results.
 

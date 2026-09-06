@@ -79,7 +79,7 @@ SIC also has **Config Editor > Mods > Tactical Services Control** for prices, av
 
 ## Compatibility and known issues
 
-Earlier TSC 1.3.10 use on SPT 4.1.5 was reported working. The new TSC 1.3.11 and standalone UnityToolkit 2.0.2 pair still needs its own build, package, and runtime checks; prior results do not validate this candidate.
+TSC 1.3.11 builds against standalone UnityToolkit 2.0.2. All 238 regression tests, package checks, and 26 isolated server checks passed. Game startup and raid testing with this newly versioned pair are still pending; earlier TSC 1.3.10 feedback does not replace those checks.
 
 **Current Fika multiplayer remains untested.** Solo play does not require Fika. Cargo Transfer is available in solo play and is implemented for the requesting human Fika host; other Fika clients and dedicated-headless requesters cannot use it yet. Dedicated-headless A-10 damage is experimental.
 
