@@ -1,6 +1,30 @@
 # Changelog
 
+## 1.3.11 - Public Beta (unreleased)
+
+Prepared for SPT 4.1.5; not published.
+
+- Require **UnityToolkit 2.0.2 as a separate dependency**, alongside WTT
+  CommonLib 3.0.6. The standalone Toolkit update is being prepared on Arys's
+  existing project page, where Tylevo has been added as a coauthor.
+- Remove UnityToolkit binaries and companion libraries from the TSC package.
+  The Toolkit version changes from 2.0.1 to 2.0.2 so users can distinguish the
+  updated standalone release.
+- Correct the earlier claim of explicit permission to bundle Toolkit. That
+  claim came from a maintainer/assistant misunderstanding; the approved
+  maintenance and distribution plan uses a separate Toolkit package.
+- Keep the cumulative phone, pre-raid store, Cargo Transfer, Pilot, radar,
+  payment, A-10, and SIC improvements since the SPT 4.0.13 Forge release.
+- Hold v1.3.9 and v1.3.10 as archived drafts. Build, package, and runtime checks
+  for TSC 1.3.11 with Toolkit 2.0.2 are pending. Current Fika multiplayer
+  remains untested.
+
+See the [cumulative v1.3.11 release notes](docs/release-notes-v1.3.11.md).
+
 ## 1.3.10 - Public Beta
+
+> Historical release, now held as a draft. The bundling-permission claim below
+> was incorrect; see the [corrected permission record](PERMISSIONS.md).
 
 Published September 5, 2026 for SPT 4.1.5.
 
@@ -35,6 +59,9 @@ compatibility claim.
 See the [cumulative v1.3.10 release notes](docs/release-notes-v1.3.10.md).
 
 ## 1.3.9 - Public Beta
+
+> Historical release, now held as a draft. The bundling-permission claim below
+> was incorrect; see the [corrected permission record](PERMISSIONS.md).
 
 Published September 5, 2026 for SPT 4.1.4.
 

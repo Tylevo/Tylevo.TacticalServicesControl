@@ -2,11 +2,11 @@
 
 Call in an A-10 strike, arrange a helicopter extraction or cargo pickup, and locate nearby contacts with UAV reconnaissance. Control your support from the TerraGroup TSC Uplink phone.
 
-**TSC v1.3.10 · SPT 4.1.5 / EFT 0.16.9.5.40743**
+**TSC v1.3.11 · SPT 4.1.5 / EFT 0.16.9.5.40743 · Prepared, not published**
 
-**[Download TSC for SPT 4.1.5](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases/download/v1.3.10/Tylevo.TacticalServicesControl-v1.3.10-SPT4.1.5-TESTER.zip)** · [Release notes](docs/release-notes-v1.3.10.md) · [Installation guide](docs/dependencies.md)
+[Release notes](docs/release-notes-v1.3.11.md) · [Installation guide](docs/dependencies.md) · [TSC releases](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases)
 
-The full ZIP includes UnityToolkit. Install **WTT CommonLib 3.0.6** separately. **Fika support is included, but multiplayer on the current SPT/Fika versions has not been tested.**
+This candidate requires **UnityToolkit 2.0.2** and **WTT CommonLib 3.0.6**, both installed separately. TSC and the standalone Toolkit update are being prepared for publication; neither new package is available yet. **Fika support is included, but multiplayer on the current SPT/Fika versions has not been tested.**
 
 ## What's changed since the SPT 4.0.13 release?
 
@@ -20,9 +20,9 @@ If you're updating from the last Forge release, TSC v1.0.8, this version brings 
 - **More payment options and better recovery:** configure support prices in RUB, USD, or EUR. Authorization use and payment recovery have been strengthened across failed requests, reconnects, and server saves.
 - **A-10 targeting improvements:** corrected shot origins and trajectory compensation address rounds landing short of the designated target.
 - **Launcher configuration:** open the TerraGroup dashboard from SIC's **Mod pages**, or use its native config editor. The dashboard keeps its theme, and saves include validation and protection against conflicting edits.
-- **A simpler dependency install:** the compatible UnityToolkit rebuild and its companion libraries are bundled with Arys's permission.
+- **Updated dependencies:** UnityToolkit 2.0.2 is being prepared as a standalone SPT 4.1.5 update on Arys's existing Forge page. It is a separate dependency, alongside WTT CommonLib.
 
-Phone deployment, camera targeting, A-10 Double Pass, UAV Recon, and Focused Sweep already existed in the 4.0.13 build. They remain part of TSC alongside these additions. The [release notes](docs/release-notes-v1.3.10.md) cover the upgrade in more detail.
+Phone deployment, camera targeting, A-10 Double Pass, UAV Recon, and Focused Sweep already existed in the 4.0.13 build. They remain part of TSC alongside these additions. The [release notes](docs/release-notes-v1.3.11.md) cover the upgrade in more detail.
 
 ## Available support
 
@@ -42,13 +42,13 @@ Phone deployment, camera targeting, A-10 Double Pass, UAV Recon, and Focused Swe
 For an existing SPT 4.1.x installation, back up your profiles and TSC's complete `config/` and `storage/` directories before updating to 4.1.5. The TSC ZIP does not overwrite those folders.
 
 1. Close the game, launcher, and SPT server.
-2. Install [WTT CommonLib 3.0.6](https://github.com/WelcomeToThursday/WTT-CommonLib/releases/tag/v3.0.6), including its client, server, and serialization prepatcher components.
+2. Install the standalone **UnityToolkit 2.0.2** package when published through [Arys's UnityToolkit project](https://forge.sp-tarkov.com/mod/1426/unitytoolkit), then install [WTT CommonLib 3.0.6](https://github.com/WelcomeToThursday/WTT-CommonLib/releases/tag/v3.0.6), including its client, server, and serialization prepatcher components.
 3. Extract the **full TSC ZIP** into your SPT 4.1.5 root. Merge the `BepInEx` and `SPT_Runtime` folders and replace old mod files when prompted.
 4. Start the SPT server, then the launcher and game.
 
-UnityToolkit is already included. Keep its bundled files in the standard plugin and patcher folders; no separate Toolkit or compatibility overlay is needed. TSC replaces SamSWAT Fire Support and Arys Reloaded, so don't install those alongside it.
+The TSC ZIP does not include UnityToolkit. Its separate 2.0.2 package supplies the plugin, prepatcher, and companion libraries. Keep one Toolkit installation in the standard plugin and patcher folders; no additional compatibility overlay is needed. TSC replaces SamSWAT Fire Support and Arys Reloaded, so don't install those alongside it.
 
-The [installation guide](docs/dependencies.md) shows the folder layout and upgrade details. `SHA256SUMS.txt` on the release page is optional download verification; GitHub's source archives are not installable mod packages.
+The [installation guide](docs/dependencies.md) shows the folder layout and upgrade details. When published, `SHA256SUMS.txt` provides optional download verification; GitHub's source archives are not installable mod packages.
 
 ## Getting started
 
@@ -79,15 +79,15 @@ SIC also has **Config Editor > Mods > Tactical Services Control** for prices, av
 
 ## Compatibility and known issues
 
-The maintainer reports the updated local setup working on SPT 4.1.5. Automated build and server checks have passed; broader gameplay testing is ongoing.
+Earlier TSC 1.3.10 use on SPT 4.1.5 was reported working. The new TSC 1.3.11 and standalone UnityToolkit 2.0.2 pair still needs its own build, package, and runtime checks; prior results do not validate this candidate.
 
 **Current Fika multiplayer remains untested.** Solo play does not require Fika. Cargo Transfer is available in solo play and is implemented for the requesting human Fika host; other Fika clients and dedicated-headless requesters cannot use it yet. Dedicated-headless A-10 damage is experimental.
 
-See [known issues](docs/known-issues.md) for current limitations and the [validation record](docs/validation/v1.3.10.md) for test details.
+See [known issues](docs/known-issues.md) for current limitations and the [validation record](docs/validation/v1.3.11.md) for test details.
 
 ## Credits and more information
 
-Based on **SamSWAT's Fire Support** and **Arys Reloaded**, with permission and attribution. Thanks to **Arys** for UnityToolkit and permission to bundle its compatible rebuild. Full credits, component licenses, and redistribution details are in [credits](docs/credits.md), [third-party notices](THIRD_PARTY_NOTICES.md), and [permissions](PERMISSIONS.md).
+Based on **SamSWAT's Fire Support** and **Arys Reloaded**, with permission and attribution. Thanks to **Arys** for UnityToolkit and permission to maintain its update on the existing Forge page. Full credits, component licenses, and redistribution details are in [credits](docs/credits.md), [third-party notices](THIRD_PARTY_NOTICES.md), and [permissions](PERMISSIONS.md).
 
 TSC is licensed under **CC BY-NC 4.0**. UnityToolkit remains under MIT, and its companion libraries retain their own licenses.
 

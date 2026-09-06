@@ -1,10 +1,13 @@
 # Tylevo's Tactical Services Control v1.3.9 Public Beta
 
 > **Historical documentation.** These instructions and results describe this
-> earlier version. For TSC v1.3.10 on SPT 4.1.5, use the
-> [current release notes](release-notes-v1.3.10.md) and
-> [installation guide](dependencies.md). See the [archive index](archive/README.md)
-> for earlier release availability.
+> earlier version. For the prepared TSC v1.3.11 / SPT 4.1.5 update, use the
+> [release notes](release-notes-v1.3.11.md) and [installation guide](dependencies.md).
+> TSC v1.3.11 requires standalone UnityToolkit 2.0.2; both new packages are
+> unpublished. See the [archive index](archive/README.md) for older availability.
+>
+> The claim of explicit bundling permission below was a maintainer/assistant
+> misunderstanding and is withdrawn. See the [corrected permission record](../PERMISSIONS.md).
 
 Published September 5, 2026 for SPT 4.1.4. SPT 4.1.5 and Fika multiplayer
 on the current SPT/Fika versions have not been tested.

@@ -1,11 +1,13 @@
 # TSC documentation
 
-Current player release: **TSC v1.3.10 for SPT 4.1.5**.
+Prepared candidate: **TSC v1.3.11 for SPT 4.1.5**, requiring standalone
+**UnityToolkit 2.0.2** and WTT CommonLib 3.0.6. The TSC and Toolkit updates
+have not been published yet.
 
 ## Playing TSC
 
-- [Overview and download](../README.md)
-- [What's changed since the SPT 4.0.13 Forge release](release-notes-v1.3.10.md)
+- [Overview and release status](../README.md)
+- [What's changed since the SPT 4.0.13 Forge release](release-notes-v1.3.11.md)
 - [Installation and dependencies](dependencies.md)
 - [Phone controls, support, radar, and cargo](usage.md)
 - [Dashboard and launcher configuration](dashboard.md)
@@ -13,8 +15,8 @@ Current player release: **TSC v1.3.10 for SPT 4.1.5**.
 
 ## Release and project information
 
-- [Forge page copy](forge-description-v1.3.10.md)
-- [Validation and testing scope](validation/v1.3.10.md)
+- [Forge page copy](forge-description-v1.3.11.md)
+- [Validation and testing scope](validation/v1.3.11.md)
 - [Credits](credits.md), [licenses](../THIRD_PARTY_NOTICES.md), and [permissions](../PERMISSIONS.md)
 - [Privacy](../PRIVACY.md) and [security](../SECURITY.md)
 

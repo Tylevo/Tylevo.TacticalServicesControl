@@ -1,10 +1,10 @@
 # Forge Main Description Draft
 
 > **Historical documentation.** These instructions and results describe this
-> earlier version. For TSC v1.3.10 on SPT 4.1.5, use the
-> [current release notes](release-notes-v1.3.10.md) and
-> [installation guide](dependencies.md). See the [archive index](archive/README.md)
-> for earlier release availability.
+> earlier version. For the prepared TSC v1.3.11 / SPT 4.1.5 update, use the
+> [release notes](release-notes-v1.3.11.md) and [installation guide](dependencies.md).
+> TSC v1.3.11 requires standalone UnityToolkit 2.0.2; both new packages are
+> unpublished. See the [archive index](archive/README.md) for older availability.
 
 > v1.1.0 SPT 4.1.2 tester draft. Do not publish as a stable release until the
 > build, server, client, raid, multiplayer, and package gates pass. Expected

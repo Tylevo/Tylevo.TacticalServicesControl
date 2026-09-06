@@ -814,9 +814,9 @@ if (-not $?) {
     throw "Package allowlist source validation failed."
 }
 
-Write-Host "Testing the bundled dependency inventory and byte checks with synthetic files."
-& (Join-Path $PSScriptRoot "tests\bundled-dependencies.test.ps1")
-if (-not $?) { throw "Bundled dependency contract tests failed." }
+Write-Host "Testing the TSC-only package contract with synthetic directory and ZIP fixtures."
+& (Join-Path $PSScriptRoot "tests\package-contract.test.ps1")
+if (-not $?) { throw "TSC-only package contract tests failed." }
 
 Write-Host "Running proprietary-free regression suite."
 if (-not (Test-Path -LiteralPath $regressionProject -PathType Leaf)) {

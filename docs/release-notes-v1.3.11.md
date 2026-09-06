@@ -1,19 +1,14 @@
-# Tylevo's Tactical Services Control v1.3.10 Public Beta
+# Tylevo's Tactical Services Control v1.3.11 Public Beta
 
-> **Historical documentation.** These instructions and results describe this
-> earlier version. For the prepared TSC v1.3.11 / SPT 4.1.5 update, use the
-> [release notes](release-notes-v1.3.11.md) and [installation guide](dependencies.md).
-> TSC v1.3.11 requires standalone UnityToolkit 2.0.2; both new packages are
-> unpublished. See the [archive index](archive/README.md) for older availability.
->
-> The claim of explicit bundling permission below was a maintainer/assistant
-> misunderstanding and is withdrawn. See the [corrected permission record](../PERMISSIONS.md).
+**SPT 4.1.5 / EFT 0.16.9.5.40743 · Prepared, not published**
 
-**SPT 4.1.5 / EFT 0.16.9.5.40743 · Published September 5, 2026**
+This candidate requires **UnityToolkit 2.0.2** and **WTT CommonLib 3.0.6**,
+installed separately. TSC v1.3.11 and the standalone Toolkit update have not
+been published yet. Follow the [TSC releases](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases)
+and [UnityToolkit project](https://forge.sp-tarkov.com/mod/1426/unitytoolkit)
+for availability.
 
-[Download the full TSC ZIP](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases/download/v1.3.10/Tylevo.TacticalServicesControl-v1.3.10-SPT4.1.5-TESTER.zip)
-
-This is the release for players moving on from the **SPT 4.0.13 Forge version, TSC v1.0.8**. It includes the work developed across the intermediate GitHub test builds, which were not released on Forge. The changes below compare those two player releases.
+This release is being prepared for players moving on from the **SPT 4.0.13 Forge version, TSC v1.0.8**. It includes the work developed across the intermediate GitHub test builds, which were not released on Forge. The changes below compare the prepared update with that last Forge release.
 
 ## New features since the 4.0.13 release
 
@@ -56,24 +51,50 @@ The TerraGroup dashboard now opens from **SIC > Mod pages > Tactical Services Co
 - Improved phone equip/stow cleanup, radar lifetime handling, and targeting readiness.
 - Separated standard Extraction and Cargo Transfer timing, and improved departure handling after a successful cargo submission.
 - Repaired the Uplink asset for the SPT 4.1 runtime and updated the client/server build references for SPT 4.1.5.
-- Bundled the compatible **UnityToolkit 2.0.1** rebuild, companion libraries, and license notices with Arys's permission. No extra Toolkit or overlay download is needed.
+- Update the required Toolkit version to the standalone **UnityToolkit 2.0.2**
+  package for SPT 4.1.5. It includes its own plugin, prepatcher, companion
+  libraries, and notices; no separate compatibility overlay is needed.
 
 Phone deployment, camera targeting, A-10 Double Pass, UAV Recon, Focused Sweep, and the original dashboard were already present in the 4.0.13 release. This update expands and improves that setup.
 
+## Dependency distribution change
+
+TSC v1.3.11 does not bundle UnityToolkit. Arys approved updating Toolkit,
+added Tylevo as a coauthor on its existing Forge page, and requested a distinct
+version number. The update is being prepared there as **UnityToolkit 2.0.2**.
+
+The earlier bundled v1.3.9 and v1.3.10 test releases have been withdrawn and
+held as archived drafts. The [permission record](../PERMISSIONS.md) explains
+the distribution correction. Arys's authorship, MIT license, and the
+companion libraries' licenses remain unchanged.
+
 ## Install or update
 
-Install **[WTT CommonLib 3.0.6](https://github.com/WelcomeToThursday/WTT-CommonLib/releases/tag/v3.0.6)** separately, including its client, server, and serialization prepatcher components. Extract the full TSC ZIP into your SPT 4.1.5 root while the game, launcher, and server are closed. Merge `BepInEx` and `SPT_Runtime` and replace the old mod files.
+Once both new packages are published, install **UnityToolkit 2.0.2** from
+[Arys's existing project](https://forge.sp-tarkov.com/mod/1426/unitytoolkit)
+and **[WTT CommonLib 3.0.6](https://github.com/WelcomeToThursday/WTT-CommonLib/releases/tag/v3.0.6)** separately, including its client, server, and serialization prepatcher components. Extract the full TSC ZIP into your SPT 4.1.5 root while the game, launcher, and server are closed. Merge `BepInEx` and `SPT_Runtime` and replace the old mod files.
 
 **From SPT 4.0.13:** install SPT 4.1.5 in a new folder and create a fresh profile. Keep the old installation as a backup and let TSC create fresh storage. Do not copy the old installation's mods or player ledger into the new setup.
 
 **From SPT 4.1.x:** follow SPT's patch-update instructions. Back up profiles and TSC's complete `config/` and `storage/` directories first; the TSC ZIP does not overwrite those folders.
 
-See the [installation guide](dependencies.md) and [controls and usage](usage.md). The release has one installable ZIP and an optional `SHA256SUMS.txt` file.
+If a previous TSC ZIP installed Toolkit for you, replace that installation
+with the complete standalone 2.0.2 package in the same plugin and patcher
+folders. Keep one copy of each component.
+
+See the [installation guide](dependencies.md) and [controls and usage](usage.md).
+The planned TSC release has one installable ZIP and an optional checksum file;
+Toolkit and WTT remain separate downloads.
 
 ## Testing and limitations
 
-The maintainer reports successful local use on SPT 4.1.5. The release passed its full build, all 238 regression tests, and 26 isolated server checks. The [validation record](validation/v1.3.10.md) and [reference log](port/SPT-4.1.5-PORT-LOG.md) document the tested builds and their limits.
+The standalone Toolkit 2.0.2 plugin and prepatcher built against SPT 4.1.5
+references with no warnings or errors. TSC v1.3.11 build, package, and runtime
+checks are pending in the [validation record](validation/v1.3.11.md).
+Earlier local use of TSC 1.3.10 was reported working; that result does not
+validate the new TSC/Toolkit pair.
 
 **Fika multiplayer on the current SPT/Fika versions has not been tested.** Fika is optional. Cargo Transfer is implemented for the requesting human host as well as solo play; non-host clients and dedicated-headless requesters cannot use it yet. Dedicated-headless A-10 damage remains experimental. See [known issues](known-issues.md).
 
-This remains a public beta. The existing `TESTER` filename is unchanged. Intermediate GitHub test releases and technical development notes are catalogued in the [archive](archive/README.md).
+This is an unpublished public-beta candidate. Its planned archive retains
+the `TESTER` suffix. Intermediate GitHub test releases and technical development notes are catalogued in the [archive](archive/README.md).

@@ -1,9 +1,10 @@
 # Installing TSC for SPT 4.1.5
 
-The current package is **TSC v1.3.10 for SPT 4.1.5**. It includes the SPT 4.1
-rebuild of UnityToolkit 2.0.1, its companion libraries, and license notices,
-with Arys's permission. **You do not need a separate UnityToolkit or
-compatibility-overlay download.**
+**TSC v1.3.11 for SPT 4.1.5 is prepared but not yet published.** It requires
+**UnityToolkit 2.0.2**, installed separately. That standalone Toolkit update
+is also being prepared and is not yet published. Use the
+[UnityToolkit project](https://forge.sp-tarkov.com/mod/1426/unitytoolkit)
+for release availability; do not substitute the older 2.0.1 binary.
 
 Install **WTT Client CommonLib and WTT Server CommonLib 3.0.6** separately from
 the [official WTT release](https://github.com/WelcomeToThursday/WTT-CommonLib/releases/tag/v3.0.6),
@@ -28,16 +29,19 @@ profile's installation.
 
 1. Close the game, launcher, and SPT server.
 2. Install SPT 4.1.5 and WTT CommonLib, including all of WTT's required components.
-3. Download the [full TSC v1.3.10 ZIP](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases/download/v1.3.10/Tylevo.TacticalServicesControl-v1.3.10-SPT4.1.5-TESTER.zip).
-   Extract it into the SPT root so its `BepInEx` and `SPT_Runtime` folders merge
-   with the existing folders. GitHub's automatic source archives are not
-   installable mod packages.
-4. If UnityToolkit is already installed, replace its files in the standard
+3. Once published, extract the **complete UnityToolkit 2.0.2 package** into
+   the SPT root. It supplies its plugin, prepatcher, companion libraries,
+   `Assemblies.jsonc`, and license notices. No additional overlay is needed.
+4. Extract the **full TSC v1.3.11 ZIP**, once published, into the same SPT root
+   so its `BepInEx` and `SPT_Runtime` folders merge with the existing folders.
+   GitHub's automatic source archives are not installable mod packages.
+5. If UnityToolkit is already installed, replace its files in the standard
    folders when prompted. Keep one installation; do not leave duplicate
    plugin or prepatcher copies in other folders.
-5. Start the SPT server, then the launcher and game.
+6. Start the SPT server, then the launcher and game.
 
-Check for these folders directly inside your SPT installation:
+After installing both packages, check for these folders directly inside your
+SPT installation. TSC supplies the first two; UnityToolkit supplies the last two:
 
 ```text
 BepInEx/plugins/Tylevo.TacticalServicesControl/
@@ -81,20 +85,26 @@ multiplayer is verified. Install a matching Fika client/server pair and the
 same TSC package on every participating machine if you are testing it. See
 the [Fika guide](fika.md) and [known issues](known-issues.md) for restrictions.
 
-## About the bundled UnityToolkit
+## About UnityToolkit 2.0.2
 
-Arys remains the author of UnityToolkit. This is a TSC-distributed SPT 4.1
-rebuild of version 2.0.1, not a new official Arys release. It includes the
-plugin, prepatcher, companion libraries, `Assemblies.jsonc`, and dependency
-license notices. UnityToolkit remains under MIT; its companion libraries
-retain their own licenses. See [permissions](../PERMISSIONS.md),
+Arys remains the author of UnityToolkit and has added Tylevo as a coauthor on
+its existing Forge page to maintain the SPT update. Version 2.0.2 distinguishes
+that standalone update from the original 2.0.1 release. TSC v1.3.11 does not
+redistribute the Toolkit binaries or companion libraries inside its ZIP.
+
+The earlier bundled v1.3.9 and v1.3.10 test releases have been withdrawn and
+held as archived drafts. Use the separate Toolkit package for this update;
+see the [permission record](../PERMISSIONS.md) for the distribution correction.
+
+UnityToolkit remains under MIT; its companion libraries retain their own
+licenses. See [permissions](../PERMISSIONS.md),
 [third-party notices](../THIRD_PARTY_NOTICES.md), and the
 [source and packaging guide](../tools/dependencies/unitytoolkit/README.md).
 
 SPT 4.1.5 fixes server validation of older Unity asset bundles. Its separate
 [client startup check](https://github.com/SP-Tushonka/modules/blob/4.1.5/SPT.PrePatch/PluginValidator.cs)
 still requires compatible SPT assembly references, which is why the rebuilt
-Toolkit is included.
+Toolkit update is required.
 
 ## Historical v1.3.8 installation: official Toolkit plus overlay
 

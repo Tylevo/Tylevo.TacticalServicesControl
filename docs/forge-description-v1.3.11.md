@@ -1,19 +1,13 @@
-# Tylevo's Tactical Services Control v1.3.10 Public Beta
-
-> **Historical documentation.** These instructions and results describe this
-> earlier version. For the prepared TSC v1.3.11 / SPT 4.1.5 update, use the
-> [release notes](release-notes-v1.3.11.md) and [installation guide](dependencies.md).
-> TSC v1.3.11 requires standalone UnityToolkit 2.0.2; both new packages are
-> unpublished. See the [archive index](archive/README.md) for older availability.
->
-> The claim of explicit bundling permission below was a maintainer/assistant
-> misunderstanding and is withdrawn. See the [corrected permission record](../PERMISSIONS.md).
+# Tylevo's Tactical Services Control v1.3.11 Public Beta
 
 **For SPT 4.1.5 / EFT 0.16.9.5.40743**
 
+> Prepared page copy: TSC v1.3.11 and its required standalone UnityToolkit
+> 2.0.2 update have not yet been published.
+
 Call in an A-10 strike, arrange a helicopter extraction or cargo pickup, and find nearby contacts with UAV reconnaissance. The TerraGroup TSC Uplink phone puts support selection, purchases, and targeting in your hands.
 
-This is the update for players coming from the **SPT 4.0.13 Forge release, TSC v1.0.8**. It includes the features and fixes developed through the intervening GitHub test builds.
+This update is being prepared for players coming from the **SPT 4.0.13 Forge release, TSC v1.0.8**. It includes the features and fixes developed through the intervening GitHub test builds.
 
 ## What's new since 4.0.13?
 
@@ -25,9 +19,12 @@ This is the update for players coming from the **SPT 4.0.13 Forge release, TSC v
 - **RUB, USD, or EUR support pricing** gives you more ways to configure payments. Authorization synchronization, failed-dispatch refunds, and payment recovery have also been improved.
 - **A-10 targeting corrections** address rounds landing short by correcting shot origins and compensating for the bullet trajectory.
 - **SIC integration** opens the themed TerraGroup dashboard from the launcher's **Mod pages**. A native config editor is also available, with validation and protection against conflicting saves.
-- **UnityToolkit is bundled**, including its compatible rebuild and companion libraries, with Arys's permission. There is no separate Toolkit or compatibility-overlay download.
+- **Updated Toolkit dependency:** install UnityToolkit 2.0.2 separately. It is
+  being prepared on Arys's existing Forge page and includes the compatible
+  plugin, prepatcher, and companion libraries. No extra compatibility overlay
+  is needed.
 
-Phone deployment, camera targeting, A-10 Double Pass, UAV Recon, and Focused Sweep were already in the 4.0.13 version. They remain available alongside these additions. See the [full release notes](https://github.com/Tylevo/Tylevo.TacticalServicesControl/blob/main/docs/release-notes-v1.3.10.md) for details.
+Phone deployment, camera targeting, A-10 Double Pass, UAV Recon, and Focused Sweep were already in the 4.0.13 version. They remain available alongside these additions. See the [full release notes](https://github.com/Tylevo/Tylevo.TacticalServicesControl/blob/main/docs/release-notes-v1.3.11.md) for details.
 
 ## Available support
 
@@ -40,20 +37,23 @@ Phone deployment, camera targeting, A-10 Double Pass, UAV Recon, and Focused Swe
 
 ## Install
 
-Use **SPT 4.1.5** and install **[WTT CommonLib 3.0.6](https://github.com/WelcomeToThursday/WTT-CommonLib/releases/tag/v3.0.6)** separately, including its client, server, and serialization prepatcher components. Fika is optional.
+Once the new packages are published, use **SPT 4.1.5** and install
+**UnityToolkit 2.0.2** from [Arys's UnityToolkit project](https://forge.sp-tarkov.com/mod/1426/unitytoolkit)
+and **[WTT CommonLib 3.0.6](https://github.com/WelcomeToThursday/WTT-CommonLib/releases/tag/v3.0.6)** separately, including its client, server, and serialization prepatcher components. Fika is optional.
 
 1. Close the game, launcher, and SPT server.
 2. Extract the **full TSC ZIP** into your SPT 4.1.5 root.
 3. Merge the `BepInEx` and `SPT_Runtime` folders, replacing old mod files when prompted.
 4. Start the server, then the launcher and game.
 
-UnityToolkit is included in the ZIP. Keep one installation in its standard plugin and patcher folders. TSC replaces SamSWAT Fire Support and Arys Reloaded; don't install those alongside it.
+UnityToolkit is a separate dependency and is not included in the TSC ZIP.
+Keep one installation in its standard plugin and patcher folders. TSC replaces SamSWAT Fire Support and Arys Reloaded; don't install those alongside it.
 
 **Coming from SPT 4.0.13:** install SPT 4.1.5 in a new folder and start a fresh profile. Keep the old installation as a backup and let TSC create fresh storage. Do not copy the old mods or player ledger into the new setup.
 
 **Already on SPT 4.1.x:** follow SPT's patch-update instructions. Back up your profiles and TSC's complete `config/` and `storage/` directories first. The TSC ZIP does not overwrite those directories.
 
-[Installation guide](https://github.com/Tylevo/Tylevo.TacticalServicesControl/blob/main/docs/dependencies.md) · [Download TSC for SPT 4.1.5](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases/download/v1.3.10/Tylevo.TacticalServicesControl-v1.3.10-SPT4.1.5-TESTER.zip)
+[Installation guide](https://github.com/Tylevo/Tylevo.TacticalServicesControl/blob/main/docs/dependencies.md) · [TSC release availability](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases)
 
 ## Use the Uplink
 
@@ -75,15 +75,18 @@ With the SPT server running, open **SIC > Mod pages > Tactical Services Control*
 
 ## Testing and Fika
 
-The maintainer reports successful local use on SPT 4.1.5. Automated build, regression, and isolated server checks have passed. This remains a public beta.
+The new TSC v1.3.11 and Toolkit 2.0.2 pair is being prepared for testing.
+Earlier local use of TSC 1.3.10 on SPT 4.1.5 was reported working, but does not
+validate this candidate. See the validation record for current results.
 
 **Multiplayer on the current SPT/Fika versions has not been tested.** Solo play does not require Fika. Cargo Transfer is implemented for solo play and the requesting human Fika host; non-host clients and dedicated-headless requesters cannot use it yet. Dedicated-headless A-10 damage remains experimental.
 
-[Known issues](https://github.com/Tylevo/Tylevo.TacticalServicesControl/blob/main/docs/known-issues.md) · [Validation record](https://github.com/Tylevo/Tylevo.TacticalServicesControl/blob/main/docs/validation/v1.3.10.md)
+[Known issues](https://github.com/Tylevo/Tylevo.TacticalServicesControl/blob/main/docs/known-issues.md) · [Validation record](https://github.com/Tylevo/Tylevo.TacticalServicesControl/blob/main/docs/validation/v1.3.11.md)
 
 ## Credits
 
-Based on **SamSWAT's Fire Support** and **Arys Reloaded**, with permission and full credit retained. Thanks to **Arys** for UnityToolkit and permission to bundle its compatible rebuild.
+Based on **SamSWAT's Fire Support** and **Arys Reloaded**, with permission and full credit retained. Thanks to **Arys** for UnityToolkit and permission to maintain its update on
+the existing Forge page.
 
 TSC is released under **CC BY-NC 4.0**. UnityToolkit remains under MIT, and its companion libraries retain their own licenses.
 

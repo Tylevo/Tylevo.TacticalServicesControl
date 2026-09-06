@@ -7,14 +7,12 @@ param(
 
     [string] $SourceRoot,
 
-    [string] $UnityToolkitDirectory,
-
     [switch] $ValidateSourceInputs
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
-. (Join-Path $PSScriptRoot 'BundledDependencies.ps1')
+. (Join-Path $PSScriptRoot 'PackageContract.ps1')
 
 if ([string]::IsNullOrWhiteSpace($ManifestPath)) {
     $ManifestPath = Join-Path $PSScriptRoot "package-layout.allowlist.json"
@@ -140,13 +138,7 @@ if (-not (Test-Path -LiteralPath $ManifestPath -PathType Leaf)) {
 
 $resolvedSourceRoot = (Resolve-Path -LiteralPath $SourceRoot).Path
 $manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
-if ($manifest.schemaVersion -ne 4) {
-    throw "Unsupported package allowlist schema '$($manifest.schemaVersion)'."
-}
-$dependencyEntries = Get-BundledDependencyContract -Manifest $manifest
-if (-not [string]::IsNullOrWhiteSpace($UnityToolkitDirectory)) {
-    $null = @(Get-VerifiedBundledDependencyFiles -Root $UnityToolkitDirectory -Contract $dependencyEntries)
-}
+Assert-TscOnlyPackageContract -Manifest $manifest
 
 $archiveRoots = @(
     $manifest.archiveRoots |
@@ -312,18 +304,6 @@ foreach ($copiedFile in $manifest.copiedFiles) {
     }
 }
 
-foreach ($dependencyEntry in $dependencyEntries.Keys) {
-    Assert-AddUnique -Set $allowed -Value $dependencyEntry -Description "Bundled dependency package files"
-}
-if ($ValidateSourceInputs) {
-    $patch = $manifest.bundledDependencies[0].compatibilityPatch
-    if (-not $trackedSourceFiles.Contains([string] $patch.source)) { throw 'Toolkit compatibility patch must be tracked.' }
-    $patchPath = Join-Path $resolvedSourceRoot ([string] $patch.source)
-    if ((Get-FileHash -LiteralPath $patchPath -Algorithm SHA256).Hash -cne $patch.sha256) {
-        throw 'Toolkit compatibility patch SHA-256 mismatch.'
-    }
-}
-
 $baselineFileName = [string] $manifest.baselineAssetArchive.fileName
 $baselineArchiveLength = [long] $manifest.baselineAssetArchive.length
 $baselineHash = ([string] $manifest.baselineAssetArchive.sha256).ToUpperInvariant()
@@ -443,14 +423,14 @@ function Assert-EntryPassesSecurityRules {
         }
     }
 
+    if ($Entry.EndsWith('.dll', [StringComparison]::OrdinalIgnoreCase) -and
+        @($manifest.buildArtifacts | Where-Object { $_.destination -ceq $Entry }).Count -ne 1) {
+        throw "Entry '$Entry' is not one of the four built TSC DLLs."
+    }
+
     $leaf = [IO.Path]::GetFileName($Entry)
     foreach ($pattern in $forbiddenFileNamePatterns) {
         if ($leaf -match $pattern) {
-            if ($dependencyEntries.ContainsKey($Entry) -and $dependencyEntries[$Entry].path -ceq $Entry) {
-                # Only the fixed Toolkit inventory may bypass a dependency
-                # name ban. Directory and ZIP reads verify its exact bytes.
-                continue
-            }
             throw "Entry '$Entry' matches forbidden dependency pattern '$pattern'."
         }
     }
@@ -493,10 +473,6 @@ if (Test-Path -LiteralPath $resolvedPackagePath -PathType Container) {
         $relative = Get-RelativeFilePath -Root $resolvedPackagePath -File $file.FullName
         $entry = Normalize-PackagePath -Value $relative -Description "Package entry"
         Assert-AddUnique -Set $actual -Value $entry -Description "Package"
-        if ($dependencyEntries.ContainsKey($entry)) {
-            if ($dependencyEntries[$entry].path -cne $entry) { throw "Incorrectly cased dependency path: '$entry'." }
-            Assert-BundledDependencyFile -Path $file.FullName -Record $dependencyEntries[$entry]
-        }
     }
 }
 elseif ([IO.Path]::GetExtension($resolvedPackagePath).Equals(".zip", [StringComparison]::OrdinalIgnoreCase)) {
@@ -510,12 +486,6 @@ elseif ([IO.Path]::GetExtension($resolvedPackagePath).Equals(".zip", [StringComp
 
             $entry = Normalize-PackagePath -Value $zipEntry.FullName -Description "ZIP entry"
             Assert-AddUnique -Set $actual -Value $entry -Description "ZIP"
-            if ($dependencyEntries.ContainsKey($entry)) {
-                if ($dependencyEntries[$entry].path -cne $entry) { throw "Incorrectly cased dependency path: '$entry'." }
-                $stream = $zipEntry.Open()
-                try { Assert-BundledDependencyStream -Stream $stream -Length $zipEntry.Length -Record $dependencyEntries[$entry] }
-                finally { $stream.Dispose() }
-            }
         }
     }
     finally {

@@ -1,8 +1,10 @@
 # Known issues
 
-Current release: **TSC v1.3.10 for SPT 4.1.5**. The maintainer reports that the
-updated local setup is working. The [validation record](validation/v1.3.10.md)
-separates that report from automated and server checks.
+Prepared candidate: **TSC v1.3.11 for SPT 4.1.5**, with standalone
+**UnityToolkit 2.0.2**. Neither new package has been published. Build, package,
+and runtime checks for this pair are pending in the
+[validation record](validation/v1.3.11.md). Earlier local feedback for
+v1.3.10 does not validate the new pair.
 
 ## Multiplayer
 
@@ -32,7 +34,7 @@ service.
 - Phone and store layouts need broader coverage across resolutions and combat
   conditions. Pilot's registration and portrait have server checks; exact
   portrait framing and a paid purchase were not individually documented in
-  the latest local test report.
+  earlier local test reports. The new candidate still needs its own runtime checks.
 
 Mortar/artillery support and remote third-person phone animation sync are
 not included.
