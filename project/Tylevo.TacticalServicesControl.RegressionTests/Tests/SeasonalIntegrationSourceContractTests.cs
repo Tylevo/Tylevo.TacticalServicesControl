@@ -16,10 +16,10 @@ internal static class SeasonalIntegrationSourceContractTests
 		"project/SamSWAT.FireSupport/Unity/MainMenuPurchaseController.cs";
 	private const string MainMenuViewPath =
 		"project/SamSWAT.FireSupport/Unity/MainMenuPurchaseController.View.cs";
-	private const string MainMenuTaskBarPath =
-		"project/SamSWAT.FireSupport/Unity/MainMenuPurchaseController.TaskBar.cs";
-	private const string MainMenuPatchPath =
-		"project/SamSWAT.FireSupport/Patches/MainMenuPurchasePatch.cs";
+	private const string PilotServicesViewPath =
+		"project/SamSWAT.FireSupport/Unity/PilotServicesView.cs";
+	private const string PilotServicesPatchPath =
+		"project/SamSWAT.FireSupport/Patches/PilotTraderServicesPatch.cs";
 	private const string GameWorldStartPatchPath =
 		"project/SamSWAT.FireSupport/Patches/GameWorldStartPatch.cs";
 	private const string GameWorldDisposePatchPath =
@@ -607,21 +607,9 @@ internal static class SeasonalIntegrationSourceContractTests
 	}
 
 	[RegressionTest]
-	private static void MainMenuStorefrontIsSuppressedOnlyWhenSeasonalClientIsLoaded()
+	private static void PilotStorefrontKeepsTheTscCatalogAndSeasonalAndRaidGuards()
 	{
-		string patch = ReadProductionSource(MainMenuPatchPath);
-		AssertEx.Contains("typeof(MenuScreen)", patch);
-		AssertEx.Contains("nameof(MenuScreen.Show)", patch);
-		AssertEx.Contains("typeof(Profile)", patch);
-		AssertEx.Contains("typeof(MatchmakerPlayersController)", patch);
-		AssertEx.Contains("typeof(ESessionMode)", patch);
-		AssertEx.Contains("[PatchPostfix]", patch);
-		AssertEx.Contains(
-			"MainMenuPurchaseController.Attach(__instance, __0);",
-			patch);
-
 		string mainMenu = ReadProductionSource(MainMenuPath);
-		string taskBar = ReadProductionSource(MainMenuTaskBarPath);
 		int catalogStart = mainMenu.IndexOf(
 			"private static readonly ServiceDescriptor[] s_services =",
 			StringComparison.Ordinal);
@@ -644,54 +632,159 @@ internal static class SeasonalIntegrationSourceContractTests
 			catalog.Contains("Seasonal", StringComparison.OrdinalIgnoreCase),
 			"The pre-raid catalog must contain only TSC-owned products.");
 
-		int updateStart = mainMenu.IndexOf(
-			"private void Update()",
-			StringComparison.Ordinal);
-		int updateEnd = mainMenu.IndexOf(
-			"private static bool IsSeasonalModifiersClientActive()",
-			updateStart,
-			StringComparison.Ordinal);
-		AssertEx.True(updateStart >= 0 && updateEnd > updateStart);
-		string update = mainMenu[updateStart..updateEnd];
-		AssertEx.Contains("if (!CanUseTaskBar)", update);
-		AssertEx.Contains("ClosePage();", update);
-		AssertEx.Contains("SetTaskBarVisible(false);", update);
-		AssertEx.Contains("if (_seasonalClientActive)", update);
-		AssertEx.Contains("SuppressMenuForSeasonal();", update);
-
+		string enabled = mainMenu[mainMenu.IndexOf("internal static bool ServicesEnabled", StringComparison.Ordinal)..
+			mainMenu.IndexOf("private bool CanUseServices", StringComparison.Ordinal)];
+		AssertEx.Contains("PluginSettings.Enabled?.Value == true", enabled);
+		AssertEx.Contains("!IsSeasonalModifiersClientActive()", enabled);
+		AssertEx.Contains("Singleton<GameWorld>.Instance == null", enabled);
 		AssertEx.Contains(
 			"private const string SeasonalModifiersPluginGuid = \"com.tylevo.seasonalmodifiers\";",
 			mainMenu);
 		AssertEx.Contains(
 			"return Chainloader.PluginInfos.ContainsKey(SeasonalModifiersPluginGuid);",
-			mainMenu);
-		AssertEx.Contains("_seasonalClientActive = IsSeasonalModifiersClientActive();", mainMenu);
-		AssertEx.Contains("PluginSettings.Enabled?.Value == true &&", mainMenu);
-		AssertEx.Contains("!_seasonalClientActive;", mainMenu);
-		AssertEx.Contains("ClosePage();", mainMenu);
-		AssertEx.Contains("RetireAllMenuButtons();", mainMenu);
-		AssertEx.Contains("_nextLayoutScanAt = float.PositiveInfinity;", mainMenu);
-		AssertEx.Contains("enabled = false;", mainMenu);
-
-		AssertEx.Contains("PreloaderUI.Instance?.MenuTaskBar", taskBar);
-		AssertEx.Contains("ShouldShowMenuButton", taskBar);
-		AssertEx.Contains("Singleton<GameWorld>.Instance == null", taskBar);
-		AssertEx.Contains("isActiveAndEnabled", taskBar);
-		AssertEx.Contains("HandleTaskBarToggle", taskBar);
-		AssertEx.Contains("OpenPage();", taskBar);
+			ReadSourceMember(mainMenu, "private static bool IsSeasonalModifiersClientActive()"));
+		AssertEx.Contains("!ServicesEnabled) return;", ReadSourceMember(mainMenu, "internal static void OpenServices("));
+		AssertEx.Contains("if (!CanUseServices", ReadSourceMember(mainMenu, "private bool TryGetPurchaseContext("));
+		string update = ReadSourceMember(mainMenu, "private void Update()");
+		AssertEx.Contains("if (!CanUseServices)", update);
+		AssertEx.Contains("ClosePage();", update);
 		AssertEx.False(
-			mainMenu.Contains("PositionMenuButton", StringComparison.Ordinal) ||
-			mainMenu.Contains("RestoreMenuStackPositions", StringComparison.Ordinal) ||
-			taskBar.Contains("PositionMenuButton", StringComparison.Ordinal),
-			"The persistent bottom-bar entry must not insert or reposition a central-menu row.");
-		AssertEx.False(
-			mainMenu.Contains("IsDangerCloseActive", StringComparison.Ordinal),
-			"Main-menu suppression must depend on Seasonal client presence, not a raid lease.");
-		AssertEx.False(
+			mainMenu.Contains("IsDangerCloseActive", StringComparison.Ordinal) ||
 			mainMenu.Contains("SeasonalModifiersBridge", StringComparison.Ordinal) ||
 			mainMenu.Contains("SeasonalAmbient", StringComparison.Ordinal) ||
 			mainMenu.Contains("DangerCloseWarning", StringComparison.Ordinal),
-			"Seasonal-owned raid presentation must not be added to the TSC pre-raid storefront.");
+			"The Pilot storefront's Seasonal suppression must use plugin presence, not raid events or leases.");
+	}
+
+	[RegressionTest]
+	private static void PilotServicesIntegrationPreservesOtherTradersAndNativeCloseOwnership()
+	{
+		string patch = ReadProductionSource(PilotServicesPatchPath);
+		string availability = ReadSourceMember(patch, "internal sealed class PilotServicesAvailabilityPatch");
+		AssertEx.Contains("nameof(ServicesScreen.CheckAvailableServices)", availability);
+		AssertEx.Contains("[PatchPostfix]", availability);
+		AssertEx.Contains("if (PilotServicesView.IsPilot(__0)) __result = MainMenuPurchaseController.ServicesEnabled;", availability);
+		AssertEx.Equal(1, availability.Split("__result =", StringSplitOptions.None).Length - 1,
+			"Availability for non-Pilot traders must retain the native result.");
+
+		string showPatch = ReadSourceMember(patch, "internal sealed class PilotServicesShowPatch");
+		AssertEx.Contains("nameof(ServicesScreen.Show)", showPatch);
+		AssertEx.Contains("[PatchPrefix]", showPatch);
+		AssertEx.Contains("ref ServiceView ____currentServiceView", showPatch);
+		string prefix = ReadSourceMember(showPatch, "private static bool Prefix(");
+		int nativeFallback = prefix.IndexOf("if (!PilotServicesView.IsPilot(__0)) return true;", StringComparison.Ordinal);
+		int createView = prefix.IndexOf("PilotServicesView.GetOrCreate(__instance)", StringComparison.Ordinal);
+		int assignView = prefix.IndexOf("____currentServiceView = view;", StringComparison.Ordinal);
+		int openView = prefix.IndexOf("view.Open(__1, __2, __7);", StringComparison.Ordinal);
+		AssertEx.True(nativeFallback >= 0 && createView > nativeFallback && assignView > createView && openView > assignView,
+			"Non-Pilot screens must return to native Show before mutations; Pilot must register a concrete ServiceView before opening.");
+		AssertEx.Contains("return false;", prefix);
+
+		string view = ReadProductionSource(PilotServicesViewPath);
+		AssertEx.Contains("public sealed class PilotServicesView : ServiceView", view);
+		AssertEx.Contains("PilotTraderId = \"66f51f3a0000000000000a60\"", view);
+		AssertEx.Contains("trader?.Id == PilotTraderId", view);
+		AssertEx.Contains("IsPilot(trader) && MainMenuPurchaseController.ServicesEnabled", view);
+		string close = ReadSourceMember(view, "public override void Close()");
+		AssertEx.Contains("MainMenuPurchaseController.CloseServices(RectTransform);", close);
+		AssertEx.Contains("base.Close();", close);
+		AssertEx.True(close.IndexOf("CloseServices", StringComparison.Ordinal) < close.IndexOf("base.Close()", StringComparison.Ordinal));
+		AssertEx.Contains("private void OnDisable() => MainMenuPurchaseController.CloseServices(RectTransform);", view);
+		AssertEx.Contains("private void OnDestroy() => MainMenuPurchaseController.CloseServices(RectTransform);", view);
+	}
+
+	[RegressionTest]
+	private static void PilotStorefrontAndConfirmationRemainInsideNativeServicesContent()
+	{
+		string serviceView = ReadProductionSource(PilotServicesViewPath);
+		AssertEx.Contains("root.transform.SetParent(screen.RectTransform, false);", serviceView);
+		AssertEx.Contains("MainMenuPurchaseController.OpenServices(RectTransform, profile, inventoryController, session);", serviceView);
+		string view = ReadProductionSource(MainMenuViewPath);
+		string build = ReadSourceMember(view, "private void BuildPage()");
+		AssertEx.Contains("_pageRoot.transform.SetParent(_storeHost, false);", build);
+		AssertEx.Contains("Stretch(_pageRoot.GetComponent<RectTransform>());", build);
+		AssertEx.Contains("typeof(RectMask2D)", build);
+		AssertEx.False(
+			view.Contains("overrideSorting", StringComparison.Ordinal) ||
+			view.Contains("sortingOrder", StringComparison.Ordinal) ||
+			view.Contains("typeof(Canvas)", StringComparison.Ordinal) ||
+			view.Contains("_menuScreen", StringComparison.Ordinal),
+			"Embedded service content must not escape its native host with a page-wide overlay canvas.");
+		AssertEx.False(build.Contains("ClosePage,", StringComparison.Ordinal) || build.Contains("OpenDashboard", StringComparison.Ordinal),
+			"The Services content must leave navigation and configuration entry points to the native UI.");
+		string confirmation = ReadSourceMember(view, "private void BuildPurchaseConfirmation()");
+		AssertEx.Contains("CreatePanel(_pageRoot.transform, \"PurchaseConfirmation\"", confirmation);
+		AssertEx.Contains("Stretch(_purchaseConfirmationRoot.GetComponent<RectTransform>());", confirmation);
+		AssertEx.Contains("HidePurchaseConfirmation", confirmation);
+		AssertEx.Contains("ConfirmPurchase", confirmation);
+		string scale = ReadSourceMember(view, "private void UpdateStorefrontScale()");
+		AssertEx.Contains("_storeHost.rect.size", scale);
+		AssertEx.Contains("width / StoreWidth", scale);
+		AssertEx.Contains("height / StoreHeight", scale);
+		AssertEx.Contains("width / ConfirmationWidth", scale);
+		AssertEx.Contains("height / ConfirmationHeight", scale);
+	}
+
+	[RegressionTest]
+	private static void PilotConfirmationConsumesEscapeOnlyWhileItsOwnDialogIsOpen()
+	{
+		string patch = ReadSourceMember(ReadProductionSource(PilotServicesPatchPath), "internal sealed class PilotServicesEscapePatch");
+		AssertEx.Contains("typeof(TraderScreensGroup), nameof(TraderScreensGroup.TranslateCommand)", patch);
+		string prefix = ReadSourceMember(patch, "private static bool Prefix(");
+		AssertEx.Contains("if (__0 != ECommand.Escape || !PilotServicesView.IsPilot(__instance.Trader)) return true;", prefix);
+		AssertEx.Contains("view == null || !view.isActiveAndEnabled", prefix);
+		AssertEx.Contains("!MainMenuPurchaseController.DismissConfirmation(view.RectTransform)) return true;", prefix);
+		int dismiss = prefix.IndexOf("DismissConfirmation(view.RectTransform)", StringComparison.Ordinal);
+		int block = prefix.IndexOf("__result = InputNode.ETranslateResult.BlockAll;", StringComparison.Ordinal);
+		AssertEx.True(dismiss >= 0 && block > dismiss,
+			"Native Escape navigation may only be blocked after the visible Pilot dialog was dismissed.");
+		AssertEx.Contains("return false;", prefix);
+		string controller = ReadProductionSource(MainMenuPath);
+		string dismissDialog = ReadSourceMember(controller, "internal static bool DismissConfirmation(");
+		AssertEx.Contains("s_instance._storeHost != host || !s_instance.IsPurchaseConfirmationOpen", dismissDialog);
+		AssertEx.Contains("s_instance.HidePurchaseConfirmation();", dismissDialog);
+		AssertEx.Contains("return false;", dismissDialog);
+		AssertEx.False(dismissDialog.Contains("ClosePage", StringComparison.Ordinal) ||
+			dismissDialog.Contains("BeginPurchase", StringComparison.Ordinal),
+			"Escape dismisses the purchase review without buying anything or closing the native Services tab.");
+	}
+
+	[RegressionTest]
+	private static void ClosingPilotServicesCancelsOnlyRefreshAndPreservesPurchaseRecovery()
+	{
+		string controller = ReadProductionSource(MainMenuPath);
+		string open = ReadSourceMember(controller, "internal static void OpenServices(");
+		AssertEx.Contains("FireSupportPlugin.Instance.gameObject.AddComponent<MainMenuPurchaseController>()", open,
+			"Purchase lifetime must belong to the plugin, not the disposable trader content.");
+		string closeServices = ReadSourceMember(controller, "internal static void CloseServices(");
+		AssertEx.Contains("s_instance._storeHost == host", closeServices,
+			"A stale or unrelated Services view must not close the currently bound view.");
+		AssertEx.Contains("s_instance.ClosePage();", closeServices);
+		string close = ReadSourceMember(controller, "private void ClosePage()");
+		AssertEx.Contains("_refreshCts?.Cancel();", close);
+		AssertEx.Contains("HidePurchaseConfirmation(redraw: false);", close);
+		AssertEx.Contains("_pageRoot.SetActive(false);", close);
+		string refreshCancellation = ReadSourceMember(close, "if (_refreshPending)");
+		AssertEx.Contains("_generation++;", refreshCancellation);
+		AssertEx.Contains("_refreshPending = false;", refreshCancellation);
+		AssertEx.Equal(1, close.Split("_generation++", StringSplitOptions.None).Length - 1,
+			"Closing a tab may invalidate a cancelled GET, but must not invalidate a submitted purchase response.");
+		AssertEx.False(
+			close.Contains("_purchasePending =", StringComparison.Ordinal) ||
+			close.Contains("_ambiguousRequestId =", StringComparison.Ordinal) ||
+			close.Contains("ClearAmbiguousPurchase", StringComparison.Ordinal) ||
+			close.Contains("ResetPageState", StringComparison.Ordinal) ||
+			close.Contains("Destroy(", StringComparison.Ordinal),
+			"Tab navigation must preserve in-flight and ambiguous purchase state for recovery.");
+		string refresh = ReadSourceMember(controller, "private void StartRefresh(bool afterMutation)");
+		AssertEx.Contains("_refreshPending || _purchasePending || IsPurchaseConfirmationOpen", refresh,
+			"Refresh and purchase generations must not overlap when a Services tab closes.");
+		string purchase = ReadSourceMember(controller, "private async UniTaskVoid PurchaseAsync(");
+		AssertEx.Contains("PurchasePersistentAuthorizationAsync(", purchase);
+		AssertEx.Contains("RememberAmbiguousPurchase(", purchase);
+		AssertEx.Contains("_purchasePending = false;", purchase);
+		AssertEx.False(purchase.Contains("CanUseServices", StringComparison.Ordinal) || purchase.Contains("_refreshCts", StringComparison.Ordinal),
+			"A hidden tab must still observe the purchase outcome and retain its recovery ID.");
 	}
 
 	[RegressionTest]
@@ -776,7 +869,7 @@ internal static class SeasonalIntegrationSourceContractTests
 		AssertEx.True(purchaseStart >= 0 && purchaseEnd > purchaseStart);
 		string purchase = mainMenu[purchaseStart..purchaseEnd];
 		AssertEx.Contains(
-			"if (!FireSupportServiceAvailability.IsLocalUseAllowed(supportType))",
+			"if (!FireSupportServiceAvailability.IsLocalUseAllowed(supportType) &&",
 			purchase);
 		AssertEx.Contains(
 			"FireSupportServiceAvailability.GetLocalRestrictionReason(supportType)",
@@ -795,7 +888,7 @@ internal static class SeasonalIntegrationSourceContractTests
 		AssertEx.Contains("!SeasonalModifiersBridge.IsDangerCloseActive", integration);
 		AssertEx.Contains("ModifierInactive", integration);
 		AssertEx.Contains("request.RequestOrigin == FireSupportRequestOrigin.Manual &&", integration);
-		AssertEx.Contains("!FireSupportServiceAvailability.IsServiceEnabled(request.SupportType)", integration);
+		AssertEx.Contains("!FireSupportServiceAvailability.IsServiceEnabledForAuthority(request.SupportType)", integration);
 		AssertEx.Contains("packet.RequestOrigin == FireSupportRequestOrigin.SeasonalAmbient", integration);
 		AssertEx.Contains("? A10ProjectileOwnerMode.RequesterProfile", integration);
 	}
@@ -843,6 +936,21 @@ internal static class SeasonalIntegrationSourceContractTests
 		AssertEx.Contains("TryPublishDangerCloseInboundWarning", documentation);
 		AssertEx.Contains("SpecialSlot4", documentation);
 		AssertEx.Contains("ReliableOrdered", documentation);
+	}
+
+	private static string ReadSourceMember(string source, string marker)
+	{
+		int start = source.IndexOf(marker, StringComparison.Ordinal);
+		AssertEx.True(start >= 0, $"Production source is missing member '{marker}'.");
+		int body = source.IndexOf('{', start);
+		AssertEx.True(body >= 0, $"Production member '{marker}' has no body.");
+		int depth = 1;
+		for (int end = body + 1; end < source.Length; end++)
+		{
+			if (source[end] == '{') depth++;
+			if (source[end] == '}' && --depth == 0) return source[start..(end + 1)];
+		}
+		throw new RegressionAssertionException($"Production member '{marker}' has an unterminated body.");
 	}
 
 	private static string ReadProductionSource(string relativePath)

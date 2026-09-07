@@ -1,7 +1,6 @@
 # TSC dashboard and SIC
 
 Open the themed TerraGroup TSC dashboard from SPT's SIC through the launcher.
-You can also use the in-game store's **Dashboard** button.
 
 ## Open from the launcher
 
@@ -9,7 +8,7 @@ Start the SPT server and open SIC from the launcher. On the SIC home page,
 choose **Tactical Services Control** under **Mod pages**. This opens the same
 themed dashboard, including its service cards, pricing controls, and diagnostics.
 The dashboard sidebar has **SPT SIC** and **Config editor** links to return to
-SPT's pages. The in-game store's **Dashboard** button still opens this page.
+SPT's pages. The Pilot's Services tab is for buying support authorizations.
 
 SIC's **Config Editor > Mods > Tactical Services Control** entry is also
 available. That editor uses SPT's standard appearance. It exposes the routine
@@ -74,9 +73,7 @@ maximum dispatch delay plus settlement margin.
 current release. `refundFailedDispatch` remains an advanced configuration
 value in the generated JSON config rather than a dashboard control.
 
-The main-menu pre-raid store includes a **Dashboard** button. Its address is
-derived from the active SPT backend connection, so a Fika client does not open
-an unrelated local server.
+Open the dashboard through SIC on the server you want to configure.
 
 ## Safe Defaults
 

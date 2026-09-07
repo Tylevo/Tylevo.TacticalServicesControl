@@ -1,0 +1,156 @@
+{
+  "66f51f3a0000000000000b01": {
+    "QuestName": "Open Channel",
+    "_id": "66f51f3a0000000000000b01",
+    "traderId": "5a7c2eca46aef81a7ca2145d",
+    "type": "PickUp",
+    "location": "any",
+    "image": "/files/quest/icon/5ac4d8f186f774422237860d.jpg",
+    "acceptanceAndFinishingSource": "eft",
+    "arenaLocations": [],
+    "gameModes": [],
+    "progressSource": "eft",
+    "rankingModes": [],
+    "side": "Pmc",
+    "instantComplete": false,
+    "isKey": false,
+    "secretQuest": false,
+    "restartable": false,
+    "canShowNotificationsInGame": true,
+    "status": 0,
+    "description": "66f51f3a0000000000000b01 description",
+    "startedMessageText": "66f51f3a0000000000000b01 startedMessageText",
+    "successMessageText": "66f51f3a0000000000000b01 successMessageText",
+    "failMessageText": "66f51f3a0000000000000b01 failMessageText",
+    "acceptPlayerMessage": "66f51f3a0000000000000b01 acceptPlayerMessage",
+    "declinePlayerMessage": "66f51f3a0000000000000b01 declinePlayerMessage",
+    "completePlayerMessage": "66f51f3a0000000000000b01 completePlayerMessage",
+    "changeQuestMessageText": "66f51f3a0000000000000b01 changeQuestMessageText",
+    "name": "66f51f3a0000000000000b01 name",
+    "note": "66f51f3a0000000000000b01 note",
+    "conditions": {
+      "AvailableForStart": [
+        {
+          "dynamicLocale": false,
+          "globalQuestCounterId": "",
+          "id": "66f51f3a000000000000c101",
+          "index": 0,
+          "parentId": "",
+          "visibilityConditions": [],
+          "compareMethod": ">=",
+          "conditionType": "Level",
+          "value": 5
+        }
+      ],
+      "AvailableForFinish": [
+        {
+          "dynamicLocale": false,
+          "globalQuestCounterId": "",
+          "id": "66f51f3a000000000000c102",
+          "index": 0,
+          "parentId": "",
+          "visibilityConditions": [],
+          "conditionType": "HandoverItem",
+          "dogtagLevel": 0,
+          "isEncoded": false,
+          "maxDurability": 100,
+          "minDurability": 0,
+          "onlyFoundInRaid": false,
+          "target": [
+            "5c06779c86f77426e00dd782"
+          ],
+          "value": 2
+        },
+        {
+          "dynamicLocale": false,
+          "globalQuestCounterId": "",
+          "id": "66f51f3a000000000000c103",
+          "index": 1,
+          "parentId": "",
+          "visibilityConditions": [],
+          "conditionType": "HandoverItem",
+          "dogtagLevel": 0,
+          "isEncoded": false,
+          "maxDurability": 100,
+          "minDurability": 0,
+          "onlyFoundInRaid": false,
+          "target": [
+            "5c06782b86f77426df5407d2"
+          ],
+          "value": 2
+        }
+      ],
+      "Fail": []
+    },
+    "rewards": {
+      "Started": [],
+      "Fail": [],
+      "Success": [
+        {
+          "id": "66f51f3a000000000000d101",
+          "type": "Experience",
+          "value": 2500,
+          "index": 0,
+          "availableInGameEditions": [],
+          "gameMode": [
+            "regular",
+            "pve"
+          ],
+          "isHidden": false,
+          "unknown": false
+        },
+        {
+          "id": "66f51f3a000000000000d102",
+          "type": "Item",
+          "target": "66f51f3a000000000000d103",
+          "value": 20000,
+          "findInRaid": false,
+          "items": [
+            {
+              "_id": "66f51f3a000000000000d103",
+              "_tpl": "5449016a4bdc2d6f028b456f",
+              "upd": {
+                "StackObjectsCount": 20000
+              }
+            }
+          ],
+          "index": 1,
+          "availableInGameEditions": [],
+          "gameMode": [
+            "regular",
+            "pve"
+          ],
+          "isHidden": false,
+          "unknown": false
+        },
+        {
+          "id": "66f51f3a000000000000d104",
+          "type": "TraderStanding",
+          "target": "5a7c2eca46aef81a7ca2145d",
+          "value": 0.01,
+          "index": 2,
+          "availableInGameEditions": [],
+          "gameMode": [
+            "regular",
+            "pve"
+          ],
+          "isHidden": false,
+          "unknown": false
+        },
+        {
+          "id": "66f51f3a000000000000d105",
+          "type": "TraderUnlock",
+          "target": "66f51f3a0000000000000a60",
+          "index": 3,
+          "availableInGameEditions": [],
+          "gameMode": [
+            "regular",
+            "pve"
+          ],
+          "isHidden": false,
+          "unknown": false
+        }
+      ]
+    }
+  }
+}

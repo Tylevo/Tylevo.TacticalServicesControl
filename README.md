@@ -13,9 +13,9 @@ This candidate requires **UnityToolkit 2.0.2** and **WTT CommonLib 3.0.6**, both
 If you're updating from the last Forge release, TSC v1.0.8, this version brings together the features and fixes developed across the intervening GitHub test builds.
 
 - **UH-60 Cargo Transfer:** send loot home while you stay in the raid. It replaces Priority Exfil. Cargo arrives through Pilot's mail, and the separate item-handling fee can use carried roubles or your stash.
-- **A pre-raid support store:** buy authorizations before entering a raid. Open **TSC UPLINK** beside **Character** on the main menu's bottom bar to browse service cards, see your balance, and review purchases.
+- **Pilot's Services tab:** buy support authorizations before entering a raid at **Traders > Pilot > Services**. Browse the compact service list on the left and review the selected service's details on the right. Purchases use your PMC stash balance and existing authorization limits.
 - **A redesigned phone:** live UI, new service artwork, horizontal purchase screens, and smoother, adjustable zoom. Hold **Left Alt** to select with the mouse; the number-key controls remain available.
-- **UH-60 Pilot and a dedicated phone slot:** Pilot now sells the physical Uplink, has a new portrait, and is unlocked without a quest requirement. The Uplink has its own fourth special slot.
+- **Optional Pilot Questline add-on:** the main download opens Pilot immediately and sells the Uplink for ₽50,000. Install the separate add-on to earn access through three quests beginning with Mechanic at level 5. The Uplink has its own fourth special slot.
 - **More radar display options:** hold **J** to check active recon on the physical phone, or choose a compact HUD scanner in a screen corner.
 - **More payment options and better recovery:** configure support prices in RUB, USD, or EUR. Authorization use and payment recovery have been strengthened across failed requests, reconnects, and server saves.
 - **A-10 targeting improvements:** corrected shot origins and trajectory compensation address rounds landing short of the designated target.
@@ -44,7 +44,8 @@ For an existing SPT 4.1.x installation, back up your profiles and TSC's complete
 1. Close the game, launcher, and SPT server.
 2. Install the standalone **UnityToolkit 2.0.2** package when published through [Arys's UnityToolkit project](https://forge.sp-tarkov.com/mod/1426/unitytoolkit), then install [WTT CommonLib 3.0.6](https://github.com/WelcomeToThursday/WTT-CommonLib/releases/tag/v3.0.6), including its client, server, and serialization prepatcher components.
 3. Extract the **full TSC ZIP** into your SPT 4.1.5 root. Merge the `BepInEx` and `SPT_Runtime` folders and replace old mod files when prompted.
-4. Start the SPT server, then the launcher and game.
+4. If you want quest progression, also extract the matching **Pilot Questline add-on ZIP** into the same root. It adds server content and uses the same TSC client. Skip it for immediate access through Pilot.
+5. Start the SPT server, then the launcher and game.
 
 The TSC ZIP does not include UnityToolkit. Its separate 2.0.2 package supplies the plugin, prepatcher, and companion libraries. Keep one Toolkit installation in the standard plugin and patcher folders; no additional compatibility overlay is needed. TSC replaces SamSWAT Fire Support and Arys Reloaded, so don't install those alongside it.
 
@@ -52,9 +53,15 @@ The [installation guide](docs/dependencies.md) shows the folder layout and upgra
 
 ## Getting started
 
-Buy the **TerraGroup TSC Uplink** from **UH-60 Pilot** for **₽50,000** at loyalty level 1. Put it in the dedicated fourth special slot, or carry it in your inventory. Pilot has no quest requirement for now.
+With the main download, open **Traders > Pilot > Trading** and buy the **TerraGroup TSC Uplink** for **₽50,000**. Pilot and configured services are available immediately, with normal service prices and authorization limits.
 
-Buy support through the main-menu **TSC UPLINK** store or through the phone in raid, then deploy the authorization when you need it.
+With the optional **Pilot Questline add-on**, begin **Open Channel** with Mechanic at level 5, supply Pilot's repair parts, and restore the Shoreline weather-station relay. Completing **Back on the Air** awards the phone and unlocks services and ₽50,000 replacements. See the [add-on and questline guide](docs/pilot-questline.md).
+
+TSC does not add phones to random loot in either mode. Put your Uplink in the dedicated fourth special slot, or carry it in your inventory.
+
+To buy support before a raid, open **Traders > Pilot > Services**. Select a service from the left-hand list, review its description, price, and held authorizations in the right-hand detail panel, then confirm the purchase. The cost comes from the same PMC stash and grants the same persistent authorization as before.
+
+In-raid phone purchasing and deployment controls are unchanged: use **U** to buy support and **K** to deploy an authorization when you need it.
 
 | Control | Action |
 | --- | --- |
@@ -73,13 +80,15 @@ Purchase confirmation turns the phone upright and plays the swipe automatically.
 
 ## Dashboard and settings
 
-Start the SPT server, open **SIC** from the launcher, and choose **Tactical Services Control** under **Mod pages**. This opens the themed TerraGroup dashboard. The in-game store's **Dashboard** button opens the same page.
+Start the SPT server, open **SIC** from the launcher, and choose **Tactical Services Control** under **Mod pages**. This opens the themed TerraGroup dashboard.
 
 SIC also has **Config Editor > Mods > Tactical Services Control** for prices, availability, cooldowns, payment settings, and service timing. Personal phone and radar settings stay in **F12**. The [dashboard guide](docs/dashboard.md) explains saving and applying changes.
 
 ## Compatibility and known issues
 
-TSC 1.3.11 builds against standalone UnityToolkit 2.0.2. All 238 regression tests, package checks, and 26 isolated server checks passed. Game startup and raid testing with this newly versioned pair are still pending; earlier TSC 1.3.10 feedback does not replace those checks.
+Build, package, regression, and native server results for the optional progression split are recorded in the [add-on validation report](docs/validation/pilot-questline-addon.md). The earlier [questline validation report](docs/validation/pilot-questline.md) records the original quest implementation. Game startup and raid testing with this newly versioned pair are still pending; earlier TSC 1.3.10 feedback does not replace those checks.
+
+The move to Pilot's Services tab and the new questline still need in-game validation. The [Services checklist](docs/pilot-services-testing.md) covers navigation, layout, purchases, and recovery; the [questline checklist](docs/pilot-questline.md#validation) covers progression and radio installation. Fika participants must use matching TSC components with service protocol 2.
 
 **Current Fika multiplayer remains untested.** Solo play does not require Fika. Cargo Transfer is available in solo play and is implemented for the requesting human Fika host; other Fika clients and dedicated-headless requesters cannot use it yet. Dedicated-headless A-10 damage is experimental.
 

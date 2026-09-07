@@ -25,6 +25,7 @@ public sealed class FireSupportUh60DeliveryService(
 	SaveServer saveServer,
 	TimeUtil timeUtil,
 	TraderConfig traderConfig,
+	TscPilotQuestlinePolicy questlinePolicy,
 	ICloner cloner)
 {
 	public const string MessengerTraderId = "66f51f3a0000000000000a60";
@@ -44,6 +45,8 @@ public sealed class FireSupportUh60DeliveryService(
 
 	public void Initialize(string pathToMod)
 	{
+		if (!questlinePolicy.IsInitialized)
+			throw new InvalidOperationException("TSC progression must initialize before the Pilot shop.");
 		string storageDirectory = IOPath.Combine(pathToMod, "storage");
 		_markerStore.Initialize(storageDirectory);
 		if (!string.IsNullOrWhiteSpace(_markerStore.LastLoadWarning))
@@ -490,8 +493,8 @@ public sealed class FireSupportUh60DeliveryService(
 			pilot.Base.Surname = string.Empty;
 			pilot.Base.Location = "Tactical Services Control";
 			pilot.Base.AvailableInRaid = false;
-			// Temporary open access; a future quest can gate this same trader ID.
-			pilot.Base.UnlockedByDefault = true;
+			// The optional questline introduces Pilot through Open Channel; base TSC opens his shop immediately.
+			pilot.Base.UnlockedByDefault = !questlinePolicy.QuestlineRequired;
 			pilot.Base.IsAvailableInPVE = true;
 			pilot.Base.Currency = CurrencyType.RUB;
 			pilot.Base.LoyaltyLevels =

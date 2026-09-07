@@ -18,7 +18,11 @@ public static class FireSupportServiceSemantics
 	/// </summary>
 	public const int CargoVersion = 1;
 
-	public const int CurrentVersion = CargoVersion;
+	/// <summary>Manual tasking requires a server-verified profile permission.</summary>
+	public const int ProgressionVersion = 2;
+	public const int CurrentVersion = ProgressionVersion;
+
+	public static bool SupportsProgression(int version) => version >= ProgressionVersion;
 
 	public static bool SupportsCargo(int version)
 	{

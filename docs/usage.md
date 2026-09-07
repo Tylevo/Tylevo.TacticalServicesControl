@@ -6,10 +6,24 @@ the raid or through the Uplink during one, then deploy it when needed.
 
 ## Get the Uplink
 
-Buy the **TerraGroup TSC Uplink** from **UH-60 Pilot** in Trading for
-**₽50,000** at loyalty level 1, up to five per restock. Pilot has no quest
-requirement for now. The server unlocks existing locked Pilot entries at
-startup, and Pilot also delivers your UH-60 cargo mail.
+The main TSC download makes Pilot available immediately. Buy the **TerraGroup
+TSC Uplink** for **₽50,000** in his Trading tab at loyalty level 1, with five
+per restock. Configured services use their normal prices and limits. TSC does
+not add phones to random loot.
+
+If your server has the optional **Pilot Questline add-on**, earn access first.
+At level 5, complete **Open Channel** for Mechanic by handing over 2 Wires
+and 2 Capacitors. He introduces Pilot, whose **Some Assembly Required** quest
+takes 1 Broken GPhone, 1 Electronic components, and 1 Screwdriver. These
+handovers do not require found-in-raid items.
+
+Then complete **Back on the Air**: install Pilot's supplied Radio repeater at
+Shoreline's weather-station radio antenna, survive Shoreline, and report back.
+Pilot awards the **TerraGroup TSC Uplink** and unlocks configured services.
+Replacement phones cost **₽50,000** in his Trading tab at loyalty level 1,
+up to five per restock. Replacement repeaters cost **₽20,000** after accepting
+the final quest. See the [questline guide](pilot-questline.md) for rewards and
+survival rules. Pilot also delivers your UH-60 cargo mail.
 
 Bring the Uplink into the raid to use its purchase, deployment, and radar
 controls. You can keep it in the dedicated fourth special slot.
@@ -38,19 +52,23 @@ radar, and spotter-confirm bindings.
 
 ## Buy support before a raid
 
-Open **TSC UPLINK** on the main menu's bottom bar, immediately left of
-**Character**. The shortcut only appears on the main menu.
+Open **Traders > Pilot > Services**. The compact service list is on the left;
+the selected service's details are on the right.
 
 1. Wait for your stash balance and purchased authorizations to load.
-2. Select a service card to see its artwork, description, price, availability,
-   and how many authorizations you own.
+2. Select a service from the list. Check its description, price, availability,
+   and held/limit count in the detail panel.
 3. Open the purchase review, check the price and projected balance, then
    confirm. Cancelling the dialog does not send a purchase request.
 
 Purchases use the signed-in PMC's stash and persistent authorization ledger.
 They are available when you enter a raid with the same PMC. The pre-raid store
 requires persistent authorizations and a server-backed stash payment source.
-Its **Dashboard** button opens the active SPT server's TSC dashboard.
+The move to Pilot's Services tab keeps this payment and authorization flow.
+Phone purchasing and deployment controls remain unchanged.
+
+In-game testing of the trader-tab change is pending; see the
+[manual checklist](pilot-services-testing.md).
 
 ## Buy support in raid
 
@@ -130,7 +148,7 @@ reopen. These zoom settings do not change deployment or radar views.
 
 The [TSC dashboard](dashboard.md) controls service prices, availability,
 cooldowns, timing, and authorization settings. Open it through SIC in the
-SPT launcher, or from the in-game store's **Dashboard** button.
+SPT launcher.
 
 TSC has `PhoneAuthorizations` and `Hybrid` payment modes, with RUB, USD, or EUR
 payments from carried cash or the stash where configured. The phone shows the

@@ -178,6 +178,10 @@
         "assets/content/ui/phone/portrait_512x1024/TG_06_PriorityExfil_Authorized.png",
         "assets/content/ui/phone/portrait_512x1024/TG_06_UAV_Authorized.png",
         "assets/content/ui/phone/portrait_512x1024/TG_07_PaymentDenied.png",
+        "assets/content/ui/pilot-services/a10-detail.png",
+        "assets/content/ui/pilot-services/pilot-banner.png",
+        "assets/content/ui/pilot-services/pilot-portrait.png",
+        "assets/content/ui/pilot-services/uh60-detail.png",
         "THIRD_PARTY_NOTICES.txt"
       ],
       "excludedFiles": [

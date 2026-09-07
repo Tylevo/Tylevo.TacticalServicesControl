@@ -16,6 +16,7 @@ public sealed class FireSupportHttpListener(
 	FireSupportServerConfigService configService,
 	FireSupportUh60DeliveryService uh60DeliveryService,
 	FireSupportUh60TransferFeeService uh60TransferFeeService,
+	TscPilotProgressionService pilotProgression,
 	ISptLogger<FireSupportHttpListener> logger) : IHttpListener
 {
 	private const string PublicRoot = "/tsc";
@@ -96,7 +97,12 @@ public sealed class FireSupportHttpListener(
 				return;
 			}
 
-			await WriteJsonAsync(httpContext, 200, configService.GetSnapshot(sessionId, ReadIdentityFromQuery(httpContext)));
+			bool includeStashCurrencyState = bool.TryParse(
+				httpContext.Request.Query["includeStashCurrencyState"].ToString(), out bool includeState) && includeState;
+			bool includePurchaseHistory = bool.TryParse(
+				httpContext.Request.Query["includePurchaseHistory"].ToString(), out bool includeHistory) && includeHistory;
+			await WriteJsonAsync(httpContext, 200, await configService.GetSnapshotAsync(
+				sessionId, ReadIdentityFromQuery(httpContext), includeStashCurrencyState, includePurchaseHistory));
 			return;
 		}
 
@@ -104,6 +110,17 @@ public sealed class FireSupportHttpListener(
 		    string.Equals(path, "/tsc/schema", StringComparison.OrdinalIgnoreCase))
 		{
 			await WriteJsonAsync(httpContext, 200, configService.GetDashboardSchema());
+			return;
+		}
+
+		if (string.Equals(method, HttpMethods.Post, StringComparison.OrdinalIgnoreCase) &&
+		    string.Equals(path, TscPilotProgressionService.VerifyRoute, StringComparison.OrdinalIgnoreCase))
+		{
+			// The opaque permit authenticates this limited verification. A Fika
+			// headless host must never impersonate its requester's HTTP session.
+			FireSupportProgressionVerifyRequest? request =
+				await ReadJsonAsync<FireSupportProgressionVerifyRequest>(httpContext);
+			await WriteJsonAsync(httpContext, 200, pilotProgression.Verify(request));
 			return;
 		}
 

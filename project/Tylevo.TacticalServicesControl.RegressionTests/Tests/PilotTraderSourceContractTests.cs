@@ -28,8 +28,8 @@ internal static class PilotTraderSourceContractTests
 		AssertEx.Equal(PilotId, traders[0].Name);
 		JsonElement assortment = traders[0].Value;
 		JsonElement[] items = assortment.GetProperty("items").EnumerateArray().ToArray();
-		AssertEx.Equal(1, items.Length);
-		JsonElement item = items[0];
+		AssertEx.Equal(1, items.Length, "The main download stocks the Uplink; the optional add-on supplies its own repeater offer.");
+		JsonElement item = items.Single(entry => entry.GetProperty("_id").GetString() == OfferId);
 		AssertEx.Equal(OfferId, item.GetProperty("_id").GetString());
 		AssertEx.Equal(UplinkId, item.GetProperty("_tpl").GetString());
 		AssertEx.Equal("hideout", item.GetProperty("parentId").GetString());
@@ -41,16 +41,15 @@ internal static class PilotTraderSourceContractTests
 
 		JsonProperty[] schemes = assortment.GetProperty("barter_scheme").EnumerateObject().ToArray();
 		AssertEx.Equal(1, schemes.Length);
-		AssertEx.Equal(OfferId, schemes[0].Name);
-		AssertEx.Equal(1, schemes[0].Value.GetArrayLength());
-		AssertEx.Equal(1, schemes[0].Value[0].GetArrayLength());
-		JsonElement payment = schemes[0].Value[0][0];
+		JsonElement uplinkScheme = assortment.GetProperty("barter_scheme").GetProperty(OfferId);
+		AssertEx.Equal(1, uplinkScheme.GetArrayLength());
+		AssertEx.Equal(1, uplinkScheme[0].GetArrayLength());
+		JsonElement payment = uplinkScheme[0][0];
 		AssertEx.Equal(RoubleId, payment.GetProperty("_tpl").GetString());
 		AssertEx.Equal(50000, payment.GetProperty("count").GetInt32());
 		JsonProperty[] loyalty = assortment.GetProperty("loyal_level_items").EnumerateObject().ToArray();
 		AssertEx.Equal(1, loyalty.Length);
-		AssertEx.Equal(OfferId, loyalty[0].Name);
-		AssertEx.Equal(1, loyalty[0].Value.GetInt32());
+		AssertEx.Equal(1, assortment.GetProperty("loyal_level_items").GetProperty(OfferId).GetInt32());
 
 		using JsonDocument templates = JsonDocument.Parse(Read(ServerRoot + "CopyToOutput/db/CustomItems/RaidOpsUavDevice.json"));
 		AssertEx.True(templates.RootElement.TryGetProperty(UplinkId, out _),
@@ -92,12 +91,12 @@ internal static class PilotTraderSourceContractTests
 	}
 
 	[RegressionTest]
-	private static void PilotShopUsesOpenLevelOneAccessAndItsOwnRestockEntry()
+	private static void PilotShopUsesTheOptionalIntroductionPolicyAndItsOwnRestockEntry()
 	{
 		string service = Read(ServerRoot + "FireSupportUh60DeliveryService.cs");
 		string identity = Between(service,
 			"private void InitializeMessengerIdentity()", "private static bool IsOwnedMessengerIdentity(");
-		AssertEx.Contains("pilot.Base.UnlockedByDefault = true", identity);
+		AssertEx.Contains("pilot.Base.UnlockedByDefault = !questlinePolicy.QuestlineRequired", identity);
 		AssertEx.Contains("pilot.Base.IsAvailableInPVE = true", identity);
 		AssertEx.Contains("pilot.Base.AvailableInRaid = false", identity);
 		AssertEx.Contains("pilot.Base.Currency = CurrencyType.RUB", identity);

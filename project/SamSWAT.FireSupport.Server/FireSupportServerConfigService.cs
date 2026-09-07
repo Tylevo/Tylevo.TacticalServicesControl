@@ -22,6 +22,7 @@ public sealed class FireSupportServerConfigService(
 	SaveServer saveServer,
 	FireSupportAuthorizationLedger authorizationLedger,
 	FireSupportProfileMutationGate profileMutationGate,
+	TscPilotProgressionService pilotProgression,
 	ICloner cloner)
 {
 	private const string ConfigFileName = "tsc-config.json";
@@ -134,6 +135,21 @@ public sealed class FireSupportServerConfigService(
 
 	public object GetSnapshot(MongoId sessionId, FireSupportPurchaseRequest? request = null)
 	{
+		return GetSnapshotAsync(sessionId, request).GetAwaiter().GetResult();
+	}
+
+	public Task<object> GetSnapshotAsync(
+		MongoId sessionId,
+		FireSupportPurchaseRequest? request = null,
+		bool includeStashCurrencyState = false,
+		bool includePurchaseHistory = false)
+	{
+		// A GET must not publish cash that an in-flight purchase may still roll back.
+		return profileMutationGate.RunAsync(() => Task.FromResult(CreateSnapshot(sessionId, request, includeStashCurrencyState, includePurchaseHistory)));
+	}
+
+	private object CreateSnapshot(MongoId sessionId, FireSupportPurchaseRequest? request, bool includeStashCurrencyState, bool includePurchaseHistory)
+	{
 		RaidOpsFireSupportServerConfig snapshot;
 		lock (_gate)
 		{
@@ -141,11 +157,15 @@ public sealed class FireSupportServerConfigService(
 		}
 
 		snapshot.PlayerStateIncluded = false;
+		snapshot.UplinkUnlocked = null;
+		snapshot.ProgressionPermit = string.Empty;
 		snapshot.StashCurrencyBalance = null;
 		snapshot.StashRoubleBalance = null;
 		snapshot.Authorizations = new Dictionary<string, int>();
 		snapshot.PreparedPurchases = null;
 		snapshot.PreparedPurchaseDetails = null;
+		snapshot.StashCurrencyState = null;
+		snapshot.PurchaseHistory = null;
 		Dictionary<string, string>? preparedPurchases = null;
 		Dictionary<string, FireSupportPreparedPurchaseQuote>?
 			preparedPurchaseDetails = null;
@@ -157,13 +177,25 @@ public sealed class FireSupportServerConfigService(
 			    out _))
 		{
 			snapshot.PlayerStateIncluded = true;
+			snapshot.UplinkUnlocked = pilotProgression.HasUnlockedUplink(pmc);
+			snapshot.ProgressionPermit = pilotProgression.GetPermitForAuthenticatedProfile(pmc, saveSessionId);
+			snapshot.StashCurrencyState = includeStashCurrencyState ? FireSupportStashCurrencySnapshot.Create(pmc) : null;
 			if (PaymentCurrencyInfo.TryParse(
 				    snapshot.PaymentCurrency,
 				    out PaymentCurrency paymentCurrency))
 			{
-				int stashBalance = CountStashCurrency(
-					pmc,
-					PaymentCurrencyInfo.GetTemplateId(paymentCurrency));
+				string currencyTemplate = PaymentCurrencyInfo.GetTemplateId(paymentCurrency);
+				int? stashBalance = null;
+				if (!includeStashCurrencyState)
+				{
+					stashBalance = CountStashCurrency(pmc, currencyTemplate);
+				}
+				else if (snapshot.StashCurrencyState != null)
+				{
+					stashBalance = (int)Math.Min(int.MaxValue, snapshot.StashCurrencyState.Items
+						.Where(item => item.TemplateId == currencyTemplate)
+						.Sum(item => (long)item.StackObjectsCount));
+				}
 				snapshot.StashCurrencyBalance = stashBalance;
 				// Keep the legacy alias only for RUB. Old clients then fail
 				// closed instead of displaying a rouble balance while a new
@@ -172,6 +204,8 @@ public sealed class FireSupportServerConfigService(
 					paymentCurrency == PaymentCurrency.RUB ? stashBalance : null;
 			}
 			string profileLedgerId = GetCanonicalProfileLedgerId(pmc, saveSessionId);
+			if (includePurchaseHistory)
+				snapshot.PurchaseHistory = authorizationLedger.GetPurchaseHistory(profileLedgerId);
 			preparedPurchaseDetails =
 				authorizationLedger.GetPreparedPersistentPurchaseDetails(profileLedgerId);
 			preparedPurchases = preparedPurchaseDetails.ToDictionary(
@@ -438,6 +472,12 @@ public sealed class FireSupportServerConfigService(
 				}
 			}
 
+			if (!preparedRecovery && !pilotProgression.HasUnlockedUplink(pmc))
+			{
+				response.Reason = TscPilotProgressionService.LockedReason;
+				return response;
+			}
+
 			if (!preparedRecovery &&
 			    !IsExpectedCurrencyAccepted(request.ExpectedCurrency, configuredCurrency))
 			{
@@ -474,7 +514,12 @@ public sealed class FireSupportServerConfigService(
 				return response;
 			}
 
-			if (!preparedRecovery && IsPurchaseRateLimited(saveSessionId, supportType, purchaseTime))
+			// Persistent checkouts are serialized and journaled by request ID.
+			// A second confirmed checkout may fill another available slot immediately;
+			// replays cannot debit twice and ledger preparation enforces capacity.
+			// Keep the time throttle for legacy purchases without that request journal.
+			if (!requiresPersistentPurchase && !preparedRecovery &&
+			    IsPurchaseRateLimited(saveSessionId, supportType, purchaseTime))
 			{
 				response.Reason = "RateLimited";
 				response.NewBalance = CountStashCurrency(pmc, currencyTemplateId);
@@ -902,6 +947,12 @@ public sealed class FireSupportServerConfigService(
 		string reason;
 		if (mutation == AuthorizationMutation.Consume)
 		{
+			if (!pilotProgression.HasUnlockedUplink(pmc))
+			{
+				response.Reason = TscPilotProgressionService.LockedReason;
+				return response;
+			}
+
 			ok = authorizationLedger.TryConsume(
 				profileLedgerId,
 				supportType,

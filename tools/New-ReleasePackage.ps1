@@ -10,7 +10,9 @@ param(
 
     [Parameter(Mandatory)]
     [ValidateNotNullOrEmpty()]
-    [string] $BuildEvidencePath
+    [string] $BuildEvidencePath,
+
+    [switch] $IncludePilotQuestline
 )
 
 Set-StrictMode -Version Latest
@@ -205,11 +207,13 @@ function Write-HeadBlobToStage {
         [string] $RepositoryRelative,
 
         [Parameter(Mandatory)]
-        [string] $DestinationRelative
+        [string] $DestinationRelative,
+
+        [string] $StagingRoot = $script:StagePath
     )
 
     $destination = Get-PathUnderRoot `
-        -Root $script:StagePath `
+        -Root $StagingRoot `
         -RelativePath $DestinationRelative `
         -Description "Staged HEAD-blob destination"
     if (Test-Path -LiteralPath $destination) {
@@ -905,6 +909,7 @@ foreach ($releaseInput in @(
     "global.json",
     "tools/New-ReleasePackage.ps1",
     "tools/Test-PackageLayout.ps1",
+    "tools/Test-PilotQuestlinePackage.ps1",
     "tools/PackageContract.ps1",
     "tools/package-layout.allowlist.json",
     "tools/verify-local.ps1"
@@ -1006,6 +1011,16 @@ $layoutChecker = Join-Path $PSScriptRoot "Test-PackageLayout.ps1"
     -ValidateSourceInputs
 if (-not $?) {
     throw "Package source inventory validation failed."
+}
+
+$addonChecker = Join-Path $PSScriptRoot 'Test-PilotQuestlinePackage.ps1'
+$addonContract = Get-TscPilotQuestlinePackageContract
+if ($IncludePilotQuestline) {
+    & $addonChecker -SourceRoot $ResolvedRepositoryRoot -ValidateSourceInputs
+    if (-not $?) { throw 'Pilot questline source inventory validation failed.' }
+    foreach ($relative in $addonContract.Files) {
+        Assert-TrackedHeadFile -RelativePath ($addonContract.Source + '/' + $relative)
+    }
 }
 
 $baselineExpectedHash = ([string] $manifest.baselineAssetArchive.sha256).ToUpperInvariant()
@@ -1367,6 +1382,7 @@ $archiveGuard = [IO.File]::Open(
     [IO.FileAccess]::Read,
     [IO.FileShare]::Read
 )
+$addonArchiveGuard = $null
 try {
 $initialArchiveFile = Get-Item -LiteralPath $archivePath
 $initialArchiveLength = [long] $initialArchiveFile.Length
@@ -1526,6 +1542,53 @@ $bundleEvidence = @(
     }
 )
 
+$addonRelease = $null
+if ($IncludePilotQuestline) {
+    $addonStagePath = Join-Path $resolvedOutputDirectory 'stage-pilot-questline'
+    $addonExtractPath = Join-Path $resolvedOutputDirectory 'verify-extracted-pilot-questline'
+    $addonArchiveName = "$solutionName-PilotQuestline-v$version-SPT$targetSptVersion-TESTER.zip"
+    $addonArchivePath = Join-Path $resolvedOutputDirectory $addonArchiveName
+    $addonEvidencePath = Join-Path $resolvedOutputDirectory "$([IO.Path]::GetFileNameWithoutExtension($addonArchiveName)).content-evidence.json"
+    foreach ($newTarget in @($addonStagePath, $addonExtractPath, $addonArchivePath, $addonEvidencePath)) {
+        Assert-TargetDoesNotExist -Path $newTarget -Description 'Pilot questline package output'
+    }
+    [void] [IO.Directory]::CreateDirectory($addonStagePath)
+    foreach ($relative in $addonContract.Files) {
+        Write-HeadBlobToStage `
+            -RepositoryRelative ($addonContract.Source + '/' + $relative) `
+            -DestinationRelative ($addonContract.Destination + '/' + $relative) `
+            -StagingRoot $addonStagePath
+    }
+    & $addonChecker -Path $addonStagePath -SourceRoot $ResolvedRepositoryRoot
+    if (-not $?) { throw 'Staged Pilot questline package validation failed.' }
+    $addonInventory = @(Get-ContentInventory -Root $addonStagePath)
+    New-DeterministicZip -SourceDirectory $addonStagePath -ArchivePath $addonArchivePath
+    $addonArchiveGuard = [IO.File]::Open($addonArchivePath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    $addonArchiveLength = [long] (Get-Item -LiteralPath $addonArchivePath).Length
+    $addonArchiveHash = (Get-FileHash -LiteralPath $addonArchivePath -Algorithm SHA256).Hash.ToUpperInvariant()
+    & $addonChecker -Path $addonArchivePath -SourceRoot $ResolvedRepositoryRoot
+    if (-not $?) { throw 'Pilot questline ZIP validation failed.' }
+    [IO.Compression.ZipFile]::ExtractToDirectory($addonArchivePath, $addonExtractPath)
+    & $addonChecker -Path $addonExtractPath -SourceRoot $ResolvedRepositoryRoot
+    if (-not $?) { throw 'Extracted Pilot questline package validation failed.' }
+    Assert-ContentInventoriesEqual `
+        -Expected $addonInventory `
+        -Actual @(Get-ContentInventory -Root $addonExtractPath) `
+        -ActualDescription 'Extracted Pilot questline ZIP'
+    $addonRelease = [ordered] @{
+        id = 'tsc-pilot-questline'
+        version = $version
+        targetSptVersion = $targetSptVersion
+        archive = [ordered] @{
+            fileName = $addonArchiveName
+            size = $addonArchiveLength
+            sha256 = $addonArchiveHash
+        }
+        counts = [ordered] @{ files = $addonInventory.Count; dlls = 0; bundles = 0 }
+        files = $addonInventory
+    }
+}
+
 $currentBuildEvidenceFile = Get-Item -LiteralPath $resolvedBuildEvidencePath
 $currentBuildEvidenceHash = (
     Get-FileHash -LiteralPath $resolvedBuildEvidencePath -Algorithm SHA256
@@ -1592,6 +1655,27 @@ $evidence = [ordered] @{
 }
 
 Write-JsonCreateNew -Path $evidencePath -Value $evidence
+if ($IncludePilotQuestline) {
+    $addonEvidence = [ordered] @{
+        schemaVersion = 1
+        source = $evidence.source
+        contract = [ordered] @{
+            fileName = 'tools/PackageContract.ps1'
+            sha256 = Get-ByteArraySha256 -Bytes (Get-HeadBlobBytes -RelativePath 'tools/PackageContract.ps1')
+        }
+        buildEvidence = $evidence.buildEvidence
+        requiredBaseArchive = $evidence.release.archive
+        release = $addonRelease
+    }
+    Write-JsonCreateNew -Path $addonEvidencePath -Value $addonEvidence
+    if ((Get-Item -LiteralPath $addonArchivePath).Length -ne $addonArchiveLength -or
+        (Get-FileHash -LiteralPath $addonArchivePath -Algorithm SHA256).Hash.ToUpperInvariant() -cne $addonArchiveHash) {
+        throw 'Pilot questline archive changed before final evidence reporting.'
+    }
+    Write-Host "  Separate Pilot questline ZIP: $addonArchivePath"
+    Write-Host "  Pilot questline SHA-256: $addonArchiveHash"
+    Write-Host "  Pilot questline evidence: $addonEvidencePath"
+}
 $evidenceHash = (Get-FileHash -LiteralPath $evidencePath -Algorithm SHA256).Hash.ToUpperInvariant()
 $finalArchiveFile = Get-Item -LiteralPath $archivePath
 $finalArchiveHash = (
@@ -1624,8 +1708,11 @@ Write-Host "  Evidence SHA-256: $evidenceHash"
     EvidenceSha256 = $evidenceHash
     StagePath = $StagePath
     ExtractedValidationPath = $extractPath
+    PilotQuestlineArchivePath = if ($IncludePilotQuestline) { $addonArchivePath } else { $null }
+    PilotQuestlineEvidencePath = if ($IncludePilotQuestline) { $addonEvidencePath } else { $null }
 }
 }
 finally {
+    if ($null -ne $addonArchiveGuard) { $addonArchiveGuard.Dispose() }
     $archiveGuard.Dispose()
 }

@@ -64,6 +64,9 @@ try {
         'SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/unknown-third-party.dll',
         'SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/config/tsc-config.json',
         'SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/storage/authorizations.json',
+        'SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/addons/pilot-questline/addon.json',
+        'SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/db/CustomQuests/5a7c2eca46aef81a7ca2145d/Quests/open_channel.json',
+        'SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/db/CustomAssortSchemes/pilot_repeater.json',
         'SPT_Runtime/user/profiles/private-profile.json'
     )
     foreach ($relative in $forbiddenPaths) {
@@ -105,6 +108,15 @@ try {
     $changed = $manifestText | ConvertFrom-Json
     $changed.buildArtifacts[0].assemblyName = 'UnityToolkit'
     Assert-Rejected { Assert-TscOnlyPackageContract $changed } 'foreign assembly identity under a TSC filename'
+
+    foreach ($relative in @('addons/pilot-questline/addon.json', 'db/CustomQuests/intro.json', 'db/CustomAssortSchemes/pilot_repeater.json')) {
+        $changed = $manifestText | ConvertFrom-Json
+        $changed.mirrors[1].files += $relative
+        Assert-Rejected { Assert-TscOnlyPackageContract $changed } "base allowlist cannot include optional progression via mirrors: $relative"
+        $changed = $manifestText | ConvertFrom-Json
+        $changed.copiedFiles += [pscustomobject] @{ source = ('addons/pilot-questline/' + $relative); destination = ($manifest.installRoots[1] + '/' + $relative) }
+        Assert-Rejected { Assert-TscOnlyPackageContract $changed } "base allowlist cannot include optional progression via copied files: $relative"
+    }
 
     # Even an edited allowlist cannot authorize another DLL via mirrors or
     # copied files inside a TSC directory.

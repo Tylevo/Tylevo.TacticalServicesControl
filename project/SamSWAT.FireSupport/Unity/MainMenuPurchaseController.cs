@@ -2,6 +2,7 @@ using BepInEx.Bootstrap;
 using Comfort.Common;
 using Cysharp.Threading.Tasks;
 using EFT;
+using EFT.InventoryLogic;
 using EFT.UI;
 using System;
 using System.Collections.Generic;
@@ -12,31 +13,28 @@ using UnityEngine.UI;
 namespace SamSWAT.FireSupport.ArysReloaded.Unity;
 
 /// <summary>
-/// Main-menu-only authorization storefront. It owns no player, hands controller,
-/// inventory item, or raid runtime object.
+/// Pilot trader authorization storefront. Uses the native menu inventory for
+/// authoritative stash updates; it creates no player or raid runtime objects.
 /// </summary>
 public sealed partial class MainMenuPurchaseController : MonoBehaviour
 {
-	private const string ButtonName = "TSC_MainMenuUplinkButton";
-	private const string PageName = "TSC_MainMenuPurchasePage";
-	private const string SeasonalModifiersPluginGuid = "com.tylevo.seasonalmodifiers";
-	private const int LayoutScanPasses = 12;
-	private const float LayoutScanIntervalSeconds = 0.5f;
-	private const float LayoutDriftCheckIntervalSeconds = 1f;
 
-	// Shared visual language with the native in-raid phone: dark panels,
-	// ivory text, amber actions, and green service readiness.
-	private static readonly Color s_background = new Color32(3, 6, 7, 250);
-	private static readonly Color s_panel = new Color32(5, 7, 8, 255);
-	private static readonly Color s_row = new Color32(18, 21, 21, 255);
-	private static readonly Color s_line = new Color32(220, 216, 200, 41);
-	private static readonly Color s_lineStrong = new Color32(232, 185, 103, 117);
-	private static readonly Color s_text = new Color32(220, 216, 200, 255);
-	private static readonly Color s_muted = new Color32(150, 146, 132, 255);
-	private static readonly Color s_amberHigh = new Color32(232, 185, 103, 255);
-	private static readonly Color s_green = new Color32(113, 157, 70, 255);
-	private static readonly Color s_greenHigh = new Color32(145, 200, 90, 255);
-	private static readonly Color s_red = new Color32(198, 72, 61, 255);
+	private const string PageName = "TSC_PilotServicesPage";
+	private const string SeasonalModifiersPluginGuid = "com.tylevo.seasonalmodifiers";
+
+	// The native trader screen owns the blurred environment. Leave it visible
+	// through restrained surfaces, with the same muted tones as trader services.
+	private static readonly Color s_background = Color.clear;
+	private static readonly Color s_panel = new Color32(12, 15, 15, 105);
+	private static readonly Color s_row = new Color32(18, 21, 21, 160);
+	private static readonly Color s_line = new Color32(154, 154, 140, 43);
+	private static readonly Color s_lineStrong = new Color32(163, 154, 119, 180);
+	private static readonly Color s_text = new Color32(202, 201, 184, 255);
+	private static readonly Color s_muted = new Color32(140, 142, 129, 255);
+	private static readonly Color s_amberHigh = new Color32(183, 167, 120, 255);
+	private static readonly Color s_green = new Color32(113, 124, 85, 255);
+	private static readonly Color s_greenHigh = new Color32(148, 158, 105, 255);
+	private static readonly Color s_red = new Color32(183, 101, 88, 255);
 
 	private static readonly ServiceDescriptor[] s_services =
 	[
@@ -54,7 +52,10 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 	private static string s_boundSessionKey;
 
 	private readonly Dictionary<ESupportType, RowView> _rows = new();
-	private MenuScreen _menuScreen;
+	private RectTransform _storeHost;
+	private Profile _storeProfile;
+	private InventoryController _storeInventoryController;
+	private IEftSession _storeSession;
 	private GameObject _pageRoot;
 	private Text _statusText;
 	private Text _balanceText;
@@ -79,8 +80,8 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 	private int _ambiguousPrice = -1;
 	private PaymentCurrency _ambiguousCurrency = PaymentCurrency.RUB;
 	private int _generation;
-	private int _layoutScansRemaining;
-	private float _nextLayoutScanAt;
+
+
 	private bool _ready;
 	private bool _refreshPending;
 	private bool _purchasePending;
@@ -89,84 +90,76 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 	private bool _superseded;
 	private bool _destroyed;
 
-	private bool ShouldShowMenuButton =>
-		PluginSettings.Enabled?.Value == true &&
-		!_seasonalClientActive;
+	internal static bool ServicesEnabled =>
+		PluginSettings.Enabled?.Value == true && !IsSeasonalModifiersClientActive() &&
+		Singleton<GameWorld>.Instance == null;
 
-	public static void Attach(MenuScreen menuScreen, Profile profile)
+	private bool CanUseServices => !_destroyed && !_superseded && s_instance == this &&
+		isActiveAndEnabled && _storeHost != null && _storeHost.gameObject.activeInHierarchy &&
+		ServicesEnabled;
+
+	// Keep purchase recovery on the plugin, rather than destroying it when a
+	// trader tab closes. The native ServiceView owns only the visible content.
+	internal static void OpenServices(RectTransform host, Profile profile,
+		InventoryController inventoryController, IEftSession session)
 	{
-		if (menuScreen == null)
-		{
-			return;
-		}
-
-		MainMenuPurchaseController[] controllers =
-			menuScreen.GetComponents<MainMenuPurchaseController>();
-		MainMenuPurchaseController controller = null;
-		foreach (MainMenuPurchaseController candidate in controllers)
-		{
-			if (candidate == null || candidate._superseded)
-			{
-				continue;
-			}
-
-			if (candidate == s_instance)
-			{
-				controller = candidate;
-				break;
-			}
-			controller ??= candidate;
-		}
-		controller ??= menuScreen.gameObject.AddComponent<MainMenuPurchaseController>();
-
-		foreach (MainMenuPurchaseController candidate in controllers)
-		{
-			if (candidate != null && candidate != controller)
-			{
-				candidate.DetachForReplacement();
-			}
-		}
-		controller.Bind(menuScreen, profile);
+		if (host == null || FireSupportPlugin.Instance == null || !ServicesEnabled) return;
+		if (s_instance == null)
+			s_instance = FireSupportPlugin.Instance.gameObject.AddComponent<MainMenuPurchaseController>();
+		s_instance.BindServices(host, profile, inventoryController, session);
 	}
 
-	public static void CloseForRaidStart()
+	internal static void CloseServices(RectTransform host)
 	{
-		s_instance?.ClosePage();
-		s_instance?.SetTaskBarVisible(false);
+		if (s_instance != null && s_instance._storeHost == host) s_instance.ClosePage();
 	}
 
-	private void Bind(MenuScreen menuScreen, Profile profile)
+	internal static bool DismissConfirmation(RectTransform host)
 	{
-		if (s_instance != null && s_instance != this)
-		{
-			s_instance.DetachForReplacement();
-		}
+		if (s_instance == null || s_instance._storeHost != host || !s_instance.IsPurchaseConfirmationOpen)
+			return false;
+		s_instance.HidePurchaseConfirmation();
+		return true;
+	}
 
-		_superseded = false;
-		s_instance = this;
-		_menuScreen = menuScreen;
-		_profileId = profile?.Id?.Trim() ?? string.Empty;
+	public static void CloseForRaidStart() => s_instance?.ClosePage();
+
+	private void BindServices(RectTransform host, Profile profile,
+		InventoryController inventoryController, IEftSession session)
+	{
+		string profileId = profile?.Id?.Trim() ?? string.Empty;
 		string authenticatedKey = FireSupportServerConfigClient.GetAuthenticatedSessionKey();
-		string nextBoundKey = $"{authenticatedKey}|menu-profile:{_profileId}";
+		string nextBoundKey = $"{authenticatedKey}|menu-profile:{profileId}";
 		if (!string.Equals(s_boundSessionKey, nextBoundKey, StringComparison.Ordinal))
 		{
 			s_boundSessionKey = nextBoundKey;
 			ResetPageState();
 			FireSupportServerConfigClient.ClearPreRaidSessionState();
 		}
-
-		_sessionKey = authenticatedKey;
-		_seasonalClientActive = IsSeasonalModifiersClientActive();
-		if (_seasonalClientActive)
+		if (_storeHost != host)
 		{
-			SuppressMenuForSeasonal();
-			return;
+			ClosePage();
+			if (_pageRoot != null) Destroy(_pageRoot);
+			_pageRoot = null;
+			_historyContent = null;
+			_displayedHistory = null;
+			_historyPage = 0;
+			_rows.Clear();
+			_storeHost = host;
 		}
-
+		_profileId = profileId;
+		_sessionKey = authenticatedKey;
+		_storeProfile = profile;
+		_storeInventoryController = inventoryController;
+		_storeSession = session;
+		_seasonalClientActive = IsSeasonalModifiersClientActive();
 		enabled = true;
-		EnsureMenuButton();
-		_layoutScansRemaining = LayoutScanPasses;
-		_nextLayoutScanAt = Time.unscaledTime + LayoutScanIntervalSeconds;
+		BuildPage();
+		if (_pageRoot == null) return;
+		_pageRoot.SetActive(true);
+		UpdateStorefrontScale();
+		Redraw();
+		StartRefresh();
 	}
 
 	private void Update()
@@ -176,66 +169,17 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 			DetachForReplacement();
 			return;
 		}
-		if (_seasonalClientActive)
+		if (!CanUseServices)
 		{
-			SuppressMenuForSeasonal();
+			if (_pageRoot != null && _pageRoot.activeSelf) ClosePage();
 			return;
 		}
-		if (!CanUseTaskBar)
-		{
-			ClosePage();
-			SetTaskBarVisible(false);
-			return;
-		}
-
 		if (_pageRoot != null && _pageRoot.activeSelf) UpdateStorefrontScale();
-		SetTaskBarVisible(true);
-		if (Time.unscaledTime < _nextLayoutScanAt) return;
-		float interval = _layoutScansRemaining > 0
-			? LayoutScanIntervalSeconds : LayoutDriftCheckIntervalSeconds;
-		if (_layoutScansRemaining > 0) _layoutScansRemaining--;
-		_nextLayoutScanAt = Time.unscaledTime + interval;
-		EnsureMenuButton();
 	}
 
 	private static bool IsSeasonalModifiersClientActive()
 	{
 		return Chainloader.PluginInfos.ContainsKey(SeasonalModifiersPluginGuid);
-	}
-
-	private void SuppressMenuForSeasonal()
-	{
-		ClosePage();
-		RetireAllMenuButtons();
-		_layoutScansRemaining = 0;
-		_nextLayoutScanAt = float.PositiveInfinity;
-		enabled = false;
-	}
-
-	private void OpenPage()
-	{
-		if (!CanUseTaskBar)
-		{
-			return;
-		}
-
-		if (Singleton<GameWorld>.Instance != null)
-		{
-			FireSupportPlugin.LogSource.LogWarning(
-				"TSC pre-raid purchase page refused to open while GameWorld was active.");
-			return;
-		}
-
-		BuildPage();
-		if (_pageRoot == null)
-		{
-			return;
-		}
-
-		_pageRoot.SetActive(true);
-		_pageRoot.transform.SetAsLastSibling();
-		UpdateStorefrontScale();
-		StartRefresh();
 	}
 
 	private void StartRefresh()
@@ -245,6 +189,7 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 
 	private void StartRefresh(bool afterMutation)
 	{
+		if (!CanUseServices) return;
 		if (_refreshPending || _purchasePending || IsPurchaseConfirmationOpen)
 		{
 			return;
@@ -258,7 +203,7 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 		{
 			FailClosedForSessionChange(
 				authenticatedSessionKey,
-				"Authenticated PMC session is not available. Reopen TSC UPLINK from the current main menu.");
+				"Authenticated PMC session is not available. Reopen TSC UPLINK from Pilot > Services.");
 			return;
 		}
 		if (!string.IsNullOrWhiteSpace(_sessionKey) &&
@@ -266,7 +211,7 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 		{
 			FailClosedForSessionChange(
 				authenticatedSessionKey,
-				"Authenticated PMC session changed. Reopen TSC UPLINK from the current main menu.");
+				"Authenticated PMC session changed. Reopen TSC UPLINK from Pilot > Services.");
 			return;
 		}
 
@@ -298,11 +243,24 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 	{
 		try
 		{
+			// Settle native inventory commands before reading absolute cash stacks.
+			// A closed/rebound page must never apply its late snapshot.
+			IEftSession session = _storeSession;
+			Profile profile = _storeProfile;
+			InventoryController inventoryController = _storeInventoryController;
+			string flushReason = await PilotServicesStashSynchronizer.FlushPendingOperationsAsync(session);
+			cancellationToken.ThrowIfCancellationRequested();
+			if (_destroyed || generation != _generation || !CanUseServices) return;
+			if (!string.IsNullOrEmpty(flushReason))
+				throw new InvalidOperationException(flushReason);
+			using var inventoryRead = PilotServicesStashSynchronizer.BeginSnapshotRead(session);
 			RaidOpsFireSupportServerConfig snapshot =
 				await FireSupportServerConfigClient.FetchPreRaidSnapshotOnceAsync(
 					expectedSessionKey,
 					cancellationToken);
-			if (_destroyed || generation != _generation)
+			if (_destroyed || generation != _generation || !CanUseServices ||
+				!ReferenceEquals(session, _storeSession) || !ReferenceEquals(profile, _storeProfile) ||
+				!ReferenceEquals(inventoryController, _storeInventoryController))
 			{
 				return;
 			}
@@ -316,6 +274,20 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 			}
 
 			_snapshot = snapshot;
+			if (!inventoryRead.IsUnchanged)
+			{
+				_ready = false;
+				SetStatus("Inventory changed while loading. REFRESH to update your stash balance.", false);
+				return;
+			}
+			if (!PilotServicesStashSynchronizer.TryApplyNative(session, profile, inventoryController,
+				snapshot.StashCurrencyState, out string stashReason))
+			{
+				_ready = false;
+				FireSupportPlugin.LogSource.LogWarning($"TSC native stash synchronization failed: {stashReason}");
+				SetStatus("Stash synchronization failed. REFRESH before buying another authorization.", false);
+				return;
+			}
 			_ready = true;
 			bool recoveredPreparedPurchase = AdoptPreparedPurchase(snapshot);
 			if (recoveredPreparedPurchase) _selectedService = _ambiguousType;
@@ -371,30 +343,6 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 		}
 	}
 
-	private void OpenDashboard()
-	{
-		string host = SPT.Common.Http.RequestHandler.Host;
-		if (string.IsNullOrWhiteSpace(host) ||
-		    !Uri.TryCreate(host, UriKind.Absolute, out Uri hostUri) ||
-		    (hostUri.Scheme != Uri.UriSchemeHttp &&
-		     hostUri.Scheme != Uri.UriSchemeHttps))
-		{
-			SetStatus(
-				"The active SPT server address is unavailable. Start the server and refresh TSC UPLINK.",
-				false);
-			return;
-		}
-
-		UriBuilder dashboardUri = new(hostUri)
-		{
-			Path = "/tsc/admin",
-			Query = string.Empty,
-			Fragment = string.Empty
-		};
-		Application.OpenURL(dashboardUri.Uri.AbsoluteUri);
-		SetStatus("Opening the TSC dashboard in your default browser...", true);
-	}
-
 	private bool IsPurchaseConfirmationOpen =>
 		_purchaseConfirmationRoot != null &&
 		_purchaseConfirmationRoot.activeSelf;
@@ -441,7 +389,7 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 
 	private void ConfirmPurchase()
 	{
-		if (!IsPurchaseConfirmationOpen || _confirmationType == ESupportType.None)
+		if (!CanUseServices || !IsPurchaseConfirmationOpen || _confirmationType == ESupportType.None)
 		{
 			return;
 		}
@@ -464,7 +412,7 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 		{
 			FailClosedForSessionChange(
 				authenticatedSessionKey,
-				"Authenticated PMC session changed. Reopen TSC UPLINK from the current main menu.");
+				"Authenticated PMC session changed. Reopen TSC UPLINK from Pilot > Services.");
 			return;
 		}
 
@@ -647,12 +595,13 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 	{
 		descriptor = GetDescriptor(supportType);
 		retryAmbiguousPurchase = false;
-		if (!_ready || _snapshot == null || _refreshPending || _purchasePending)
+		if (!CanUseServices || !_ready || _snapshot == null || _refreshPending || _purchasePending)
 		{
 			return false;
 		}
 
-		if (!FireSupportServiceAvailability.IsLocalUseAllowed(supportType))
+		if (!FireSupportServiceAvailability.IsLocalUseAllowed(supportType) &&
+		    !(supportType == _ambiguousType && !string.IsNullOrWhiteSpace(_ambiguousRequestId)))
 		{
 			SetStatus(
 				FireSupportServiceAvailability.GetLocalRestrictionReason(supportType),
@@ -668,7 +617,7 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 		{
 			FailClosedForSessionChange(
 				authenticatedSessionKey,
-				"Authenticated PMC session changed. Reopen TSC UPLINK from the current main menu.");
+				"Authenticated PMC session changed. Reopen TSC UPLINK from Pilot > Services.");
 			return false;
 		}
 
@@ -882,7 +831,6 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 			bool pending = _purchasePending && _pendingType == service.Type;
 			bool hasAmbiguousPurchase = !string.IsNullOrWhiteSpace(_ambiguousRequestId);
 			bool retryAmbiguousPurchase =
-				locallyAvailable &&
 				hasAmbiguousPurchase &&
 				_ambiguousType == service.Type;
 			string localRestrictionStatus =
@@ -895,9 +843,9 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 					: !hasSnapshot ? "SYNC" : !enabled ? "LOCKED" : atLimit ? "LIMIT REACHED" : "AVAILABLE";
 			row.State.color = retryAmbiguousPurchase
 				? s_amberHigh
-				: enabled
-				? s_greenHigh
-				: s_red;
+				: !hasSnapshot ? s_muted
+				: !enabled || atLimit ? s_red
+				: s_greenHigh;
 			row.Price.text = price >= 0
 				? PaymentCurrencyInfo.Format(price, currency)
 				: "--";
@@ -920,6 +868,7 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 					: atLimit ? "LIMIT REACHED" : enabled ? "REVIEW PURCHASE" : "SERVICE LOCKED";
 		}
 		RedrawStoreDetail();
+		RedrawStoreHistory();
 	}
 
 	private static bool ValidateSnapshot(
@@ -1119,14 +1068,24 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 		}
 
 		_statusText.text = message ?? string.Empty;
-		_statusText.color = healthy
-			? s_greenHigh
-			: new Color32(255, 182, 173, 255);
+		_statusText.color = healthy ? s_muted : s_red;
 	}
 
 	private void ClosePage()
 	{
 		_refreshCts?.Cancel();
+		_storeProfile = null;
+		_storeInventoryController = null;
+		_storeSession = null;
+		// A cancelled fetch must not block the next tab opening or repaint it
+		// with its late response. An already submitted purchase stays alive so
+		// its request ID/outcome can still be recovered after navigation.
+		if (_refreshPending)
+		{
+			_generation++;
+			_refreshPending = false;
+		}
+		_ready = false;
 		HidePurchaseConfirmation(redraw: false);
 		if (_pageRoot != null)
 		{
@@ -1149,7 +1108,6 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 		_refreshCts?.Dispose();
 		_refreshCts = null;
 
-		RetireTaskBarButton();
 		if (_pageRoot != null)
 		{
 			GameObject stalePage = _pageRoot;
@@ -1157,12 +1115,13 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 			Destroy(stalePage);
 		}
 
-		_menuScreen = null;
+		_storeHost = null;
 		Destroy(this);
 	}
 
 	private void ResetPageState()
 	{
+		ResetStoreHistory();
 		_generation++;
 		_refreshCts?.Cancel();
 		_refreshCts?.Dispose();
@@ -1195,21 +1154,15 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 	private void OnDisable()
 	{
 		ClosePage();
-		SetTaskBarVisible(false);
 	}
 
 	private void OnDestroy()
 	{
-		bool ownsCurrentUi = !_superseded && s_instance == this;
 		_destroyed = true;
 		_generation++;
 		_refreshCts?.Cancel();
 		_refreshCts?.Dispose();
 		_refreshCts = null;
-		if (ownsCurrentUi)
-		{
-			RetireTaskBarButton();
-		}
 		if (_pageRoot != null)
 		{
 			Destroy(_pageRoot);
@@ -1255,6 +1208,7 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 	{
 		return reason switch
 		{
+			"UplinkLocked" => FireSupportProgression.LockedMessage,
 			"AuthorizationLimitReached" => "Authorization limit reached for this service.",
 			"InsufficientRoubles" or "InsufficientFunds" => "Insufficient stash funds.",
 			"RateLimited" => "Purchase rate-limited. Wait briefly and refresh.",
@@ -1326,10 +1280,9 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 		Color border)
 	{
 		GameObject panel = CreatePanel(parent, name, color);
-		Outline outline = panel.AddComponent<Outline>();
+		PilotServicesBorder outline = panel.AddComponent<PilotServicesBorder>();
 		outline.effectColor = border;
-		outline.effectDistance = new Vector2(1f, -1f);
-		outline.useGraphicAlpha = false;
+		if (color.a > 0.9f) AddStoreSurface(panel.GetComponent<RectTransform>());
 		return panel;
 	}
 
@@ -1348,9 +1301,9 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 		GameObject textObject = new(name, typeof(RectTransform), typeof(Text));
 		textObject.transform.SetParent(parent, false);
 		Text text = textObject.GetComponent<Text>();
-		text.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+		text.font = ResolveStoreFont(style, out FontStyle effectiveStyle);
 		text.fontSize = fontSize;
-		text.fontStyle = style;
+		text.fontStyle = effectiveStyle;
 		text.color = color;
 		text.alignment = alignment;
 		text.text = value;
@@ -1377,7 +1330,7 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 		Color labelColor;
 		if (visual == ButtonVisual.Neutral)
 		{
-			image.color = new Color32(21, 23, 20, 255);
+			image.color = new Color32(28, 31, 29, 190);
 			border = s_line;
 			labelColor = s_text;
 		}
@@ -1387,10 +1340,8 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 			border = new Color(s_green.r, s_green.g, s_green.b, 0.55f);
 			labelColor = s_greenHigh;
 		}
-		Outline outline = buttonObject.AddComponent<Outline>();
+		PilotServicesBorder outline = buttonObject.AddComponent<PilotServicesBorder>();
 		outline.effectColor = border;
-		outline.effectDistance = new Vector2(1f, -1f);
-		outline.useGraphicAlpha = false;
 		Button button = buttonObject.GetComponent<Button>();
 		button.targetGraphic = image;
 		ColorBlock colors = button.colors;
@@ -1450,7 +1401,7 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 
 	private sealed class RowView
 	{
-		public RowView(Text name, Text state, Text price, Text owned, Button select, Image background, Outline border)
+		public RowView(Text name, Text state, Text price, Text owned, Button select, Image background, PilotServicesBorder border)
 		{
 			Name = name;
 			State = state;
@@ -1467,7 +1418,7 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 		public Text Owned { get; }
 		public Button Select { get; }
 		public Image Background { get; }
-		public Outline Border { get; }
+		public PilotServicesBorder Border { get; }
 		public bool CanPurchase { get; set; }
 		public string ActionLabel { get; set; }
 	}

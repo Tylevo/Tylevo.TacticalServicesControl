@@ -395,7 +395,7 @@ internal static class Uh60DeliveryServerTests
 			"pilot = existing",
 			"A pre-existing trader ID must be proven to belong to TSC before it can be reused or mutated.");
 		AssertEx.Contains(
-			"pilot.Base.UnlockedByDefault = true",
+			"pilot.Base.UnlockedByDefault = !questlinePolicy.QuestlineRequired",
 			service);
 		AssertEx.Contains(
 			"mailSendService.SendDirectNpcMessageToPlayer",

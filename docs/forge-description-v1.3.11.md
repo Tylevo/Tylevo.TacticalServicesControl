@@ -12,9 +12,9 @@ This update is being prepared for players coming from the **SPT 4.0.13 Forge rel
 ## What's new since 4.0.13?
 
 - **UH-60 Cargo Transfer** replaces Priority Exfil. Send loot home through Pilot's mail without ending your raid. The dispatch authorization and item-handling fee are separate; the handling fee can use carried roubles or your stash.
-- **A pre-raid support store** lets you buy authorizations from **TSC UPLINK**, beside **Character** on the main menu's bottom bar. Browse service cards, check your balance, and review purchases before paying.
+- **Pilot's Services tab** lets you buy authorizations at **Traders > Pilot > Services**. Choose from the compact service list on the left and review details on the right. Purchases use your PMC stash balance and the existing authorization limits.
 - **A redesigned phone** brings live prices and availability, new service icons, horizontal purchase screens, and smoother zoom. Hold **Left Alt** and left-click to make selections, or keep using the number keys.
-- **UH-60 Pilot** now sells the physical Uplink, has a new portrait, and is unlocked without a quest requirement. The phone also has a dedicated fourth special slot.
+- **Optional Pilot Questline add-on:** buy the ₽50,000 Uplink directly from Pilot in the main download, or install the separate add-on to earn access through three quests starting with Mechanic at level 5. Both use the same client and dedicated fourth special slot.
 - **Radar display options** let you hold **J** to check active recon on the physical phone or use a compact HUD scanner in a screen corner.
 - **RUB, USD, or EUR support pricing** gives you more ways to configure payments. Authorization synchronization, failed-dispatch refunds, and payment recovery have also been improved.
 - **A-10 targeting corrections** address rounds landing short by correcting shot origins and compensating for the bullet trajectory.
@@ -44,7 +44,8 @@ and **[WTT CommonLib 3.0.6](https://github.com/WelcomeToThursday/WTT-CommonLib/r
 1. Close the game, launcher, and SPT server.
 2. Extract the **full TSC ZIP** into your SPT 4.1.5 root.
 3. Merge the `BepInEx` and `SPT_Runtime` folders, replacing old mod files when prompted.
-4. Start the server, then the launcher and game.
+4. Optionally extract the matching **Pilot Questline add-on ZIP** into the same root for quest progression. Its server content uses the existing TSC client.
+5. Start the server, then the launcher and game.
 
 UnityToolkit is a separate dependency and is not included in the TSC ZIP.
 Keep one installation in its standard plugin and patcher folders. TSC replaces SamSWAT Fire Support and Arys Reloaded; don't install those alongside it.
@@ -57,7 +58,21 @@ Keep one installation in its standard plugin and patcher folders. TSC replaces S
 
 ## Use the Uplink
 
-Buy the **TerraGroup TSC Uplink** from **UH-60 Pilot** for **₽50,000** at loyalty level 1. Carry it in your inventory or use its dedicated fourth special slot.
+With the main download, Pilot is available immediately. Buy the **TerraGroup
+TSC Uplink** for **₽50,000** in his Trading tab and use configured services at
+their normal prices. Phones do not spawn in TSC's random loot in either mode.
+
+With the optional **Pilot Questline add-on**, start **Open Channel** with
+Mechanic at level 5: hand over 2 Wires and 2
+Capacitors to meet Pilot. For **Some Assembly Required**, give Pilot 1 Broken
+GPhone, 1 Electronic components, and 1 Screwdriver. These items need not be
+found in raid. Then complete **Back on the Air** by installing his supplied
+Radio repeater at Shoreline's weather-station antenna and surviving Shoreline.
+Report back to receive the **TerraGroup TSC Uplink** and unlock configured
+services. Replacement phones cost **₽50,000** in Pilot's Trading tab. Carry
+the device in your inventory or its dedicated fourth special slot.
+
+Before a raid, open **Traders > Pilot > Services** to buy support. Select a service from the left-hand list, check its description, price, and held authorizations in the right-hand panel, then confirm. Payment uses the same PMC stash and grants the same persistent authorization as before. Phone purchasing and deployment controls in raid are unchanged.
 
 - **U:** open the purchase phone. Left-click from the home screen to open Tactical Services.
 - **Hold Left Alt + left-click:** browse and select with the cursor. Release Alt to look around.
@@ -80,6 +95,10 @@ and isolated server checks. Game startup and raid testing with this new pair
 are still pending.
 Earlier local use of TSC 1.3.10 on SPT 4.1.5 was reported working, but does not
 validate this candidate. See the validation record for current results.
+
+The move to Pilot's Services tab and the new questline still need in-game
+validation, including radio installation and multiplayer progression.
+Fika participants must install matching TSC server, Core, and Fika components.
 
 **Multiplayer on the current SPT/Fika versions has not been tested.** Solo play does not require Fika. Cargo Transfer is implemented for solo play and the requesting human Fika host; non-host clients and dedicated-headless requesters cannot use it yet. Dedicated-headless A-10 damage remains experimental.
 

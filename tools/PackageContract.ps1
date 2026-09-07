@@ -56,4 +56,38 @@ function Assert-TscOnlyPackageContract {
         }
     }
     if ($seen.Count -ne 4) { throw 'The package must map all four built TSC DLLs exactly once.' }
+
+    # Quest data is shipped only by the optional addon. Editing the base
+    # allowlist must not silently enable progression for every installation.
+    $destinations = @(
+        foreach ($mirror in $Manifest.mirrors) {
+            foreach ($file in $mirror.files) { [string] $mirror.destination + '/' + [string] $file }
+        }
+        foreach ($file in $Manifest.copiedFiles) { [string] $file.destination }
+    )
+    foreach ($destination in $destinations) {
+        if ($destination.Replace('\', '/') -match '(?i)(?:^|/)(?:addons|CustomQuests)(?:/|$)|(?:^|/)pilot_repeater\.json$') {
+            throw "The base TSC package cannot contain optional questline data: '$destination'."
+        }
+    }
+}
+
+# This closed data-only inventory is shared by addon staging and validation.
+# The install root belongs to the main server mod, so no additional DLL or
+# independently loaded SPT mod is needed.
+function Get-TscPilotQuestlinePackageContract {
+    return [pscustomobject] @{
+        Source = 'addons/pilot-questline'
+        Destination = 'SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/addons/pilot-questline'
+        Files = @(
+            'addon.json'
+            'README.md'
+            'db/CustomAssortSchemes/pilot_repeater.json'
+            'db/CustomQuests/5a7c2eca46aef81a7ca2145d/Locales/en.json'
+            'db/CustomQuests/5a7c2eca46aef81a7ca2145d/Quests/open_channel.json'
+            'db/CustomQuests/66f51f3a0000000000000a60/Locales/en.json'
+            'db/CustomQuests/66f51f3a0000000000000a60/QuestAssort/pilot_introduction.json'
+            'db/CustomQuests/66f51f3a0000000000000a60/Quests/pilot_introduction.json'
+        )
+    }
 }

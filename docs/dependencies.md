@@ -38,7 +38,10 @@ profile's installation.
 5. If UnityToolkit is already installed, replace its files in the standard
    folders when prompted. Keep one installation; do not leave duplicate
    plugin or prepatcher copies in other folders.
-6. Start the SPT server, then the launcher and game.
+6. Optionally extract the matching **Pilot Questline add-on ZIP** into the
+   same root. It supplies server content only. Without it, Pilot sells the
+   ₽50,000 Uplink immediately and services have no introduction requirement.
+7. Start the SPT server, then the launcher and game.
 
 After installing both packages, check for these folders directly inside your
 SPT installation. TSC supplies the first two; UnityToolkit supplies the last two:
@@ -53,6 +56,14 @@ BepInEx/patchers/UnityToolkit/
 Install all four TSC DLLs and their assets together. TSC replaces the old
 SamSWAT Fire Support and Arys Reloaded packages; do not install them alongside
 it. If updating TSC, remove older duplicate TSC DLLs from other mod folders.
+
+The optional add-on lives at
+`SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/addons/pilot-questline/`.
+For Fika, install it on the shared SPT server; everyone uses the same main
+client download. The server chooses progression at startup. See the
+[add-on guide](pilot-questline.md) for quest details and removal instructions.
+Updating the main mod preserves an installed add-on, which must match the
+current TSC/SPT versions.
 
 ## Updating an existing SPT 4.1.x installation
 

@@ -88,6 +88,7 @@ public static class FireSupportPayment
 		FireSupportPurchaseResponse denial = GetLastPurchaseDenial(supportType);
 		return denial?.Reason switch
 		{
+			"UplinkLocked" => FireSupportProgression.LockedMessage,
 			"AuthorizationLimitReached" => "AUTHORIZATION LIMIT REACHED",
 			"InsufficientRoubles" or "InsufficientFunds" => "INSUFFICIENT FUNDS",
 			"RateLimited" => "PURCHASE ALREADY PROCESSING",
@@ -112,6 +113,8 @@ public static class FireSupportPayment
 
 		switch (denial.Reason)
 		{
+			case "UplinkLocked":
+				return FireSupportProgression.LockedMessage;
 			case "AuthorizationLimitReached":
 				int held = GetAuthorizationCount(denial, supportType);
 				return held > 0
@@ -568,12 +571,12 @@ public static class FireSupportPayment
 		return canAfford;
 	}
 
-	public static bool TryCharge(ESupportType supportType)
+	private static bool TryCharge(ESupportType supportType)
 	{
 		return TryCharge(supportType, notifySuccess: true, notifyFailure: true);
 	}
 
-	public static bool TryCharge(ESupportType supportType, bool notifySuccess, bool notifyFailure = true)
+	private static bool TryCharge(ESupportType supportType, bool notifySuccess, bool notifyFailure = true)
 	{
 		if (!FireSupportServiceAvailability.IsServiceEnabled(supportType))
 		{
@@ -659,12 +662,12 @@ public static class FireSupportPayment
 		return CanAfford(supportType, notify);
 	}
 
-	public static bool TryPayForDeployment(ESupportType supportType, out bool consumedAuthorization)
+	private static bool TryPayForDeployment(ESupportType supportType, out bool consumedAuthorization)
 	{
 		return TryPayForDeployment(supportType, out consumedAuthorization, out _);
 	}
 
-	public static bool TryPayForDeployment(
+	private static bool TryPayForDeployment(
 		ESupportType supportType,
 		out bool consumedAuthorization,
 		out ESupportType consumedAuthorizationType)
@@ -705,6 +708,11 @@ public static class FireSupportPayment
 
 	public static async UniTask<FireSupportAuthorizationUse> TryPayForDeploymentAsync(ESupportType supportType)
 	{
+		if (!await FireSupportServerConfigClient.EnsureLocalProgressionVerifiedAsync())
+		{
+			NotifyServiceUnavailable(supportType);
+			return FireSupportAuthorizationUse.Failed(supportType);
+		}
 		string operationId = Guid.NewGuid().ToString("N");
 		string serverSessionKey =
 			FireSupportServerConfigClient.GetAuthenticatedSessionKey();
@@ -1158,12 +1166,12 @@ public static class FireSupportPayment
 			$"attempts={attempts}, reason={reason ?? "Unknown"}.");
 	}
 
-	public static bool TryPurchaseAuthorization(ESupportType supportType)
+	private static bool TryPurchaseAuthorization(ESupportType supportType)
 	{
 		return TryPurchaseAuthorization(supportType, notify: true);
 	}
 
-	public static bool TryPurchaseAuthorization(ESupportType supportType, bool notify)
+	private static bool TryPurchaseAuthorization(ESupportType supportType, bool notify)
 	{
 		if (!FireSupportServiceAvailability.IsServiceEnabled(supportType))
 		{
@@ -1237,12 +1245,9 @@ public static class FireSupportPayment
 			RequestId = requestId ?? string.Empty
 		};
 
-		if (!FireSupportServiceAvailability.IsLocalUseAllowed(supportType))
-		{
-			fallback.Reason = "ServiceUnavailable";
-			RememberPurchaseDenial(supportType, fallback);
-			return fallback;
-		}
+		// The menu gates new purchases. Send known interrupted transactions to
+		// the backend even when progression is now locked, so recovery can finish.
+		// The backend enforces progression before any new purchase is charged.
 
 		if (string.IsNullOrWhiteSpace(requestId))
 		{
@@ -1398,6 +1403,7 @@ public static class FireSupportPayment
 
 	private static async UniTask<FireSupportPurchaseResponse> PurchaseAuthorizationAsync(ESupportType supportType, bool notify)
 	{
+		bool progressionVerified = await FireSupportServerConfigClient.EnsureLocalProgressionVerifiedAsync();
 		PaymentCurrency paymentCurrency = GetActivePaymentCurrency();
 		var result = new FireSupportPurchaseResponse
 		{
@@ -1411,9 +1417,9 @@ public static class FireSupportPayment
 			ServerRevision = _serverConfigRevision
 		};
 
-		if (!FireSupportServiceAvailability.IsServiceEnabled(supportType))
+		if (!progressionVerified || !FireSupportServiceAvailability.IsServiceEnabled(supportType))
 		{
-			result.Reason = "ServiceUnavailable";
+			result.Reason = progressionVerified ? "ServiceUnavailable" : "UplinkLocked";
 			RememberPurchaseDenial(supportType, result);
 			if (notify)
 			{

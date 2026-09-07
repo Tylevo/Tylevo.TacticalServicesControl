@@ -8,6 +8,12 @@ v1.3.10 does not validate the new pair.
 
 ## Multiplayer
 
+The optional [Pilot Questline add-on](pilot-questline.md#validation) requires in-game
+acceptance, including the weather-station installation and survival after
+death. Matching server, Core, and Fika components with service protocol 2 are
+required for manual support. Earlier package test results do not validate
+these new progression paths.
+
 **Fika support has not been tested on the current SPT/Fika versions.**
 Compiling against Fika 2.4.2 does not establish multiplayer compatibility.
 

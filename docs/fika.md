@@ -8,6 +8,18 @@ Install the same TSC version on:
 - Headless host, if used.
 - Every client.
 
+Both the main download and optional Pilot Questline add-on use matching TSC
+server, Core, and Fika components with service protocol 2. Install the add-on
+only on the SPT server; it determines progression for every connected player.
+Clients use the same TSC files in both modes. Base access has no quest gate.
+With the add-on installed, complete **Back on the Air** to purchase or request
+manual support. In both modes the host verifies the requesting player's
+server-issued permission; a host
+that has not completed the quest can still execute an unlocked player's
+request. Passengers do not need the introduction to board an authorized
+extraction. Permission tokens are profile-bound and are omitted from visual
+broadcasts. Refresh TSC state after a server restart if permission is stale.
+
 ## Behavior
 
 - Host config is authoritative while joined.

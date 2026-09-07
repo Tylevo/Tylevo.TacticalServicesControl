@@ -4,6 +4,7 @@ UnityToolkit 2.0.2 is prepared as a separate SPT 4.1.5 update on Arys's existing
 project page. Arys remains the author and has added Tylevo as a coauthor for
 maintenance. It has not been published yet. TSC v1.3.11 requires this package
 separately and does not bundle Toolkit binaries or companion libraries.
+The version remains 2.0.2 while the unpublished candidate is corrected.
 
 Earlier TSC documentation incorrectly described explicit permission to bundle
 Toolkit. That was a maintainer/assistant misunderstanding; see the
@@ -16,7 +17,7 @@ companion-library licenses are unchanged.
 - Base source tag: `v2.0.1`
 - Base source commit: `3c27a9798dc4396ca0b3dc765448a4221ff3007b`
 - Update patch: [UnityToolkit-v2.0.2-SPT4.1.5.patch](UnityToolkit-v2.0.2-SPT4.1.5.patch)
-- Patch SHA-256: `4B39EAB920B84A8119C67CF9DD6999913CCFD6E15BD9ECB6C55186675A548911`
+- Patch SHA-256: `EDE4C951C8E31D3B22906994C57AFA94B8116DE5AC7205D3DE903A82C2A7F58C`
 - Build SDK: .NET 9.0.314, with the .NET Framework 4.8 targeting pack.
 - Build target: `SPT-4.1 Release`, with local SPT 4.1.5 references.
 - Assembly and file versions: `2.0.2.0` for both plugin and prepatcher.
@@ -27,27 +28,54 @@ string-based lookup for the existing player-loop target, retargets the
 prepatcher to .NET Framework 4.8, and gives both assemblies the distinct
 2.0.2 version metadata. The rebuilt plugin references `spt-reflection 4.1.5.0`.
 
+It also fixes an inherited prepatcher path bug. The constructor previously
+treated the full `UnityToolkit-Prepatcher.dll` filename as a directory when
+locating `System.Runtime.CompilerServices.Unsafe.dll`. The resulting path did
+not point to the companion, so initialization could silently skip the
+replacement. It now uses the prepatcher DLL's containing directory and loads
+the adjacent companion. This is a general Toolkit initialization fix with no
+TSC-specific logic or public API changes.
+
 The original plugin's `spt-reflection 4.0.1.0` reference fails SPT 4.1's
 startup version check before Toolkit or TSC initializes. SPT 4.1.5's fix for
 older Unity asset bundles affects a separate server check.
 
-## Verified standalone package
+## Standalone package and validation
 
 The prepared archive has **17 files**: the complete 15-file upstream
 installation layout with the two rebuilt DLLs, plus two copies of the license
 notices. The remaining 13 upstream files are unchanged.
 
-| Item | Bytes | SHA-256 |
-| --- | ---: | --- |
-| Standalone Toolkit 2.0.2 ZIP | 758925 | `18A32E842966F0D8B71F1C5FE07CFF40726BC854B4CECE320A7E7BF7068375A7` |
-| `UnityToolkit.dll` | 8704 | `F047AED2C3A1AC118DB2BC9C86BD36CF89D675C7522E36E28129487CCFCF1EDC` |
-| `UnityToolkit-Prepatcher.dll` | 6144 | `BB151BBB6F859141BE6D773173864A3D543531729EF4EC07C63FFECE1D3CC357` |
+The corrected DLLs and finished archive are verified below. All 17 archive
+entries match the reviewed package. The plugin and 13 companion files are
+unchanged.
 
-Both projects compiled with zero warnings and errors. All 15 plugin method
-bodies and six prepatcher method bodies matched the prior compatibility build
-under IL comparison; the larger prepatcher carries the new assembly metadata.
-These static checks do not establish game startup or raid compatibility.
-The TSC 1.3.11/Toolkit 2.0.2 pair has not been tested in the live game.
+| Corrected candidate item | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Standalone Toolkit 2.0.2 ZIP | 758942 | `CC0B44804228B66250F0DA90BBD9928A1DBC83B964B6EFCFABEBA2F90F046B9E` |
+| `UnityToolkit.dll` | 8704 | `F047AED2C3A1AC118DB2BC9C86BD36CF89D675C7522E36E28129487CCFCF1EDC` |
+| `UnityToolkit-Prepatcher.dll` | 6144 | `2AC08B36DA55B0B8A1E52DB12B2922ECC829778AAF066BEA4BED20A9EDBAD15A` |
+
+The earlier projects compiled with zero warnings and errors, and all their
+plugin and prepatcher method bodies matched the prior compatibility build.
+That candidate was subsequently installed and used for local TSC testing.
+
+The corrected candidate built with zero warnings and errors. Its 15 plugin
+method bodies are unchanged; only the prepatcher's static constructor changes.
+An independent audit confirms the same five public prepatcher API entries as
+upstream 2.0.1 and the earlier 2.0.2 candidate.
+
+Four isolated tests passed against the compiled `TargetDLLs`, `Initialize`,
+and `Patch` methods with real BepInEx and Mono.Cecil. They cover an adjacent
+companion, paths with spaces and a different working directory, and missing
+or malformed companions. The first two cases reproduce the old failure and
+now verify the correct assembly identity, MVID, and 155 Unsafe API entries.
+The other cases leave the input assembly unchanged.
+
+The corrected bytes have not yet been tested in game. Earlier TSC results do
+not establish compatibility with the corrected prepatcher or with every mod
+that uses Toolkit. The [validation record](../../../docs/validation/v1.3.11.md)
+retains the previous candidate's hashes separately.
 
 ## Rebuild
 

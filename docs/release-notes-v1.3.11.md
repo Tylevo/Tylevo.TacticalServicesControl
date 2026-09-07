@@ -18,9 +18,9 @@ Cargo Transfer replaces Priority Exfil. Call the helicopter to a loading zone, u
 
 The support authorization pays for dispatch. Submitting items has a separate RUB handling fee, paid from carried money or your stash through the **Transfer fee source** setting in F12. The helicopter leaves after a successful paid transfer. Cancelling or failing payment keeps the remaining loading window open. Standard Extraction still extracts your PMC and has separate timing settings.
 
-### Pre-raid support store
+### Pilot's Services tab
 
-Buy support authorizations from **TSC UPLINK** beside **Character** on the main-menu bottom bar. The store shows service artwork, descriptions, prices, your stash balance, and held authorizations. A review step lets you check the purchase before paying.
+Buy support authorizations at **Traders > Pilot > Services**. Choose from the compact service list on the left and review the selected service's description, price, availability, and held/limit count on the right. The purchase review keeps the same confirmed payment from your PMC stash and the same persistent authorization flow. In-raid phone purchasing and deployment controls are unchanged.
 
 ### Phone interface and mouse controls
 
@@ -30,7 +30,18 @@ Phone zoom now eases in and out instead of snapping into place. Zoom timing and 
 
 ### Pilot trader and dedicated Uplink slot
 
-The physical Uplink is now sold by **UH-60 Pilot**, rather than Jaeger. Pilot is unlocked without a quest requirement and uses the new portrait in Trading and cargo mail. The Uplink costs **₽50,000** at loyalty level 1, with a limit of five per restock.
+The main download opens Pilot immediately and sells the Uplink for **₽50,000**.
+Configured services retain their normal prices and limits. The separate,
+optional **Pilot Questline add-on** introduces progression using the same client.
+
+With the add-on, Pilot is introduced through **Open Channel**, Mechanic's level-5 handover quest.
+**Some Assembly Required** takes a Broken GPhone, Electronic components, and
+a Screwdriver. **Back on the Air** sends the player to install a supplied Radio
+repeater at Shoreline's weather-station antenna and survive. Completing it
+awards the working Uplink and unlocks all configured services. Replacement
+phones cost **₽50,000** at Pilot's loyalty level 1, with five per restock.
+The phone no longer spawns in TSC's random loot. See the
+[questline guide](pilot-questline.md) for quantities, rewards, and survival rules.
 
 An Uplink-only fourth special slot lets you carry the phone without occupying the usual three special slots. Manual support also recognizes a carried Uplink outside that slot.
 
@@ -95,6 +106,13 @@ and 26 isolated server checks passed. Game startup and raid checks for the new
 pair remain pending in the [validation record](validation/v1.3.11.md).
 Earlier local use of TSC 1.3.10 was reported working; that result does not
 validate the new TSC/Toolkit pair.
+
+The move to Pilot's Services tab still needs in-game navigation, layout,
+purchase, and recovery testing. See the [manual checklist](pilot-services-testing.md).
+The new [Pilot questline](pilot-questline.md#validation) also requires gameplay
+acceptance before publication. Its server, Core, and Fika changes must be
+installed together; service protocol 2 rejects older manual request peers
+before new payment.
 
 **Fika multiplayer on the current SPT/Fika versions has not been tested.** Fika is optional. Cargo Transfer is implemented for the requesting human host as well as solo play; non-host clients and dedicated-headless requesters cannot use it yet. Dedicated-headless A-10 damage remains experimental. See [known issues](known-issues.md).
 

@@ -51,12 +51,14 @@ public static class FireSupportServerConfigClient
 
 	public static void OnRaidStarted()
 	{
+		FireSupportProgression.Clear();
 		s_raidActive = true;
 		RestartRefresh("raid started");
 	}
 
 	public static void OnRaidEnded()
 	{
+		FireSupportProgression.Clear();
 		s_raidActive = false;
 		StopRefresh();
 	}
@@ -69,6 +71,8 @@ public static class FireSupportServerConfigClient
 		}
 
 		s_globalSettingsSuppressedByFikaClient = active;
+		FireSupportProgression.Clear();
+		FireSupportProgression.SetHostSupportsProgression(false);
 		TscDiagnostics.LogPayment(
 			$"TSC server global settings {(active ? "suppressed by Fika host authority" : "resumed after Fika host authority cleared")}; per-profile sync remains active: {reason}");
 		if (active)
@@ -148,6 +152,7 @@ public static class FireSupportServerConfigClient
 		}
 
 		FireSupportAuthorizations.Reset();
+		FireSupportProgression.Clear();
 		FireSupportPayment.ClearServerProfileState();
 		FireSupportPayment.NotifySettingsChanged("TSC pre-raid backend session changed");
 	}
@@ -182,7 +187,9 @@ public static class FireSupportServerConfigClient
 			profileId,
 			"pre-raid menu synchronization");
 
-		string route = BuildConfigRoute(profileId);
+		// Full currency stacks are needed only for the native menu inventory;
+		// periodic in-raid configuration polling remains aggregate-only.
+		string route = BuildConfigRoute(profileId) + "&includeStashCurrencyState=true&includePurchaseHistory=true";
 		long mutationEpochAtRequest = CaptureProfileMutationEpoch();
 		TscDiagnostics.LogPayment($"TSC pre-raid player-state snapshot requested: {route}");
 		string body = await SendServerRequestAsync(HttpMethod.Get, route, null, cancellationToken);
@@ -194,6 +201,7 @@ public static class FireSupportServerConfigClient
 		}
 		if (!HasValidSnapshotCurrency(snapshot))
 		{
+			FireSupportProgression.Clear();
 			throw new InvalidOperationException(
 				"The TSC server payment currency is invalid. Select RUB, USD, or EUR in the dashboard.");
 		}
@@ -209,8 +217,15 @@ public static class FireSupportServerConfigClient
 		// profile before a raid.
 		if (!snapshot.PlayerStateIncluded)
 		{
+			FireSupportProgression.Clear();
 			throw new InvalidOperationException(
 				"The TSC server did not include authoritative player state.");
+		}
+		if (snapshot.PurchaseHistory != null && !snapshot.PurchaseHistory.IsValidFor(profileId))
+		{
+			// An invalid optional history must never expose another profile's receipts.
+			snapshot.PurchaseHistory = null;
+			FireSupportPlugin.LogSource.LogWarning("TSC ignored an invalid purchase history snapshot.");
 		}
 
 		if (!TryApplyPlayerState(snapshot, Math.Max(0, snapshot.Revision), mutationEpochAtRequest))
@@ -760,6 +775,7 @@ public static class FireSupportServerConfigClient
 	{
 		try
 		{
+			string expectedSessionKey = GetAuthenticatedSessionKey();
 			string profileId = GetLocalProfileId();
 			if (!string.IsNullOrWhiteSpace(profileId))
 			{
@@ -783,6 +799,12 @@ public static class FireSupportServerConfigClient
 			// Close the final gap between an uncancellable RequestHandler task
 			// completing and installing its snapshot into the active raid.
 			cancellationToken.ThrowIfCancellationRequested();
+			if (string.IsNullOrWhiteSpace(expectedSessionKey) ||
+			    !string.Equals(expectedSessionKey, GetAuthenticatedSessionKey(), StringComparison.Ordinal))
+			{
+				FireSupportProgression.Clear();
+				return;
+			}
 			ApplySnapshot(snapshot, mutationEpochAtRequest);
 		}
 		catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -798,8 +820,14 @@ public static class FireSupportServerConfigClient
 		RaidOpsFireSupportServerConfig snapshot,
 		long mutationEpochAtRequest)
 	{
+		if (!snapshot.PlayerStateIncluded || snapshot.UplinkUnlocked != true ||
+		    !FireSupportProgressionState.IsValidPermit(snapshot.ProgressionPermit))
+		{
+			FireSupportProgression.Clear();
+		}
 		if (!HasValidSnapshotCurrency(snapshot))
 		{
+			FireSupportProgression.Clear();
 			if (ShouldApplyLocalGlobalSettings())
 			{
 				ClearServerGlobalOverrides(notify: false);
@@ -839,6 +867,7 @@ public static class FireSupportServerConfigClient
 		}
 		else
 		{
+			FireSupportProgression.Clear();
 			FireSupportPlugin.LogSource.LogWarning(
 				"TSC config snapshot did not include authenticated player state; preserving the last known stash, persistence, and authorization state.");
 		}
@@ -877,6 +906,7 @@ public static class FireSupportServerConfigClient
 
 	private static void ApplyPlayerState(RaidOpsFireSupportServerConfig snapshot, int revision)
 	{
+		FireSupportProgression.ApplySnapshot(GetAuthenticatedSessionKey(), snapshot);
 		PaymentCurrency currency = GetSnapshotCurrency(snapshot);
 		FireSupportPayment.SetServerProfileState(
 			revision,
@@ -941,6 +971,7 @@ public static class FireSupportServerConfigClient
 	}
 	private static void HandleConfigFailure(string reason)
 	{
+		FireSupportProgression.Clear();
 		FireSupportPlugin.LogSource.LogWarning($"TSC authenticated player-state refresh failed: {reason}");
 		if (!ShouldApplyLocalGlobalSettings())
 		{
@@ -1117,6 +1148,57 @@ public static class FireSupportServerConfigClient
 	// VPN, direct), and it carries the caller's session so the server charges the
 	// right player's stash automatically. The Server Config URL is not used for
 	// this and can be left at its default; a wrong value no longer matters.
+	public static async UniTask<FireSupportProgressionVerifyResponse> VerifyProgressionPermitAsync(
+		string permit,
+		string requesterProfileId,
+		CancellationToken cancellationToken)
+	{
+		var denied = new FireSupportProgressionVerifyResponse { Reason = "ProgressionPermitInvalid" };
+		if (!FireSupportProgressionState.IsValidPermit(permit) || string.IsNullOrWhiteSpace(requesterProfileId)) return denied;
+		try
+		{
+			string body = await SendServerRequestAsync(HttpMethod.Post, "progression/verify",
+				JsonConvert.SerializeObject(new FireSupportProgressionVerifyRequest
+				{
+					Permit = permit,
+					RequesterProfileId = requesterProfileId
+				}), cancellationToken);
+			return JsonConvert.DeserializeObject<FireSupportProgressionVerifyResponse>(body) ?? denied;
+		}
+		catch (OperationCanceledException) { throw; }
+		catch (Exception)
+		{
+			// Never log a profile's capability token or authorize on backend failure.
+			denied.Reason = "ProgressionVerificationUnavailable";
+			return denied;
+		}
+	}
+
+	/// <summary>Every manual payment verifies fresh server permission, including free/local modes.</summary>
+	public static async UniTask<bool> EnsureLocalProgressionVerifiedAsync()
+	{
+		string sessionKey = GetAuthenticatedSessionKey();
+		string profileId = GetAuthenticatedProfileId();
+		if (string.IsNullOrWhiteSpace(sessionKey)) { FireSupportProgression.Clear(); return false; }
+		for (int attempt = 0; attempt < 2; attempt++)
+		{
+			if (!FireSupportProgression.UplinkUnlocked)
+			{
+				await FetchConfigOnce(CancellationToken.None);
+			}
+			if (!string.Equals(sessionKey, GetAuthenticatedSessionKey(), StringComparison.Ordinal)) return false;
+			if (!string.IsNullOrEmpty(FireSupportProgression.RestrictionReason)) return false;
+			FireSupportProgressionVerifyResponse result = await VerifyProgressionPermitAsync(
+				FireSupportProgression.Permit, profileId, CancellationToken.None);
+			if (!string.Equals(sessionKey, GetAuthenticatedSessionKey(), StringComparison.Ordinal)) return false;
+			if (result.Ok) return true;
+			FireSupportProgression.Clear();
+			if (result.Reason != "ProgressionPermitInvalid") break;
+		}
+		FireSupportPayment.NotifySettingsChanged("TSC progression verification required");
+		return false;
+	}
+
 	private static async UniTask<string> SendServerRequestAsync(
 		HttpMethod method,
 		string route,

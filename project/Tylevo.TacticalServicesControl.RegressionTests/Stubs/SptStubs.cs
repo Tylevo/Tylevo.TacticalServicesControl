@@ -110,12 +110,14 @@ namespace SPTarkov.Server.Core.Models.Eft.Common.Tables
 		public string Template { get; set; } = string.Empty;
 		public string? ParentId { get; set; }
 		public string? SlotId { get; set; }
+		public object? Location { get; set; }
 		public Upd? Upd { get; set; }
 	}
 
 	public sealed class Upd
 	{
-		public double StackObjectsCount { get; set; } = 1d;
+		public double? StackObjectsCount { get; set; } = 1d;
+		public bool? SpawnedInSession { get; set; }
 	}
 }
 
@@ -130,12 +132,31 @@ namespace SPTarkov.Server.Core.Models.Eft.Common
 		public MongoId? SessionId { get; set; }
 		public BotBaseInventory? Inventory { get; set; }
 		public Dictionary<MongoId, TraderInfo>? TradersInfo { get; set; }
+		public List<QuestStatus>? Quests { get; set; }
+	}
+}
+
+namespace SPTarkov.Server.Core.Models.Enums
+{
+	public enum QuestStatusEnum
+	{
+		Locked = 0, AvailableForStart = 1, Started = 2, AvailableForFinish = 3,
+		Success = 4, Fail = 5, FailRestartable = 6, MarkedAsFailed = 7, Expired = 8, AvailableAfter = 9
 	}
 }
 
 namespace SPTarkov.Server.Core.Models.Eft.Common.Tables
 {
 	using SPTarkov.Server.Core.Models.Common;
+	using SPTarkov.Server.Core.Models.Enums;
+
+	public sealed class QuestStatus
+	{
+		public required MongoId QId { get; set; }
+		public required double StartTime { get; set; }
+		public required QuestStatusEnum Status { get; set; }
+		public required Dictionary<QuestStatusEnum, double> StatusTimers { get; set; }
+	}
 
 	public sealed class BotBaseInventory
 	{

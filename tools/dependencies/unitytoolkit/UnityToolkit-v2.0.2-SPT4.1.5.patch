@@ -228,3 +228,23 @@ index e5f11a8..8dbd9f2 100644
      <Exec Command="if not &quot;$(ConfigurationName)&quot;==&quot;Debug&quot; (&#xA;    cd /D &quot;$(SptBepInExPluginsDir)..\..\&quot;&#xA;    &quot;C:\Program Files\7-Zip\7z.exe&quot; a &quot;$(ReleaseArchive)&quot; &quot;BepInEx\plugins\UnityToolkit\*&quot;&#xA;)" />
    </Target>
  </Project>
+diff --git a/project/UnityToolkit.Prepatcher/Patcher.cs b/project/UnityToolkit.Prepatcher/Patcher.cs
+index ac37186..2f6d46b 100644
+--- a/project/UnityToolkit.Prepatcher/Patcher.cs
++++ b/project/UnityToolkit.Prepatcher/Patcher.cs
+@@ -21,7 +21,7 @@ namespace UnityToolkit.Prepatcher
+ 		
+ 		static Patcher()
+ 		{
+-			string currentPath = Path.GetFullPath(Assembly.GetExecutingAssembly().Location);
++			string currentPath = Path.GetDirectoryName(Path.GetFullPath(Assembly.GetExecutingAssembly().Location));
+ 			s_assemblyPath = Path.Combine(currentPath, ASSEMBLY_NAME);
+ 		}
+ 		
+@@ -53,4 +53,4 @@ namespace UnityToolkit.Prepatcher
+ 			}
+ 		}
+ 	}
+-}
+\ No newline at end of file
++}

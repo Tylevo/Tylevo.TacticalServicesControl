@@ -69,11 +69,15 @@ internal static class FireSupportServerConfigMigration
 		// These fields are populated only on authenticated response snapshots.
 		// Never accept or persist them as shared administrator configuration.
 		config.PlayerStateIncluded = false;
+		config.UplinkUnlocked = null;
+		config.ProgressionPermit = string.Empty;
 		config.StashCurrencyBalance = null;
 		config.StashRoubleBalance = null;
 		config.Authorizations = new Dictionary<string, int>();
 		config.PreparedPurchases = null;
 		config.PreparedPurchaseDetails = null;
+		config.StashCurrencyState = null;
+		config.PurchaseHistory = null;
 
 		return sourceSchemaVersion;
 	}

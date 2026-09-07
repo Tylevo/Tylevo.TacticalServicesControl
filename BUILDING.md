@@ -2,7 +2,9 @@
 
 The current source prepares **TSC v1.3.11 for SPT 4.1.5**, with
 **UnityToolkit 2.0.2 installed separately**. Neither new package is published.
-TSC build, package, and isolated server checks passed; game testing remains pending. See the
+The earlier candidate passed build, package, and isolated server checks and
+was later installed for local TSC testing. The corrected Toolkit prepatcher
+still needs its own in-game check. See the
 [validation record](docs/validation/v1.3.11.md). Current Fika multiplayer
 remains untested.
 
@@ -20,6 +22,10 @@ This repository does not include proprietary EFT or SPT assemblies. Provide loca
   its upstream source and build evidence. The original `2.0.1` binary is not
   a substitute: SPT 4.1's prepatch validator rejects its older SPT assembly
   reference at startup.
+  The current 2.0.2 candidate also fixes the prepatcher's companion lookup:
+  it resolves `System.Runtime.CompilerServices.Unsafe.dll` beside the
+  prepatcher DLL. This changes Toolkit initialization for dependent mods
+  without changing its public API.
 - Project Fika client `2.4.2` from the official `v2.4.2` release when building
   the optional Fika interop. Multiplayer validation also requires its
   compatible server component.
@@ -27,9 +33,10 @@ This repository does not include proprietary EFT or SPT assemblies. Provide loca
 The official SPT 4.1.5 archive and game-reference provenance are recorded in
 the [4.1.5 port log](docs/port/SPT-4.1.5-PORT-LOG.md). The official 4.1.4 and
 4.1.5 modules tags identify the same source commit, so the compile-only
-`hollowed.dll` remains unchanged. The Toolkit 2.0.2 build has new DLL hashes;
-do not reuse the old 2.0.1 reference pin or treat earlier TSC validation as
-acceptance of the new pair.
+`hollowed.dll` remains unchanged. Use the current Toolkit package evidence:
+the corrected prepatcher has a different hash from the earlier unpublished
+2.0.2 candidate, while the plugin code is unchanged. Earlier TSC validation
+does not establish acceptance of the corrected prepatcher.
 
 TSC references UnityToolkit and WTT from local dependency installations.
 Dependency binaries belong outside the source repository and are excluded
@@ -176,8 +183,29 @@ The checker normalizes and de-duplicates paths, requires the reviewed mirror
 inventory, four built TSC DLLs, and eight named asset bundles. UnityToolkit
 files are excluded from this package. It rejects extra files, dependency
 binaries, profiles, storage, logs, build artifacts, archives, and `.gitkeep`
-files. The reviewed TSC package has 169 files, four TSC DLLs, and eight bundles;
+files. The reviewed main TSC package has 173 files, four TSC DLLs, and eight bundles;
 the generated evidence records their exact identities and hashes.
+
+The optional Pilot Questline is a separate data package. Its exact eight-file
+allowlist lives in `Get-TscPilotQuestlinePackageContract` in
+`tools/PackageContract.ps1`. Source assets live under `addons/pilot-questline/`
+and install below
+`SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/addons/pilot-questline/`.
+They are excluded from the main server `CopyToOutput` tree and main archive.
+The addon contains its manifest, installation README, repeater assortment, and
+five quest/locale/quest-assort files. It adds no DLL, bundle, client files,
+service configuration, or player state. Both versions are checked against
+`Directory.Build.props`; the addon requires its matching main TSC release.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\Test-PilotQuestlinePackage.ps1 -ValidateSourceInputs
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\Test-PilotQuestlinePackage.ps1 -Path "C:\Path\To\PilotQuestline.zip"
+```
+
+CI checks both inventories, addon JSON/version metadata, and directory/ZIP
+fixtures that reject missing quests, mixed packages, runtime configs, DLLs,
+duplicate paths, and traversal entries. The main package contract also rejects
+quest/addon assets even if they are accidentally added to its allowlist.
 
 The v1.3.11 package contract retains the verified public v1.0.8 asset layout:
 
@@ -193,6 +221,25 @@ The v1.3.11 package contract retains the verified public v1.0.8 asset layout:
   therefore preserves and migrates the administrator's existing file.
 - Root-level README, changelog, license, and release-note files are not part of
   the installer.
+
+Pilot Services ships four artwork PNGs in `assets/content/ui/pilot-services/`:
+the existing `pilot-portrait.png`, the restored airfield `pilot-banner.png`,
+and `a10-detail.png` and `uh60-detail.png`. The two aircraft detail images are
+renders of the models already shipped in TSC's aircraft bundles. The UAV view
+draws its radar rings and contacts in code and needs no separate PNG. Both
+Pilot portraits use a shared close-up crop in the client; the original portrait
+files are unchanged. The six service icons use transparent vector silhouettes,
+with editable sources and a generator in `tools/artwork/service-icons/`.
+The current local build uses Core `1.3.11-pilot-services.6` for the portraits
+and icons, with Server `1.3.11-pilot-services.5` for balance synchronization.
+These local build identifiers do not mark a release.
+
+Native trader balance synchronization runs only in menus. After pending native
+inventory operations finish, the client requests an authenticated absolute cash
+snapshot and applies it through native inventory events. This should update
+both the TSC balance and the native trader header without another charge.
+In-game acceptance of the synchronization remains pending; use the
+[Pilot Services checklist](docs/pilot-services-testing.md).
 
 ## Clean Release Staging
 
@@ -217,6 +264,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\New-ReleasePackage.p
   -OutputDirectory "C:\External\TSC\v1.3.11-candidate" `
   -BuildEvidencePath "C:\External\TSC\v1.3.11-build-evidence.json"
 ```
+
+Add `-IncludePilotQuestline` to this same command to also produce the separate
+`Tylevo.TacticalServicesControl-PilotQuestline-v1.3.11-SPT4.1.5-TESTER.zip`.
+The main archive remains unchanged. The addon is staged in
+`stage-pilot-questline/`, independently checked as a directory and ZIP, then
+extracted into `verify-extracted-pilot-questline/` for exact content/hash
+comparison. Its own `*.content-evidence.json` sidecar identifies the same clean
+HEAD/tree and build evidence, its fixed allowlist, all eight file hashes, and
+the required main archive. The existing clean-worktree, exact-HEAD, fresh
+output, and build-attestation guards apply to both archives. The addon can be
+installed on the server after the main mod; Fika clients use the ordinary
+matching main download. See the [addon instructions](addons/pilot-questline/README.md).
 
 The TSC packager no longer accepts a Toolkit package directory. UnityToolkit
 is a compile-time/runtime dependency supplied separately, not release content.
@@ -299,5 +358,5 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\Test-ReleaseMetadata
 
 Never include EFT/SPT/Fika/WTT/UnityToolkit assemblies, local
 profiles, logs, build caches, source-only prompt files, or local machine paths
-in a release. Only the fifteen reviewed Toolkit files are exempted from the
-dependency filename restrictions, at their exact pinned paths and bytes.
+in a TSC release. Toolkit's reviewed companion files belong only in its
+separate standalone package, at their established paths.

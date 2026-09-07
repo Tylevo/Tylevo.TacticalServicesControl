@@ -16,6 +16,9 @@ public sealed class RaidOpsFireSupportServerConfig
 	/// authorizations were omitted and must not clear previously synced state.
 	/// </summary>
 	public bool PlayerStateIncluded { get; set; }
+	/// <summary>Profile progression; absence always locks the uplink.</summary>
+	public bool? UplinkUnlocked { get; set; }
+	public string ProgressionPermit { get; set; } = string.Empty;
 	/// <summary>
 	/// Balance of the selected payment currency in the authenticated PMC stash.
 	/// </summary>
@@ -48,6 +51,13 @@ public sealed class RaidOpsFireSupportServerConfig
 	/// this field, in which case recovery retries use the current snapshot terms.
 	/// </summary>
 	public Dictionary<string, FireSupportPreparedPurchaseQuote>? PreparedPurchaseDetails { get; set; }
+	/// <summary>
+	/// Current authenticated stash cash, for native trader inventory reconciliation.
+	/// Null means omitted or invalid; an empty Items list is an authoritative zero.
+	/// </summary>
+	public FireSupportStashCurrencyState? StashCurrencyState { get; set; }
+	/// <summary>Opt-in completed purchase receipts for the authenticated menu profile.</summary>
+	public FireSupportPurchaseHistory? PurchaseHistory { get; set; }
 	#nullable restore
 
 	public sealed class UavSettings
@@ -99,6 +109,40 @@ public sealed class RaidOpsFireSupportServerConfig
 		public bool SpendCreditsBeforeCash { get; set; } = true;
 		public bool AllowAutoPurchaseOnUse { get; set; } = true;
 	}
+}
+
+public sealed class FireSupportProgressionVerifyRequest
+{
+	public string Permit { get; set; } = string.Empty;
+	public string RequesterProfileId { get; set; } = string.Empty;
+}
+
+public sealed class FireSupportProgressionVerifyResponse
+{
+	public bool Ok { get; set; }
+	public string Reason { get; set; } = string.Empty;
+}
+
+public sealed class FireSupportStashCurrencyState
+{
+	public const int MaxItems = 4096;
+	public const int MaxMetadataJsonLength = 16384;
+	public const int MaxTotalMetadataJsonLength = 4 * 1024 * 1024;
+	public string ProfileId { get; set; } = string.Empty;
+	public string StashId { get; set; } = string.Empty;
+	public List<FireSupportStashCurrencyItem> Items { get; set; } = new();
+}
+
+public sealed class FireSupportStashCurrencyItem
+{
+	public string Id { get; set; } = string.Empty;
+	public string TemplateId { get; set; } = string.Empty;
+	public string ParentId { get; set; } = string.Empty;
+	public string SlotId { get; set; } = string.Empty;
+	public int StackObjectsCount { get; set; }
+	// Raw native metadata keeps the shared DTO independent of both JSON libraries.
+	public string LocationJson { get; set; } = "null";
+	public string UpdJson { get; set; } = "{}";
 }
 
 public sealed class FireSupportPreparedPurchaseQuote

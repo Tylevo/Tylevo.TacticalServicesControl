@@ -284,13 +284,13 @@ Assert-SourceWiring `
     -Pattern 'AccessTools\s*\.\s*DeclaredMethod\s*\(\s*typeof\s*\(\s*InputManager\s*\)\s*,\s*nameof\s*\(\s*InputManager\s*\.\s*Create\s*\)\s*,\s*\[\s*typeof\s*\(\s*KeyGroup\s*\[\s*\]\s*\)\s*,\s*typeof\s*\(\s*AxisGroup\s*\[\s*\]\s*\)\s*,\s*typeof\s*\(\s*float\s*\)\s*,\s*typeof\s*\(\s*bool\s*\)\s*\]\s*\)' `
     -Expectation "The SPT 4.1 input-manager patch must select the exact four-parameter Create overload instead of performing an ambiguous name-only lookup."
 
-$mainMenuControllerSourcePath = "project\SamSWAT.FireSupport\Unity\MainMenuPurchaseController.TaskBar.cs"
-$mainMenuControllerSource = Get-NormalizedCSharpSource -RelativePath $mainMenuControllerSourcePath
+$pilotServicesSourcePath = "project\SamSWAT.FireSupport\Unity\PilotServicesView.cs"
+$pilotServicesSource = Get-NormalizedCSharpSource -RelativePath $pilotServicesSourcePath
 Assert-SourceWiring `
-    -RelativePath $mainMenuControllerSourcePath `
-    -NormalizedSource $mainMenuControllerSource `
-    -Pattern 'PreloaderUI\s*\.\s*Instance\s*\?\s*\.\s*MenuTaskBar' `
-    -Expectation "The Uplink shortcut must resolve EFT's persistent bottom bar through PreloaderUI instead of inserting or repositioning center-menu rows."
+    -RelativePath $pilotServicesSourcePath `
+    -NormalizedSource $pilotServicesSource `
+    -Pattern 'root\s*\.\s*transform\s*\.\s*SetParent\s*\(\s*screen\s*\.\s*RectTransform\s*,\s*false\s*\)' `
+    -Expectation "Pilot support purchasing must live inside the native Services screen instead of a standalone menu overlay."
 
 $globalUsingsSourcePath = "project\SamSWAT.FireSupport\GlobalUsings.cs"
 $globalUsingsSource = Get-NormalizedCSharpSource -RelativePath $globalUsingsSourcePath
@@ -525,7 +525,7 @@ $authorizationLedgerSource = Get-NormalizedCSharpSource -RelativePath $authoriza
 Assert-SourceWiring `
     -RelativePath $authorizationLedgerSourcePath `
     -NormalizedSource $authorizationLedgerSource `
-    -Pattern '\[\s*Injectable\s*\(\s*InjectionType\s*\.\s*Singleton\s*\)\s*\]\s*public\s+sealed\s+class\s+FireSupportAuthorizationLedger\b' `
+    -Pattern '\[\s*Injectable\s*\(\s*InjectionType\s*\.\s*Singleton\s*\)\s*\]\s*public\s+sealed\s+(?:partial\s+)?class\s+FireSupportAuthorizationLedger\b' `
     -Expectation "The authorization ledger must remain a singleton so all request handlers share one initialized persistent state."
 
 $serverWiringChecks = @(
@@ -699,6 +699,7 @@ $jsonRoots = @(
     (Join-Path $repositoryRoot "project\SamSWAT.FireSupport\CopyToOutput")
     (Join-Path $repositoryRoot "project\SamSWAT.FireSupport.Server\CopyToOutput")
     (Join-Path $repositoryRoot "project\SamSWAT.FireSupport.Server\ConfigSources")
+    (Join-Path $repositoryRoot "addons\pilot-questline")
 )
 foreach ($jsonRoot in $jsonRoots) {
     foreach ($jsonFile in Get-ChildItem -LiteralPath $jsonRoot -File -Recurse -Filter "*.json") {
@@ -817,6 +818,12 @@ if (-not $?) {
 Write-Host "Testing the TSC-only package contract with synthetic directory and ZIP fixtures."
 & (Join-Path $PSScriptRoot "tests\package-contract.test.ps1")
 if (-not $?) { throw "TSC-only package contract tests failed." }
+
+& (Join-Path $PSScriptRoot 'Test-PilotQuestlinePackage.ps1') -ValidateSourceInputs
+if (-not $?) { throw 'Pilot questline addon source validation failed.' }
+Write-Host 'Testing separate Pilot questline directory and ZIP inventories.'
+& (Join-Path $PSScriptRoot 'tests\pilot-questline-package.test.ps1')
+if (-not $?) { throw 'Pilot questline addon package tests failed.' }
 
 Write-Host "Running proprietary-free regression suite."
 if (-not (Test-Path -LiteralPath $regressionProject -PathType Leaf)) {

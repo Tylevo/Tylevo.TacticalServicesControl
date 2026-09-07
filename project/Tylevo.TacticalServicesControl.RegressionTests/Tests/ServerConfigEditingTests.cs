@@ -329,7 +329,7 @@ internal sealed class ServerConfigTestRig : IDisposable
 			new SilentLogger<FireSupportServerConfigService>(),
 			new ProfileHelper(), new SaveServer(),
 			new FireSupportAuthorizationLedger(new SilentLogger<FireSupportAuthorizationLedger>()),
-			new FireSupportProfileMutationGate(), new JsonCloner());
+			new FireSupportProfileMutationGate(), new TscPilotProgressionService(new ProfileHelper(), PilotPolicyTestFixture.Create()), new JsonCloner());
 		Service.Initialize(_root);
 	}
 

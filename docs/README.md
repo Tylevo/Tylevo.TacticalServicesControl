@@ -9,6 +9,7 @@ have not been published yet.
 - [Overview and release status](../README.md)
 - [What's changed since the SPT 4.0.13 Forge release](release-notes-v1.3.11.md)
 - [Installation and dependencies](dependencies.md)
+- [Optional Pilot Questline add-on and earning the TSC Uplink](pilot-questline.md)
 - [Phone controls, support, radar, and cargo](usage.md)
 - [Dashboard and launcher configuration](dashboard.md)
 - [Known issues and Fika limitations](known-issues.md)
@@ -17,6 +18,7 @@ have not been published yet.
 
 - [Forge page copy](forge-description-v1.3.11.md)
 - [Validation and testing scope](validation/v1.3.11.md)
+- [Optional questline validation](validation/pilot-questline-addon.md)
 - [Credits](credits.md), [licenses](../THIRD_PARTY_NOTICES.md), and [permissions](../PERMISSIONS.md)
 - [Privacy](../PRIVACY.md) and [security](../SECURITY.md)
 

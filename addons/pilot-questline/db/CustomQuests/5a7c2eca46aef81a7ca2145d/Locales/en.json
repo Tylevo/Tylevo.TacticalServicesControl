@@ -1,0 +1,14 @@
+{
+  "66f51f3a0000000000000b01 name": "Open Channel",
+  "66f51f3a0000000000000b01 description": "I have a contact who keeps aircraft working around Tarkov. Calls himself Pilot. His dispatch link has gone quiet, and I need a few basic parts to restore the channel. Bring me two bundles of wires and two capacitors. Whatever you already have will do. Once the line is working, I will introduce you. He needs someone on the ground who can follow through.",
+  "66f51f3a0000000000000b01 startedMessageText": "Two bundles of wires and two capacitors. Bring them here and I will get the dispatch channel working.",
+  "66f51f3a0000000000000b01 successMessageText": "The channel is stable. Pilot is expecting you. He can arrange support, but you will need a handset paired to his network first. Talk to him about putting one together.",
+  "66f51f3a0000000000000b01 failMessageText": "The work is still waiting. Come back when you are ready.",
+  "66f51f3a0000000000000b01 acceptPlayerMessage": "I can do that.",
+  "66f51f3a0000000000000b01 declinePlayerMessage": "I'll come back when I'm ready.",
+  "66f51f3a0000000000000b01 completePlayerMessage": "The job is done.",
+  "66f51f3a0000000000000b01 changeQuestMessageText": "The job is done.",
+  "66f51f3a0000000000000b01 note": "Open Channel",
+  "66f51f3a000000000000c102": "Hand over 2 Bundles of wires to Mechanic",
+  "66f51f3a000000000000c103": "Hand over 2 Capacitors to Mechanic"
+}

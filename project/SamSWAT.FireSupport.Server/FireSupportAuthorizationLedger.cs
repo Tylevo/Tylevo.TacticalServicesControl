@@ -6,7 +6,7 @@ using System.Text.Json;
 namespace SamSWAT.FireSupport.ArysReloaded;
 
 [Injectable(InjectionType.Singleton)]
-public sealed class FireSupportAuthorizationLedger(
+public sealed partial class FireSupportAuthorizationLedger(
 	ISptLogger<FireSupportAuthorizationLedger> logger)
 {
 	public const int MaxPersistentPurchaseRequestIdLength = 128;

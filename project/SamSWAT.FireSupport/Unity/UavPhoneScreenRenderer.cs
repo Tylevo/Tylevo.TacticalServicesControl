@@ -1407,7 +1407,12 @@ public sealed partial class UavPhoneScreenRenderer : MonoBehaviour
 		AddText(root, "DEPLOY AUTHORIZATION", F(25), FontStyle.Bold, text, new Rect(28 * sx, 92 * sx, w - 56 * sx, 34 * sx), TextAnchor.MiddleLeft);
 
 		FireSupportController stationController = FireSupportController.Instance;
-		if (stationController != null && !stationController.IsSupportAvailable())
+		if (!string.IsNullOrEmpty(FireSupportProgression.RestrictionReason))
+		{
+			AddText(root, FireSupportProgression.RestrictionReason, F(14), FontStyle.Normal, amber,
+				new Rect(28 * sx, 128 * sx, w - 56 * sx, 22 * sx), TextAnchor.MiddleLeft);
+		}
+		else if (stationController != null && !stationController.IsSupportAvailable())
 		{
 			int cooldown = stationController.CooldownSecondsRemaining;
 			string busyText = cooldown > 0
@@ -1428,7 +1433,9 @@ public sealed partial class UavPhoneScreenRenderer : MonoBehaviour
 			string purchaseKey = PluginSettings.OpenUplinkKey != null
 				? PluginSettings.OpenUplinkKey.Value.MainKey.ToString()
 				: "U";
-			AddText(empty, $"Press [{purchaseKey}] to purchase.", F(15), FontStyle.Normal, muted, new Rect(0, 74 * sx, w - 72 * sx, 30 * sx), TextAnchor.MiddleCenter);
+			string emptyHint = string.IsNullOrEmpty(FireSupportProgression.RestrictionReason)
+				? $"Press [{purchaseKey}] to purchase." : FireSupportProgression.RestrictionReason;
+			AddText(empty, emptyHint, F(15), FontStyle.Normal, muted, new Rect(0, 74 * sx, w - 72 * sx, 30 * sx), TextAnchor.MiddleCenter);
 		}
 		else
 		{

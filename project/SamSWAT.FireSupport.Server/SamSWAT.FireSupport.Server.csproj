@@ -39,6 +39,7 @@
     <Compile Include="..\SamSWAT.FireSupport\Unity\ExtractionTimingPolicy.cs" Link="Unity\ExtractionTimingPolicy.cs" />
     <Compile Include="..\SamSWAT.FireSupport\Unity\CargoTimingPolicy.cs" Link="Unity\CargoTimingPolicy.cs" />
     <Compile Include="..\SamSWAT.FireSupport\Unity\RaidOpsFireSupportServerConfig.cs" Link="Unity\RaidOpsFireSupportServerConfig.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\FireSupportPurchaseHistory.cs" Link="Unity\FireSupportPurchaseHistory.cs" />
   </ItemGroup>
 
   <PropertyGroup>

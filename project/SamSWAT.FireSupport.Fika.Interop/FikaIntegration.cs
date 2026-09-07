@@ -470,6 +470,11 @@ public static class FikaIntegration
 
 		bool isServer = FikaBackendUtils.IsServer;
 		bool isClient = FikaBackendUtils.IsClient;
+		if (isClient && requestOrigin == FireSupportRequestOrigin.Manual &&
+		    !FireSupportServiceSemantics.SupportsProgression(s_hostServiceSemanticsVersion))
+		{
+			return FireSupportNetworkRequestResult.Reject("HostProgressionSemanticsUnsupported");
+		}
 		if (isClient &&
 		    !FireSupportServiceSemantics.CanExecute(
 			    supportType,
@@ -506,6 +511,8 @@ public static class FikaIntegration
 			effectiveHelicopterTiming,
 			helicopterTimingRevision,
 			requestOrigin);
+		packet.ProgressionPermit = requestOrigin == FireSupportRequestOrigin.Manual
+			? FireSupportProgression.Permit : string.Empty;
 
 		if (isServer)
 		{
@@ -864,6 +871,26 @@ public static class FikaIntegration
 				return AuthorityOutcome.Rejected(request, "AmbientAuthorityOnly");
 			}
 
+			if (request.RequestOrigin == FireSupportRequestOrigin.Manual)
+			{
+				if (!FireSupportServiceSemantics.SupportsProgression(request.ServiceSemanticsVersion))
+				{
+					return AuthorityOutcome.Rejected(request, "ProgressionSemanticsUnsupported");
+				}
+				FireSupportProgressionVerifyResponse permission =
+					await FireSupportServerConfigClient.VerifyProgressionPermitAsync(
+						request.ProgressionPermit, request.RequesterProfileId, entry.CancellationToken);
+				if (!permission.Ok)
+				{
+					return AuthorityOutcome.Rejected(request, permission.Reason);
+				}
+				// A disconnect/rebind may occur while the backend verification yields.
+				if (!TryValidateRequesterPeer(request, entry.OriginPeer, out requesterValidationReason))
+				{
+					return AuthorityOutcome.Rejected(request, requesterValidationReason);
+				}
+			}
+
 			if (request.RequestOrigin == FireSupportRequestOrigin.SeasonalAmbient &&
 			    !SeasonalModifiersBridge.IsDangerCloseActive)
 			{
@@ -888,7 +915,7 @@ public static class FikaIntegration
 			}
 
 			if (request.RequestOrigin == FireSupportRequestOrigin.Manual &&
-			    !FireSupportServiceAvailability.IsServiceEnabled(request.SupportType))
+			    !FireSupportServiceAvailability.IsServiceEnabledForAuthority(request.SupportType))
 			{
 				return AuthorityOutcome.Rejected(request, "ServiceDisabled");
 			}
@@ -1891,6 +1918,8 @@ public static class FikaIntegration
 		s_hasHostSettingsOverride = true;
 		s_currentHostSettingsRevision = packet.Revision;
 		s_hostServiceSemanticsVersion = packet.ServiceSemanticsVersion;
+		FireSupportProgression.SetHostSupportsProgression(
+			FireSupportServiceSemantics.SupportsProgression(packet.ServiceSemanticsVersion));
 		FireSupportPayment.SetSyncedPaymentCurrency(packet.PaymentCurrency);
 		FireSupportPayment.SetSyncedCosts(
 			packet.StrafeCostRoubles,
@@ -2041,9 +2070,9 @@ public static class FikaIntegration
 			PriorityExfilCostRoubles = FireSupportPayment.GetActiveCost(ESupportType.PriorityExfil),
 			UavCostRoubles = FireSupportPayment.GetActiveCost(ESupportType.Uav),
 			FocusedSweepCostRoubles = FireSupportPayment.GetActiveCost(ESupportType.FocusedSweep),
-			EnablePriorityExfil = FireSupportServiceAvailability.IsServiceEnabled(ESupportType.PriorityExfil),
-			EnableDoublePass = FireSupportServiceAvailability.IsServiceEnabled(ESupportType.DoubleStrafe),
-			EnableFocusedSweep = FireSupportServiceAvailability.IsServiceEnabled(ESupportType.FocusedSweep),
+			EnablePriorityExfil = FireSupportServiceAvailability.IsServiceEnabledForAuthority(ESupportType.PriorityExfil),
+			EnableDoublePass = FireSupportServiceAvailability.IsServiceEnabledForAuthority(ESupportType.DoubleStrafe),
+			EnableFocusedSweep = FireSupportServiceAvailability.IsServiceEnabledForAuthority(ESupportType.FocusedSweep),
 			UavDurationSeconds = UavReconSettings.GetDurationSeconds(ESupportType.Uav),
 			UavScanIntervalSeconds = UavReconSettings.GetScanInterval(ESupportType.Uav),
 			UavRangeMeters = UavReconSettings.GetRangeMeters(ESupportType.Uav),
@@ -2090,6 +2119,7 @@ public static class FikaIntegration
 		s_hasHostSettingsOverride = false;
 		s_currentHostSettingsRevision = 0;
 		s_hostServiceSemanticsVersion = FireSupportServiceSemantics.LegacyVersion;
+		FireSupportProgression.SetHostSupportsProgression(false);
 		FireSupportPayment.ClearSyncedCosts();
 		FireSupportServiceAvailability.ClearSyncedAvailability();
 		UavReconSettings.ClearSyncedDuration();
@@ -2722,6 +2752,7 @@ public static class FikaIntegration
 		clone.HelicopterSpeedMultiplier = packet.HelicopterSpeedMultiplier;
 		clone.ServiceSemanticsVersion = packet.ServiceSemanticsVersion;
 		clone.RequestOrigin = packet.RequestOrigin;
+		clone.ProgressionPermit = packet.ProgressionPermit;
 		return clone;
 	}
 
@@ -3579,6 +3610,8 @@ public static class FikaIntegration
 		public static AuthorityOutcome Accepted(FireSupportRequestPacket request)
 		{
 			FireSupportRequestPacket acceptedRequest = CloneSupportRequest(request);
+			// Accepted visual broadcasts do not need the requester's capability.
+			acceptedRequest.ProgressionPermit = string.Empty;
 			var result = FireSupportNetworkRequestResult.Accept(
 				"AuthorityAccepted",
 				acceptedRequest.DurationSeconds,
@@ -3607,6 +3640,7 @@ public static class FikaIntegration
 			FireSupportNetworkRequestResult result)
 		{
 			FireSupportRequestPacket snapshot = CloneSupportRequest(request);
+			snapshot.ProgressionPermit = string.Empty;
 			if (result.Accepted)
 			{
 				result = FireSupportNetworkRequestResult.Accept(
