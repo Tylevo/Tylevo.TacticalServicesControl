@@ -94,16 +94,22 @@ with the complete standalone 2.0.2 package in the same plugin and patcher
 folders. Keep one copy of each component.
 
 See the [installation guide](dependencies.md) and [controls and usage](usage.md).
-The planned TSC release has one installable ZIP and an optional checksum file;
-Toolkit and WTT remain separate downloads.
+The TSC release provides the main installable ZIP plus a separate optional
+**Pilot Questline add-on ZIP**, with a checksum file covering both. Extract the
+add-on into the same SPT root to enable the three-quest introduction on the
+server; clients keep the main TSC download. Toolkit and WTT remain separate
+dependencies. See the [add-on guide](pilot-questline.md) before installing or
+removing progression from an existing profile.
 
 ## Testing and limitations
 
 The standalone Toolkit 2.0.2 plugin and prepatcher built against SPT 4.1.5
-references with no warnings or errors. TSC v1.3.11 built successfully with
-four existing warnings and no errors. All 238 regression tests, package checks,
-and 26 isolated server checks passed. Game startup and raid checks for the new
-pair remain pending in the [validation record](validation/v1.3.11.md).
+references with no warnings or errors. The TSC optional questline build passed
+295 regression tests, 7 dashboard interaction tests, both package checks, and
+115 isolated native server checks. The full build had five existing warnings
+and no errors. See the [add-on validation report](validation/pilot-questline-addon.md)
+for the tested candidate and scope. Historical Toolkit and TSC candidate
+results remain in the [validation record](validation/v1.3.11.md).
 Earlier local use of TSC 1.3.10 was reported working; that result does not
 validate the new TSC/Toolkit pair.
 
