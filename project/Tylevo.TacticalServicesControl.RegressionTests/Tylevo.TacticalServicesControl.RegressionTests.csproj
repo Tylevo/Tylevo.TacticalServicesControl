@@ -90,6 +90,8 @@
              Link="Production\PaymentMode.cs" />
     <Compile Include="..\SamSWAT.FireSupport\Unity\PaymentSource.cs"
              Link="Production\PaymentSource.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\AuthorizationConsumePolicy.cs"
+             Link="Production\AuthorizationConsumePolicy.cs" />
     <Compile Include="..\SamSWAT.FireSupport\Unity\AuthorizationSnapshotPresence.cs"
              Link="Production\AuthorizationSnapshotPresence.cs" />
     <Compile Include="..\SamSWAT.FireSupport\Unity\FireSupportTuningSettings.cs"

@@ -551,10 +551,10 @@ function renderField(field, section) {
 			controlWrap.classList.add("has-range");
 			range = document.createElement("input");
 			range.type = "range";
-			range.value = value ?? 0;
 			range.step = getFieldStep(field);
 			range.min = field.min ?? 0;
 			range.max = field.max ?? Math.max(Number(value ?? 0), 1);
+			range.value = value ?? 0;
 			range.addEventListener("input", () => {
 				const numericValue = normalizeNumber(range.value, getFieldStep(field), field.min, field.max);
 				number.value = numericValue;

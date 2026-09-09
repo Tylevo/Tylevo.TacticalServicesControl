@@ -31,7 +31,9 @@ internal static class ProgressionDispatchSourceContractTests
 		AssertEx.True(consume >= 0 && stop > consume && buy > stop,
 			"A just-purchased authorization must get a consume attempt before the guard forbids a second purchase.");
 		AssertEx.Contains("TryPayForDeploymentCoreAsync(supportType, consumePurchasedAuthorization: true,", dispatch);
-		AssertEx.Contains("operationId, serverSessionKey, serverProfileId);", dispatch);
+		AssertEx.Contains("operationId, serverSessionKey, serverProfileId, purchasedServerBacked);", dispatch);
+		AssertEx.Contains("AuthorizationConsumePolicy.TryGetPurchasedSource(purchase, out bool purchasedServerBacked)", dispatch);
+		AssertEx.Contains("requiredServerBacked: consumePurchasedAuthorization ? purchasedAuthorizationServerBacked : null", dispatch);
 	}
 
 	[RegressionTest]

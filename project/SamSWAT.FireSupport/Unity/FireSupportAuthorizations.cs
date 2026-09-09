@@ -91,6 +91,11 @@ public static class FireSupportAuthorizations
 
 	public static bool TryConsume(ESupportType type, out bool serverBacked)
 	{
+		return TryConsume(type, requiredServerBacked: null, out serverBacked);
+	}
+
+	private static bool TryConsume(ESupportType type, bool? requiredServerBacked, out bool serverBacked)
+	{
 		serverBacked = false;
 		if (!FireSupportServiceAvailability.IsServiceEnabled(type))
 		{
@@ -99,26 +104,15 @@ public static class FireSupportAuthorizations
 			return false;
 		}
 
-		// Local credits first: they have no ledger entry to consume server-side.
-		int localCount = GetLocal(type);
-		if (localCount > 0)
-		{
-			s_localAuthorizations[type] = localCount - 1;
-			TscDiagnostics.LogPayment(
-				$"Consumed prepaid {GetSupportName(type)} authorization (local). Remaining={Get(type)}.");
-			return true;
-		}
-
-		int serverCount = GetServer(type);
-		if (serverCount <= 0)
+		// Ordinary use is local-first. An auto-purchase retry must consume only
+		// the source it just purchased, leaving older credits untouched.
+		if (!AuthorizationConsumePolicy.TryConsume(
+			    s_localAuthorizations, s_serverAuthorizations, type, requiredServerBacked, out serverBacked))
 		{
 			return false;
 		}
-
-		s_serverAuthorizations[type] = serverCount - 1;
-		serverBacked = true;
 		TscDiagnostics.LogPayment(
-			$"Consumed prepaid {GetSupportName(type)} authorization (server). Remaining={Get(type)}.");
+			$"Consumed prepaid {GetSupportName(type)} authorization ({(serverBacked ? "server" : "local")}). Remaining={Get(type)}.");
 		return true;
 	}
 
@@ -132,9 +126,18 @@ public static class FireSupportAuthorizations
 		out ESupportType consumedType,
 		out bool serverBacked)
 	{
+		return TryConsumeForDeployment(type, out consumedType, out serverBacked, requiredServerBacked: null);
+	}
+
+	public static bool TryConsumeForDeployment(
+		ESupportType type,
+		out ESupportType consumedType,
+		out bool serverBacked,
+		bool? requiredServerBacked)
+	{
 		consumedType = type;
 		serverBacked = false;
-		return TryConsume(type, out serverBacked);
+		return TryConsume(type, requiredServerBacked, out serverBacked);
 	}
 
 	public static void Refund(ESupportType type)

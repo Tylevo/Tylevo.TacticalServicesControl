@@ -746,7 +746,8 @@ public static class FireSupportPayment
 
 	private static async UniTask<FireSupportAuthorizationUse> TryPayForDeploymentCoreAsync(
 		ESupportType supportType, bool consumePurchasedAuthorization,
-		string operationId = null, string serverSessionKey = null, string serverProfileId = null)
+		string operationId = null, string serverSessionKey = null, string serverProfileId = null,
+		bool? purchasedAuthorizationServerBacked = null)
 	{
 		operationId ??= Guid.NewGuid().ToString("N");
 		serverSessionKey ??= FireSupportServerConfigClient.GetAuthenticatedSessionKey();
@@ -782,9 +783,12 @@ public static class FireSupportPayment
 		}
 
 		PaymentMode paymentMode = GetActivePaymentMode();
+		if (consumePurchasedAuthorization && !purchasedAuthorizationServerBacked.HasValue)
+			return FireSupportAuthorizationUse.Failed(supportType);
 		if ((consumePurchasedAuthorization || paymentMode == PaymentMode.PhoneAuthorizations ||
 		     paymentMode == PaymentMode.Hybrid && _serverSpendCreditsBeforeCash) &&
-		    FireSupportAuthorizations.TryConsumeForDeployment(supportType, out ESupportType consumedType, out bool serverBacked))
+		    FireSupportAuthorizations.TryConsumeForDeployment(supportType, out ESupportType consumedType, out bool serverBacked,
+			    requiredServerBacked: consumePurchasedAuthorization ? purchasedAuthorizationServerBacked : null))
 		{
 			// Local credits (carried-rouble purchases) have no ledger entry; asking
 			// the server to consume one gets rejected and the credit becomes
@@ -874,10 +878,10 @@ public static class FireSupportPayment
 		if (_serverAllowAutoPurchaseOnUse && RequiresServerPurchase(GetActivePaymentSource(supportType)))
 		{
 			FireSupportPurchaseResponse purchase = await PurchaseAuthorizationAsync(supportType, notify: true);
-			if (purchase.Ok)
+			if (AuthorizationConsumePolicy.TryGetPurchasedSource(purchase, out bool purchasedServerBacked))
 			{
 				return await TryPayForDeploymentCoreAsync(supportType, consumePurchasedAuthorization: true,
-					operationId, serverSessionKey, serverProfileId);
+					operationId, serverSessionKey, serverProfileId, purchasedServerBacked);
 			}
 
 			return FireSupportAuthorizationUse.Failed(supportType);
