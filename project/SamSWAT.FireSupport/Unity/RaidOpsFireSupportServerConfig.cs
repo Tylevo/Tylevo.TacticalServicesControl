@@ -77,6 +77,10 @@ public sealed class RaidOpsFireSupportServerConfig
 
 	public sealed class CargoSettings
 	{
+		/// <summary>Container columns; zero preserves the native cargo grid width.</summary>
+		public int GridWidth { get; set; }
+		/// <summary>Container rows; zero preserves the native cargo grid height.</summary>
+		public int GridHeight { get; set; }
 		public float DispatchDelaySeconds { get; set; }
 		public int WaitTimeSeconds { get; set; }
 		/// <summary>

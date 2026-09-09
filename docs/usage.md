@@ -142,7 +142,14 @@ camera FOV and hand framing into place over 0.75 seconds by default.
 - **Phone zoom out seconds:** 0.15–0.8 seconds; default 0.35.
 
 Closing the phone restores the original raid FOV, including after a quick
-reopen. These zoom settings do not change deployment or radar views.
+reopen. With automatic zoom enabled, sprinting with the horizontal purchase
+phone eases back to your raid FOV and hand framing; stopping restores the
+purchase zoom. Both sprint transitions use **Phone zoom in seconds** and its
+existing easing curve. Closing the phone still uses **Phone zoom out seconds**.
+These zoom settings do not change deployment or radar views.
+
+Upright deployment, radar, and Danger Close phones follow the first-person
+left hand during sprint, with reduced walking bob and turning sway.
 
 ## Payments and server settings
 

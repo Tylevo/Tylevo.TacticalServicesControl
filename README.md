@@ -2,11 +2,21 @@
 
 Call in an A-10 strike, arrange a helicopter extraction or cargo pickup, and locate nearby contacts with UAV reconnaissance. Control your support from the TerraGroup TSC Uplink phone.
 
-**TSC v1.3.11 · SPT 4.1.5 / EFT 0.16.9.5.40743 · Prepared, not published**
+**TSC v1.3.12 Public Beta · SPT 4.1.5 / EFT 0.16.9.5.40743**
 
-[Release notes](docs/release-notes-v1.3.11.md) · [Installation guide](docs/dependencies.md) · [TSC releases](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases)
+[Release notes](docs/release-notes-v1.3.12.md) · [Installation guide](docs/dependencies.md) · [TSC releases](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases)
 
-This candidate requires **UnityToolkit 2.0.2** and **WTT CommonLib 3.0.6**, both installed separately. TSC and the standalone Toolkit update are being prepared for publication; neither new package is available yet. **Fika support is included, but multiplayer on the current SPT/Fika versions has not been tested.**
+Install **UnityToolkit 2.0.2** and **WTT CommonLib 3.0.6** separately. **Fika support is included, but multiplayer on the current SPT/Fika versions has not been tested.**
+
+## What's new in 1.3.12?
+
+- Upright phones follow the hand during sprint, with gentler walking bob and turning sway.
+- The horizontal purchase phone eases out of zoom when you sprint and back in when you stop, with matching fade timing.
+- Set UH-60 cargo grid columns and rows in SIC or the dashboard. Each dimension defaults to the native size; custom grids support up to 10 columns and 30 rows.
+
+The main ZIP and separate optional Pilot Questline ZIP both use version 1.3.12.
+Update an installed add-on together with all TSC components; its quests are unchanged.
+See the [patch notes](docs/release-notes-v1.3.12.md) for configuration and testing details.
 
 ## What's changed since the SPT 4.0.13 release?
 
@@ -20,7 +30,7 @@ If you're updating from the last Forge release, TSC v1.0.8, this version brings 
 - **More payment options and better recovery:** configure support prices in RUB, USD, or EUR. Authorization use and payment recovery have been strengthened across failed requests, reconnects, and server saves.
 - **A-10 targeting improvements:** corrected shot origins and trajectory compensation address rounds landing short of the designated target.
 - **Launcher configuration:** open the TerraGroup dashboard from SIC's **Mod pages**, or use its native config editor. The dashboard keeps its theme, and saves include validation and protection against conflicting edits.
-- **Updated dependencies:** UnityToolkit 2.0.2 is being prepared as a standalone SPT 4.1.5 update on Arys's existing Forge page. It is a separate dependency, alongside WTT CommonLib.
+- **Updated dependencies:** UnityToolkit 2.0.2 supplies the compatible SPT 4.1.5 plugin and prepatcher. Install its standalone package alongside WTT CommonLib.
 
 Phone deployment, camera targeting, A-10 Double Pass, UAV Recon, and Focused Sweep already existed in the 4.0.13 build. They remain part of TSC alongside these additions. The [release notes](docs/release-notes-v1.3.11.md) cover the upgrade in more detail.
 
@@ -42,14 +52,14 @@ Phone deployment, camera targeting, A-10 Double Pass, UAV Recon, and Focused Swe
 For an existing SPT 4.1.x installation, back up your profiles and TSC's complete `config/` and `storage/` directories before updating to 4.1.5. The TSC ZIP does not overwrite those folders.
 
 1. Close the game, launcher, and SPT server.
-2. Install the standalone **UnityToolkit 2.0.2** package when published through [Arys's UnityToolkit project](https://forge.sp-tarkov.com/mod/1426/unitytoolkit), then install [WTT CommonLib 3.0.6](https://github.com/WelcomeToThursday/WTT-CommonLib/releases/tag/v3.0.6), including its client, server, and serialization prepatcher components.
+2. Install the standalone [**UnityToolkit 2.0.2** package](https://github.com/Tylevo/UnityToolkit-New/releases/tag/v2.0.2), then install [WTT CommonLib 3.0.6](https://github.com/WelcomeToThursday/WTT-CommonLib/releases/tag/v3.0.6), including its client, server, and serialization prepatcher components.
 3. Extract the **full TSC ZIP** into your SPT 4.1.5 root. Merge the `BepInEx` and `SPT_Runtime` folders and replace old mod files when prompted.
-4. If you want quest progression, also extract the matching **Pilot Questline add-on ZIP** into the same root. It adds server content and uses the same TSC client. Skip it for immediate access through Pilot.
+4. If you use quest progression, also extract the matching **1.3.12 Pilot Questline add-on ZIP**, replacing the previous add-on files into the same root. It adds server content and uses the same TSC client. Skip it for immediate access through Pilot.
 5. Start the SPT server, then the launcher and game.
 
 The TSC ZIP does not include UnityToolkit. Its separate 2.0.2 package supplies the plugin, prepatcher, and companion libraries. Keep one Toolkit installation in the standard plugin and patcher folders; no additional compatibility overlay is needed. TSC replaces SamSWAT Fire Support and Arys Reloaded, so don't install those alongside it.
 
-The [installation guide](docs/dependencies.md) shows the folder layout and upgrade details. When published, `SHA256SUMS.txt` provides optional download verification; GitHub's source archives are not installable mod packages.
+The [installation guide](docs/dependencies.md) shows the folder layout and upgrade details. `SHA256SUMS.txt` provides optional download verification; GitHub's source archives are not installable mod packages.
 
 ## Getting started
 
@@ -86,13 +96,13 @@ SIC also has **Config Editor > Mods > Tactical Services Control** for prices, av
 
 ## Compatibility and known issues
 
-Build, package, regression, and native server results for the optional progression split are recorded in the [add-on validation report](docs/validation/pilot-questline-addon.md). The earlier [questline validation report](docs/validation/pilot-questline.md) records the original quest implementation. Game startup and raid testing with this newly versioned pair are still pending; earlier TSC 1.3.10 feedback does not replace those checks.
+The maintainer accepted the phone movement and sprint zoom changes in-game on September 8. The tested candidate passed 305 C# regression tests and 10 dashboard tests, and cargo settings passed 27 native SIC checks. Cargo grid layout and delivery with custom dimensions still need gameplay coverage. See the [1.3.12 validation record](docs/validation/v1.3.12.md).
 
-The move to Pilot's Services tab and the new questline still need in-game validation. The [Services checklist](docs/pilot-services-testing.md) covers navigation, layout, purchases, and recovery; the [questline checklist](docs/pilot-questline.md#validation) covers progression and radio installation. Fika participants must use matching TSC components with service protocol 2.
+The existing [Services checklist](docs/pilot-services-testing.md) and [questline checklist](docs/pilot-questline.md#validation) retain their unrecorded gameplay cases. This patch does not change the questline. Update the main package on all Fika participants and install the matching add-on on the server when used.
 
 **Current Fika multiplayer remains untested.** Solo play does not require Fika. Cargo Transfer is available in solo play and is implemented for the requesting human Fika host; other Fika clients and dedicated-headless requesters cannot use it yet. Dedicated-headless A-10 damage is experimental.
 
-See [known issues](docs/known-issues.md) for current limitations and the [validation record](docs/validation/v1.3.11.md) for test details.
+See [known issues](docs/known-issues.md) for current limitations and the [validation record](docs/validation/v1.3.12.md) for test details.
 
 ## Credits and more information
 

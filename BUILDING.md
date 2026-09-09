@@ -1,12 +1,10 @@
 # Building
 
-The current source prepares **TSC v1.3.11 for SPT 4.1.5**, with
-**UnityToolkit 2.0.2 installed separately**. Neither new package is published.
-The earlier candidate passed build, package, and isolated server checks and
-was later installed for local TSC testing. The corrected Toolkit prepatcher
-still needs its own in-game check. See the
-[validation record](docs/validation/v1.3.11.md). Current Fika multiplayer
-remains untested.
+The current source targets **TSC v1.3.12 for SPT 4.1.5**, with
+**UnityToolkit 2.0.2 installed separately**. The patch adds cargo grid settings
+and improves phone movement and sprint zoom. See the
+[release notes](docs/release-notes-v1.3.12.md) and
+[validation scope](docs/validation/v1.3.12.md). Current Fika multiplayer remains untested.
 
 This repository does not include proprietary EFT or SPT assemblies. Provide local references from your own SPT install.
 
@@ -17,7 +15,7 @@ This repository does not include proprietary EFT or SPT assemblies. Provide loca
 - SPT 4.1.5 reference assemblies from a clean installation.
 - WTT Client CommonLib and WTT Server CommonLib `3.0.6`, installed separately
   from the official `v3.0.6` release, including its serialization prepatcher.
-- The prepared standalone UnityToolkit `2.0.2` update, built against SPT 4.1.5.
+- The standalone UnityToolkit `2.0.2` update, built against SPT 4.1.5.
   See the [Toolkit build guide](tools/dependencies/unitytoolkit/README.md) for
   its upstream source and build evidence. The original `2.0.1` binary is not
   a substitute: SPT 4.1's prepatch validator rejects its older SPT assembly
@@ -105,10 +103,10 @@ the supplied SPT installation. Use `-Configuration` only when intentionally
 checking another configured target.
 
 Build, regression, native API, package, and installation results must identify
-TSC v1.3.11, its source revision, and the standalone Toolkit 2.0.2 references.
-See the [release notes](docs/release-notes-v1.3.11.md) and
-[validation record](docs/validation/v1.3.11.md). Earlier TSC 1.3.10 local
-feedback does not establish runtime acceptance of this new pair.
+TSC v1.3.12, its source revision, and the standalone Toolkit 2.0.2 references.
+See the [release notes](docs/release-notes-v1.3.12.md) and
+[validation record](docs/validation/v1.3.12.md). The validation record distinguishes maintainer phone acceptance from the
+remaining gameplay and multiplayer cases.
 
 ### SPT 4.1 client and server contracts
 
@@ -117,9 +115,8 @@ feedback does not establish runtime acceptance of this new pair.
 overload fails patch initialization, and `FireSupportSpotter.Load` times out
 after five seconds if the manager is not captured.
 
-The pre-raid entry resolves `PreloaderUI.Instance.MenuTaskBar` and clones
-Character's complete wrapper into the native `Tabs` horizontal layout.
-Its cloned toggle group and listeners remain separate from native navigation.
+The pre-raid store opens in Pilot's native trader Services tab. Its view and
+listeners are scoped to Pilot so other trader tabs retain their own content.
 Center-menu transforms are not rewritten. Keep the Seasonal client handoff
 and active-menu/raid guards when changing this entry.
 
@@ -207,7 +204,7 @@ fixtures that reject missing quests, mixed packages, runtime configs, DLLs,
 duplicate paths, and traversal entries. The main package contract also rejects
 quest/addon assets even if they are accidentally added to its allowlist.
 
-The v1.3.11 package contract retains the verified public v1.0.8 asset layout:
+The v1.3.12 package contract retains the verified public v1.0.8 asset layout:
 
 - Extract the ZIP directly into the SPT installation root.
 - The archive contains exactly `BepInEx/` and `SPT_Runtime/` at top level.
@@ -230,9 +227,9 @@ draws its radar rings and contacts in code and needs no separate PNG. Both
 Pilot portraits use a shared close-up crop in the client; the original portrait
 files are unchanged. The six service icons use transparent vector silhouettes,
 with editable sources and a generator in `tools/artwork/service-icons/`.
-The current local build uses Core `1.3.11-pilot-services.6` for the portraits
-and icons, with Server `1.3.11-pilot-services.5` for balance synchronization.
-These local build identifiers do not mark a release.
+The historical UI trial identifiers and their acceptance scope are recorded
+in the [Pilot Services appearance report](docs/pilot-services-appearance.md).
+Current release builds use the matched version and commit identity below.
 
 Native trader balance synchronization runs only in menus. After pending native
 inventory operations finish, the client requests an authenticated absolute cash
@@ -251,7 +248,7 @@ repository:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\verify-local.ps1 `
   -SptDir "C:\Path\To\SPT" `
   -SptSharedAssembliesDir "C:\Path\To\SPT Assemblies" `
-  -EvidencePath "C:\External\TSC\v1.3.11-build-evidence.json"
+  -EvidencePath "C:\External\TSC\v1.3.12-build-evidence.json"
 ```
 
 `-EvidencePath` must not already exist and must be outside the repository. Once
@@ -261,12 +258,12 @@ directory:
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\New-ReleasePackage.ps1 `
   -BaselineAssetArchive "C:\Path\To\Tylevo.TacticalServicesControl-v1.0.8-SPT4.0.13.zip" `
-  -OutputDirectory "C:\External\TSC\v1.3.11-candidate" `
-  -BuildEvidencePath "C:\External\TSC\v1.3.11-build-evidence.json"
+  -OutputDirectory "C:\External\TSC\v1.3.12-candidate" `
+  -BuildEvidencePath "C:\External\TSC\v1.3.12-build-evidence.json"
 ```
 
 Add `-IncludePilotQuestline` to this same command to also produce the separate
-`Tylevo.TacticalServicesControl-PilotQuestline-v1.3.11-SPT4.1.5-TESTER.zip`.
+`Tylevo.TacticalServicesControl-PilotQuestline-v1.3.12-SPT4.1.5-TESTER.zip`.
 The main archive remains unchanged. The addon is staged in
 `stage-pilot-questline/`, independently checked as a directory and ZIP, then
 extracted into `verify-extracted-pilot-questline/` for exact content/hash
@@ -315,8 +312,8 @@ separate checks recorded in `docs/port/SPT-4.1.4-PORT-LOG.md`.
 
 The four TSC DLLs come only from the fixed project build-output paths recorded in
 the manifest. All four must have the reviewed assembly name,
-`AssemblyVersion`/`FileVersion` `1.3.11.0`, and
-`AssemblyInformationalVersion` `1.3.11+<current-clean-HEAD>`. This rejects old,
+`AssemblyVersion`/`FileVersion` `1.3.12.0`, and
+`AssemblyInformationalVersion` `1.3.12+<current-clean-HEAD>`. This rejects old,
 mixed, or locally modified build outputs. The packager requires the external
 build evidence and matches its HEAD/tree, SDK, configuration, output paths,
 sizes, SHA-256 values, and assembly metadata against those four DLLs. Run the
@@ -336,7 +333,7 @@ working-tree bytes, and the clean HEAD/tree identity is checked again before
 success.
 
 For this port the generated archive name is exactly
-`Tylevo.TacticalServicesControl-v1.3.11-SPT4.1.5-TESTER.zip`. The `TESTER`
+`Tylevo.TacticalServicesControl-v1.3.12-SPT4.1.5-TESTER.zip`. The `TESTER`
 suffix must remain until the 4.1.5 runtime acceptance gates are complete.
 
 The command also writes a new external `*.content-evidence.json` sidecar with

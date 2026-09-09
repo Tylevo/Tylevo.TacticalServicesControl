@@ -1,25 +1,41 @@
 # Changelog
 
-## 1.3.11 - Public Beta (unreleased)
+## 1.3.12 - Public Beta
 
-Prepared for SPT 4.1.5; not published.
+September 8, 2026, for SPT 4.1.5.
 
-- Require **UnityToolkit 2.0.2 as a separate dependency**, alongside WTT
-  CommonLib 3.0.6. The standalone Toolkit update is being prepared on Arys's
-  existing project page, where Tylevo has been added as a coauthor.
-- Remove UnityToolkit binaries and companion libraries from the TSC package.
-  The Toolkit version changes from 2.0.1 to 2.0.2 so users can distinguish the
-  updated standalone release.
-- Correct the earlier claim of explicit permission to bundle Toolkit. That
-  claim came from a maintainer/assistant misunderstanding; the approved
-  maintenance and distribution plan uses a separate Toolkit package.
-- Keep the cumulative phone, pre-raid store, Cargo Transfer, Pilot, radar,
-  payment, A-10, and SIC improvements since the SPT 4.0.13 Forge release.
-- Hold v1.3.9 and v1.3.10 as archived drafts. Build, package, and runtime checks
-  for TSC 1.3.11 with Toolkit 2.0.2 are pending. Current Fika multiplayer
-  remains untested.
+- Keep the first-person upright deployment, radar, and Danger Close phone
+  attached to the animated left hand during sprint.
+- Reduce walking bob and turning sway while holding an upright phone.
+- Ease the horizontal purchase phone out of zoom during sprint and back in
+  after stopping, using the same curve and duration in both directions.
+- Add UH-60 Cargo Grid Columns and Rows to the dashboard and SIC config
+  editor. Zero keeps the native size for that dimension; custom grids support
+  up to 10 columns and 30 rows and apply when the next cargo screen opens.
+- Supply the matching 1.3.12 optional Pilot Questline add-on. Quest behavior
+  is unchanged from 1.3.11; update an installed add-on alongside the main mod.
 
-See the [cumulative v1.3.11 release notes](docs/release-notes-v1.3.11.md).
+The maintainer accepted the phone changes in-game on September 8. The tested
+candidate passed 305 C# regression tests and 10 dashboard tests; cargo settings
+also passed 27 native SIC checks. Cargo grid gameplay and current Fika
+multiplayer remain unverified. See the [1.3.12 release notes](docs/release-notes-v1.3.12.md).
+
+## 1.3.11 - Public Beta
+
+Published September 7, 2026, for SPT 4.1.5.
+
+- Move pre-raid purchases into Pilot's Services tab, with refreshed artwork,
+  purchase history, and native trader balance synchronization.
+- Offer the separate optional Pilot Questline add-on. The main mod retains
+  immediate Pilot access; the add-on introduces three quests to earn the Uplink.
+- Require UnityToolkit 2.0.2 and WTT CommonLib 3.0.6 as separate dependencies.
+  Remove Toolkit binaries and companion libraries from the TSC package.
+- Correct the earlier claim of permission to bundle Toolkit and retain
+  v1.3.9 and v1.3.10 as archived drafts; see the [permission record](PERMISSIONS.md).
+- Carry forward the phone, Cargo Transfer, Pilot, radar, payment, A-10, and
+  SIC improvements since the SPT 4.0.13 Forge release.
+
+See the [historical cumulative 1.3.11 release notes](docs/release-notes-v1.3.11.md).
 
 ## 1.3.10 - Public Beta
 

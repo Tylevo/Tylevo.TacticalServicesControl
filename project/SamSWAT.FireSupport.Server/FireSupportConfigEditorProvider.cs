@@ -297,6 +297,8 @@ public sealed class FireSupportExtractionEditorView
 
 public sealed class FireSupportCargoEditorView
 {
+	public int GridWidth { get; set; }
+	public int GridHeight { get; set; }
 	public float DispatchDelaySeconds { get; set; }
 	public int WaitTimeSeconds { get; set; }
 	public float SpeedMultiplier { get; set; }
@@ -304,6 +306,8 @@ public sealed class FireSupportCargoEditorView
 	public static FireSupportCargoEditorView FromConfig(
 		RaidOpsFireSupportServerConfig.CargoSettings config) => new()
 	{
+		GridWidth = config.GridWidth,
+		GridHeight = config.GridHeight,
 		DispatchDelaySeconds = config.DispatchDelaySeconds,
 		WaitTimeSeconds = config.WaitTimeSeconds,
 		SpeedMultiplier = config.SpeedMultiplier
@@ -311,6 +315,8 @@ public sealed class FireSupportCargoEditorView
 
 	public void ApplyTo(RaidOpsFireSupportServerConfig.CargoSettings config)
 	{
+		config.GridWidth = GridWidth;
+		config.GridHeight = GridHeight;
 		config.DispatchDelaySeconds = DispatchDelaySeconds;
 		config.WaitTimeSeconds = WaitTimeSeconds;
 		config.SpeedMultiplier = SpeedMultiplier;

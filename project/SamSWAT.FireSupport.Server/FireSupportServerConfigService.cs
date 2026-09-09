@@ -74,9 +74,9 @@ public sealed class FireSupportServerConfigService(
 			{
 				logger.Error(
 					$"TSC config validation failed: {validationError} " +
-					"Unsafe UH-60 service timing is repaired automatically; an invalid " +
+					"Unsafe UH-60 service timing and cargo grid sizes are repaired automatically; an invalid " +
 					"payment currency remains fail-closed until corrected in the dashboard.");
-				RepairInvalidServiceTimings(candidate);
+				RepairInvalidServiceSettings(candidate);
 			}
 
 			if (candidate.Revision <= 0)
@@ -1147,6 +1147,8 @@ public sealed class FireSupportServerConfigService(
 					Field("focusedSweep.rangeMeters", "Focused Sweep Range", "number", min: 25, max: 1000, step: 25, slider: true),
 					Field("focusedSweep.scanIntervalSeconds", "Focused Sweep Scan Interval", "number", min: 0.1, max: 10, step: 0.05)),
 				Section("extraction", "UH-60 Services",
+					Field("priorityExfil.gridWidth", "Cargo Grid Columns", "number", min: 0, max: CargoGridPolicy.MaxWidth, step: 1),
+					Field("priorityExfil.gridHeight", "Cargo Grid Rows", "number", min: 0, max: CargoGridPolicy.MaxHeight, step: 1),
 					Field("extraction.dispatchDelaySeconds", "Extraction Dispatch Delay", "number", min: 0, max: ExtractionTimingPolicy.MaxDispatchDelaySeconds, step: 1),
 					Field("extraction.waitTimeSeconds", "Extraction Wait Time", "number", min: ExtractionTimingPolicy.MinWaitTimeSeconds, max: ExtractionTimingPolicy.MaxWaitTimeSeconds, step: 5, slider: true),
 					Field("extraction.extractTimeSeconds", "Extraction Time", "number", min: ExtractionTimingPolicy.MinExtractTimeSeconds, max: ExtractionTimingPolicy.MaxExtractTimeSeconds, step: 1),
@@ -2184,6 +2186,15 @@ public sealed class FireSupportServerConfigService(
 			return false;
 		}
 
+		if (!CargoGridPolicy.TryValidate(
+			    config.PriorityExfil.GridWidth,
+			    config.PriorityExfil.GridHeight,
+			    "priorityExfil",
+			    out error))
+		{
+			return false;
+		}
+
 		int requiredPendingTimeout = GetRequiredPendingUseTimeoutSeconds();
 		if (config.PurchasePersistence?.Enabled == true &&
 		    config.PurchasePersistence.PendingUseTimeoutSeconds <
@@ -2223,12 +2234,20 @@ public sealed class FireSupportServerConfigService(
 			out error);
 	}
 
-	private static void RepairInvalidServiceTimings(
+	private static void RepairInvalidServiceSettings(
 		RaidOpsFireSupportServerConfig config)
 	{
 		RaidOpsFireSupportServerConfig defaults = CreateDefaultConfig();
 		RepairExtractionTiming(config.Extraction, defaults.Extraction);
 		RepairCargoTiming(config.PriorityExfil, defaults.PriorityExfil);
+		if (!CargoGridPolicy.IsValidWidth(config.PriorityExfil.GridWidth))
+		{
+			config.PriorityExfil.GridWidth = defaults.PriorityExfil.GridWidth;
+		}
+		if (!CargoGridPolicy.IsValidHeight(config.PriorityExfil.GridHeight))
+		{
+			config.PriorityExfil.GridHeight = defaults.PriorityExfil.GridHeight;
+		}
 		int requiredPendingTimeout = GetRequiredPendingUseTimeoutSeconds();
 		if (config.PurchasePersistence?.Enabled == true &&
 		    config.PurchasePersistence.PendingUseTimeoutSeconds <
@@ -2534,6 +2553,8 @@ public sealed class FireSupportServerConfigService(
 			},
 			PriorityExfil = new RaidOpsFireSupportServerConfig.CargoSettings
 			{
+				GridWidth = 0,
+				GridHeight = 0,
 				DispatchDelaySeconds = 3f,
 				WaitTimeSeconds = 20,
 				ExtractTimeSeconds = 10f,

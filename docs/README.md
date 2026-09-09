@@ -1,13 +1,13 @@
 # TSC documentation
 
-Prepared candidate: **TSC v1.3.11 for SPT 4.1.5**, requiring standalone
-**UnityToolkit 2.0.2** and WTT CommonLib 3.0.6. The TSC and Toolkit updates
-have not been published yet.
+Current release: **TSC v1.3.12 for SPT 4.1.5**, requiring standalone
+**UnityToolkit 2.0.2** and WTT CommonLib 3.0.6.
 
 ## Playing TSC
 
 - [Overview and release status](../README.md)
-- [What's changed since the SPT 4.0.13 Forge release](release-notes-v1.3.11.md)
+- [1.3.12 phone and cargo grid changes](release-notes-v1.3.12.md)
+- [Cumulative features through 1.3.11](release-notes-v1.3.11.md)
 - [Installation and dependencies](dependencies.md)
 - [Optional Pilot Questline add-on and earning the TSC Uplink](pilot-questline.md)
 - [Phone controls, support, radar, and cargo](usage.md)
@@ -16,8 +16,8 @@ have not been published yet.
 
 ## Release and project information
 
-- [Forge page copy](forge-description-v1.3.11.md)
-- [Validation and testing scope](validation/v1.3.11.md)
+- [Forge page copy](forge-description-v1.3.12.md)
+- [Validation and testing scope](validation/v1.3.12.md)
 - [Optional questline validation](validation/pilot-questline-addon.md)
 - [Credits](credits.md), [licenses](../THIRD_PARTY_NOTICES.md), and [permissions](../PERMISSIONS.md)
 - [Privacy](../PRIVACY.md) and [security](../SECURITY.md)

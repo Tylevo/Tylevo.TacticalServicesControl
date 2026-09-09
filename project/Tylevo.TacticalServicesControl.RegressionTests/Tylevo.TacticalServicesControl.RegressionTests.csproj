@@ -34,6 +34,8 @@
              Link="Production\FireSupportStashCurrencySnapshot.cs" />
     <Compile Include="..\SamSWAT.FireSupport\Unity\CargoTimingPolicy.cs"
              Link="Production\CargoTimingPolicy.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\CargoGridPolicy.cs"
+             Link="Production\CargoGridPolicy.cs" />
     <Compile Include="..\SamSWAT.FireSupport\Unity\MainMenuSlotStepPolicy.cs"
              Link="Production\MainMenuSlotStepPolicy.cs" />
     <Compile Include="..\SamSWAT.FireSupport\Unity\PhonePresentationTransition.cs"

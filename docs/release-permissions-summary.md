@@ -2,11 +2,10 @@
 
 > **Historical summary — permission correction.** The explicit Toolkit
 > bundling-permission claim below was a maintainer/assistant misunderstanding
-> and is withdrawn. The prepared TSC v1.3.11 requires standalone Toolkit 2.0.2;
-> neither new package is published. Arys approved updating Toolkit on its
+> and is withdrawn. Current TSC releases require standalone Toolkit 2.0.2. Arys approved updating Toolkit on its
 > existing page with Tylevo as coauthor. Use the
 > [corrected permission record](../PERMISSIONS.md) and
-> [current release notes](release-notes-v1.3.11.md).
+> [current release notes](release-notes-v1.3.12.md).
 
 The maintainer has confirmed the upstream permission recorded in `PERMISSIONS.md`. On 2026-09-05, the maintainer also confirmed Arys's explicit approval to bundle UnityToolkit 2.0.1 rebuilt against SPT 4.1 in the v1.3.9 release.
 

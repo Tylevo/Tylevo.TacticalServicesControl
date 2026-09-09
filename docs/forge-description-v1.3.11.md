@@ -1,5 +1,10 @@
 # Tylevo's Tactical Services Control v1.3.11 Public Beta
 
+> Historical preparation record. TSC v1.3.11 was published on GitHub on
+> September 7, 2026. The candidate status and test results below describe
+> earlier preparation, not current availability. Use the
+> [1.3.12 release notes](release-notes-v1.3.12.md) and current installation guide for updates.
+
 **For SPT 4.1.5 / EFT 0.16.9.5.40743**
 
 > Prepared page copy: TSC v1.3.11 and its required standalone UnityToolkit

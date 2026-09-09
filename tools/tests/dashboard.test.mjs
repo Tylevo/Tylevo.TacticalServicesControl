@@ -79,7 +79,7 @@ function descendants(element) {
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
-async function dashboard() {
+async function dashboard(configOverrides = {}) {
 	const elements = Object.fromEntries([...html.matchAll(/\bid="([^"]+)"/g)]
 		.map((match) => [match[1], new Element()]));
 	const window = new Element();
@@ -90,11 +90,21 @@ async function dashboard() {
 		confirmations: [],
 		confirmResult: true,
 		onRequest: null,
-		serverConfig: { revision: 7, requestCooldownSeconds: 30, paymentCurrency: "RUB", paymentSource: "StashRoubles" }
+		serverConfig: {
+			revision: 7, requestCooldownSeconds: 30, paymentCurrency: "RUB", paymentSource: "StashRoubles",
+			priorityExfil: { gridWidth: 0, gridHeight: 0, waitTimeSeconds: 60 },
+			...configOverrides
+		}
 	};
-	const schema = { sections: [{ id: "main", label: "Main", fields: [
-		{ path: "requestCooldownSeconds", label: "Request cooldown", type: "number", min: 0, max: 300 }
-	] }] };
+	const schema = { sections: [
+		{ id: "main", label: "Main", fields: [
+			{ path: "requestCooldownSeconds", label: "Request cooldown", type: "number", min: 0, max: 300 }
+		] },
+		{ id: "extraction", label: "UH-60 Services", fields: [
+			{ path: "priorityExfil.gridWidth", label: "Cargo Grid Columns", type: "number", min: 0, max: 10, step: 1 },
+			{ path: "priorityExfil.gridHeight", label: "Cargo Grid Rows", type: "number", min: 0, max: 30, step: 1 }
+		] }
+	] };
 	const health = { ok: true, adminDashboard: { tokenRequired: false } };
 	fixture.defaultResponse = ({ url, options }) => {
 		if (url === "/tsc/schema") return response(schema);
@@ -107,9 +117,11 @@ async function dashboard() {
 		if (url === "/tsc/reload") return response(fixture.serverConfig);
 		throw new Error(`Unexpected request: ${options.method || "GET"} ${url}`);
 	};
-	fixture.input = () => descendants(elements.formRoot).find((element) => element.type === "number");
-	fixture.edit = (value) => {
-		const input = fixture.input();
+	fixture.field = (path) => descendants(elements.formRoot).find((element) => element.dataset.path === path);
+	fixture.input = (path = "requestCooldownSeconds") => descendants(fixture.field(path))
+		.find((element) => element.type === "number");
+	fixture.edit = (value, path) => {
+		const input = fixture.input(path);
 		assert.ok(input, "The real schema should render an editable input");
 		input.value = String(value);
 		input.dispatchEvent({ type: "input" });
@@ -265,4 +277,68 @@ test("a failed confirmed reload keeps the existing draft", async () => {
 	assert.equal(app.elements.revisionStatus.textContent, "Revision 7");
 	assert.equal(app.elements.changeStatus.textContent, "1 unsaved change");
 	assert.equal(app.elements.formRoot.inert, false);
+});
+
+test("cargo dimensions render native defaults and explain each zero value", async () => {
+	const app = await dashboard();
+	for (const [path, axis, max] of [["priorityExfil.gridWidth", "width", 10], ["priorityExfil.gridHeight", "height", 30]]) {
+		const input = app.input(path);
+		assert.equal(Number(input.value), 0);
+		assert.equal(Number(input.min), 0);
+		assert.equal(Number(input.max), max);
+		assert.equal(Number(input.step), 1);
+		const summary = descendants(app.field(path)).find((element) => element.className === "service-summary");
+		assert.match(summary.textContent, new RegExp(`0 uses native ${axis}`));
+		assert.match(summary.textContent, /when cargo next opens/);
+	}
+	assert.equal(app.elements.saveButton.disabled, true);
+});
+
+test("cargo dimensions save independently, preserve siblings, and round trip explicit zero", async () => {
+	const app = await dashboard({ priorityExfil: { gridWidth: 6, gridHeight: 8, waitTimeSeconds: 60 } });
+	app.edit(0, "priorityExfil.gridWidth");
+	assert.equal(app.elements.changeStatus.textContent, "1 unsaved change");
+	app.elements.saveButton.click();
+	await settle();
+	const firstSave = JSON.parse(app.requests.find((request) => request.options.method === "POST").options.body);
+	assert.deepEqual(firstSave.priorityExfil, { gridWidth: 0, gridHeight: 8, waitTimeSeconds: 60 });
+	assert.equal(firstSave.requestCooldownSeconds, 30);
+	assert.equal(Number(app.input("priorityExfil.gridWidth").value), 0);
+	assert.equal(Number(app.input("priorityExfil.gridHeight").value), 8);
+	assert.equal(app.elements.changeStatus.textContent, "0 unsaved changes");
+
+	app.edit(10, "priorityExfil.gridWidth");
+	app.edit(30, "priorityExfil.gridHeight");
+	assert.equal(app.elements.changeStatus.textContent, "2 unsaved changes");
+	app.elements.saveButton.click();
+	await settle();
+	assert.deepEqual(app.serverConfig.priorityExfil, { gridWidth: 10, gridHeight: 30, waitTimeSeconds: 60 });
+	app.edit(0, "priorityExfil.gridWidth");
+	app.edit(0, "priorityExfil.gridHeight");
+	app.elements.saveButton.click();
+	await settle();
+	app.elements.reloadButton.click();
+	await settle();
+	assert.deepEqual(app.serverConfig.priorityExfil, { gridWidth: 0, gridHeight: 0, waitTimeSeconds: 60 });
+	assert.equal(Number(app.input("priorityExfil.gridWidth").value), 0);
+	assert.equal(Number(app.input("priorityExfil.gridHeight").value), 0);
+	assert.equal(app.elements.saveButton.disabled, true);
+});
+
+test("cargo dimension edits save only whole values within the schema bounds", async () => {
+	const app = await dashboard();
+	for (const [width, height, expectedWidth, expectedHeight] of [
+		[25, -2, 10, 0],
+		[-1, 99, 0, 30],
+		[4.4, 8.7, 4, 9]
+	]) {
+		app.edit(width, "priorityExfil.gridWidth");
+		app.edit(height, "priorityExfil.gridHeight");
+		app.elements.saveButton.click();
+		await settle();
+		assert.equal(app.serverConfig.priorityExfil.gridWidth, expectedWidth);
+		assert.equal(app.serverConfig.priorityExfil.gridHeight, expectedHeight);
+		assert.equal(Number(app.input("priorityExfil.gridWidth").value), expectedWidth);
+		assert.equal(Number(app.input("priorityExfil.gridHeight").value), expectedHeight);
+	}
 });

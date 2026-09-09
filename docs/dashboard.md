@@ -34,6 +34,27 @@ and edit again. The dashboard keeps your unsaved values when a save fails;
 reloading asks before discarding them. Saves replace the file atomically,
 and a failed write or invalid disk reload does not change the active settings.
 
+## UH-60 cargo grid size
+
+In SPT 4.1.5 SIC, open **Config Editor > Mods > Tactical Services Control >
+priorityExfil** and edit **GridWidth** and **GridHeight**. In the themed
+dashboard, open **UH-60 Services** and edit **Cargo Grid Columns** and **Cargo
+Grid Rows**. Both editors update the same `priorityExfil.gridWidth` and
+`priorityExfil.gridHeight` settings.
+
+Columns accept whole numbers from **0 to 10**; rows accept **0 to 30**.
+**0** is the default and preserves EFT's native size for that dimension. Set
+both to 0 to use the full native grid, or override either dimension separately.
+For example, 5 columns and 5 rows provide 25 inventory cells; 10 columns and
+10 rows provide 100 cells. Larger items occupy multiple cells, so this is
+not a fixed item-count limit.
+
+Use the Apply/Save actions above to make the change active and persistent.
+Active settings take effect the next time the cargo transfer screen opens;
+an already open screen keeps its current size. Resizing preserves previously
+submitted cargo. These controls belong to **UH-60 Cargo Transfer**; normal
+player extraction has no cargo grid.
+
 ## Routes
 
 - Public health: `/tsc/health`

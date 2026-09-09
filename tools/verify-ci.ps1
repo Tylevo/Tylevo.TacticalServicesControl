@@ -546,7 +546,7 @@ $serverWiringChecks = @(
         Expectation = "Server Cargo validation must delegate to CargoTimingPolicy.TryValidate."
     },
     @{
-        Pattern = 'RepairInvalidServiceTimings\s*\([^)]*\)\s*\{.{0,1200}?RepairExtractionTiming\s*\(\s*config\s*\.\s*Extraction\b.{0,500}?RepairCargoTiming\s*\(\s*config\s*\.\s*PriorityExfil\b'
+        Pattern = 'RepairInvalidServiceSettings\s*\([^)]*\)\s*\{.{0,1200}?RepairExtractionTiming\s*\(\s*config\s*\.\s*Extraction\b.{0,500}?RepairCargoTiming\s*\(\s*config\s*\.\s*PriorityExfil\b'
         Expectation = "Server migration repair must keep standard Extraction and Cargo on their distinct timing contracts."
     },
     @{

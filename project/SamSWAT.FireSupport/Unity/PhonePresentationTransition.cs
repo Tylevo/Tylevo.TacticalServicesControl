@@ -38,6 +38,22 @@ public sealed class PhonePresentationTransition
 		return true;
 	}
 
+	/// <summary>
+	/// Starts another leg using the original easing duration. Callers capture
+	/// their visible FOV and framing before changing targets, so reversing a
+	/// partially completed leg starts at the current presentation without a jump.
+	/// </summary>
+	public bool TryRestart(float now, object? currentOwner)
+	{
+		if (!TrySample(now, currentOwner, out _))
+		{
+			return false;
+		}
+
+		_startedAt = now;
+		return true;
+	}
+
 	public void Cancel()
 	{
 		_owner = null;

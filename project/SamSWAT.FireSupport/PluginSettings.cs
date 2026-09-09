@@ -456,7 +456,7 @@ internal static class PluginSettings
 			"TerraGroup Phone",
 			"Automatic phone zoom",
 			true,
-			new ConfigDescription("Optionally narrows the camera FOV on authorization purchase screens and enables phone framing. Deploy and held UAV radar screens always preserve the current raid FOV."));
+			new ConfigDescription("Optionally narrows the camera FOV on authorization purchase screens and enables phone framing. Sprinting eases back to the raid view; stopping restores the purchase zoom. Deploy and held UAV radar screens always preserve the current raid FOV."));
 		PhoneZoomFov = config.Bind(
 			"TerraGroup Phone",
 			"Phone zoom FOV",
@@ -476,7 +476,7 @@ internal static class PluginSettings
 			"Phone zoom in seconds",
 			0.75f,
 			new ConfigDescription(
-				"Time for authorization phone zoom and framing to ease into place as the phone is raised. Higher values give a slower, smoother approach. Deploy and held UAV radar screens retain their current FOV.",
+				"Time for authorization phone zoom and framing to ease into place as the phone is raised. Sprinting out of zoom and returning to it use this same duration. Higher values give a slower, smoother approach. Deploy and held UAV radar screens retain their current FOV.",
 				new AcceptableValueRange<float>(0.25f, 1.5f)));
 		PhoneZoomOutSeconds = config.Bind(
 			"TerraGroup Phone",

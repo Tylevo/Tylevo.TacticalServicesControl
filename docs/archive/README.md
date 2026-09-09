@@ -1,18 +1,18 @@
 # Historical TSC documentation
 
-For the prepared v1.3.11 update, use the [main README](../../README.md),
+For v1.3.12, use the [main README](../../README.md),
 [SPT 4.1.5 installation guide](../dependencies.md), and
-[v1.3.11 release notes](../release-notes-v1.3.11.md).
+[v1.3.12 release notes](../release-notes-v1.3.12.md).
 
-The SPT 4.1.5 release is prepared as the first Forge update after the SPT
-4.0.13 package. It has not yet been uploaded to Forge. The intermediate
-development versions below explain how it evolved; they are not additional
-packages that current users need to install.
+The development versions below explain how TSC evolved from its SPT 4.0.13
+release. They are not additional packages that current users need to install.
 
 ## Release availability
 
-- **v1.3.11 / SPT 4.1.5** is prepared but unpublished. It requires standalone
-  UnityToolkit 2.0.2, also not yet published, and WTT CommonLib 3.0.6.
+- **v1.3.12 / SPT 4.1.5** is the current patch; see its [release notes](../release-notes-v1.3.12.md).
+- **v1.3.11 / SPT 4.1.5** was published on GitHub on September 7, 2026, with
+  the main mod and separate optional Pilot Questline add-on. It requires
+  standalone UnityToolkit 2.0.2 and WTT CommonLib 3.0.6.
 - The older **v1.0.8 / SPT 4.0.13** release remains available for people keeping
   a separate 4.0.13 installation. Its historical GitHub tag is
   [v0.9.8](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases/tag/v0.9.8).
@@ -51,6 +51,7 @@ were drafts and were not each published as Forge updates.
 | v1.3.8 | [Notes](../release-notes-v1.3.8.md) | [Draft](../forge-description-v1.3.8.md) |
 | v1.3.9 | [Notes](../release-notes-v1.3.9.md) | [Draft](../forge-description-v1.3.9.md) |
 | v1.3.10 | [Notes](../release-notes-v1.3.10.md) | [Draft](../forge-description-v1.3.10.md) |
+| v1.3.11 | [Notes](../release-notes-v1.3.11.md) | [Historical copy](../forge-description-v1.3.11.md) |
 
 ## Development records
 

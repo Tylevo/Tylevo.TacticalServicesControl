@@ -1,10 +1,10 @@
 # Tylevo's Tactical Services Control v1.2.0 Public Beta
 
 > **Historical documentation.** These instructions and results describe this
-> earlier version. For the prepared TSC v1.3.11 / SPT 4.1.5 update, use the
-> [release notes](release-notes-v1.3.11.md) and [installation guide](dependencies.md).
-> TSC v1.3.11 requires standalone UnityToolkit 2.0.2; both new packages are
-> unpublished. See the [archive index](archive/README.md) for older availability.
+> earlier version. For TSC v1.3.12 / SPT 4.1.5, use the
+> [release notes](release-notes-v1.3.12.md) and [installation guide](dependencies.md).
+> Install UnityToolkit 2.0.2 and WTT CommonLib 3.0.6 separately.
+> See the [archive index](archive/README.md) for older availability.
 
 This SPT 4.1.2 tester release adds optional integration with Tylevo Seasonal
 Modifiers. TSC still works independently and does not require Seasonal

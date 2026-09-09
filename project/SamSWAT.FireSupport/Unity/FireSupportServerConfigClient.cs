@@ -925,6 +925,9 @@ public static class FireSupportServerConfigClient
 
 	private static void ApplyGlobalSettings(RaidOpsFireSupportServerConfig snapshot, int revision)
 	{
+		FireSupportItemTransfer.SetServerCargoGridSize(
+			snapshot.PriorityExfil?.GridWidth ?? 0,
+			snapshot.PriorityExfil?.GridHeight ?? 0);
 		FireSupportPayment.SetServerConfigGlobals(
 			GetPrice(snapshot, "A10", ESupportType.Strafe),
 			GetPrice(snapshot, "DoublePass", ESupportType.DoubleStrafe),
@@ -994,6 +997,7 @@ public static class FireSupportServerConfigClient
 
 	private static void ClearServerGlobalOverrides(bool notify)
 	{
+		FireSupportItemTransfer.SetServerCargoGridSize(0, 0);
 		FireSupportPayment.ClearServerGlobalConfig();
 		FireSupportServiceAvailability.ClearServerConfigAvailability();
 		FireSupportTuningSettings.ClearServerConfigTuning();

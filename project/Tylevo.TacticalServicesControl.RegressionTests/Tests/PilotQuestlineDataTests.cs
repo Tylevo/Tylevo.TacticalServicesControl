@@ -27,7 +27,7 @@ internal static class PilotQuestlineDataTests
 		AssertEx.Equal(4, root.EnumerateObject().Count());
 		AssertEx.Equal(1, root.GetProperty("schemaVersion").GetInt32());
 		AssertEx.Equal("tsc-pilot-questline", root.GetProperty("id").GetString());
-		AssertEx.Equal("1.3.11", root.GetProperty("version").GetString());
+		AssertEx.Equal("1.3.12", root.GetProperty("version").GetString());
 		AssertEx.Equal("4.1.5", root.GetProperty("targetSptVersion").GetString());
 		AssertEx.Equal(5, Directory.GetFiles(Resolve(DataRoot + "CustomQuests"), "*.json", SearchOption.AllDirectories).Length);
 		AssertEx.Equal(0, Directory.GetFiles(Resolve(AddonRoot), "*.dll", SearchOption.AllDirectories).Length,

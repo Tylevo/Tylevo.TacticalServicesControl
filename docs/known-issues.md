@@ -1,15 +1,15 @@
 # Known issues
 
-Prepared candidate: **TSC v1.3.11 for SPT 4.1.5**, with standalone
-**UnityToolkit 2.0.2**. Neither new package has been published. Build, package,
-and isolated server checks passed; game testing remains pending. See the
-[validation record](validation/v1.3.11.md). Earlier local feedback for
-v1.3.10 does not validate the new pair.
+Current release: **TSC v1.3.12 for SPT 4.1.5**, with standalone
+**UnityToolkit 2.0.2** and WTT CommonLib 3.0.6. The maintainer accepted the
+phone movement and sprint zoom changes in-game. Custom cargo grids passed
+configuration/editor checks; their layout and delivery still need gameplay
+coverage. See the [validation record](validation/v1.3.12.md).
 
 ## Multiplayer
 
-The optional [Pilot Questline add-on](pilot-questline.md#validation) requires in-game
-acceptance, including the weather-station installation and survival after
+The optional [Pilot Questline add-on](pilot-questline.md#validation) retains unrecorded gameplay
+checks, including the weather-station installation and survival after
 death. Matching server, Core, and Fika components with service protocol 2 are
 required for manual support. Earlier package test results do not validate
 these new progression paths.
@@ -40,7 +40,7 @@ service.
 - Phone and store layouts need broader coverage across resolutions and combat
   conditions. Pilot's registration and portrait have server checks; exact
   portrait framing and a paid purchase were not individually documented in
-  earlier local test reports. The new candidate still needs its own runtime checks.
+  earlier local test reports. The remaining Services checklist cases are not closed by phone testing.
 
 Mortar/artillery support and remote third-person phone animation sync are
 not included.

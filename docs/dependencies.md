@@ -1,10 +1,8 @@
 # Installing TSC for SPT 4.1.5
 
-**TSC v1.3.11 for SPT 4.1.5 is prepared but not yet published.** It requires
-**UnityToolkit 2.0.2**, installed separately. That standalone Toolkit update
-is also being prepared and is not yet published. Use the
-[UnityToolkit project](https://forge.sp-tarkov.com/mod/1426/unitytoolkit)
-for release availability; do not substitute the older 2.0.1 binary.
+**TSC v1.3.12 targets SPT 4.1.5.** Install the complete standalone
+[**UnityToolkit 2.0.2** package](https://github.com/Tylevo/UnityToolkit-New/releases/tag/v2.0.2) separately;
+do not substitute the older 2.0.1 binary.
 
 Install **WTT Client CommonLib and WTT Server CommonLib 3.0.6** separately from
 the [official WTT release](https://github.com/WelcomeToThursday/WTT-CommonLib/releases/tag/v3.0.6),
@@ -29,10 +27,10 @@ profile's installation.
 
 1. Close the game, launcher, and SPT server.
 2. Install SPT 4.1.5 and WTT CommonLib, including all of WTT's required components.
-3. Once published, extract the **complete UnityToolkit 2.0.2 package** into
+3. Extract the **complete UnityToolkit 2.0.2 package** into
    the SPT root. It supplies its plugin, prepatcher, companion libraries,
    `Assemblies.jsonc`, and license notices. No additional overlay is needed.
-4. Extract the **full TSC v1.3.11 ZIP**, once published, into the same SPT root
+4. Extract the **full TSC v1.3.12 ZIP** into the same SPT root
    so its `BepInEx` and `SPT_Runtime` folders merge with the existing folders.
    GitHub's automatic source archives are not installable mod packages.
 5. If UnityToolkit is already installed, replace its files in the standard
@@ -63,7 +61,9 @@ For Fika, install it on the shared SPT server; everyone uses the same main
 client download. The server chooses progression at startup. See the
 [add-on guide](pilot-questline.md) for quest details and removal instructions.
 Updating the main mod preserves an installed add-on, which must match the
-current TSC/SPT versions.
+current TSC/SPT versions. For this update, replace an installed 1.3.11 add-on
+with the 1.3.12 add-on before restarting the server. Its quest data and behavior
+are unchanged; keeping the matching content installed preserves quest definitions.
 
 ## Updating an existing SPT 4.1.x installation
 
@@ -100,7 +100,7 @@ the [Fika guide](fika.md) and [known issues](known-issues.md) for restrictions.
 
 Arys remains the author of UnityToolkit and has added Tylevo as a coauthor on
 its existing Forge page to maintain the SPT update. Version 2.0.2 distinguishes
-that standalone update from the original 2.0.1 release. TSC v1.3.11 does not
+that standalone update from the original 2.0.1 release. TSC does not
 redistribute the Toolkit binaries or companion libraries inside its ZIP.
 
 The earlier bundled v1.3.9 and v1.3.10 test releases have been withdrawn and

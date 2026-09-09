@@ -50,9 +50,14 @@ const sectionIntros = {
 	payment: "Select which wallet supplies the configured payment currency.",
 	services: "Enable or lock service packages before players can purchase them.",
 	recon: "UAV and focused sweep scan timing, range, and refresh behavior.",
-	extraction: "UH-60 extraction and cargo-transfer dispatch, wait, and arrival tuning.",
+	extraction: "UH-60 extraction and cargo-transfer dispatch, wait, arrival, and cargo grid size. Larger items occupy multiple inventory cells.",
 	fire: "A-10, double-pass, and fire support behavior.",
 	diagnostics: "Live route and server state."
+};
+
+const fieldHelp = {
+	"priorityExfil.gridWidth": "0 uses native width; 1-10 sets cargo columns. Applies when cargo next opens.",
+	"priorityExfil.gridHeight": "0 uses native height; 1-30 sets cargo rows. Applies when cargo next opens."
 };
 
 elements.adminToken.value = state.adminToken;
@@ -421,7 +426,7 @@ function renderField(field, section) {
 		serviceTitle.textContent = meta.title;
 		const serviceSummary = document.createElement("span");
 		serviceSummary.className = "service-summary";
-		serviceSummary.textContent = meta.summary;
+		serviceSummary.textContent = fieldHelp[field.path] || meta.summary;
 		titleWrap.append(serviceTitle, serviceSummary);
 
 		row.append(badge, titleWrap);

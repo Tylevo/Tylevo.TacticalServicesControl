@@ -12,6 +12,32 @@ using System.Threading.Tasks;
 namespace SamSWAT.FireSupport.ArysReloaded.Patches;
 
 /// <summary>
+/// Sizes EFT's native temporary delivery grid only for the exact active UH-60
+/// cargo session. The underlying Transit/BTR controller and delivery remain
+/// native, including its occupied-cell protection when a grid is resized.
+/// </summary>
+[UsedImplicitly]
+internal sealed class HelicopterItemTransferGridSizePatch : ModulePatch
+{
+	protected override MethodBase GetTargetMethod()
+	{
+		return AccessTools.Method(
+			typeof(TransferItemsController),
+			nameof(TransferItemsController.GetGridSizeForProfileId),
+			new[] { typeof(string) });
+	}
+
+	[PatchPostfix]
+	private static void Postfix(
+		TransferItemsController __instance,
+		string __0,
+		ref IntVec2 __result)
+	{
+		FireSupportItemTransfer.OverrideCargoGridSize(__instance, __0, ref __result);
+	}
+}
+
+/// <summary>
 /// Supplies a normal EFT interaction action for the requester-local helicopter
 /// cargo zone. This respects the player's configured interact binding and
 /// opens the transfer screen only after an explicit interaction.

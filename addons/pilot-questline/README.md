@@ -1,6 +1,11 @@
 # Pilot Questline add-on
 
-Optional progression for **Tactical Services Control 1.3.11 on SPT 4.1.5**. Install the matching main TSC mod first, including its normal dependencies. This add-on contains server data only; it does not require an additional client download or DLL. For Fika, install it on the shared SPT server. All players keep the same main TSC client.
+Optional progression for **Tactical Services Control 1.3.12 on SPT 4.1.5**. Install the matching main TSC mod first, including its normal dependencies. This add-on contains server data only; it does not require an additional client download or DLL. For Fika, install it on the shared SPT server. All players keep the same main TSC client.
+
+This 1.3.12 package keeps the 1.3.11 quests unchanged. Update an installed
+add-on together with the main mod while the server is stopped; replace its
+files before restarting so the version manifest matches and quest definitions
+remain available. Back up your profile and TSC storage first.
 
 ## Install
 

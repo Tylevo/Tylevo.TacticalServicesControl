@@ -9,6 +9,10 @@ quests. Mechanic restores contact with Pilot, Pilot assembles the handset,
 and the player brings its Shoreline ground relay online. The introduction is
 designed for fresh profiles.
 
+Version 1.3.12 carries forward the 1.3.11 quests without behavior changes.
+Update an installed add-on to 1.3.12 alongside the main mod before restarting
+the server; both packages must match.
+
 ## Install or remove the add-on
 
 Install the main TSC download and its dependencies first. With the game and
@@ -98,7 +102,8 @@ does not unlock requests or purchases.
 Build and automated evidence are recorded in the
 [add-on validation report](validation/pilot-questline-addon.md), with original
 quest handling evidence in the [questline validation report](validation/pilot-questline.md).
-The following require actual gameplay acceptance before publication:
+The following gameplay checks remain unrecorded. Publication of the optional
+public beta and the phone acceptance report do not establish these results:
 
 - [ ] A fresh level-5 PMC sees Open Channel while Pilot is locked; completing
   it unlocks Pilot and the repair quest.

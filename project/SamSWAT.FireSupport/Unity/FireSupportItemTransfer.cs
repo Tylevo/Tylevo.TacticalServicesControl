@@ -55,8 +55,41 @@ internal static class FireSupportItemTransfer
 	private static bool s_servicePurchaseObserved;
 	private static bool s_stashFeePurchaseInFlight;
 	private static int s_sessionGeneration;
+	private static int s_serverCargoGridWidth;
+	private static int s_serverCargoGridHeight;
+	private static int s_sessionCargoGridWidth;
+	private static int s_sessionCargoGridHeight;
 	[ThreadStatic]
 	private static bool s_nativePurchaseBypass;
+
+	internal static void SetServerCargoGridSize(int width, int height)
+	{
+		s_serverCargoGridWidth = CargoGridPolicy.IsValidWidth(width) ? width : 0;
+		s_serverCargoGridHeight = CargoGridPolicy.IsValidHeight(height) ? height : 0;
+	}
+
+	internal static void OverrideCargoGridSize(
+		TransferItemsController controller,
+		string profileId,
+		ref IntVec2 size)
+	{
+		if (FireSupportServerConfigClient.IsFikaClientHostAuthorityActive ||
+		    controller == null || controller != s_transferController ||
+		    s_screenController == null || s_sessionPoint == null ||
+		    s_sessionPlayer == null || !s_sessionPlayer.IsYourPlayer ||
+		    !string.Equals(profileId, s_sessionPlayer.ProfileId, StringComparison.Ordinal))
+		{
+			return;
+		}
+
+		// Only the active UH-60 screen gets these dimensions. EFT constructs or
+		// safely clamps its own temporary grid and keeps the canonical delivery
+		// stash (10 columns, vertically expandable) intact. A later Transit/BTR
+		// screen asks for its native size again after this session is cleared.
+		size = new IntVec2(
+			s_sessionCargoGridWidth > 0 ? s_sessionCargoGridWidth : size.X,
+			s_sessionCargoGridHeight > 0 ? s_sessionCargoGridHeight : size.Y);
+	}
 
 	internal static bool IsInteractionAvailable(
 		HeliCargoTransferPoint point,
@@ -221,6 +254,10 @@ internal static class FireSupportItemTransfer
 				insurance,
 				transferController);
 
+			// Freeze the latest server dimensions for this screen. A config
+			// refresh during loading/payment must not resize staged cargo.
+			s_sessionCargoGridWidth = s_serverCargoGridWidth;
+			s_sessionCargoGridHeight = s_serverCargoGridHeight;
 			s_transferController = transferController;
 			s_screenController = screenController;
 			screenController.OnClose += () => OnScreenClosed(generation);
@@ -1220,6 +1257,8 @@ internal static class FireSupportItemTransfer
 		s_sessionPlayer = null;
 		s_transferController = null;
 		s_screenController = null;
+		s_sessionCargoGridWidth = 0;
+		s_sessionCargoGridHeight = 0;
 		RestoreServiceAvailability();
 
 		if (endPointSession && point != null)
@@ -1239,6 +1278,8 @@ internal static class FireSupportItemTransfer
 		s_sessionPoint = null;
 		s_sessionPlayer = null;
 		s_transferController = null;
+		s_sessionCargoGridWidth = 0;
+		s_sessionCargoGridHeight = 0;
 		if (screenController == null)
 		{
 			if (hadSession)
