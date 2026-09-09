@@ -471,7 +471,7 @@ public static class FikaIntegration
 		bool isServer = FikaBackendUtils.IsServer;
 		bool isClient = FikaBackendUtils.IsClient;
 		if (isClient && requestOrigin == FireSupportRequestOrigin.Manual &&
-		    !FireSupportServiceSemantics.SupportsProgression(s_hostServiceSemanticsVersion))
+		    !FireSupportServiceSemantics.SupportsServiceCurrencies(s_hostServiceSemanticsVersion))
 		{
 			return FireSupportNetworkRequestResult.Reject("HostProgressionSemanticsUnsupported");
 		}
@@ -873,7 +873,7 @@ public static class FikaIntegration
 
 			if (request.RequestOrigin == FireSupportRequestOrigin.Manual)
 			{
-				if (!FireSupportServiceSemantics.SupportsProgression(request.ServiceSemanticsVersion))
+				if (!FireSupportServiceSemantics.SupportsServiceCurrencies(request.ServiceSemanticsVersion))
 				{
 					return AuthorityOutcome.Rejected(request, "ProgressionSemanticsUnsupported");
 				}
@@ -1919,7 +1919,8 @@ public static class FikaIntegration
 		s_currentHostSettingsRevision = packet.Revision;
 		s_hostServiceSemanticsVersion = packet.ServiceSemanticsVersion;
 		FireSupportProgression.SetHostSupportsProgression(
-			FireSupportServiceSemantics.SupportsProgression(packet.ServiceSemanticsVersion));
+			FireSupportServiceSemantics.SupportsServiceCurrencies(packet.ServiceSemanticsVersion));
+		FireSupportPayment.SetServiceCurrencies(packet.ServiceCurrencies, synced: true);
 		FireSupportPayment.SetSyncedPaymentCurrency(packet.PaymentCurrency);
 		FireSupportPayment.SetSyncedCosts(
 			packet.StrafeCostRoubles,
@@ -2091,9 +2092,10 @@ public static class FikaIntegration
 			PriorityExfilHelicopterSpeedMultiplier = priorityExfilTiming.SpeedMultiplier,
 			RequestCooldownSeconds = FireSupportTuningSettings.GetRequestCooldown(),
 			PaymentMode = FireSupportPayment.GetActivePaymentMode(),
-			PaymentSource = FireSupportPayment.GetActivePaymentSource(),
+			PaymentSource = FireSupportPayment.GetPaymentSourcePolicy(),
 			ServerConfigUrl = FireSupportServerConfigClient.GetConfiguredServerConfigUrl(),
 			PaymentCurrency = FireSupportPayment.GetActivePaymentCurrency(),
+			ServiceCurrencies = FireSupportPayment.GetServiceCurrencies(),
 			ServiceSemanticsVersion = FireSupportServiceSemantics.CurrentVersion
 		};
 

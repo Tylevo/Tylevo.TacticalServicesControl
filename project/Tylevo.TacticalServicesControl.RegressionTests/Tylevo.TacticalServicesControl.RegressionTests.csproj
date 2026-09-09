@@ -82,6 +82,10 @@
              Link="Production\FireSupportProgressionState.cs" />
     <Compile Include="..\SamSWAT.FireSupport\Unity\PaymentCurrency.cs"
              Link="Production\PaymentCurrency.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\ServicePaymentPolicy.cs"
+             Link="Production\ServicePaymentPolicy.cs" />
+    <Compile Include="..\SamSWAT.FireSupport\Unity\StashCurrencyCoveragePolicy.cs"
+             Link="Production\StashCurrencyCoveragePolicy.cs" />
     <Compile Include="..\SamSWAT.FireSupport\Unity\PaymentMode.cs"
              Link="Production\PaymentMode.cs" />
     <Compile Include="..\SamSWAT.FireSupport\Unity\PaymentSource.cs"

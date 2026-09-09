@@ -20,7 +20,7 @@ internal static class TscPilotQuestlinePolicyTests
 		AssertEx.True(policy.QuestlineRequired);
 		AssertEx.False(progression.HasUnlockedUplink(profile));
 		AssertEx.Throws<InvalidOperationException>(policy.Activate);
-		policy.Initialize(files.Root, "1.3.12", "4.1.5");
+		policy.Initialize(files.Root, "1.3.13", "4.1.5");
 		AssertEx.True(policy.IsInitialized);
 		AssertEx.True(policy.QuestlineRequired);
 		AssertEx.False(policy.IsActive);
@@ -34,11 +34,11 @@ internal static class TscPilotQuestlinePolicyTests
 	{
 		using var files = new AddonFiles(copyAddon: false);
 		var policy = new TscPilotQuestlinePolicy();
-		policy.Initialize(files.Root, "1.3.12", "4.1.5");
+		policy.Initialize(files.Root, "1.3.13", "4.1.5");
 		AssertEx.False(policy.QuestlineRequired);
 		AssertEx.False(policy.IsActive);
 		files.CopyAddon();
-		AssertEx.Throws<InvalidOperationException>(() => policy.Initialize(files.Root, "1.3.12", "4.1.5"));
+		AssertEx.Throws<InvalidOperationException>(() => policy.Initialize(files.Root, "1.3.13", "4.1.5"));
 		AssertEx.False(policy.QuestlineRequired);
 		policy.Activate();
 		AssertEx.True(policy.IsActive);
@@ -66,12 +66,12 @@ internal static class TscPilotQuestlinePolicyTests
 			corrupt(files);
 			var policy = new TscPilotQuestlinePolicy();
 			AssertEx.Contains("incomplete or incompatible", AssertEx.Throws<InvalidOperationException>(
-				() => policy.Initialize(files.Root, "1.3.12", "4.1.5")).Message);
+				() => policy.Initialize(files.Root, "1.3.13", "4.1.5")).Message);
 			AssertEx.True(policy.QuestlineRequired);
 			AssertEx.False(policy.IsInitialized);
 			AssertEx.False(policy.IsActive);
 			AssertEx.Throws<InvalidOperationException>(policy.Activate);
-			AssertEx.Throws<InvalidOperationException>(() => policy.Initialize(files.Root, "1.3.12", "4.1.5"));
+			AssertEx.Throws<InvalidOperationException>(() => policy.Initialize(files.Root, "1.3.13", "4.1.5"));
 		}
 	}
 
@@ -82,7 +82,7 @@ internal static class TscPilotQuestlinePolicyTests
 		Directory.CreateDirectory(System.IO.Path.Combine(files.Root, "addons"));
 		File.WriteAllText(System.IO.Path.Combine(files.Root, TscPilotQuestlinePolicy.AddonRelativePath), "incomplete install");
 		var policy = new TscPilotQuestlinePolicy();
-		AssertEx.Throws<InvalidOperationException>(() => policy.Initialize(files.Root, "1.3.12", "4.1.5"));
+		AssertEx.Throws<InvalidOperationException>(() => policy.Initialize(files.Root, "1.3.13", "4.1.5"));
 		AssertEx.False(policy.IsActive);
 		AssertEx.True(policy.QuestlineRequired);
 	}

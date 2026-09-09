@@ -30,3 +30,7 @@ Current release: **TSC v1.3.12 for SPT 4.1.5**, requiring standalone
 - [Archived releases, draft notes, and older setup guides](archive/README.md)
 
 Older release notes describe their own builds. Use the current guides above for installation and controls.
+
+## Unreleased candidate
+
+[1.3.13 service payment currencies](release-notes-v1.3.13.md) adds GP coins, Bitcoin, and per-service choices.

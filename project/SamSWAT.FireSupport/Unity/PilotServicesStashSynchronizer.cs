@@ -90,9 +90,11 @@ internal static class PilotServicesStashSynchronizer
 			    state.Items.Count > FireSupportStashCurrencyState.MaxItems)
 				return Fail("The server did not return a valid stash currency snapshot.", out reason);
 
+			if (!StashCurrencyCoveragePolicy.TryGetCoveredTemplates(state, out HashSet<string> covered))
+				return Fail("The server returned unsupported stash currency coverage.", out reason);
 			Dictionary<string, Item> stashItems = profile.Inventory.Stash.GetAllItems()
 				.ToDictionary(item => item.Id, StringComparer.OrdinalIgnoreCase);
-			Dictionary<string, Item> localCash = stashItems.Values.Where(IsCurrency)
+			Dictionary<string, Item> localCash = stashItems.Values.Where(item => IsCurrency(item) && covered.Contains(item.StringTemplateId))
 				.ToDictionary(item => item.Id, StringComparer.OrdinalIgnoreCase);
 			Dictionary<string, Item> allItems = profile.Inventory.AllRealPlayerItems
 				.ToDictionary(item => item.Id, StringComparer.OrdinalIgnoreCase);
@@ -101,7 +103,7 @@ internal static class PilotServicesStashSynchronizer
 			foreach (FireSupportStashCurrencyItem item in state.Items)
 			{
 				if (item == null || !IsId(item.Id) || !IsId(item.TemplateId) || !IsId(item.ParentId) ||
-				    !IsCurrencyTemplate(item.TemplateId) || item.StackObjectsCount <= 0 ||
+				    !covered.Contains(item.TemplateId) || item.StackObjectsCount <= 0 ||
 				    string.IsNullOrWhiteSpace(item.SlotId) || item.SlotId.Length > 128 ||
 				    string.IsNullOrWhiteSpace(item.UpdJson) || string.IsNullOrWhiteSpace(item.LocationJson) ||
 				    item.UpdJson.Length > FireSupportStashCurrencyState.MaxMetadataJsonLength ||
@@ -128,6 +130,8 @@ internal static class PilotServicesStashSynchronizer
 				records.Add(item.Id, new ParsedCurrency(item, upd, location));
 			}
 
+			if (localCash.Values.Any(item => item.GetAllItems().Any(child => !ReferenceEquals(child, item))))
+				return Fail("A payment item contains unexpected child items.", out reason);
 			var deleted = new HashSet<string>(localCash.Keys.Where(id => !records.ContainsKey(id)),
 				StringComparer.OrdinalIgnoreCase);
 			var changes = new List<JsonType.FlatItem>();
@@ -163,7 +167,7 @@ internal static class PilotServicesStashSynchronizer
 					return Fail("The local stash cannot place a currency item.", out reason);
 				Item created = Singleton<ItemFactory>.Instance.CreateItem(item.Id, item.TemplateId,
 					new UnparsedData { JToken = parsed.Upd });
-				if (created is not Money || created.StackObjectsCount != item.StackObjectsCount ||
+				if (!IsCurrency(created) || created.GetAllItems().Any(child => !ReferenceEquals(child, created)) || created.StackObjectsCount != item.StackObjectsCount ||
 				    !grid.CheckCompatibility(created))
 					return Fail("The local stash rejected a currency item.", out reason);
 				int width = parsed.Location.r == ItemRotation.Horizontal ? created.Width : created.Height;
@@ -202,7 +206,7 @@ internal static class PilotServicesStashSynchronizer
 				result.Value.RaiseEvents(inventoryController, CommandStatus.Begin);
 				result.Value.RaiseEvents(inventoryController, CommandStatus.Succeed);
 			}
-			Dictionary<string, Item> synchronized = profile.Inventory.Stash.GetAllItems().Where(IsCurrency)
+			Dictionary<string, Item> synchronized = profile.Inventory.Stash.GetAllItems().Where(item => IsCurrency(item) && covered.Contains(item.StringTemplateId))
 				.ToDictionary(item => item.Id, StringComparer.OrdinalIgnoreCase);
 			if (synchronized.Count != records.Count || records.Any(pair =>
 				!synchronized.TryGetValue(pair.Key, out Item item) ||
@@ -224,11 +228,8 @@ internal static class PilotServicesStashSynchronizer
 		backend._unsentCommands != null && backend._unsentCommands.Count == 0 &&
 		backend._incomingOperations != null && backend._incomingOperations.Count == 0 &&
 		backend._waitingOperation == null;
-	private static bool IsCurrency(Item item) => item is Money && IsCurrencyTemplate(item.StringTemplateId);
-	private static bool IsCurrencyTemplate(string templateId) =>
-		SameId(templateId, PaymentCurrencyInfo.RoubleTemplateId) ||
-		SameId(templateId, PaymentCurrencyInfo.DollarTemplateId) ||
-		SameId(templateId, PaymentCurrencyInfo.EuroTemplateId);
+	private static bool IsCurrency(Item item) => item != null && PaymentCurrencyInfo.IsSupportedTemplateId(item.StringTemplateId);
+
 	private static bool SameId(string left, string right) => string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
 	private static bool SameLocation(LocationInGrid left, LocationInGrid right) =>
 		left != null && right != null && left.x == right.x && left.y == right.y && left.r == right.r;

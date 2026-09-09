@@ -245,14 +245,16 @@ public static class FireSupportServerConfigClient
 	public static UniTask<FireSupportPurchaseResponse> PurchaseAuthorizationAsync(
 		ESupportType supportType,
 		PaymentCurrency expectedCurrency,
-		int clientKnownRevision)
+		int clientKnownRevision,
+		string expectedSessionKey,
+		string expectedProfileId)
 	{
 		return SendPurchaseRequestAsync(
 			"BuyAuthorization",
 			supportType,
 			requestId: string.Empty,
-			expectedSessionKey: string.Empty,
-			expectedProfileId: string.Empty,
+			expectedSessionKey: expectedSessionKey,
+			expectedProfileId: expectedProfileId,
 			expectedCost: null,
 			expectedCurrency: expectedCurrency,
 			clientKnownRevision: clientKnownRevision);
@@ -483,7 +485,7 @@ public static class FireSupportServerConfigClient
 		PaymentCurrency expectedCurrency,
 		int clientKnownRevision)
 	{
-		expectedCurrency = PaymentCurrencyInfo.Normalize(expectedCurrency);
+		bool validExpectedCurrency = PaymentCurrencyInfo.TryParse(expectedCurrency.ToString(), out _);
 		var fallback = new FireSupportPurchaseResponse
 		{
 			Ok = false,
@@ -492,12 +494,24 @@ public static class FireSupportServerConfigClient
 			Cost = FireSupportPayment.GetActiveCost(supportType),
 			PaymentSource = nameof(PaymentSource.StashRoubles),
 			Currency = PaymentCurrencyInfo.GetCode(expectedCurrency),
-			NewBalance = FireSupportPayment.GetEffectiveBalance(),
+			NewBalance = FireSupportPayment.GetEffectiveBalance(supportType),
 			AuthorizationGranted = false,
 			ServerRevision = Math.Max(clientKnownRevision, s_hostPurchaseRevision),
 			RequestId = requestId ?? string.Empty
 		};
 
+		bool IsBoundProfile() => !string.IsNullOrWhiteSpace(expectedSessionKey) &&
+			!string.IsNullOrWhiteSpace(expectedProfileId) &&
+			string.Equals(expectedSessionKey, GetAuthenticatedSessionKey(), StringComparison.Ordinal) &&
+			IsAuthenticatedProfile(expectedProfileId);
+		FireSupportPurchaseResponse ProfileChanged()
+		{
+			fallback.Reason = "ProfileSessionChanged";
+			fallback.NewBalance = -1;
+			return fallback;
+		}
+		if (!validExpectedCurrency) { fallback.Reason = "InvalidPaymentCurrency"; return fallback; }
+		if (!IsBoundProfile()) return ProfileChanged();
 		BeginProfileMutation();
 		try
 		{
@@ -509,31 +523,9 @@ public static class FireSupportServerConfigClient
 				return fallback;
 			}
 
-			if (persistentPurchase &&
-			    (string.IsNullOrWhiteSpace(expectedSessionKey) ||
-			     string.IsNullOrWhiteSpace(expectedProfileId) ||
-			     !string.Equals(
-				     expectedSessionKey,
-				     GetAuthenticatedSessionKey(),
-				     StringComparison.Ordinal) ||
-			     !IsAuthenticatedProfile(expectedProfileId)))
-			{
-				fallback.Reason = "ProfileSessionChanged";
-				return fallback;
-			}
-
-			// Persistent menu requests must retain the profile captured when the
-			// user clicked. If RequestHandler switches sessions after this check,
-			// the old profile in the body will fail server-side auth/profile
-			// validation instead of charging the newly selected profile.
-			string profileId = persistentPurchase
-				? expectedProfileId.Trim()
-				: GetLocalProfileId();
-			if (string.IsNullOrWhiteSpace(profileId))
-			{
-				fallback.Reason = "ProfileNotFound";
-				return fallback;
-			}
+			// Both purchase flows retain the initiating profile. A session switch
+			// must never redirect the charge or apply the old profile's response.
+			string profileId = expectedProfileId.Trim();
 
 			var body = new FireSupportPurchaseRequest
 			{
@@ -547,19 +539,11 @@ public static class FireSupportServerConfigClient
 				ExpectedCurrency = PaymentCurrencyInfo.GetCode(expectedCurrency),
 				Quantity = 1
 			};
-			if (persistentPurchase &&
-			    (!string.Equals(
-				     expectedSessionKey,
-				     GetAuthenticatedSessionKey(),
-				     StringComparison.Ordinal) ||
-			     !IsAuthenticatedProfile(profileId)))
-			{
-				fallback.Reason = "ProfileSessionChanged";
-				return fallback;
-			}
+			if (!IsBoundProfile()) return ProfileChanged();
 
 			string responseBody = await SendServerRequestAsync(
 				HttpMethod.Post, "purchase", JsonConvert.SerializeObject(body), CancellationToken.None);
+			if (!IsBoundProfile()) return ProfileChanged();
 			FireSupportPurchaseResponse result = JsonConvert.DeserializeObject<FireSupportPurchaseResponse>(responseBody);
 			if (result == null)
 			{
@@ -571,6 +555,7 @@ public static class FireSupportServerConfigClient
 		}
 		catch (Exception ex)
 		{
+			if (!IsBoundProfile()) return ProfileChanged();
 			FireSupportPlugin.LogSource.LogWarning($"FireSupport purchase request {action} failed. {ex}");
 			fallback.Reason = "RequestFailed";
 			return fallback;
@@ -916,6 +901,7 @@ public static class FireSupportServerConfigClient
 			snapshot.PurchasePersistence?.RefundFailedDispatch != false,
 			snapshot.PurchasePersistence?.SpendCreditsBeforeCash != false,
 			snapshot.PurchasePersistence?.AllowAutoPurchaseOnUse == true);
+		FireSupportPayment.SetStashBalances(snapshot.StashCurrencyBalances);
 		if (snapshot.Authorizations != null)
 		{
 			// A present empty ledger is authoritative and must clear stale credits.
@@ -925,6 +911,7 @@ public static class FireSupportServerConfigClient
 
 	private static void ApplyGlobalSettings(RaidOpsFireSupportServerConfig snapshot, int revision)
 	{
+		FireSupportPayment.SetServiceCurrencies(snapshot.ServiceCurrencies);
 		FireSupportItemTransfer.SetServerCargoGridSize(
 			snapshot.PriorityExfil?.GridWidth ?? 0,
 			snapshot.PriorityExfil?.GridHeight ?? 0);
@@ -1022,6 +1009,12 @@ public static class FireSupportServerConfigClient
 		return FireSupportPayment.GetConfiguredCost(supportType);
 	}
 
+	public static PaymentCurrency GetSnapshotCurrency(RaidOpsFireSupportServerConfig snapshot, ESupportType supportType)
+	{
+		return snapshot != null && ServicePaymentPolicy.TryResolveCurrency(snapshot, supportType, out PaymentCurrency currency)
+			? currency : (PaymentCurrency)(-1);
+	}
+
 	public static PaymentCurrency GetSnapshotCurrency(
 		RaidOpsFireSupportServerConfig snapshot)
 	{
@@ -1058,8 +1051,12 @@ public static class FireSupportServerConfigClient
 			return null;
 		}
 
-		PaymentCurrency normalizedCurrency =
-			PaymentCurrencyInfo.Normalize(currency);
+		if (snapshot.StashCurrencyBalances != null)
+			return snapshot.StashCurrencyBalances.TryGetValue(currency.ToString(), out int balance) && balance >= 0
+				? balance : null;
+
+		if (!PaymentCurrencyInfo.TryParse(currency.ToString(), out _)) return null;
+		PaymentCurrency normalizedCurrency = currency;
 		if (normalizedCurrency != GetSnapshotCurrency(snapshot))
 		{
 			// The generic balance is denominated in the snapshot's one selected

@@ -28,6 +28,8 @@ public sealed class RaidOpsFireSupportServerConfig
 	/// </summary>
 	public int? StashRoubleBalance { get; set; }
 	public Dictionary<string, int> Prices { get; set; } = new();
+	/// <summary>Payment asset by service price key; missing entries inherit PaymentCurrency.</summary>
+	public Dictionary<string, string> ServiceCurrencies { get; set; } = new();
 	public Dictionary<string, bool> Enabled { get; set; } = new();
 	public AdminDashboardSettings AdminDashboard { get; set; } = new();
 	public UavSettings Uav { get; set; } = new();
@@ -39,6 +41,8 @@ public sealed class RaidOpsFireSupportServerConfig
 	public PurchasePersistenceSettings PurchasePersistence { get; set; } = new();
 	public Dictionary<string, int> Authorizations { get; set; } = new();
 	#nullable enable
+	/// <summary>Authenticated stash counts by currency code; null means omitted.</summary>
+	public Dictionary<string, int>? StashCurrencyBalances { get; set; }
 	/// <summary>
 	/// Authenticated, profile-scoped write-ahead purchase records that still
 	/// require recovery. Null means the server omitted the recovery contract;
@@ -52,7 +56,7 @@ public sealed class RaidOpsFireSupportServerConfig
 	/// </summary>
 	public Dictionary<string, FireSupportPreparedPurchaseQuote>? PreparedPurchaseDetails { get; set; }
 	/// <summary>
-	/// Current authenticated stash cash, for native trader inventory reconciliation.
+	/// Current authenticated stash payment items, for native trader inventory reconciliation.
 	/// Null means omitted or invalid; an empty Items list is an authoritative zero.
 	/// </summary>
 	public FireSupportStashCurrencyState? StashCurrencyState { get; set; }
@@ -129,6 +133,11 @@ public sealed class FireSupportProgressionVerifyResponse
 
 public sealed class FireSupportStashCurrencyState
 {
+	public const int CurrentSchemaVersion = 1;
+	/// <summary>Zero identifies a legacy snapshot covering only RUB, USD and EUR.</summary>
+	public int SchemaVersion { get; set; }
+	/// <summary>Templates for which Items is complete, including authoritative zero balances.</summary>
+	public List<string> CoveredTemplateIds { get; set; } = new();
 	public const int MaxItems = 4096;
 	public const int MaxMetadataJsonLength = 16384;
 	public const int MaxTotalMetadataJsonLength = 4 * 1024 * 1024;

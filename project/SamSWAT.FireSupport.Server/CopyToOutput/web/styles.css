@@ -529,6 +529,28 @@ select:focus,
 	align-self: end;
 }
 
+.pricing-card {
+	grid-template-rows: auto auto auto;
+}
+
+.pricing-card .service-summary {
+	min-height: 34px;
+}
+
+.pricing-card .field-row {
+	grid-column: 1 / -1;
+	grid-template-columns: minmax(0, 1fr);
+	gap: 6px;
+	min-height: 0;
+	padding: 0;
+	border: 0;
+	background: none;
+}
+
+.pricing-card .field-row::after {
+	display: none;
+}
+
 .control-wrap {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr);

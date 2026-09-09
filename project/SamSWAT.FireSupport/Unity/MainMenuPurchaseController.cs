@@ -497,19 +497,19 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 		price = snapshot == null
 			? -1
 			: GetPrice(snapshot, descriptor.ConfigKey);
-		currency = FireSupportServerConfigClient.GetSnapshotCurrency(snapshot);
+		currency = FireSupportServerConfigClient.GetSnapshotCurrency(snapshot, descriptor.Type);
 		recoveredPreparedQuote = false;
 
 		if (snapshot == null || string.IsNullOrWhiteSpace(preparedRequestId))
 		{
-			return price >= 0;
+			return price >= 0 && PaymentCurrencyInfo.TryParse(currency.ToString(), out _);
 		}
 
 		if (snapshot.PreparedPurchaseDetails == null)
 		{
 			// Legacy snapshots expose only the request ID. Preserve their
 			// recovery behavior by retrying against the current list terms.
-			return price >= 0;
+			return price >= 0 && PaymentCurrencyInfo.TryParse(currency.ToString(), out _);
 		}
 
 		if (snapshot.PreparedPurchaseDetails.TryGetValue(
@@ -625,7 +625,8 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 		retryAmbiguousPurchase = hasAmbiguousPurchase && _ambiguousType == supportType;
 		if ((hasAmbiguousPurchase && !retryAmbiguousPurchase) ||
 		    (!retryAmbiguousPurchase &&
-		     (!GetEnabled(_snapshot, descriptor.ConfigKey) ||
+		     (!HasMenuPaymentSource(_snapshot, supportType) ||
+		      !GetEnabled(_snapshot, descriptor.ConfigKey) ||
 		      GetPrice(_snapshot, descriptor.ConfigKey) < 0 ||
 		      GetOwned(_snapshot, descriptor.ConfigKey) >= GetMaximum(_snapshot))))
 		{
@@ -757,7 +758,7 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 		}
 
 		PaymentCurrency snapshotCurrency =
-			FireSupportServerConfigClient.GetSnapshotCurrency(_snapshot);
+			FireSupportServerConfigClient.GetSnapshotCurrency(_snapshot, supportType);
 		bool responseCurrencyMatches =
 			string.IsNullOrWhiteSpace(response.Currency)
 				? snapshotCurrency == PaymentCurrency.RUB
@@ -767,7 +768,10 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 				  responseCurrency == snapshotCurrency;
 		if (responseCurrencyMatches && response.NewBalance >= 0)
 		{
-			_snapshot.StashCurrencyBalance = response.NewBalance;
+			_snapshot.StashCurrencyBalances ??= new Dictionary<string, int>();
+			_snapshot.StashCurrencyBalances[snapshotCurrency.ToString()] = response.NewBalance;
+			if (snapshotCurrency == FireSupportServerConfigClient.GetSnapshotCurrency(_snapshot))
+				_snapshot.StashCurrencyBalance = response.NewBalance;
 			if (snapshotCurrency == PaymentCurrency.RUB)
 			{
 				_snapshot.StashRoubleBalance = response.NewBalance;
@@ -796,7 +800,7 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 		}
 
 		PaymentCurrency currency =
-			FireSupportServerConfigClient.GetSnapshotCurrency(_snapshot);
+			FireSupportServerConfigClient.GetSnapshotCurrency(_snapshot, _selectedService);
 		int? stashBalance =
 			FireSupportServerConfigClient.GetSnapshotStashBalance(_snapshot, currency);
 		_balanceText.text = stashBalance is int balance
@@ -827,6 +831,7 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 				GetEnabled(_snapshot, service.ConfigKey);
 			int owned = hasSnapshot ? GetOwned(_snapshot, service.ConfigKey) : 0;
 			int price = hasSnapshot ? GetPrice(_snapshot, service.ConfigKey) : -1;
+			bool currencyValid = ServicePaymentPolicy.TryResolveCurrency(_snapshot, service.Type, out PaymentCurrency serviceCurrency);
 			bool atLimit = hasSnapshot && maximum > 0 && owned >= maximum;
 			bool pending = _purchasePending && _pendingType == service.Type;
 			bool hasAmbiguousPurchase = !string.IsNullOrWhiteSpace(_ambiguousRequestId);
@@ -840,15 +845,15 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 				? "OUTCOME UNKNOWN"
 				: !locallyAvailable
 					? localRestrictionStatus
-					: !hasSnapshot ? "SYNC" : !enabled ? "LOCKED" : atLimit ? "LIMIT REACHED" : "AVAILABLE";
+					: !hasSnapshot ? "SYNC" : !currencyValid ? "CURRENCY INVALID" : !enabled ? "LOCKED" : atLimit ? "LIMIT REACHED" : "AVAILABLE";
 			row.State.color = retryAmbiguousPurchase
 				? s_amberHigh
 				: !hasSnapshot ? s_muted
 				: !enabled || atLimit ? s_red
 				: s_greenHigh;
-			row.Price.text = price >= 0
-				? PaymentCurrencyInfo.Format(price, currency)
-				: "--";
+			row.Price.text = price >= 0 && currencyValid
+				? PaymentCurrencyInfo.Format(price, serviceCurrency)
+				: "UNAVAILABLE";
 			row.Price.color = price >= 0 ? s_amberHigh : s_muted;
 			row.Owned.text = hasSnapshot ? $"{owned} / {maximum}" : "-- / --";
 			row.CanPurchase =
@@ -857,7 +862,7 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 				!_purchasePending &&
 				!IsPurchaseConfirmationOpen &&
 				(retryAmbiguousPurchase ||
-				 (!hasAmbiguousPurchase && enabled && !atLimit));
+				 (!hasAmbiguousPurchase && enabled && !atLimit && HasMenuPaymentSource(_snapshot, service.Type)));
 			row.Select.interactable = !IsPurchaseConfirmationOpen;
 			row.ActionLabel =
 				pending
@@ -952,13 +957,7 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 			reason = "Server omitted the authoritative stash balance or authorization ledger.";
 			return false;
 		}
-		if ((!Enum.TryParse(snapshot.PaymentSource, true, out PaymentSource source) ||
-		     source == PaymentSource.CarriedRoubles) &&
-		    !hasPreparedPurchase)
-		{
-			reason = "Pre-raid buying requires a server-backed stash payment source.";
-			return false;
-		}
+
 		if (snapshot.PurchasePersistence.MaxStoredAuthorizationsPerService <= 0 &&
 		    !hasPreparedPurchase)
 		{
@@ -967,6 +966,12 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 		}
 		foreach (ServiceDescriptor service in s_services)
 		{
+			if (!ServicePaymentPolicy.TryResolveCurrency(snapshot, service.Type, out PaymentCurrency serviceCurrency) ||
+			    !FireSupportServerConfigClient.GetSnapshotStashBalance(snapshot, serviceCurrency).HasValue)
+			{
+				reason = $"Server omitted valid currency or stash balance for {service.DisplayName}.";
+				return false;
+			}
 			if (snapshot.Prices == null ||
 			    !snapshot.Prices.TryGetValue(service.ConfigKey, out int price) ||
 			    price < 0)
@@ -1028,7 +1033,7 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 						requestId,
 						service.Type,
 						currentPrice,
-						FireSupportServerConfigClient.GetSnapshotCurrency(snapshot));
+						FireSupportServerConfigClient.GetSnapshotCurrency(snapshot, service.Type));
 					return true;
 				}
 
@@ -1217,7 +1222,7 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 			"PurchasePersistenceDisabled" => "Server purchase persistence is disabled.",
 			"PurchaseQuoteChanged" => "Price changed on the server. Review the updated quote and confirm again.",
 			"PurchaseCurrencyMismatch" => "Currency changed on the server. Refresh and confirm again.",
-			"InvalidPaymentCurrency" => "Server currency is invalid. Select RUB, USD, or EUR in the dashboard.",
+			"InvalidPaymentCurrency" => "Server currency is invalid. Select RUB, USD, EUR, GP, or BTC in the dashboard.",
 			"ProfileSessionChanged" => "Backend profile changed; reopen the page.",
 			_ => $"Purchase denied: {reason}"
 		};
@@ -1234,6 +1239,13 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 		}
 
 		return s_services[0];
+	}
+
+	private static bool HasMenuPaymentSource(RaidOpsFireSupportServerConfig snapshot, ESupportType type)
+	{
+		return snapshot != null && ServicePaymentPolicy.TryResolveCurrency(snapshot, type, out PaymentCurrency currency) &&
+			Enum.TryParse(snapshot.PaymentSource, true, out PaymentSource source) &&
+			ServicePaymentPolicy.GetPaymentSource(source, currency) != PaymentSource.CarriedRoubles;
 	}
 
 	private static int GetPrice(RaidOpsFireSupportServerConfig snapshot, string key)

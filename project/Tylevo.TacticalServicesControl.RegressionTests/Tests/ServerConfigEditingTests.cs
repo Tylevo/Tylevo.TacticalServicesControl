@@ -305,6 +305,28 @@ internal static class ServerConfigEditingTests
 		AssertEx.Equal(before, rig.ReadDiskText());
 	}
 
+	[RegressionTest]
+	private static void InvalidServiceCurrenciesCannotBeAppliedOrPersistedAsInheritedValues()
+	{
+		using var rig = new ServerConfigTestRig();
+		foreach (string? invalid in new[] { "", "unknown-item", "InheritGlobal", null })
+		{
+			var config = rig.Service.GetConfigSnapshot();
+			config.ServiceCurrencies["A10"] = invalid!;
+			string before = rig.ReadDiskText();
+			AssertEx.False(rig.Service.TryUpdateConfig(config, out string error, config.Revision));
+			AssertEx.Contains("serviceCurrencies.A10", error);
+			AssertEx.Equal(before, rig.ReadDiskText());
+			AssertEx.Equal("Inherit", rig.Service.GetConfigSnapshot().ServiceCurrencies["A10"]);
+		}
+		foreach (string invalidKey in new[] { "UnknownService", "a10" })
+		{
+			var config = rig.Service.GetConfigSnapshot();
+			config.ServiceCurrencies[invalidKey] = "GP";
+			AssertEx.False(rig.Service.TryUpdateConfig(config, out _, config.Revision));
+		}
+	}
+
 	private static void AssertNoTemporaryFiles(ServerConfigTestRig rig)
 	{
 		AssertEx.Equal(0, Directory.GetFiles(Path.GetDirectoryName(rig.ConfigPath)!, "*.tmp").Length);

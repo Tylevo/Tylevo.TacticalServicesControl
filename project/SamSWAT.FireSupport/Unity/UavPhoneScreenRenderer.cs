@@ -25,7 +25,7 @@ public readonly struct UavPhoneScreenContext
 			costRoubles,
 			balanceRoubles,
 			durationSeconds,
-			FireSupportPayment.GetActivePaymentCurrency())
+			FireSupportPayment.GetActivePaymentCurrency(supportType))
 	{
 	}
 
@@ -40,7 +40,7 @@ public readonly struct UavPhoneScreenContext
 		Cost = cost;
 		Balance = balance;
 		DurationSeconds = durationSeconds;
-		Currency = PaymentCurrencyInfo.Normalize(currency);
+		Currency = currency;
 	}
 
 	public ESupportType SupportType { get; }
@@ -2208,11 +2208,11 @@ public sealed partial class UavPhoneScreenRenderer : MonoBehaviour
 			"priority_exfil" => FormatServicePrice(ESupportType.PriorityExfil),
 			"uav" => FormatServicePrice(ESupportType.Uav),
 			"focused_sweep" => FormatServicePrice(ESupportType.FocusedSweep),
-			"carried_roubles" => FormatLayoutCurrency(FireSupportPayment.GetEffectiveBalance()),
-			"carried_currency" => FormatLayoutCurrency(FireSupportPayment.GetEffectiveBalance()),
-			"effective_roubles" => FormatLayoutCurrency(FireSupportPayment.GetEffectiveBalance()),
-			"effective_currency" => FormatLayoutCurrency(FireSupportPayment.GetEffectiveBalance()),
-			"effective_balance" => FormatLayoutCurrency(FireSupportPayment.GetEffectiveBalance()),
+			"carried_roubles" => FormatLayoutCurrency(FireSupportPayment.GetEffectiveBalance(_context.SupportType)),
+			"carried_currency" => FormatLayoutCurrency(FireSupportPayment.GetEffectiveBalance(_context.SupportType)),
+			"effective_roubles" => FormatLayoutCurrency(FireSupportPayment.GetEffectiveBalance(_context.SupportType)),
+			"effective_currency" => FormatLayoutCurrency(FireSupportPayment.GetEffectiveBalance(_context.SupportType)),
+			"effective_balance" => FormatLayoutCurrency(FireSupportPayment.GetEffectiveBalance(_context.SupportType)),
 			"duration" => FormatDynamicDuration(field.Format),
 			"coverage_radius" => FormatCoverageRadius(),
 			_ => string.Empty
@@ -2240,7 +2240,7 @@ public sealed partial class UavPhoneScreenRenderer : MonoBehaviour
 		return FireSupportServiceAvailability.IsServiceEnabled(supportType)
 			? FormatLayoutCurrency(
 				FireSupportPayment.GetActiveCost(supportType),
-				FireSupportPayment.GetActivePaymentCurrency())
+				FireSupportPayment.GetActivePaymentCurrency(supportType))
 			: "LOCKED";
 	}
 
@@ -2265,6 +2265,8 @@ public sealed partial class UavPhoneScreenRenderer : MonoBehaviour
 			return "SYNC";
 		}
 
+		if (!PaymentCurrencyInfo.TryParse(currency.ToString(), out _)) return "UNAVAILABLE";
+		if (PaymentCurrencyInfo.IsStashOnly(currency)) return PaymentCurrencyInfo.FormatCode(amount, currency);
 		return PaymentCurrencyInfo.GetSymbol(currency) +
 		       " " +
 		       Mathf.Max(0, amount).ToString("N0", CultureInfo.InvariantCulture).Replace(',', ' ');
@@ -2490,9 +2492,9 @@ public sealed partial class UavPhoneScreenRenderer : MonoBehaviour
 			new UavPhoneScreenContext(
 				_context.SupportType,
 				FireSupportPayment.GetActiveCost(_context.SupportType),
-				FireSupportPayment.GetEffectiveBalance(),
+				FireSupportPayment.GetEffectiveBalance(_context.SupportType),
 				UavReconSettings.GetDurationSeconds(_context.SupportType),
-				FireSupportPayment.GetActivePaymentCurrency()),
+				FireSupportPayment.GetActivePaymentCurrency(_context.SupportType)),
 			_currentState);
 	}
 
@@ -2776,7 +2778,7 @@ public sealed partial class UavPhoneScreenRenderer : MonoBehaviour
 		AddText(card, FireSupportServiceAvailability.IsServiceEnabled(supportType)
 				? FormatCurrency(
 					FireSupportPayment.GetActiveCost(supportType),
-					FireSupportPayment.GetActivePaymentCurrency())
+					FireSupportPayment.GetActivePaymentCurrency(supportType))
 				: "LOCKED",
 			18,
 			FontStyle.Bold,
@@ -3348,7 +3350,7 @@ public sealed partial class UavPhoneScreenRenderer : MonoBehaviour
 			return "SYNC";
 		}
 
-		return PaymentCurrencyInfo.Format(amount, currency);
+		return PaymentCurrencyInfo.TryParse(currency.ToString(), out _) ? PaymentCurrencyInfo.Format(amount, currency) : "UNAVAILABLE";
 	}
 
 	private static Color Teal()

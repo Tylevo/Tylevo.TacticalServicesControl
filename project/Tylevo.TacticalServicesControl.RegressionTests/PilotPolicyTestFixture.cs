@@ -6,7 +6,7 @@ internal static class PilotPolicyTestFixture
 	{
 		var policy = new TscPilotQuestlinePolicy();
 		policy.Initialize(questlineRequired ? RepositoryRoot : Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")),
-			"1.3.12", "4.1.5");
+			"1.3.13", "4.1.5");
 		policy.Activate();
 		return policy;
 	}

@@ -2,11 +2,19 @@
 
 Call in an A-10 strike, arrange a helicopter extraction or cargo pickup, and locate nearby contacts with UAV reconnaissance. Control your support from the TerraGroup TSC Uplink phone.
 
-**TSC v1.3.12 Public Beta · SPT 4.1.5 / EFT 0.16.9.5.40743**
+**TSC v1.3.13 development candidate · SPT 4.1.5 / EFT 0.16.9.5.40743**
 
-[Release notes](docs/release-notes-v1.3.12.md) · [Installation guide](docs/dependencies.md) · [TSC releases](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases)
+[Candidate notes](docs/release-notes-v1.3.13.md) · [Installation guide](docs/dependencies.md) · [TSC releases](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases)
 
 Install **UnityToolkit 2.0.2** and **WTT CommonLib 3.0.6** separately. **Fika support is included, but multiplayer on the current SPT/Fika versions has not been tested.**
+
+## Next version: per-service payment currencies
+
+Select RUB, USD, EUR, GP coins, or Bitcoin separately for each service in SIC
+or the dashboard. Existing services inherit the global currency. GP and BTC
+are consumed from the PMC stash, including eligible items inside stash containers;
+cash retains its configured wallet. Prices are whole units, with no automatic
+conversion when changing currencies. See the [unreleased candidate notes](docs/release-notes-v1.3.13.md).
 
 ## What's new in 1.3.12?
 

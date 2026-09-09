@@ -3,7 +3,7 @@ namespace SamSWAT.FireSupport.ArysReloaded.Unity;
 public static class FireSupportProgression
 {
 	public const string LockedMessage = "Complete Back on the Air for Pilot";
-	public const string HostUpgradeMessage = "The Fika host must update TSC to support Pilot progression";
+	public const string HostUpgradeMessage = "All Fika players must update TSC to support service currencies";
 	private static readonly FireSupportProgressionState s_state = new();
 	private static bool s_hostSupportsProgression;
 

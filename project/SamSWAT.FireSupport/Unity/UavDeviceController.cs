@@ -2850,7 +2850,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 		return new UavPhoneScreenContext(
 			_selectedSupportType,
 			FireSupportPayment.GetActiveCost(_selectedSupportType),
-			FireSupportPayment.GetEffectiveBalance(),
+			FireSupportPayment.GetEffectiveBalance(_selectedSupportType),
 			UavReconSettings.GetDurationSeconds(_selectedSupportType));
 	}
 

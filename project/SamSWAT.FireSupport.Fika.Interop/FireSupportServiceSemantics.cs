@@ -20,7 +20,10 @@ public static class FireSupportServiceSemantics
 
 	/// <summary>Manual tasking requires a server-verified profile permission.</summary>
 	public const int ProgressionVersion = 2;
-	public const int CurrentVersion = ProgressionVersion;
+	/// <summary>Service-specific currencies and stash-only GP/BTC payments.</summary>
+	public const int ServiceCurrencyVersion = 3;
+	public const int CurrentVersion = ServiceCurrencyVersion;
+	public static bool SupportsServiceCurrencies(int version) => version == CurrentVersion;
 
 	public static bool SupportsProgression(int version) => version >= ProgressionVersion;
 

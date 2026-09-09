@@ -853,7 +853,7 @@ internal static class SeasonalIntegrationSourceContractTests
 		AssertEx.Contains("!locallyAvailable", redraw);
 		AssertEx.Contains("? localRestrictionStatus", redraw);
 		AssertEx.Contains("row.CanPurchase =", redraw);
-		AssertEx.Contains("(!hasAmbiguousPurchase && enabled && !atLimit)", redraw);
+		AssertEx.Contains("(!hasAmbiguousPurchase && enabled && !atLimit && HasMenuPaymentSource(_snapshot, service.Type))", redraw);
 		AssertEx.False(
 			redraw.Contains("SetActive(false)", StringComparison.Ordinal) ||
 			redraw.Contains("Destroy(row", StringComparison.Ordinal),

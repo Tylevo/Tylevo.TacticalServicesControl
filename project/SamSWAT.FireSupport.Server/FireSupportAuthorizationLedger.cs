@@ -1587,7 +1587,7 @@ public sealed partial class FireSupportAuthorizationLedger(
 	private static bool TryNormalizeCurrency(string? currency, out string canonicalCurrency)
 	{
 		canonicalCurrency = currency?.Trim().ToUpperInvariant() ?? string.Empty;
-		if (canonicalCurrency is "RUB" or "USD" or "EUR")
+		if (canonicalCurrency is "RUB" or "USD" or "EUR" or "GP" or "BTC")
 		{
 			return true;
 		}

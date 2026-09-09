@@ -120,6 +120,7 @@ public sealed class FireSupportConfigEditorProvider(
 		destination.PaymentMode = source.PaymentMode;
 		destination.PaymentSource = source.PaymentSource;
 		destination.PaymentCurrency = source.PaymentCurrency;
+		destination.ServiceCurrencies = new Dictionary<string, string>(source.ServiceCurrencies);
 		destination.RequestCooldownSeconds = source.RequestCooldownSeconds;
 		destination.Prices = new Dictionary<string, int>(source.Prices);
 		destination.Enabled = new Dictionary<string, bool>(source.Enabled);
@@ -145,6 +146,9 @@ public sealed class FireSupportConfigEditorView
 
 	[JsonPropertyName("paymentCurrency")]
 	public string PaymentCurrency { get; set; } = string.Empty;
+
+	[JsonPropertyName("serviceCurrencies")]
+	public Dictionary<string, string> ServiceCurrencies { get; set; } = new();
 
 	[JsonPropertyName("requestCooldownSeconds")]
 	public int RequestCooldownSeconds { get; set; }
@@ -182,6 +186,7 @@ public sealed class FireSupportConfigEditorView
 			PaymentMode = config.PaymentMode,
 			PaymentSource = config.PaymentSource,
 			PaymentCurrency = config.PaymentCurrency,
+			ServiceCurrencies = new Dictionary<string, string>(config.ServiceCurrencies),
 			RequestCooldownSeconds = config.RequestCooldownSeconds,
 			Prices = new Dictionary<string, int>(config.Prices),
 			Enabled = new Dictionary<string, bool>(config.Enabled),
@@ -197,7 +202,7 @@ public sealed class FireSupportConfigEditorView
 
 	public RaidOpsFireSupportServerConfig ApplyTo(RaidOpsFireSupportServerConfig config)
 	{
-		if (Prices is null || Enabled is null || PurchasePersistence is null || Uav is null
+		if (Prices is null || ServiceCurrencies is null || Enabled is null || PurchasePersistence is null || Uav is null
 			|| FocusedSweep is null || Extraction is null || PriorityExfil is null || DoublePass is null)
 		{
 			throw new InvalidOperationException(
@@ -207,6 +212,7 @@ public sealed class FireSupportConfigEditorView
 		config.PaymentMode = PaymentMode;
 		config.PaymentSource = PaymentSource;
 		config.PaymentCurrency = PaymentCurrency;
+		config.ServiceCurrencies = new Dictionary<string, string>(ServiceCurrencies);
 		config.RequestCooldownSeconds = RequestCooldownSeconds;
 		config.Prices = new Dictionary<string, int>(Prices);
 		config.Enabled = new Dictionary<string, bool>(Enabled);

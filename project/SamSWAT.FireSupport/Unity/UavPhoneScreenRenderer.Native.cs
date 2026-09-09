@@ -143,12 +143,12 @@ public sealed partial class UavPhoneScreenRenderer
 	private void NativeWallet(NativeLayout layout, float x = 32, float y = 491, float width = 460)
 	{
 		NativeText(layout, "", 14, NativeMuted, x, y, width, 21, true, live:
-			() => FireSupportPayment.GetEffectiveBalanceLabel().ToUpperInvariant());
+			() => FireSupportPayment.GetEffectiveBalanceLabel(_context.SupportType).ToUpperInvariant());
 		NativeText(layout, "", 25, NativeInk, x, y + 23, width, 33, true, live: NativeBalance);
 	}
 
-	private static string NativeMoney(int amount) => FormatCurrency(amount, FireSupportPayment.GetActivePaymentCurrency());
-	private static string NativeBalance() => NativeMoney(FireSupportPayment.GetEffectiveBalance());
+	private string NativeMoney(int amount) => FormatCurrency(amount, FireSupportPayment.GetActivePaymentCurrency(_context.SupportType));
+	private string NativeBalance() => NativeMoney(FireSupportPayment.GetEffectiveBalance(_context.SupportType));
 	private static string NativeInputHint()
 	{
 		if (!(PluginSettings.PhoneMouseEnabled?.Value ?? true)) return "KEYBOARD CONTROLS";
@@ -156,7 +156,7 @@ public sealed partial class UavPhoneScreenRenderer
 		string label = key == KeyCode.LeftAlt || key == KeyCode.RightAlt ? "ALT" : key.ToString().ToUpperInvariant();
 		return key == KeyCode.None ? "KEYBOARD CONTROLS" : $"HOLD {label} + MOUSE";
 	}
-	private static string NativePrice(ESupportType type) => NativeMoney(FireSupportPayment.GetActiveCost(type));
+	private static string NativePrice(ESupportType type) => FormatCurrency(FireSupportPayment.GetActiveCost(type), FireSupportPayment.GetActivePaymentCurrency(type));
 	private static string NativeServiceIcon(ESupportType type) => type switch
 	{
 		ESupportType.Extract => "extraction",
@@ -203,7 +203,7 @@ public sealed partial class UavPhoneScreenRenderer
 	private string NativeConfirmLabel()
 	{
 		if (!NativeAvailable(_context.SupportType)) return "SERVICE LOCKED";
-		if (FireSupportPayment.GetEffectiveBalance() < 0 && FireSupportPayment.GetActiveCost(_context.SupportType) > 0) return "BALANCE SYNCING";
+		if (FireSupportPayment.GetEffectiveBalance(_context.SupportType) < 0 && FireSupportPayment.GetActiveCost(_context.SupportType) > 0) return "BALANCE SYNCING";
 		return NativeCanConfirm() ? "CONFIRM PURCHASE  >" : "INSUFFICIENT FUNDS";
 	}
 
@@ -323,7 +323,7 @@ public sealed partial class UavPhoneScreenRenderer
 		NativeText(layout, _context.SupportType == ESupportType.PriorityExfil ? "DISPATCH AUTHORIZATION" : "AUTHORIZATION COST", 14, NativeMuted, 599, 230, 371, 28, true);
 		NativeText(layout, "", 38, NativeAmber, 599, 265, 371, 53, true, live: () => NativePrice(_context.SupportType));
 		AddLine(layout.Root, layout.R(599, 329, 371, 1), NativeLine);
-		NativeText(layout, "", 13, NativeMuted, 599, 343, 371, 25, true, live: () => FireSupportPayment.GetEffectiveBalanceLabel().ToUpperInvariant());
+		NativeText(layout, "", 13, NativeMuted, 599, 343, 371, 25, true, live: () => FireSupportPayment.GetEffectiveBalanceLabel(_context.SupportType).ToUpperInvariant());
 		NativeText(layout, "", 25, NativeInk, 599, 372, 371, 34, true, live: NativeBalance);
 		NativeText(layout, "", 15, NativeGreen, 599, 423, 371, 25, true, live: () => NativeCanConfirm() ? "PAYMENT AVAILABLE" : NativeConfirmLabel());
 		NativeText(layout, "", 14, NativeMuted, 32, 482, 489, 66, live: NativePurchaseNote);
@@ -347,7 +347,7 @@ public sealed partial class UavPhoneScreenRenderer
 		NativeText(layout, _context.SupportType == ESupportType.PriorityExfil ? "DISPATCH AUTHORIZATION" : "AUTHORIZATION COST", 14, NativeMuted, 42, 457, 492, 27, true, TextAnchor.MiddleCenter);
 		NativeText(layout, "", 42, NativeAmber, 42, 491, 492, 60, true, TextAnchor.MiddleCenter, () => NativePrice(_context.SupportType));
 		NativeBox(layout, 42, 581, 492, 95);
-		NativeText(layout, "", 13, NativeMuted, 60, 592, 456, 26, true, live: () => FireSupportPayment.GetEffectiveBalanceLabel().ToUpperInvariant());
+		NativeText(layout, "", 13, NativeMuted, 60, 592, 456, 26, true, live: () => FireSupportPayment.GetEffectiveBalanceLabel(_context.SupportType).ToUpperInvariant());
 		NativeText(layout, "", 24, NativeInk, 60, 624, 296, 35, true, live: NativeBalance);
 		NativeText(layout, "", 14, NativeGreen, 358, 624, 158, 35, true, TextAnchor.MiddleRight, () => NativeHeld(_context.SupportType));
 		return layout;

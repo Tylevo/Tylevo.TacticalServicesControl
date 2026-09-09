@@ -1,0 +1,77 @@
+{
+  "configSchemaVersion": 4,
+  "revision": 1,
+  "paymentMode": "PhoneAuthorizations",
+  "paymentSource": "CarriedRoubles",
+  "paymentCurrency": "RUB",
+  "requestCooldownSeconds": 300,
+  "prices": {
+    "A10": 250000,
+    "DoublePass": 450000,
+    "Extraction": 300000,
+    "PriorityExfil": 450000,
+    "Uav": 125000,
+    "FocusedSweep": 90000
+  },
+  "enabled": {
+    "A10": true,
+    "DoublePass": true,
+    "Extraction": true,
+    "PriorityExfil": true,
+    "Uav": true,
+    "FocusedSweep": true
+  },
+  "adminDashboard": {
+    "enabled": true,
+    "allowRemoteAccess": false,
+    "requireTokenForLocalhost": false
+  },
+  "purchasePersistence": {
+    "enabled": true,
+    "mode": "PersistentAuthorizations",
+    "consumeOn": "AuthorizationAccepted",
+    "refundFailedDispatch": true,
+    "maxStoredAuthorizationsPerService": 2,
+    "pendingUseTimeoutSeconds": 180,
+    "spendCreditsBeforeCash": true,
+    "allowAutoPurchaseOnUse": true
+  },
+  "uav": {
+    "durationSeconds": 480,
+    "rangeMeters": 200,
+    "scanIntervalSeconds": 5
+  },
+  "focusedSweep": {
+    "durationSeconds": 90,
+    "rangeMeters": 100,
+    "scanIntervalSeconds": 0.75
+  },
+  "extraction": {
+    "dispatchDelaySeconds": 8,
+    "waitTimeSeconds": 30,
+    "extractTimeSeconds": 10,
+    "speedMultiplier": 1
+  },
+  "priorityExfil": {
+    "gridWidth": 0,
+    "gridHeight": 0,
+    "dispatchDelaySeconds": 3,
+    "waitTimeSeconds": 20,
+    "extractTimeSeconds": 10,
+    "speedMultiplier": 1.35
+  },
+  "a10": {
+    "secondPassDelaySeconds": 0
+  },
+  "doublePass": {
+    "secondPassDelaySeconds": 14
+  },
+  "serviceCurrencies": {
+    "A10": "Inherit",
+    "DoublePass": "Inherit",
+    "Extraction": "Inherit",
+    "PriorityExfil": "Inherit",
+    "Uav": "Inherit",
+    "FocusedSweep": "Inherit"
+  }
+}

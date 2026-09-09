@@ -92,6 +92,8 @@ async function dashboard(configOverrides = {}) {
 		onRequest: null,
 		serverConfig: {
 			revision: 7, requestCooldownSeconds: 30, paymentCurrency: "RUB", paymentSource: "StashRoubles",
+			prices: { A10: 100000, DoublePass: 150000, Uav: 10000, FocusedSweep: 15000, Extraction: 50000, PriorityExfil: 30000 },
+			serviceCurrencies: { A10: "Inherit", DoublePass: "Inherit", Uav: "Inherit", FocusedSweep: "Inherit", Extraction: "Inherit", PriorityExfil: "Inherit" },
 			priorityExfil: { gridWidth: 0, gridHeight: 0, waitTimeSeconds: 60 },
 			...configOverrides
 		}
@@ -100,6 +102,14 @@ async function dashboard(configOverrides = {}) {
 		{ id: "main", label: "Main", fields: [
 			{ path: "requestCooldownSeconds", label: "Request cooldown", type: "number", min: 0, max: 300 }
 		] },
+		{ id: "payment", label: "Payment", fields: [
+			{ path: "paymentCurrency", label: "Payment Currency", type: "select", options: ["RUB", "USD", "EUR", "GP", "BTC"] },
+			{ path: "paymentSource", label: "Payment Source", type: "select", options: ["CarriedRoubles", "StashRoubles", "PreferCarriedThenStash", "PreferStashThenCarried"] }
+		] },
+		{ id: "pricing", label: "Service Pricing", fields: ["A10", "DoublePass", "Uav", "FocusedSweep", "Extraction", "PriorityExfil"].flatMap((key) => [
+			{ path: `prices.${key}`, label: `${key} Price`, type: "number", min: 0, max: 10000000, step: 1, slider: true },
+			{ path: `serviceCurrencies.${key}`, label: `${key} Currency`, type: "select", options: ["Inherit", "RUB", "USD", "EUR", "GP", "BTC"] }
+		]) },
 		{ id: "extraction", label: "UH-60 Services", fields: [
 			{ path: "priorityExfil.gridWidth", label: "Cargo Grid Columns", type: "number", min: 0, max: 10, step: 1 },
 			{ path: "priorityExfil.gridHeight", label: "Cargo Grid Rows", type: "number", min: 0, max: 30, step: 1 }
@@ -125,6 +135,13 @@ async function dashboard(configOverrides = {}) {
 		assert.ok(input, "The real schema should render an editable input");
 		input.value = String(value);
 		input.dispatchEvent({ type: "input" });
+	};
+	fixture.select = (path) => descendants(fixture.field(path)).find((element) => element.tagName === "select");
+	fixture.choose = (value, path) => {
+		const select = fixture.select(path);
+		assert.ok(select);
+		select.value = value;
+		select.dispatchEvent({ type: "change" });
 	};
 	runInNewContext(source, {
 		document: {
@@ -341,4 +358,57 @@ test("cargo dimension edits save only whole values within the schema bounds", as
 		assert.equal(Number(app.input("priorityExfil.gridWidth").value), expectedWidth);
 		assert.equal(Number(app.input("priorityExfil.gridHeight").value), expectedHeight);
 	}
+});
+
+test("mixed service currencies show paired controls and coin quantities without cash sliders", async () => {
+	const app = await dashboard({ serviceCurrencies: { A10: "GP", Extraction: "BTC", Uav: "RUB" } });
+	const cards = descendants(app.elements.formRoot).filter((element) => element.className.includes("pricing-card"));
+	assert.equal(cards.length, 6);
+	for (const [key, currency] of [["A10", "GP"], ["Extraction", "BTC"], ["Uav", "RUB"]]) {
+		const price = app.field(`prices.${key}`);
+		assert.equal(descendants(price).find((element) => element.className === "field-label").textContent, `Price (${currency})`);
+		assert.equal(app.select(`serviceCurrencies.${key}`).value, currency);
+		assert.equal(descendants(price).some((element) => element.type === "range"), currency === "RUB");
+		const card = cards.find((entry) => descendants(entry).includes(price));
+		assert.ok(descendants(card).includes(app.field(`serviceCurrencies.${key}`)));
+		if (currency !== "RUB") assert.match(descendants(card).find((entry) => entry.className === "service-summary").textContent, /from stash.*item count/);
+	}
+	assert.equal(app.select("serviceCurrencies.DoublePass").value, "Inherit");
+});
+
+test("changing the global currency updates inherited labels while preserving service overrides and amounts", async () => {
+	const app = await dashboard({ serviceCurrencies: { A10: "GP", Extraction: "BTC", Uav: "Inherit" } });
+	app.edit(1, "prices.A10");
+	app.choose("USD", "paymentCurrency");
+	assert.equal(Number(app.input("prices.A10").value), 1);
+	assert.match(descendants(app.field("prices.A10")).find((entry) => entry.className === "field-label").textContent, /GP/);
+	assert.match(descendants(app.field("prices.Uav")).find((entry) => entry.className === "field-label").textContent, /USD/);
+	assert.match(app.select("serviceCurrencies.Uav").children[0].textContent, /Use global \(USD\)/);
+	app.choose("RUB", "serviceCurrencies.Extraction");
+	assert.equal(Number(app.input("prices.Extraction").value), 50000, "Changing assets must never silently convert or reset the authored amount");
+	app.elements.saveButton.click();
+	await settle();
+	assert.equal(app.serverConfig.paymentCurrency, "USD");
+	assert.equal(app.serverConfig.serviceCurrencies.A10, "GP");
+	assert.equal(app.serverConfig.serviceCurrencies.Extraction, "RUB");
+	assert.equal(app.serverConfig.prices.A10, 1);
+	assert.equal(app.elements.changeStatus.textContent, "0 unsaved changes");
+});
+
+test("item payment choices save whole counts and never send authenticated inventory state as config", async () => {
+	const app = await dashboard({ stashCurrencyBalances: { GP: 20, BTC: 3 }, stashCurrencyState: { items: [] },
+		purchaseHistory: { entries: [] }, playerStateIncluded: true, uplinkUnlocked: true, progressionPermit: "profile-scoped" });
+	app.choose("GP", "serviceCurrencies.A10");
+	app.edit(1.4, "prices.A10");
+	app.choose("BTC", "serviceCurrencies.Extraction");
+	app.edit(2, "prices.Extraction");
+	app.elements.saveButton.click();
+	await settle();
+	const saved = JSON.parse(app.requests.find((entry) => entry.options.method === "POST").options.body);
+	assert.equal(saved.prices.A10, 1);
+	assert.equal(saved.prices.Extraction, 2);
+	assert.equal(saved.serviceCurrencies.A10, "GP");
+	assert.equal(saved.serviceCurrencies.Extraction, "BTC");
+	for (const field of ["stashCurrencyBalances", "stashCurrencyState", "purchaseHistory", "playerStateIncluded", "uplinkUnlocked", "progressionPermit"])
+		assert.equal(Object.hasOwn(saved, field), false, `${field} must remain profile-scoped`);
 });

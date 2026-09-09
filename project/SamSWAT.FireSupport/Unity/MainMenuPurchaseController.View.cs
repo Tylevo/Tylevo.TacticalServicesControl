@@ -218,7 +218,8 @@ public sealed partial class MainMenuPurchaseController
 			return $"Recover the interrupted {GetDescriptor(_ambiguousType).DisplayName} purchase first.";
 		if (!GetEnabled(_snapshot, service.ConfigKey)) return "This service is currently unavailable.";
 		if (GetOwned(_snapshot, service.ConfigKey) >= GetMaximum(_snapshot)) return "Authorization limit reached for this service.";
-		PaymentCurrency currency = FireSupportServerConfigClient.GetSnapshotCurrency(_snapshot);
+		if (!HasMenuPaymentSource(_snapshot, service.Type)) return "This service requires a stash payment source for pre-raid purchases.";
+		PaymentCurrency currency = FireSupportServerConfigClient.GetSnapshotCurrency(_snapshot, service.Type);
 		if (FireSupportServerConfigClient.GetSnapshotStashBalance(_snapshot, currency) is int balance &&
 		    balance < GetPrice(_snapshot, service.ConfigKey)) return "Not enough stash funds for this authorization.";
 		return service.Type == ESupportType.PriorityExfil

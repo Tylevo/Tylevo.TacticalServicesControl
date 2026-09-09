@@ -15,7 +15,7 @@ public sealed class FireSupportPurchaseHistory
 	public bool IsValidFor(string profileId) => !string.IsNullOrWhiteSpace(profileId) &&
 		string.Equals(ProfileId, profileId, StringComparison.Ordinal) && Entries != null && Entries.Count <= MaxEntries &&
 		Entries.All(entry => entry != null && IsKnownService(entry.Service) && entry.Quantity > 0 && entry.Price >= 0 &&
-			entry.PurchasedUtc != default && (entry.Currency is "RUB" or "USD" or "EUR"));
+			entry.PurchasedUtc != default && (entry.Currency is "RUB" or "USD" or "EUR" or "GP" or "BTC"));
 
 	public static bool IsKnownService(string service) =>
 		service is "A10" or "DoublePass" or "Extraction" or "PriorityExfil" or "Uav" or "FocusedSweep";

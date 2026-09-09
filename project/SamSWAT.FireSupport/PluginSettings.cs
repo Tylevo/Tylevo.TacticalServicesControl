@@ -220,7 +220,7 @@ internal static class PluginSettings
 			"TerraGroup Payment",
 			"Payment currency",
 			global::SamSWAT.FireSupport.ArysReloaded.Unity.PaymentCurrency.RUB,
-			new ConfigDescription("Local fallback currency used only when no server or Fika host currency is available."));
+			new ConfigDescription("Local fallback currency used only when no server or Fika host currency is available. Server service currencies can override it. GP and BTC are whole item counts paid only from the stash."));
 		RequestCooldown = config.Bind(
 			"Main Settings",
 			"Cooldown between support requests",

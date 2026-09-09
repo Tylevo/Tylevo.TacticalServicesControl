@@ -29,7 +29,7 @@ internal static class ExtractionSettingsRegressionTests
 		var writer = new NetDataWriter();
 		packet.Serialize(writer);
 		byte[] legacyBytes = writer.ToArray();
-		Array.Resize(ref legacyBytes, legacyBytes.Length - 2 * sizeof(int));
+		Array.Resize(ref legacyBytes, legacyBytes.Length - FireSupportSettingsPacket.ServiceCurrencyTailBytes - 2 * sizeof(int));
 
 		var legacy = new FireSupportSettingsPacket();
 		var legacyReader = new NetDataReader(legacyBytes);
@@ -61,7 +61,7 @@ internal static class ExtractionSettingsRegressionTests
 		var writer = new NetDataWriter();
 		packet.Serialize(writer);
 		byte[] legacyBytes = writer.ToArray();
-		Array.Resize(ref legacyBytes, legacyBytes.Length - sizeof(int));
+		Array.Resize(ref legacyBytes, legacyBytes.Length - FireSupportSettingsPacket.ServiceCurrencyTailBytes - sizeof(int));
 
 		var legacy = new FireSupportSettingsPacket();
 		var legacyReader = new NetDataReader(legacyBytes);
@@ -75,7 +75,7 @@ internal static class ExtractionSettingsRegressionTests
 	}
 
 	[RegressionTest]
-	private static void FikaSettingsPacketNormalizesInvalidCurrency()
+	private static void FikaSettingsPacketRejectsInvalidCurrencySemantics()
 	{
 		FireSupportSettingsPacket packet = CreateSettingsPacket();
 		packet.PaymentCurrency = (PaymentCurrency)999;
@@ -85,7 +85,8 @@ internal static class ExtractionSettingsRegressionTests
 		var actual = new FireSupportSettingsPacket();
 		actual.Deserialize(new NetDataReader(writer.ToArray()));
 
-		AssertEx.Equal(PaymentCurrency.RUB, actual.PaymentCurrency);
+		AssertEx.Equal((PaymentCurrency)999, actual.PaymentCurrency);
+		AssertEx.Equal(FireSupportServiceSemantics.LegacyVersion, actual.ServiceSemanticsVersion);
 	}
 
 	[RegressionTest]

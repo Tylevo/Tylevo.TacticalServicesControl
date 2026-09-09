@@ -23,40 +23,22 @@ internal static class FireSupportStashCurrencySnapshot
 		BotBaseInventory? inventory = pmc.Inventory;
 		string profileId = pmc.Id?.ToString() ?? string.Empty;
 		string stashId = inventory?.Stash?.ToString() ?? string.Empty;
-		if (!ValidId(profileId) || !ValidId(stashId) || inventory?.Items == null ||
-		    inventory.Items.Count > MaxInventoryItems)
+		if (!ValidId(profileId) || !TryGetPaymentItems(pmc, out List<Item> paymentItems))
 		{
 			return null;
 		}
 
-		var byId = new Dictionary<string, Item>(StringComparer.OrdinalIgnoreCase);
-		foreach (Item item in inventory.Items.ToArray())
-		{
-			if (item == null || !ValidId(item.Id.ToString()) || !byId.TryAdd(item.Id.ToString(), item))
-			{
-				return null;
-			}
-		}
-
 		var state = new FireSupportStashCurrencyState
 		{
+			SchemaVersion = FireSupportStashCurrencyState.CurrentSchemaVersion,
+			CoveredTemplateIds = Enum.GetValues<PaymentCurrency>().Select(PaymentCurrencyInfo.GetTemplateId).ToList(),
 			ProfileId = profileId.ToLowerInvariant(),
 			StashId = stashId.ToLowerInvariant()
 		};
 		int metadataLength = 0;
-		foreach (Item item in byId.Values)
+		foreach (Item item in paymentItems)
 		{
 			string templateId = item.Template.ToString().ToLowerInvariant();
-			if (templateId != PaymentCurrencyInfo.RoubleTemplateId &&
-			    templateId != PaymentCurrencyInfo.DollarTemplateId &&
-			    templateId != PaymentCurrencyInfo.EuroTemplateId)
-			{
-				continue;
-			}
-
-			bool? inStash = IsInStash(item, stashId, inventory.Equipment?.ToString(), byId);
-			if (!inStash.HasValue) return null;
-			if (!inStash.Value) continue;
 			double count = item.Upd?.StackObjectsCount ?? 1d;
 			if (state.Items.Count >= FireSupportStashCurrencyState.MaxItems ||
 			    !double.IsFinite(count) || count < 1 || count > int.MaxValue || Math.Floor(count) != count ||
@@ -94,6 +76,36 @@ internal static class FireSupportStashCurrencySnapshot
 		}
 		state.Items.Sort((left, right) => StringComparer.Ordinal.Compare(left.Id, right.Id));
 		return state;
+	}
+
+	/// <summary>One fail-closed eligibility rule for balances, journal projection, debit, and native snapshots.</summary>
+	internal static bool TryGetPaymentItems(PmcData pmc, out List<Item> paymentItems)
+	{
+		paymentItems = new List<Item>();
+		BotBaseInventory? inventory = pmc.Inventory;
+		string stashId = inventory?.Stash?.ToString() ?? string.Empty;
+		if (!ValidId(stashId) || inventory?.Items == null || inventory.Items.Count > MaxInventoryItems)
+			return false;
+		var byId = new Dictionary<string, Item>(StringComparer.OrdinalIgnoreCase);
+		var parentIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		foreach (Item item in inventory.Items.ToArray())
+		{
+			if (item == null || !ValidId(item.Id.ToString()) || !byId.TryAdd(item.Id.ToString(), item))
+				return false;
+			if (!string.IsNullOrEmpty(item.ParentId)) parentIds.Add(item.ParentId);
+		}
+		foreach (Item item in byId.Values)
+		{
+			if (!PaymentCurrencyInfo.IsSupportedTemplateId(item.Template.ToString())) continue;
+			bool? inStash = IsInStash(item, stashId, inventory.Equipment?.ToString(), byId);
+			if (!inStash.HasValue) return false;
+			if (!inStash.Value) continue;
+			double count = item.Upd?.StackObjectsCount ?? 1d;
+			if (!double.IsFinite(count) || count < 1 || count > int.MaxValue || Math.Floor(count) != count ||
+			    parentIds.Contains(item.Id.ToString())) return false;
+			paymentItems.Add(item);
+		}
+		return true;
 	}
 
 	private static bool? IsInStash(Item item, string stashId, string? equipmentId, Dictionary<string, Item> byId)

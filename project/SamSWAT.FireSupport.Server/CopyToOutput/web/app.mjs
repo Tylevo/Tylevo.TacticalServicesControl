@@ -163,7 +163,12 @@ async function saveConfig() {
 	const body = cloneConfig(state.config);
 	delete body.playerStateIncluded;
 	delete body.stashCurrencyBalance;
+	delete body.stashCurrencyBalances;
 	delete body.stashRoubleBalance;
+	delete body.stashCurrencyState;
+	delete body.purchaseHistory;
+	delete body.uplinkUnlocked;
+	delete body.progressionPermit;
 	delete body.authorizations;
 	delete body.preparedPurchases;
 	delete body.preparedPurchaseDetails;
@@ -323,7 +328,20 @@ function renderSections() {
 		grid.className = shouldUseServiceDeck(section)
 			? "field-grid service-deck"
 			: "field-grid";
+		const groupedPaths = new Set();
 		for (const field of section.fields) {
+			if (groupedPaths.has(field.path)) continue;
+			if (section.id === "pricing" && field.path?.startsWith("prices.")) {
+				const serviceKey = field.path.slice("prices.".length);
+				const currencyField = section.fields.find((entry) => entry.path === `serviceCurrencies.${serviceKey}`);
+				if (currencyField) {
+					grid.appendChild(renderPricingCard(field, currencyField));
+					groupedPaths.add(currencyField.path);
+					continue;
+				}
+			}
+			if (section.id === "pricing" && field.path?.startsWith("serviceCurrencies.") &&
+				section.fields.some((entry) => entry.path === field.path.replace("serviceCurrencies.", "prices."))) continue;
 			grid.appendChild(renderField(field, section));
 		}
 		panel.appendChild(grid);
@@ -340,7 +358,7 @@ function shouldUseServiceDeck(section) {
 }
 
 function getSectionKicker(section) {
-	if (section.id?.includes("pricing")) return getPaymentCurrency();
+	if (section.id?.includes("pricing")) return "Per-service";
 	if (section.id === "services") return "Availability";
 	if (section.id?.includes("recon")) return "Recon";
 	if (section.id?.includes("extraction")) return "Extraction";
@@ -351,28 +369,35 @@ function getSectionKicker(section) {
 
 function getSectionIntro(section) {
 	if (section.id?.includes("pricing")) {
-		return `Displayed phone prices and authoritative payment costs in ${getPaymentCurrencyName()}.`;
+		return "Choose a currency and amount for each service. Use global follows the payment setting. GP coins and Bitcoin come from the stash. Changing currency keeps the amount; set the item count you want.";
 	}
 	if (section.id?.includes("payment")) {
-		return `Select which wallet supplies the configured ${getPaymentCurrencyName()}.`;
+		return `Default currency: ${getPaymentCurrencyName()}. Each service can override it below. The wallet setting applies to cash; GP coins and Bitcoin always use the stash.`;
 	}
 	return sectionIntros[section.id] || "Server-authoritative service configuration.";
 }
 
-function getPaymentCurrency() {
-	const value = String(state.config?.paymentCurrency || "RUB").trim().toUpperCase();
-	return value === "RUB" || value === "USD" || value === "EUR"
+function getPaymentCurrency(serviceKey) {
+	let selected = state.config?.paymentCurrency ?? "RUB";
+	if (serviceKey && Object.prototype.hasOwnProperty.call(state.config?.serviceCurrencies ?? {}, serviceKey)) {
+		const override = state.config.serviceCurrencies[serviceKey];
+		if (String(override).trim().toUpperCase() !== "INHERIT") selected = override;
+	}
+	const value = String(selected ?? "").trim().toUpperCase();
+	return ["RUB", "USD", "EUR", "GP", "BTC"].includes(value)
 		? value
 		: "INVALID";
 }
 
-function getPaymentCurrencyName() {
+function getPaymentCurrencyName(serviceKey) {
 	return {
 		RUB: "roubles (RUB)",
 		USD: "US dollars (USD)",
 		EUR: "euros (EUR)",
+		GP: "GP coins (GP)",
+		BTC: "Bitcoin (BTC)",
 		INVALID: "an invalid payment currency"
-	}[getPaymentCurrency()];
+	}[getPaymentCurrency(serviceKey)];
 }
 
 function getPaymentSourceName(value = state.config?.paymentSource) {
@@ -388,21 +413,54 @@ function getSelectOptionLabel(path, value) {
 	if (path === "paymentSource") {
 		return getPaymentSourceName(value);
 	}
-	if (path === "paymentCurrency") {
+	if (path === "paymentCurrency" || path?.startsWith("serviceCurrencies.")) {
 		return {
+			Inherit: `Use global (${getPaymentCurrency()})`,
 			RUB: "RUB — Roubles",
 			USD: "USD — US Dollars",
-			EUR: "EUR — Euros"
+			EUR: "EUR — Euros",
+			GP: "GP — GP coins (stash)",
+			BTC: "BTC — Bitcoin (stash)"
 		}[value] || value;
 	}
 	return value;
 }
 
 function getFieldStep(field) {
-	if (field.path?.startsWith("prices.") && getPaymentCurrency() !== "RUB") {
+	if (field.path?.startsWith("prices.") && getPaymentCurrency(field.path.slice("prices.".length)) !== "RUB") {
 		return 1;
 	}
 	return field.step ?? 1;
+}
+
+function renderPricingCard(priceField, currencyField) {
+	const card = document.createElement("article");
+	card.className = "field-row service-card pricing-card";
+	const meta = getServiceMeta(priceField);
+	card.dataset.service = meta.key;
+	const badge = document.createElement("span");
+	badge.className = "service-code";
+	badge.textContent = meta.code;
+	const titleWrap = document.createElement("span");
+	titleWrap.className = "service-title-wrap";
+	const title = document.createElement("strong");
+	title.className = "service-title";
+	title.textContent = meta.title;
+	const summary = document.createElement("span");
+	summary.className = "service-summary";
+	const currency = getPaymentCurrency(priceField.path.slice("prices.".length));
+	const itemPayment = currency === "GP" || currency === "BTC";
+	summary.textContent = itemPayment
+		? `${getPaymentCurrencyName(priceField.path.slice("prices.".length))} from stash. Price is the item count.`
+		: `${currency} · ${getPaymentSourceName()}`;
+	titleWrap.append(title, summary);
+	card.append(badge, titleWrap);
+	const controls = { id: "pricing-controls" };
+	card.append(
+		renderField({ ...currencyField, label: "Payment currency" }, controls),
+		renderField({ ...priceField, label: `Price (${currency})`, slider: itemPayment ? false : priceField.slider }, controls)
+	);
+	return card;
 }
 
 function renderField(field, section) {
@@ -462,11 +520,11 @@ function renderField(field, section) {
 			optionEl.textContent = getSelectOptionLabel(field.path, option);
 			select.appendChild(optionEl);
 		}
-		select.value = value ?? "";
+		select.value = value ?? (field.path?.startsWith("serviceCurrencies.") ? "Inherit" : "");
 		select.addEventListener("change", () => {
 			setPath(state.config, field.path, select.value);
 			markDirty(field.path);
-			if (field.path === "paymentCurrency") {
+			if (field.path === "paymentCurrency" || field.path?.startsWith("serviceCurrencies.") || field.path === "paymentSource") {
 				renderStatus();
 				renderSections();
 				renderDiagnostics();

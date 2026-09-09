@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.3.13 - Public Beta (unreleased)
+
+- Choose a payment currency separately for each service in SIC or the TSC
+  dashboard: RUB, USD, EUR, GP coins, or physical Bitcoin. Existing services
+  inherit the global currency until an override is selected.
+- Take GP coins and Bitcoin from the PMC stash, including items inside stash
+  containers. Prices are whole item counts; changing currencies does not
+  convert the configured amount.
+- Show service-specific prices and balances on the phone and in Pilot's
+  Services tab. Synchronize spent payment items with the native stash.
+- Preserve original payment terms when recovering or replaying a purchase,
+  and require the updated payment protocol for Fika manual service requests.
+- Carry forward the phone and cargo improvements from 1.3.12. Quest content
+  is unchanged; the optional add-on retains the matching-version requirement.
+
+See the [1.3.13 candidate notes](docs/release-notes-v1.3.13.md) for testing and setup.
+
 ## 1.3.12 - Public Beta
 
 September 8, 2026, for SPT 4.1.5.

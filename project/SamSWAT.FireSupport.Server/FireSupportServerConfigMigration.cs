@@ -9,7 +9,7 @@ namespace SamSWAT.FireSupport.ArysReloaded;
 /// </summary>
 internal static class FireSupportServerConfigMigration
 {
-	internal const int CurrentConfigSchemaVersion = 3;
+	internal const int CurrentConfigSchemaVersion = 4;
 	internal const float LegacyStandardExtractionDispatchDelaySeconds = 8f;
 
 	/// <summary>
@@ -62,9 +62,14 @@ internal static class FireSupportServerConfigMigration
 
 			// Existing prices were authored as RUB amounts. The new currency
 			// selector therefore defaults to RUB without converting any values.
-			config.PaymentCurrency = nameof(PaymentCurrency.RUB);
+			if (sourceSchemaVersion < 3)
+				config.PaymentCurrency = nameof(PaymentCurrency.RUB);
 			config.ConfigSchemaVersion = CurrentConfigSchemaVersion;
 		}
+		config.ServiceCurrencies ??= new Dictionary<string, string>();
+		foreach (string service in new[] { "A10", "DoublePass", "Uav", "FocusedSweep", "Extraction", "PriorityExfil" })
+			if (!config.ServiceCurrencies.Keys.Any(key => string.Equals(key, service, StringComparison.OrdinalIgnoreCase)))
+				config.ServiceCurrencies.Add(service, "Inherit");
 
 		// These fields are populated only on authenticated response snapshots.
 		// Never accept or persist them as shared administrator configuration.
@@ -72,6 +77,7 @@ internal static class FireSupportServerConfigMigration
 		config.UplinkUnlocked = null;
 		config.ProgressionPermit = string.Empty;
 		config.StashCurrencyBalance = null;
+		config.StashCurrencyBalances = null;
 		config.StashRoubleBalance = null;
 		config.Authorizations = new Dictionary<string, int>();
 		config.PreparedPurchases = null;

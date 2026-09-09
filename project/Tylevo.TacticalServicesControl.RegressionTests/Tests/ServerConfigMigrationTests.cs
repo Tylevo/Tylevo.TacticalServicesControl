@@ -92,7 +92,7 @@ internal static class ServerConfigMigrationTests
 				CreateMigrationDefaults());
 
 		AssertEx.Equal(0, sourceSchemaVersion);
-		AssertEx.Equal(3, config.ConfigSchemaVersion);
+		AssertEx.Equal(4, config.ConfigSchemaVersion);
 		AssertEx.Equal(1, config.Revision);
 		AssertEx.Equal("PhoneAuthorizations", config.PaymentMode);
 		AssertEx.Equal("CarriedRoubles", config.PaymentSource);
@@ -228,7 +228,7 @@ internal static class ServerConfigMigrationTests
 				CreateMigrationDefaults());
 
 		AssertEx.Equal(2, sourceSchemaVersion);
-		AssertEx.Equal(3, config.ConfigSchemaVersion);
+		AssertEx.Equal(4, config.ConfigSchemaVersion);
 		AssertEx.Equal(27, config.Revision);
 		AssertEx.Equal("Hybrid", config.PaymentMode);
 		AssertEx.Equal("PreferStashThenCarried", config.PaymentSource);
@@ -267,8 +267,8 @@ internal static class ServerConfigMigrationTests
 	{
 		var config = new RaidOpsFireSupportServerConfig
 		{
-			ConfigSchemaVersion = 3,
-			PaymentCurrency = "BTC"
+			ConfigSchemaVersion = 4,
+			PaymentCurrency = "INVALID"
 		};
 		SeedResponseOnlyFields(config);
 
@@ -277,10 +277,34 @@ internal static class ServerConfigMigrationTests
 				config,
 				CreateMigrationDefaults());
 
-		AssertEx.Equal(3, sourceSchemaVersion);
-		AssertEx.Equal(3, config.ConfigSchemaVersion);
-		AssertEx.Equal("BTC", config.PaymentCurrency);
+		AssertEx.Equal(4, sourceSchemaVersion);
+		AssertEx.Equal(4, config.ConfigSchemaVersion);
+		AssertEx.Equal("INVALID", config.PaymentCurrency);
 		AssertResponseOnlyFieldsCleared(config);
+	}
+
+	[RegressionTest]
+	private static void SchemaThreePreservesSelectedCurrencyPricesAndDefaultsEveryServiceToInherit()
+	{
+		foreach (string currency in new[] { "RUB", "USD", "EUR" })
+		{
+			var config = new RaidOpsFireSupportServerConfig
+			{
+				ConfigSchemaVersion = 3, PaymentCurrency = currency,
+				Prices = new Dictionary<string, int> { ["A10"] = 47, ["Uav"] = 9 }
+			};
+			AssertEx.Equal(3, FireSupportServerConfigMigration.NormalizePersistedFields(config, CreateMigrationDefaults()));
+			AssertEx.Equal(4, config.ConfigSchemaVersion);
+			AssertEx.Equal(currency, config.PaymentCurrency);
+			AssertEx.Equal(47, config.Prices["A10"]);
+			AssertEx.Equal(9, config.Prices["Uav"]);
+			AssertEx.Equal(6, config.ServiceCurrencies.Count);
+			AssertEx.True(config.ServiceCurrencies.Values.All(value => value == "Inherit"));
+			config.ServiceCurrencies["A10"] = "GP";
+			AssertEx.Equal(4, FireSupportServerConfigMigration.NormalizePersistedFields(config, CreateMigrationDefaults()));
+			AssertEx.Equal("GP", config.ServiceCurrencies["A10"]);
+			AssertEx.Equal(currency, config.PaymentCurrency);
+		}
 	}
 
 	private static RaidOpsFireSupportServerConfig Deserialize(string json)
@@ -321,6 +345,7 @@ internal static class ServerConfigMigrationTests
 	{
 		config.PlayerStateIncluded = true;
 		config.StashCurrencyBalance = 123456;
+		config.StashCurrencyBalances = new Dictionary<string, int> { ["BTC"] = 99 };
 		config.StashRoubleBalance = 654321;
 		config.Authorizations = new Dictionary<string, int>
 		{
@@ -347,6 +372,7 @@ internal static class ServerConfigMigrationTests
 	{
 		AssertEx.False(config.PlayerStateIncluded);
 		AssertEx.Null(config.StashCurrencyBalance);
+		AssertEx.Null(config.StashCurrencyBalances);
 		AssertEx.Null(config.StashRoubleBalance);
 		AssertEx.Equal(0, config.Authorizations.Count);
 		AssertEx.Null(config.PreparedPurchases);
