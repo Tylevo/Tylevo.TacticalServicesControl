@@ -202,6 +202,7 @@
         "db/CustomParents/RaidOpsUavDeviceParent.jsonc",
         "THIRD_PARTY_NOTICES.txt",
         "web/app.mjs",
+        "web/presets.mjs",
         "web/index.html",
         "web/styles.css"
       ]
@@ -305,6 +306,7 @@
     "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/bundles/raidops/uav_uplink_container.bundle",
     "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/bundles/raidops/uav_uplink_loot.bundle",
     "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/web/app.mjs",
+    "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/web/presets.mjs",
     "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/web/index.html",
     "SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/web/styles.css"
   ],

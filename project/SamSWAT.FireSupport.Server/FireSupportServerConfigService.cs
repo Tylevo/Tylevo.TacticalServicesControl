@@ -52,6 +52,7 @@ public sealed class FireSupportServerConfigService(
 	private DateTimeOffset _lastLoadedUtc;
 	private DateTimeOffset _lastSavedUtc;
 	private int? _lastDiskOnlySaveBaseRevision;
+	private FireSupportPresetStore? _presetStore;
 
 	public void Initialize(string pathToMod)
 	{
@@ -63,6 +64,7 @@ public sealed class FireSupportServerConfigService(
 		MigrateLegacyAdminTokenPath(configDirectory);
 		_webRootPath = IOPath.Combine(pathToMod, "web");
 		_storagePath = IOPath.Combine(pathToMod, "storage");
+		_presetStore = new FireSupportPresetStore(IOPath.Combine(configDirectory, "presets"), GetDashboardSchema(), CreateDefaultConfig());
 		authorizationLedger.Initialize(_storagePath);
 		EnsureAdminToken();
 
@@ -1104,6 +1106,28 @@ public sealed class FireSupportServerConfigService(
 			lastLoadedUtc = _lastLoadedUtc,
 			lastSavedUtc = _lastSavedUtc
 		};
+	}
+
+	public FireSupportPresetCollection GetPresets() => FireSupportPresetCatalog.Create(CreateDefaultConfig());
+
+	public FireSupportSavedPresetCollection GetSavedPresets() => _presetStore?.Read() ??
+		new() { Warning = "The preset library is not initialized." };
+
+	public bool TrySavePreset(JsonElement payload, out FireSupportPreset? preset, out string error, out bool storageFailure)
+	{
+		if (_presetStore != null) return _presetStore.TrySave(payload, out preset, out error, out storageFailure);
+		preset = null;
+		error = "The preset library is not initialized.";
+		storageFailure = true;
+		return false;
+	}
+
+	public bool TryRemovePreset(JsonElement payload, out string error, out bool storageFailure)
+	{
+		if (_presetStore != null) return _presetStore.TryRemove(payload, out error, out storageFailure);
+		error = "The preset library is not initialized.";
+		storageFailure = true;
+		return false;
 	}
 
 	public object GetDashboardSchema()
@@ -2439,12 +2463,12 @@ public sealed class FireSupportServerConfigService(
 			RequestCooldownSeconds = 300,
 			Prices = new Dictionary<string, int>
 			{
-				["A10"] = 250000,
-				["DoublePass"] = 450000,
-				["Extraction"] = 300000,
-				["PriorityExfil"] = 450000,
-				["Uav"] = 125000,
-				["FocusedSweep"] = 90000
+				["A10"] = 150000,
+				["DoublePass"] = 250000,
+				["Extraction"] = 125000,
+				["PriorityExfil"] = 75000,
+				["Uav"] = 50000,
+				["FocusedSweep"] = 25000
 			},
 			Enabled = new Dictionary<string, bool>
 			{

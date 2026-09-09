@@ -33,4 +33,9 @@ Older release notes describe their own builds. Use the current guides above for 
 
 ## Unreleased candidate
 
-[1.3.13 service payment currencies](release-notes-v1.3.13.md) adds GP coins, Bitcoin, and per-service choices.
+[1.3.13 prices, presets, and service currencies](release-notes-v1.3.13.md) adds
+lower fresh-install prices, five built-in gameplay presets, a custom JSON
+library on the SPT host, shareable files/codes, and per-service RUB/USD/EUR/GP/BTC
+payments. Existing configs retain their prices. See the [candidate preset guide](dashboard.md#gameplay-presets-candidate-1313).
+Preset native integration and gameplay acceptance remain pending; this candidate
+has not been published.

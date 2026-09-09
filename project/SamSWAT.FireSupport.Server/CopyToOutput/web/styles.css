@@ -739,7 +739,29 @@ input[type="range"]::-moz-range-thumb {
 	background: rgba(34, 10, 8, 0.96);
 }
 
+.preset-panel { margin-bottom: 22px; scroll-margin-top: 90px; }
+.preset-body { padding: 18px; }
+.preset-library { display: grid; grid-template-columns: minmax(160px, 1.2fr) minmax(160px, 1fr) auto auto; gap: 12px; align-items: end; }
+.preset-body label { display: grid; gap: 8px; color: var(--amber); font: 12px var(--mono); }
+.preset-body select, .preset-body input[type="text"], .preset-body textarea { width: 100%; min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 3px; color: var(--text); background: var(--bg-2); font: 14px var(--sans); }
+.preset-hint { color: var(--muted); line-height: 1.5; margin: 14px 0; }
+.preset-sharing { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 16px; }
+.preset-sharing summary { cursor: pointer; color: var(--amber-hi); font-weight: 600; }
+.preset-metadata { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(180px, 2fr); gap: 14px; }
+.preset-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0 0; }
+.preset-text-label { margin-top: 20px; }
+.preset-body textarea { resize: vertical; font: 12px/1.5 var(--mono); overflow-wrap: anywhere; }
+.preset-preview { margin-top: 20px; border-top: 1px solid var(--line-strong); padding-top: 16px; }
+.preset-preview h3 { color: var(--amber-hi); margin: 0; }
+.preset-preview p { color: var(--muted); }
+.preset-table-wrap { max-height: 320px; overflow: auto; }
+.preset-preview table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.preset-preview th, .preset-preview td { padding: 10px; border-bottom: 1px solid var(--line); text-align: left; overflow-wrap: anywhere; }
+.preset-preview th { position: sticky; top: 0; background: var(--panel); color: var(--amber); }
+.preset-preview td:last-child { color: var(--green-hi); }
+
 @media (max-width: 1180px) {
+	.preset-library { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 	.app-shell {
 		grid-template-columns: 1fr;
 	}
@@ -767,6 +789,8 @@ input[type="range"]::-moz-range-thumb {
 }
 
 @media (max-width: 760px) {
+	.preset-library, .preset-metadata { grid-template-columns: 1fr; }
+	.preset-actions > button { flex: 1 1 180px; }
 	.workspace {
 		padding: 16px 14px 72px;
 	}

@@ -6,12 +6,12 @@
   "paymentCurrency": "RUB",
   "requestCooldownSeconds": 300,
   "prices": {
-    "A10": 250000,
-    "DoublePass": 450000,
-    "Extraction": 300000,
-    "PriorityExfil": 450000,
-    "Uav": 125000,
-    "FocusedSweep": 90000
+    "A10": 150000,
+    "DoublePass": 250000,
+    "Extraction": 125000,
+    "PriorityExfil": 75000,
+    "Uav": 50000,
+    "FocusedSweep": 25000
   },
   "enabled": {
     "A10": true,

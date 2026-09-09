@@ -1,4 +1,7 @@
+import { createPreset, validatePreset, parsePreset, encodePreset, applyPreset } from "./presets.mjs";
+
 const BASE_PATH = "/tsc";
+const MAX_SAVED_PRESETS = 30;
 
 const state = {
 	schema: null,
@@ -8,7 +11,12 @@ const state = {
 	adminToken: "",
 	adminTokenPanelOpen: false,
 	busy: false,
-	dirtyPaths: new Set()
+	dirtyPaths: new Set(),
+	builtInPresets: [],
+	savedPresets: [],
+	presetWarning: "",
+	libraryWarning: "",
+	pendingPreset: null
 };
 
 const elements = {
@@ -29,8 +37,43 @@ const elements = {
 	lastSavedStatus: document.getElementById("lastSavedStatus"),
 	diagnosticsGrid: document.getElementById("diagnosticsGrid"),
 	adminTokenHint: document.getElementById("adminTokenHint"),
-	toast: document.getElementById("toast")
+	toast: document.getElementById("toast"),
+	presetControls: document.getElementById("presetControls"),
+	presetSelect: document.getElementById("presetSelect"),
+	presetScope: document.getElementById("presetScope"),
+	presetDescription: document.getElementById("presetDescription"),
+	presetName: document.getElementById("presetName"),
+	presetNotes: document.getElementById("presetNotes"),
+	presetText: document.getElementById("presetText"),
+	presetFile: document.getElementById("presetFile"),
+	presetPreview: document.getElementById("presetPreview"),
+	presetPreviewTitle: document.getElementById("presetPreviewTitle"),
+	presetPreviewSummary: document.getElementById("presetPreviewSummary"),
+	presetChanges: document.getElementById("presetChanges"),
+	applyPresetButton: document.getElementById("applyPresetButton"),
+	deletePresetButton: document.getElementById("deletePresetButton")
 };
+
+document.getElementById("previewPresetButton").addEventListener("click", () => run(() => previewPreset(selectedPreset())));
+document.getElementById("savePresetButton").addEventListener("click", () => run(saveCurrentPreset));
+document.getElementById("exportPresetButton").addEventListener("click", () => run(exportCurrentPreset));
+document.getElementById("copyPresetButton").addEventListener("click", () => run(shareCurrentPreset));
+document.getElementById("importPresetButton").addEventListener("click", () => run(() => previewPresetText(elements.presetText.value)));
+document.getElementById("importPresetFileButton").addEventListener("click", () => elements.presetFile.click());
+document.getElementById("cancelPresetButton").addEventListener("click", clearPresetPreview);
+elements.applyPresetButton.addEventListener("click", () => run(applyPreviewedPreset));
+elements.deletePresetButton.addEventListener("click", () => run(removeSavedPreset));
+elements.presetSelect.addEventListener("change", () => { clearPresetPreview(); renderPresetDescription(); });
+elements.presetScope.addEventListener("change", clearPresetPreview);
+elements.presetFile.addEventListener("change", () => run(async () => {
+	const file = elements.presetFile.files?.[0];
+	try {
+		if (!file) return;
+		clearPresetPreview();
+		if (file.size > 32768) throw new Error("Preset JSON files must be 32 KB or smaller.");
+		previewPresetText(await file.text());
+	} finally { elements.presetFile.value = ""; }
+}));
 
 const serviceMetaRules = [
 	{ key: "a10", title: "A-10 Strafe", code: "CAS", summary: "Autocannon strike", pattern: /a-?10|strafe(?!.*double)/i },
@@ -124,6 +167,7 @@ async function run(action) {
 
 function updateBusyState() {
 	elements.formRoot.inert = state.busy;
+	elements.presetControls.inert = state.busy;
 	for (const button of [elements.reloadButton, elements.reloadDiskButton, elements.resetButton,
 		elements.unlockAdminButton, elements.applyAdminTokenButton]) {
 		button.disabled = state.busy;
@@ -141,6 +185,12 @@ async function init() {
 	state.config = config;
 	state.original = cloneConfig(config);
 	state.health = health;
+	try {
+		const catalog = await requestJson(`${BASE_PATH}/presets`);
+		if (catalog.format !== "tsc-preset" || catalog.formatVersion !== 1 || !Array.isArray(catalog.presets)) throw new Error("Unsupported preset catalog.");
+		state.builtInPresets = catalog.presets.map((preset) => validatePreset(preset, state.schema));
+	} catch { state.presetWarning = "Built-in presets are unavailable. Update the server and dashboard together; JSON sharing remains available."; }
+	await loadSavedPresets();
 	render();
 	showToast("Config loaded");
 }
@@ -154,6 +204,8 @@ async function loadConfig() {
 	state.original = cloneConfig(config);
 	state.health = health;
 	state.dirtyPaths.clear();
+	clearPresetPreview();
+	await loadSavedPresets();
 	render();
 	showToast("Config reloaded");
 }
@@ -191,6 +243,7 @@ async function saveConfig() {
 	state.original = cloneConfig(updated);
 	state.dirtyPaths.clear();
 	state.health = await requestJson(`${BASE_PATH}/health`);
+	clearPresetPreview();
 	render();
 	elements.lastSavedStatus.textContent = `Saved ${new Date().toLocaleTimeString()}`;
 	showToast("Config saved");
@@ -211,6 +264,7 @@ async function postAdmin(route) {
 	state.config = updated;
 	state.original = cloneConfig(updated);
 	state.dirtyPaths.clear();
+	clearPresetPreview();
 	state.health = await requestJson(`${BASE_PATH}/health`);
 	render();
 	showToast(route === "reset" ? "Defaults restored" : "Config reloaded from disk");
@@ -232,6 +286,8 @@ async function validateAdminToken() {
 	state.adminTokenPanelOpen = false;
 	updateAdminControls();
 	renderDiagnostics();
+	await loadSavedPresets();
+	renderPresetLibrary();
 	showToast("Admin token accepted");
 }
 
@@ -254,6 +310,7 @@ function render() {
 	renderSections();
 	renderDiagnostics();
 	updateDirtyState();
+	renderPresetLibrary();
 }
 
 function renderStatus() {
@@ -287,6 +344,10 @@ function updateAdminControls() {
 
 function renderNavigation() {
 	elements.nav.innerHTML = "";
+	const presetsLink = document.createElement("a");
+	presetsLink.href = "#presets";
+	presetsLink.textContent = "Gameplay Presets";
+	elements.nav.appendChild(presetsLink);
 	for (const section of state.schema.sections) {
 		const link = document.createElement("a");
 		link.href = `#${section.id}`;
@@ -614,6 +675,164 @@ function renderDiagnostics() {
 		dd.textContent = value;
 		elements.diagnosticsGrid.append(dt, dd);
 	}
+}
+
+async function loadSavedPresets() {
+	try {
+		const library = await requestJson(`${BASE_PATH}/presets/saved`, { headers: adminHeaders() });
+		const saved = library.presets;
+		if (!Array.isArray(saved) || saved.length > MAX_SAVED_PRESETS) throw new Error("Invalid preset library.");
+		state.savedPresets = saved.map((preset) => validatePreset(preset, state.schema));
+		if (state.savedPresets.some((preset) => !preset.id)) throw new Error("A saved preset has no identifier.");
+		state.libraryWarning = library.warning || "";
+	} catch (error) {
+		state.savedPresets = [];
+		state.libraryWarning = error.status === 403 ? "Unlock Admin to load the host's saved presets." : "The host's saved presets could not be loaded. JSON import and export are still available.";
+	}
+}
+
+function selectedPreset() {
+	const [kind, id] = elements.presetSelect.value.split(":");
+	const collection = kind === "custom" ? state.savedPresets : state.builtInPresets;
+	const preset = collection.find((entry) => entry.id === id);
+	if (!preset) throw new Error("Choose a preset first, or import one below.");
+	return preset;
+}
+
+function renderPresetLibrary(preferred = elements.presetSelect.value) {
+	elements.presetSelect.innerHTML = "";
+	for (const [kind, label, presets] of [["builtin", "Built-in", state.builtInPresets], ["custom", "Saved on the SPT host", state.savedPresets]]) {
+		if (!presets.length) continue;
+		const group = document.createElement("optgroup");
+		group.label = label;
+		for (const preset of presets) {
+			const option = document.createElement("option");
+			option.value = `${kind}:${preset.id}`;
+			option.textContent = preset.name;
+			group.appendChild(option);
+		}
+		elements.presetSelect.appendChild(group);
+	}
+	const choices = [...state.builtInPresets.map((entry) => `builtin:${entry.id}`), ...state.savedPresets.map((entry) => `custom:${entry.id}`)];
+	elements.presetSelect.value = choices.includes(preferred) ? preferred : choices[0] || "";
+	renderPresetDescription();
+}
+
+function renderPresetDescription() {
+	let description = "Import a JSON file or share code to get started.";
+	try { description = selectedPreset().description || "Custom gameplay settings."; } catch {}
+	elements.presetDescription.textContent = [description, state.presetWarning, state.libraryWarning].filter(Boolean).join(" ");
+	elements.deletePresetButton.disabled = !elements.presetSelect.value.startsWith("custom:");
+}
+
+function currentPreset() {
+	return createPreset(state.config, state.schema, elements.presetName.value, elements.presetNotes.value);
+}
+
+async function presetHostRequest(route, body) {
+	requireAdminToken();
+	try {
+		return await requestJson(`${BASE_PATH}/presets/${route}`, { method: "POST", headers: adminHeaders(), body: JSON.stringify(body) });
+	} catch (error) { handleAdminFailure(error); throw error; }
+}
+
+async function saveCurrentPreset() {
+	const preset = currentPreset();
+	const existing = state.savedPresets.find((entry) => entry.name.toLowerCase() === preset.name.toLowerCase());
+	if (existing && !confirm(`Replace your saved preset "${existing.name}" with the current draft settings?`)) return;
+	if (!existing && state.savedPresets.length >= MAX_SAVED_PRESETS) throw new Error(`You can save up to ${MAX_SAVED_PRESETS} presets. Export or remove one first.`);
+	if (existing) preset.id = existing.id;
+	const saved = validatePreset((await presetHostRequest("saved", preset)).preset, state.schema);
+	if (!saved.id) throw new Error("The host did not return the saved preset identifier. Reload Config to check the library.");
+	state.savedPresets = [...state.savedPresets.filter((entry) => entry.id !== saved.id), saved];
+	state.libraryWarning = "";
+	renderPresetLibrary(`custom:${saved.id}`);
+	showToast("Preset saved on the SPT host");
+}
+
+async function removeSavedPreset() {
+	if (!elements.presetSelect.value.startsWith("custom:")) return;
+	const preset = selectedPreset();
+	if (!confirm(`Remove "${preset.name}" from the host's preset library? Your current settings will stay as they are.`)) return;
+	await presetHostRequest("remove", { id: preset.id });
+	state.savedPresets = state.savedPresets.filter((entry) => entry.id !== preset.id);
+	clearPresetPreview();
+	renderPresetLibrary();
+	showToast("Saved preset removed");
+}
+
+function exportCurrentPreset() {
+	const preset = currentPreset();
+	const url = URL.createObjectURL(new Blob([JSON.stringify(preset, null, 2) + "\n"], { type: "application/json" }));
+	const link = document.createElement("a");
+	link.href = url;
+	link.download = `${preset.name.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-|-$/g, "") || "tsc-preset"}.tsc-preset.json`;
+	link.click();
+	setTimeout(() => URL.revokeObjectURL(url), 1000);
+	showToast("Preset JSON exported");
+}
+
+async function shareCurrentPreset() {
+	const code = encodePreset(currentPreset());
+	elements.presetText.value = code;
+	try {
+		await navigator.clipboard.writeText(code);
+		showToast("Share code copied. It is also shown below.");
+	} catch {
+		elements.presetText.focus();
+		elements.presetText.select();
+		showToast("Share code ready below. Copy it to share your settings.");
+	}
+}
+
+function clearPresetPreview() {
+	state.pendingPreset = null;
+	elements.presetPreview.hidden = true;
+}
+
+function previewPresetText(text) {
+	clearPresetPreview();
+	previewPreset(parsePreset(text, state.schema));
+}
+
+function previewPreset(preset) {
+	const scope = elements.presetScope.value || "all";
+	const checked = validatePreset(preset, state.schema);
+	const result = applyPreset(state.config, checked, state.schema, scope);
+	state.pendingPreset = { preset: checked, scope, base: JSON.stringify(state.config), result };
+	elements.presetName.value = checked.name;
+	elements.presetNotes.value = checked.description || "";
+	elements.presetPreviewTitle.textContent = checked.name;
+	elements.presetPreviewSummary.textContent = result.changes.length
+		? `${result.changes.length} settings will change in your draft. Save Config applies the draft to the server.`
+		: "These settings already match your current draft.";
+	elements.presetChanges.innerHTML = "";
+	for (const change of result.changes) {
+		const row = document.createElement("tr");
+		for (const value of [change.label || change.path, change.before, change.after]) {
+			const cell = document.createElement("td");
+			cell.textContent = value === undefined ? "Default" : typeof value === "boolean" ? (value ? "On" : "Off") : String(value);
+			row.appendChild(cell);
+		}
+		elements.presetChanges.appendChild(row);
+	}
+	elements.applyPresetButton.disabled = !result.changes.length;
+	elements.presetPreview.hidden = false;
+}
+
+function applyPreviewedPreset() {
+	const pending = state.pendingPreset;
+	if (!pending) return;
+	if (pending.base !== JSON.stringify(state.config) || pending.scope !== (elements.presetScope.value || "all")) {
+		previewPreset(pending.preset);
+		showToast("Your draft changed. Review the refreshed preview before applying.");
+		return;
+	}
+	state.config = pending.result.config;
+	for (const change of pending.result.changes) markDirty(change.path);
+	clearPresetPreview();
+	render();
+	showToast("Preset applied to draft. Select Save Config to use these settings.");
 }
 
 function markDirty(path) {

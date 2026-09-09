@@ -26,6 +26,10 @@
              Link="Production\FireSupportServerConfigMigration.cs" />
     <Compile Include="..\SamSWAT.FireSupport.Server\FireSupportServerConfigService.cs"
              Link="Production\FireSupportServerConfigService.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Server\FireSupportPresetCatalog.cs"
+             Link="Production\FireSupportPresetCatalog.cs" />
+    <Compile Include="..\SamSWAT.FireSupport.Server\FireSupportPresetStore.cs"
+             Link="Production\FireSupportPresetStore.cs" />
     <Compile Include="..\SamSWAT.FireSupport.Server\TscPilotProgressionService.cs"
              Link="Production\TscPilotProgressionService.cs" />
     <Compile Include="..\SamSWAT.FireSupport.Server\TscPilotQuestlinePolicy.cs"

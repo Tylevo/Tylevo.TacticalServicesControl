@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
+import * as presetApi from "../../project/SamSWAT.FireSupport.Server/CopyToOutput/web/presets.mjs";
 
 const webRoot = new URL("../../project/SamSWAT.FireSupport.Server/CopyToOutput/web/", import.meta.url);
-const source = await readFile(new URL("app.mjs", webRoot), "utf8");
+const source = (await readFile(new URL("app.mjs", webRoot), "utf8")).replace(/^import .* from "\.\/presets\.mjs";\r?\n/, "");
 const html = await readFile(new URL("index.html", webRoot), "utf8");
 
 // Execute the production script, including its startup and event handlers. This
@@ -61,6 +62,7 @@ class Element {
 	}
 
 	focus() {}
+	select() {}
 }
 
 function response(data, status = 200) {
@@ -89,6 +91,8 @@ async function dashboard(configOverrides = {}) {
 		requests: [],
 		confirmations: [],
 		confirmResult: true,
+		savedPresets: [],
+		copiedText: "",
 		onRequest: null,
 		serverConfig: {
 			revision: 7, requestCooldownSeconds: 30, paymentCurrency: "RUB", paymentSource: "StashRoubles",
@@ -118,6 +122,20 @@ async function dashboard(configOverrides = {}) {
 	const health = { ok: true, adminDashboard: { tokenRequired: false } };
 	fixture.defaultResponse = ({ url, options }) => {
 		if (url === "/tsc/schema") return response(schema);
+		if (url === "/tsc/presets") return response({ format: "tsc-preset", formatVersion: 1, presets: [
+			{ ...presetApi.createPreset({ ...fixture.serverConfig, requestCooldownSeconds: 60, prices: { ...fixture.serverConfig.prices, A10: 75000 } }, schema, "Balanced", "Test built-in"), id: "balanced" }
+		] });
+		if (url === "/tsc/presets/saved" && options.method !== "POST") return response({ presets: fixture.savedPresets });
+		if (url === "/tsc/presets/saved") {
+			const preset = JSON.parse(options.body);
+			preset.id ||= `custom-${String(fixture.savedPresets.length + 1).padStart(32, "0")}`;
+			fixture.savedPresets = [...fixture.savedPresets.filter((entry) => entry.id !== preset.id), preset];
+			return response({ preset });
+		}
+		if (url === "/tsc/presets/remove") {
+			fixture.savedPresets = fixture.savedPresets.filter((entry) => entry.id !== JSON.parse(options.body).id);
+			return response({ ok: true });
+		}
 		if (url === "/tsc/health" || url === "/tsc/admin/health") return response(health);
 		if (url === "/tsc/config" && options.method !== "POST") return response(fixture.serverConfig);
 		if (url === "/tsc/config" && options.method === "POST") {
@@ -144,6 +162,10 @@ async function dashboard(configOverrides = {}) {
 		select.dispatchEvent({ type: "change" });
 	};
 	runInNewContext(source, {
+		...presetApi,
+		Blob,
+		URL,
+		navigator: { clipboard: { writeText: async (text) => { fixture.copiedText = text; } } },
 		document: {
 			getElementById: (id) => elements[id] ?? null,
 			createElement: (tagName) => new Element(tagName)
@@ -411,4 +433,96 @@ test("item payment choices save whole counts and never send authenticated invent
 	assert.equal(saved.serviceCurrencies.Extraction, "BTC");
 	for (const field of ["stashCurrencyBalances", "stashCurrencyState", "purchaseHistory", "playerStateIncluded", "uplinkUnlocked", "progressionPermit"])
 		assert.equal(Object.hasOwn(saved, field), false, `${field} must remain profile-scoped`);
+});
+
+
+test("preset preview and apply only stage changes until Save Config", async () => {
+ const app = await dashboard();
+ app.elements.previewPresetButton.click();
+ await settle();
+ assert.equal(app.elements.presetPreview.hidden, false);
+ assert.ok(app.elements.presetChanges.children.length >= 1);
+ assert.equal(app.requests.length, 0);
+ assert.equal(app.input("prices.A10").value, 100000);
+ app.elements.applyPresetButton.click();
+ await settle();
+ assert.equal(app.input("prices.A10").value, 75000);
+ assert.equal(app.serverConfig.prices.A10, 100000);
+ assert.equal(app.requests.length, 0);
+ app.elements.saveButton.click();
+ await settle();
+ assert.equal(app.serverConfig.prices.A10, 75000);
+ assert.equal(app.requests.filter(r => r.options.method === "POST").length, 1);
+});
+
+test("preset preview refreshes if the draft changes before applying", async () => {
+ const app = await dashboard();
+ app.elements.previewPresetButton.click();
+ await settle();
+ app.edit(120);
+ app.elements.applyPresetButton.click();
+ await settle();
+ assert.equal(app.input().value, "120");
+ assert.match(app.elements.toast.textContent, /draft changed/i);
+ app.elements.applyPresetButton.click();
+ await settle();
+ assert.equal(app.input().value, 60);
+ assert.equal(app.requests.length, 0);
+});
+
+test("invalid imported preset never mutates the draft or contacts the server", async () => {
+ const app = await dashboard();
+ app.elements.presetText.value = JSON.stringify({format:"tsc-preset",formatVersion:1,name:"Bad",settings:{"prices.A10":1,"adminDashboard.allowRemoteAccess":true}});
+ app.elements.importPresetButton.click();
+ await settle();
+ assert.equal(app.input("prices.A10").value, 100000);
+ assert.equal(app.requests.length, 0);
+ assert.equal(app.elements.presetChanges.children.length, 0);
+ assert.ok(app.elements.toast.className.includes("is-error"));
+});
+
+test("host preset save persists a filtered copy without changing live config", async () => {
+ const app = await dashboard({authorizations:{A10:5},progressionPermit:"secret",adminDashboard:{allowRemoteAccess:true}});
+ app.elements.presetName.value = "My preset";
+ app.elements.presetNotes.value = "Shared with friends";
+ app.edit(90);
+ app.elements.savePresetButton.click();
+ await settle();
+ assert.equal(app.savedPresets.length, 1);
+ assert.equal(app.savedPresets[0].settings.requestCooldownSeconds, 90);
+ assert.equal(app.serverConfig.requestCooldownSeconds, 30);
+ const payload = app.requests.find(r=>r.url==="/tsc/presets/saved" && r.options.method==="POST").options.body;
+ assert.ok(!payload.includes("secret") && !payload.includes("authorizations") && !payload.includes("adminDashboard"));
+ app.elements.reloadButton.click();
+ await settle();
+ assert.equal(app.savedPresets.length, 1);
+ assert.match(app.elements.presetSelect.value, /^custom:/);
+});
+
+test("share code round-trips Unicode metadata and excludes private fields", async () => {
+ const app = await dashboard({progressionPermit:"private-permit",stashCurrencyBalances:{GP:99}});
+ app.elements.presetName.value = "Friend\u2019s \u914d\u7f6e";
+ app.elements.presetNotes.value = "Easy evenings";
+ app.elements.copyPresetButton.click();
+ await settle();
+ assert.match(app.copiedText, /^TSC1\./);
+ assert.equal(app.elements.presetText.value, app.copiedText);
+ assert.equal(app.requests.length, 0);
+ app.elements.importPresetButton.click();
+ await settle();
+ assert.equal(app.elements.presetPreviewTitle.textContent, "Friend\u2019s \u914d\u7f6e");
+ assert.equal(app.elements.applyPresetButton.disabled, true);
+});
+
+test("host save rejection preserves draft and does not invent a saved preset", async () => {
+ const app = await dashboard();
+ app.elements.presetName.value = "My preset";
+ app.onRequest = r=>r.url==="/tsc/presets/saved" ? response({error:"No admin access"},403) : app.defaultResponse(r);
+ app.edit(90);
+ app.elements.savePresetButton.click();
+ await settle();
+ assert.equal(app.savedPresets.length, 0);
+ assert.equal(app.input().value, "90");
+ assert.equal(app.elements.presetControls.inert, false);
+ assert.ok(app.elements.toast.className.includes("is-error"));
 });

@@ -722,6 +722,7 @@ Write-Host "Running dashboard interaction regression tests."
 Invoke-Checked -FilePath "node" -Arguments @(
     "--test",
     (Join-Path $PSScriptRoot "tests\dashboard.test.mjs")
+    (Join-Path $PSScriptRoot "tests\presets.test.mjs")
 )
 
 Write-Host "Validating release identity and metadata."

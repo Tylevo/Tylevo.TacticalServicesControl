@@ -230,19 +230,19 @@ internal static class PluginSettings
 		StrafeRequestCostRoubles = config.Bind(
 			"Main Settings",
 			"Autocannon strafe cost",
-			250000,
+			150000,
 			new ConfigDescription("Selected currency units required to request an A-10 autocannon strafe",
 				new AcceptableValueRange<int>(0, 10000000)));
 		DoubleStrafeRequestCostRoubles = config.Bind(
 			"Main Settings",
 			"A-10 double pass cost",
-			450000,
+			250000,
 			new ConfigDescription("Selected currency units required to request two A-10 autocannon passes on the same target",
 				new AcceptableValueRange<int>(0, 10000000)));
 		ExtractionRequestCostRoubles = config.Bind(
 			"Main Settings",
 			"Helicopter extraction cost",
-			300000,
+			125000,
 			new ConfigDescription("Selected currency units required to request a UH-60 extraction",
 				new AcceptableValueRange<int>(0, 10000000)));
 		PriorityExfilRequestCostRoubles = config.Bind(
@@ -250,19 +250,19 @@ internal static class PluginSettings
 			// Legacy config key retained so existing operator values continue
 			// to price the replacement Cargo Transfer authorization.
 			"Priority exfil cost",
-			450000,
+			75000,
 			new ConfigDescription("Selected currency units required to dispatch the UH-60 Cargo Transfer service",
 				new AcceptableValueRange<int>(0, 10000000)));
 		UavRequestCostRoubles = config.Bind(
 			"Main Settings",
 			"UAV recon cost",
-			125000,
+			50000,
 			new ConfigDescription("Selected currency units required to request a timed UAV recon scan",
 				new AcceptableValueRange<int>(0, 10000000)));
 		FocusedSweepRequestCostRoubles = config.Bind(
 			"Main Settings",
 			"Focused sweep cost",
-			90000,
+			25000,
 			new ConfigDescription("Selected currency units required to request a shorter, narrower, faster-refresh UAV sweep",
 				new AcceptableValueRange<int>(0, 10000000)));
 		EnablePriorityExfil = config.Bind(

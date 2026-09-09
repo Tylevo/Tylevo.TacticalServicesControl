@@ -2,19 +2,31 @@
 
 Call in an A-10 strike, arrange a helicopter extraction or cargo pickup, and locate nearby contacts with UAV reconnaissance. Control your support from the TerraGroup TSC Uplink phone.
 
-**TSC v1.3.13 development candidate · SPT 4.1.5 / EFT 0.16.9.5.40743**
+**TSC v1.3.13 development candidate Â· SPT 4.1.5 / EFT 0.16.9.5.40743**
 
-[Candidate notes](docs/release-notes-v1.3.13.md) · [Installation guide](docs/dependencies.md) · [TSC releases](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases)
+[Candidate notes](docs/release-notes-v1.3.13.md) Â· [Installation guide](docs/dependencies.md) Â· [TSC releases](https://github.com/Tylevo/Tylevo.TacticalServicesControl/releases)
 
 Install **UnityToolkit 2.0.2** and **WTT CommonLib 3.0.6** separately. **Fika support is included, but multiplayer on the current SPT/Fika versions has not been tested.**
 
-## Next version: per-service payment currencies
+## Next version: prices, presets, and payment currencies
 
-Select RUB, USD, EUR, GP coins, or Bitcoin separately for each service in SIC
-or the dashboard. Existing services inherit the global currency. GP and BTC
-are consumed from the PMC stash, including eligible items inside stash containers;
-cash retains its configured wallet. Prices are whole units, with no automatic
-conversion when changing currencies. See the [unreleased candidate notes](docs/release-notes-v1.3.13.md).
+The unpublished **1.3.13 candidate** adds **Balanced, Casual, Hardcore, Barter,
+and Classic 1.3.12** presets. Preview changes in the dashboard, apply them to
+your draft, then Save Config. Save named presets as JSON files on the SPT host
+and share your settings through JSON files or complete share codes. The library
+works across browsers without a database or online account.
+
+Fresh installs use lower Balanced prices: **Focused Sweep 25,000 RUB, UAV
+50,000 RUB, A-10 150,000 RUB, Double Pass 250,000 RUB, Extraction 125,000 RUB,
+and Cargo Transfer 75,000 RUB**. Existing installs retain saved prices until
+you choose a preset or edit them. The Uplink, quest repeater, and native cargo
+handling fee keep their existing prices.
+
+Select **RUB, USD, EUR, GP coins, or Bitcoin** separately for each service in SIC
+or the dashboard. GP/BTC come from the PMC stash, including eligible items in
+stash containers; cash uses the configured wallet. Prices are whole units and
+changing currency does not convert the amount. See the [candidate notes](docs/release-notes-v1.3.13.md)
+and [preset guide](docs/dashboard.md#gameplay-presets-candidate-1313).
 
 ## What's new in 1.3.12?
 
@@ -33,7 +45,7 @@ If you're updating from the last Forge release, TSC v1.0.8, this version brings 
 - **UH-60 Cargo Transfer:** send loot home while you stay in the raid. It replaces Priority Exfil. Cargo arrives through Pilot's mail, and the separate item-handling fee can use carried roubles or your stash.
 - **Pilot's Services tab:** buy support authorizations before entering a raid at **Traders > Pilot > Services**. Browse the compact service list on the left and review the selected service's details on the right. Purchases use your PMC stash balance and existing authorization limits.
 - **A redesigned phone:** live UI, new service artwork, horizontal purchase screens, and smoother, adjustable zoom. Hold **Left Alt** to select with the mouse; the number-key controls remain available.
-- **Optional Pilot Questline add-on:** the main download opens Pilot immediately and sells the Uplink for ₽50,000. Install the separate add-on to earn access through three quests beginning with Mechanic at level 5. The Uplink has its own fourth special slot.
+- **Optional Pilot Questline add-on:** the main download opens Pilot immediately and sells the Uplink for â‚½50,000. Install the separate add-on to earn access through three quests beginning with Mechanic at level 5. The Uplink has its own fourth special slot.
 - **More radar display options:** hold **J** to check active recon on the physical phone, or choose a compact HUD scanner in a screen corner.
 - **More payment options and better recovery:** configure support prices in RUB, USD, or EUR. Authorization use and payment recovery have been strengthened across failed requests, reconnects, and server saves.
 - **A-10 targeting improvements:** corrected shot origins and trajectory compensation address rounds landing short of the designated target.
@@ -62,7 +74,7 @@ For an existing SPT 4.1.x installation, back up your profiles and TSC's complete
 1. Close the game, launcher, and SPT server.
 2. Install the standalone [**UnityToolkit 2.0.2** package](https://github.com/Tylevo/UnityToolkit-New/releases/tag/v2.0.2), then install [WTT CommonLib 3.0.6](https://github.com/WelcomeToThursday/WTT-CommonLib/releases/tag/v3.0.6), including its client, server, and serialization prepatcher components.
 3. Extract the **full TSC ZIP** into your SPT 4.1.5 root. Merge the `BepInEx` and `SPT_Runtime` folders and replace old mod files when prompted.
-4. If you use quest progression, also extract the matching **1.3.12 Pilot Questline add-on ZIP**, replacing the previous add-on files into the same root. It adds server content and uses the same TSC client. Skip it for immediate access through Pilot.
+4. If you use quest progression, also extract the **Pilot Questline add-on ZIP matching your main package**: 1.3.12 for the published release, or 1.3.13 when testing this candidate. Replace the previous add-on files into the same root. It adds server content and uses the same TSC client. Skip it for immediate access through Pilot.
 5. Start the SPT server, then the launcher and game.
 
 The TSC ZIP does not include UnityToolkit. Its separate 2.0.2 package supplies the plugin, prepatcher, and companion libraries. Keep one Toolkit installation in the standard plugin and patcher folders; no additional compatibility overlay is needed. TSC replaces SamSWAT Fire Support and Arys Reloaded, so don't install those alongside it.
@@ -71,9 +83,9 @@ The [installation guide](docs/dependencies.md) shows the folder layout and upgra
 
 ## Getting started
 
-With the main download, open **Traders > Pilot > Trading** and buy the **TerraGroup TSC Uplink** for **₽50,000**. Pilot and configured services are available immediately, with normal service prices and authorization limits.
+With the main download, open **Traders > Pilot > Trading** and buy the **TerraGroup TSC Uplink** for **â‚½50,000**. Pilot and configured services are available immediately, with normal service prices and authorization limits.
 
-With the optional **Pilot Questline add-on**, begin **Open Channel** with Mechanic at level 5, supply Pilot's repair parts, and restore the Shoreline weather-station relay. Completing **Back on the Air** awards the phone and unlocks services and ₽50,000 replacements. See the [add-on and questline guide](docs/pilot-questline.md).
+With the optional **Pilot Questline add-on**, begin **Open Channel** with Mechanic at level 5, supply Pilot's repair parts, and restore the Shoreline weather-station relay. Completing **Back on the Air** awards the phone and unlocks services and â‚½50,000 replacements. See the [add-on and questline guide](docs/pilot-questline.md).
 
 TSC does not add phones to random loot in either mode. Put your Uplink in the dedicated fourth special slot, or carry it in your inventory.
 
@@ -87,7 +99,7 @@ In-raid phone purchasing and deployment controls are unchanged: use **U** to buy
 | **Hold Left Alt + left-click** | Browse and select with the phone cursor. Release Alt to look around again. |
 | **LMB, then 1 / 2 / 3** | Open Tactical Services from the home screen, then choose UH-60 Services, Fire Support, or UAV Recon. |
 | **1 / 2, then Enter** | Choose the standard or alternate service within a category, then confirm its purchase on the review screen. |
-| **K** | Open deployment for services you own. Select with Alt and the mouse, or **1–6**, then deploy with **LMB / Enter**. |
+| **K** | Open deployment for services you own. Select with Alt and the mouse, or **1â€“6**, then deploy with **LMB / Enter**. |
 | **Middle mouse / Enter** | Confirm each camera-targeting step for A-10 or UH-60 support. |
 | **Alt + RMB / Backspace** | Cancel camera targeting. |
 | **Hold J** | View active UAV recon in Phone display mode. |
@@ -100,11 +112,13 @@ Purchase confirmation turns the phone upright and plays the swipe automatically.
 
 Start the SPT server, open **SIC** from the launcher, and choose **Tactical Services Control** under **Mod pages**. This opens the themed TerraGroup dashboard.
 
-SIC also has **Config Editor > Mods > Tactical Services Control** for prices, availability, cooldowns, payment settings, and service timing. Personal phone and radar settings stay in **F12**. The [dashboard guide](docs/dashboard.md) explains saving and applying changes.
+SIC also has **Config Editor > Mods > Tactical Services Control** for prices, availability, cooldowns, payment settings, and service timing. Candidate gameplay presets use those same fields, with their library and sharing controls in the themed dashboard. Personal phone and radar settings stay in **F12**. The [dashboard guide](docs/dashboard.md) explains previewing, saving, applying, and sharing settings.
 
 ## Compatibility and known issues
 
-The maintainer accepted the phone movement and sprint zoom changes in-game on September 8. The tested candidate passed 305 C# regression tests and 10 dashboard tests, and cargo settings passed 27 native SIC checks. Cargo grid layout and delivery with custom dimensions still need gameplay coverage. See the [1.3.12 validation record](docs/validation/v1.3.12.md).
+For the published 1.3.12 release, the maintainer accepted the phone movement and sprint zoom changes in-game on September 8. That build passed 305 C# regression tests and 10 dashboard tests, and cargo settings passed 27 native SIC checks. Cargo grid layout and delivery with custom dimensions still need gameplay coverage. See the [1.3.12 validation record](docs/validation/v1.3.12.md).
+
+The new 1.3.13 preset library still needs native integration and gameplay acceptance. Its automated checks do not establish multiplayer compatibility.
 
 The existing [Services checklist](docs/pilot-services-testing.md) and [questline checklist](docs/pilot-questline.md#validation) retain their unrecorded gameplay cases. This patch does not change the questline. Update the main package on all Fika participants and install the matching add-on on the server when used.
 
@@ -118,6 +132,6 @@ Based on **SamSWAT's Fire Support** and **Arys Reloaded**, with permission and a
 
 TSC is licensed under **CC BY-NC 4.0**. UnityToolkit remains under MIT, and its companion libraries retain their own licenses.
 
-[All documentation](docs/README.md) · [Archived releases and development history](docs/archive/README.md) · [Building from source](BUILDING.md)
+[All documentation](docs/README.md) Â· [Archived releases and development history](docs/archive/README.md) Â· [Building from source](BUILDING.md)
 
 If you'd like to support development, you can leave an optional tip on [Ko-fi](https://ko-fi.com/tylevo). Tipping does not unlock features, downloads, updates, or priority support.

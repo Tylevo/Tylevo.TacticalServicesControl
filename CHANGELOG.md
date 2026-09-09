@@ -2,6 +2,18 @@
 
 ## 1.3.13 - Public Beta (unreleased)
 
+- Lower fresh-install defaults to 25,000 RUB for Focused Sweep, 50,000 for
+  UAV, 150,000 for A-10, 250,000 for Double Pass, 125,000 for Extraction, and
+  75,000 for Cargo Transfer. Existing configs retain their authored values.
+- Add Balanced, Casual, Hardcore, Barter, and Classic 1.3.12 gameplay presets.
+  Preview changes by category or across all gameplay settings, apply to the
+  dashboard draft, and use Save Config to activate them.
+- Store named custom presets as JSON files in the SPT host's `config/presets/`
+  directory. Export the current draft as JSON or a self-contained share code,
+  and preview imports before applying them. No database or online account is
+  required; admin settings, tokens, and player records are excluded.
+- Keep category preset prices in their intended currency by making inherited
+  service currencies explicit, while preserving the global currency and wallet.
 - Choose a payment currency separately for each service in SIC or the TSC
   dashboard: RUB, USD, EUR, GP coins, or physical Bitcoin. Existing services
   inherit the global currency until an override is selected.
@@ -122,11 +134,11 @@ See [SIC and dashboard setup](docs/dashboard.md) and the
 ## 1.3.8 - Public Beta
 
 Published September 5, 2026 for SPT 4.1.4. This release includes the preceding
-1.3.0–1.3.7 development updates listed below; see the cumulative
+1.3.0â€“1.3.7 development updates listed below; see the cumulative
 [release notes](docs/release-notes-v1.3.8.md) for the full upgrade overview.
 
 - Move the physical TSC Uplink offer from Jaeger to UH-60 Pilot, preserving
-  its ₽50,000 price, loyalty level 1 requirement, and five-per-restock limit.
+  its â‚½50,000 price, loyalty level 1 requirement, and five-per-restock limit.
 - Make Pilot available by default and unlock existing locked Pilot profile
   entries without resetting standing, sales, loyalty, or other traders.
 - Use the supplied Pilot portrait for both Trading and cargo mail, with a
@@ -473,7 +485,7 @@ declare build, server-boot, client, raid, or Fika acceptance.
 
 ### Changed
 
-- The YY gesture wheel is retired from the main workflow. Deployment now goes through the TSC Uplink phone: after purchasing an authorization, a notification shows the deploy key, and pressing it (default `K`, configurable as "Open deploy key") pulls the phone out already vertical with a deploy selector listing only the authorizations you currently hold, styled to match the purchase screens. The phone is held one-handed (the free hand is tucked out of view; "Deploy hide right hand" config). Number keys (1-6) select a service, tapping (LMB, or Enter) deploys it — the spotter or UAV starts within half a second while the phone stows — and Backspace/Escape/RMB puts the phone away. A short arming delay after opening prevents stray clicks from spending an authorization, and the selector shows a "Station busy" countdown while the support cooldown runs. The authorization is only consumed when the deployment actually starts, exactly as before. UAV deploys from the Uplink no longer replay the activation-device phone animation; the radar starts immediately.
+- The YY gesture wheel is retired from the main workflow. Deployment now goes through the TSC Uplink phone: after purchasing an authorization, a notification shows the deploy key, and pressing it (default `K`, configurable as "Open deploy key") pulls the phone out already vertical with a deploy selector listing only the authorizations you currently hold, styled to match the purchase screens. The phone is held one-handed (the free hand is tucked out of view; "Deploy hide right hand" config). Number keys (1-6) select a service, tapping (LMB, or Enter) deploys it â€” the spotter or UAV starts within half a second while the phone stows â€” and Backspace/Escape/RMB puts the phone away. A short arming delay after opening prevents stray clicks from spending an authorization, and the selector shows a "Station busy" countdown while the support cooldown runs. The authorization is only consumed when the deployment actually starts, exactly as before. UAV deploys from the Uplink no longer replay the activation-device phone animation; the radar starts immediately.
 - The rangefinder is no longer required as a target designator. A-10 and UH-60 targeting uses the same spotter view raycast from your camera with any item in hands; Enter confirms each targeting step (LMB still works, but fires a held weapon), and Alt+RMB or Backspace cancels. Purchase and deploy remain separate phone states, so buying a double pass and deploying it can no longer disagree about which A-10 option is used.
 - The old YY radial and its rangefinder flow are still available behind the new "Enable legacy YY radial" config toggle (default off) for this release, and will be removed once the deploy phone is stable.
 - Fika A-10 authority is now explicit: single-player and a human Fika host keep the original Arys runtime/ballistic path; a Fika client is visual-only; a dedicated headless host may use only the gated experimental damage path.
@@ -515,7 +527,7 @@ declare build, server-boot, client, raid, or Fika acceptance.
 
 ### Fixed
 
-- Carried-rouble purchases no longer lose your money. Authorizations bought with carried roubles used to vanish within seconds of purchase — the service showed AUTH REQ again unless you deployed it almost immediately, and the roubles were spent either way. These purchases now persist for the whole raid and can be deployed whenever you're ready.
+- Carried-rouble purchases no longer lose your money. Authorizations bought with carried roubles used to vanish within seconds of purchase â€” the service showed AUTH REQ again unless you deployed it almost immediately, and the roubles were spent either way. These purchases now persist for the whole raid and can be deployed whenever you're ready.
 - Non-host Fika players now see A-10 tracers reliably. Tracer playback was scheduled against the host's clock, which is unrelated to the client's; depending on which machine had more uptime, tracers rendered all at once or never. Clients now anchor playback to their own packet arrival time.
 - Non-host Fika players now see the GAU-8 impact explosions. Only the host simulates the A-10 ballistics, so detonation effects existed only there; clients now emit the same big_smoky_explosion effect at each round's impact point during tracer playback, matching the host's view.
 - Potentially fixed a freeze (movement and camera locked, weapon still usable) affecting loot pickups after the phone had been opened from its special slot and cancelled with the uplink hotkey. Two hand-restore flows raced; quick-use sessions are now restored by the game alone. The race was intermittent by nature, so please report if it still occurs on this version.

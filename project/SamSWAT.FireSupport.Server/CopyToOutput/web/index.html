@@ -65,6 +65,34 @@
 				</div>
 			</div>
 
+			<section id="presets" class="section-panel preset-panel" aria-labelledby="presetsTitle">
+				<div class="section-heading">
+					<div><span class="section-kicker">Play your way</span><h2 id="presetsTitle">Gameplay presets</h2>
+					<p>Choose a starting point or share your own settings. Preview changes, apply them to your draft, then Save Config.</p></div>
+				</div>
+				<div id="presetControls" class="preset-body">
+					<div class="preset-library">
+						<label>Preset<select id="presetSelect" aria-describedby="presetDescription"></select></label>
+						<label>Apply to<select id="presetScope"><option value="all">All gameplay settings</option><option value="pricing">Prices and payment</option><option value="recon">Recon services</option><option value="extraction">UH-60 services</option><option value="fire">Fire support</option></select></label>
+						<button id="previewPresetButton" type="button">Preview preset</button>
+						<button id="deletePresetButton" type="button" disabled>Remove saved preset</button>
+					</div>
+					<p id="presetDescription" class="preset-hint"></p>
+					<details class="preset-sharing"><summary>Save or share your settings</summary>
+						<p class="preset-hint">Saved presets are JSON files on your SPT host. Export a JSON file or copy a complete share code to send to another player or keep a backup. Share codes contain the settings themselves.</p>
+						<div class="preset-metadata"><label>Preset name<input id="presetName" type="text" maxlength="80" value="My TSC preset"></label><label>Description (optional)<input id="presetNotes" type="text" maxlength="500"></label></div>
+						<div class="preset-actions"><button id="savePresetButton" type="button">Save current as preset</button><button id="exportPresetButton" type="button">Export current JSON</button><button id="copyPresetButton" type="button">Get share code</button></div>
+						<label class="preset-text-label">Import JSON or a share code<textarea id="presetText" rows="4" maxlength="49152" spellcheck="false" placeholder="Paste a TSC preset JSON or TSC1. share code"></textarea></label>
+						<div class="preset-actions"><button id="importPresetButton" type="button">Preview pasted preset</button><button id="importPresetFileButton" type="button">Open JSON file</button><input id="presetFile" type="file" accept=".json,application/json" hidden></div>
+						<p class="preset-hint">Presets include gameplay settings only. Dashboard access settings, tokens and player data stay private. Category presets keep your global wallet and use explicit currencies for their selected services.</p>
+					</details>
+					<div id="presetPreview" class="preset-preview" hidden aria-live="polite">
+						<h3 id="presetPreviewTitle"></h3><p id="presetPreviewSummary"></p>
+						<div class="preset-table-wrap"><table><thead><tr><th>Setting</th><th>Current draft</th><th>Preset</th></tr></thead><tbody id="presetChanges"></tbody></table></div>
+						<div class="preset-actions"><button id="applyPresetButton" class="primary" type="button">Apply to draft</button><button id="cancelPresetButton" type="button">Dismiss preview</button></div>
+					</div>
+				</div>
+			</section>
 			<div id="formRoot" class="form-root"></div>
 
 			<section class="section-panel diagnostics-panel" aria-labelledby="diagnosticsTitle">
@@ -89,6 +117,6 @@
 	</footer>
 
 	<div id="toast" class="toast" role="status" aria-live="polite"></div>
-	<script src="/tsc/admin/app.mjs"></script>
+	<script type="module" src="/tsc/admin/app.mjs"></script>
 </body>
 </html>
