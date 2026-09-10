@@ -49,7 +49,7 @@ public static class FireSupportPresetCatalog
 				Preset("casual", "Casual", "Cheaper support, shorter cooldowns, more stored authorizations and stronger recon.", casual),
 				Preset("hardcore", "Hardcore", "Expensive support, longer cooldowns, one stored authorization and reduced recon.", hardcore),
 				Preset("barter", "Barter", "Pay from the stash with GP coins and Bitcoin; UAV support costs 10,000 roubles.", barter),
-				Preset("classic", "Classic 1.3.12", "Restore the original rouble prices, service timing and gameplay defaults.", CreateClassicSettings())
+				Preset("classic", "Classic 1.3.12", "Restore the original rouble prices, carried wallet, service timing and gameplay defaults.", CreateClassicSettings())
 			}
 		};
 	}

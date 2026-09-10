@@ -28,14 +28,23 @@ stash containers; cash uses the configured wallet. Prices are whole units and
 changing currency does not convert the amount. See the [candidate notes](docs/release-notes-v1.3.13.md)
 and [preset guide](docs/dashboard.md#gameplay-presets-candidate-1313).
 
+Fresh installs and Reset Defaults use **stash roubles**. The dashboard has a
+dedicated presets page, aligned sharing panels, wider dropdowns, and the
+in-game color theme. Phone payment swipes continue into stowing without the
+temporary pause, with a larger arrow following the hand animation.
+
+**Keep your existing Pilot Questline 1.3.12 add-on for SPT 4.1.5.** Main TSC
+1.3.13 accepts it; this update needs no new add-on download. Quest content
+and progression are unchanged.
+
 ## What's new in 1.3.12?
 
 - Upright phones follow the hand during sprint, with gentler walking bob and turning sway.
 - The horizontal purchase phone eases out of zoom when you sprint and back in when you stop, with matching fade timing.
 - Set UH-60 cargo grid columns and rows in SIC or the dashboard. Each dimension defaults to the native size; custom grids support up to 10 columns and 30 rows.
 
-The main ZIP and separate optional Pilot Questline ZIP both use version 1.3.12.
-Update an installed add-on together with all TSC components; its quests are unchanged.
+The original 1.3.12 release required matching main and add-on versions.
+The 1.3.13 compatibility change above lets you keep that unchanged add-on.
 See the [patch notes](docs/release-notes-v1.3.12.md) for configuration and testing details.
 
 ## What's changed since the SPT 4.0.13 release?
@@ -74,7 +83,7 @@ For an existing SPT 4.1.x installation, back up your profiles and TSC's complete
 1. Close the game, launcher, and SPT server.
 2. Install the standalone [**UnityToolkit 2.0.2** package](https://github.com/Tylevo/UnityToolkit-New/releases/tag/v2.0.2), then install [WTT CommonLib 3.0.6](https://github.com/WelcomeToThursday/WTT-CommonLib/releases/tag/v3.0.6), including its client, server, and serialization prepatcher components.
 3. Extract the **full TSC ZIP** into your SPT 4.1.5 root. Merge the `BepInEx` and `SPT_Runtime` folders and replace old mod files when prompted.
-4. If you use quest progression, also extract the **Pilot Questline add-on ZIP matching your main package**: 1.3.12 for the published release, or 1.3.13 when testing this candidate. Replace the previous add-on files into the same root. It adds server content and uses the same TSC client. Skip it for immediate access through Pilot.
+4. If you use quest progression, keep the existing **Pilot Questline 1.3.12 add-on for SPT 4.1.5**, or install it from its existing download. Main TSC 1.3.13 accepts it without an add-on update. It adds server content and uses the same TSC client. Skip it for immediate access through Pilot.
 5. Start the SPT server, then the launcher and game.
 
 The TSC ZIP does not include UnityToolkit. Its separate 2.0.2 package supplies the plugin, prepatcher, and companion libraries. Keep one Toolkit installation in the standard plugin and patcher folders; no additional compatibility overlay is needed. TSC replaces SamSWAT Fire Support and Arys Reloaded, so don't install those alongside it.
@@ -118,9 +127,9 @@ SIC also has **Config Editor > Mods > Tactical Services Control** for prices, av
 
 For the published 1.3.12 release, the maintainer accepted the phone movement and sprint zoom changes in-game on September 8. That build passed 305 C# regression tests and 10 dashboard tests, and cargo settings passed 27 native SIC checks. Cargo grid layout and delivery with custom dimensions still need gameplay coverage. See the [1.3.12 validation record](docs/validation/v1.3.12.md).
 
-The new 1.3.13 preset library still needs native integration and gameplay acceptance. Its automated checks do not establish multiplayer compatibility.
+The 1.3.13 preset library has native SIC and HTTP validation from development. The release archive's accompanying validation record identifies its exact build and checks. In-game and Fika gameplay acceptance remain separate from automated validation.
 
-The existing [Services checklist](docs/pilot-services-testing.md) and [questline checklist](docs/pilot-questline.md#validation) retain their unrecorded gameplay cases. This patch does not change the questline. Update the main package on all Fika participants and install the matching add-on on the server when used.
+The existing [Services checklist](docs/pilot-services-testing.md) and [questline checklist](docs/pilot-questline.md#validation) retain their unrecorded gameplay cases. This patch does not change the questline. Update the main package on all Fika participants and retain the existing 1.3.12 add-on on the server when used.
 
 **Current Fika multiplayer remains untested.** Solo play does not require Fika. Cargo Transfer is available in solo play and is implemented for the requesting human Fika host; other Fika clients and dedicated-headless requesters cannot use it yet. Dedicated-headless A-10 damage is experimental.
 

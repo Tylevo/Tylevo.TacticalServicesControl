@@ -1,6 +1,6 @@
 # Installing TSC for SPT 4.1.5
 
-**TSC v1.3.12 targets SPT 4.1.5.** Install the complete standalone
+**TSC v1.3.13 targets SPT 4.1.5.** Install the complete standalone
 [**UnityToolkit 2.0.2** package](https://github.com/Tylevo/UnityToolkit-New/releases/tag/v2.0.2) separately;
 do not substitute the older 2.0.1 binary.
 
@@ -30,14 +30,14 @@ profile's installation.
 3. Extract the **complete UnityToolkit 2.0.2 package** into
    the SPT root. It supplies its plugin, prepatcher, companion libraries,
    `Assemblies.jsonc`, and license notices. No additional overlay is needed.
-4. Extract the **full TSC v1.3.12 ZIP** into the same SPT root
+4. Extract the **full TSC v1.3.13 ZIP** into the same SPT root
    so its `BepInEx` and `SPT_Runtime` folders merge with the existing folders.
    GitHub's automatic source archives are not installable mod packages.
 5. If UnityToolkit is already installed, replace its files in the standard
    folders when prompted. Keep one installation; do not leave duplicate
    plugin or prepatcher copies in other folders.
-6. Optionally extract the matching **Pilot Questline add-on ZIP** into the
-   same root. It supplies server content only. Without it, Pilot sells the
+6. Optionally extract the existing **Pilot Questline 1.3.12 add-on for SPT 4.1.5**
+   into the same root, or keep it if already installed. It supplies server content only. Without it, Pilot sells the
    ₽50,000 Uplink immediately and services have no introduction requirement.
 7. Start the SPT server, then the launcher and game.
 
@@ -60,10 +60,10 @@ The optional add-on lives at
 For Fika, install it on the shared SPT server; everyone uses the same main
 client download. The server chooses progression at startup. See the
 [add-on guide](pilot-questline.md) for quest details and removal instructions.
-Updating the main mod preserves an installed add-on, which must match the
-current TSC/SPT versions. For this update, replace an installed 1.3.11 add-on
-with the 1.3.12 add-on before restarting the server. Its quest data and behavior
-are unchanged; keeping the matching content installed preserves quest definitions.
+Updating the main mod preserves an installed add-on. TSC 1.3.13 accepts the
+existing Pilot Questline 1.3.12 add-on for SPT 4.1.5; leave it installed.
+Its quest data and behavior are unchanged, so no new add-on release is needed.
+Older or different-SPT add-ons still require the supported 1.3.12 download.
 
 ## Updating an existing SPT 4.1.x installation
 

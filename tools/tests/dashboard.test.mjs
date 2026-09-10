@@ -16,12 +16,17 @@ class Element {
 		this.tagName = tagName;
 		this.children = [];
 		this.listeners = new Map();
+		this.attributes = new Map();
 		this.dataset = {};
 		this.className = "";
 		this.textContent = "";
 		this.value = "";
 		this.disabled = false;
 		this.inert = false;
+		this.hidden = false;
+		this.scrollCalls = [];
+		this.style = {};
+		this.offsetHeight = 70;
 		this.classList = {
 			add: (name) => this.classList.toggle(name, true),
 			toggle: (name, enabled) => {
@@ -58,8 +63,16 @@ class Element {
 	}
 
 	click() {
-		if (!this.disabled) this.dispatchEvent({ type: "click" });
+		if (this.disabled) return;
+		const event = { type: "click", defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+		this.dispatchEvent(event);
+		if (!event.defaultPrevented && this.href?.startsWith("#")) this.navigate?.(this.href);
 	}
+
+	setAttribute(name, value) { this.attributes.set(name, String(value)); }
+	getAttribute(name) { return this.attributes.get(name) ?? (name === "href" ? this.href ?? null : null); }
+	removeAttribute(name) { this.attributes.delete(name); }
+	scrollIntoView(options) { this.scrollCalls.push(options); }
 
 	focus() {}
 	select() {}
@@ -81,13 +94,36 @@ function descendants(element) {
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
-async function dashboard(configOverrides = {}) {
-	const elements = Object.fromEntries([...html.matchAll(/\bid="([^"]+)"/g)]
-		.map((match) => [match[1], new Element()]));
+async function dashboard(configOverrides = {}, initialHash = "") {
+	const elements = Object.fromEntries([...html.matchAll(/<([a-z][\w-]*)\b([^>]*\bid="([^"]+)"[^>]*)>/gi)]
+		.map((match) => {
+			const element = new Element(match[1]);
+			element.id = match[3];
+			element.href = match[2].match(/\bhref="([^"]+)"/)?.[1];
+			element.hidden = /\bhidden(?:\s|=|$)/.test(match[2]);
+			return [match[3], element];
+		}));
 	const window = new Element();
+	const history = [initialHash];
+	let historyIndex = 0;
+	window.location = {
+		get hash() { return history[historyIndex]; },
+		set hash(value) {
+			if (value === history[historyIndex]) return;
+			history.splice(historyIndex + 1);
+			history.push(value);
+			historyIndex++;
+			window.dispatchEvent({ type: "hashchange" });
+		}
+	};
+	window.history = {
+		back() { if (historyIndex > 0) { historyIndex--; window.dispatchEvent({ type: "hashchange" }); } },
+		forward() { if (historyIndex < history.length - 1) { historyIndex++; window.dispatchEvent({ type: "hashchange" }); } }
+	};
 	const fixture = {
 		elements,
 		window,
+		navigate: (hash) => { window.location.hash = hash; },
 		requests: [],
 		confirmations: [],
 		confirmResult: true,
@@ -102,6 +138,9 @@ async function dashboard(configOverrides = {}) {
 			...configOverrides
 		}
 	};
+	for (const element of Object.values(elements)) element.navigate = fixture.navigate;
+	fixture.sectionLink = (hash) => elements.sectionNav.children.find((link) => link.href === hash);
+	fixture.elementById = (id) => elements[id] ?? Object.values(elements).flatMap(descendants).find((element) => element.id === id) ?? null;
 	const schema = { sections: [
 		{ id: "main", label: "Main", fields: [
 			{ path: "requestCooldownSeconds", label: "Request cooldown", type: "number", min: 0, max: 300 }
@@ -167,8 +206,12 @@ async function dashboard(configOverrides = {}) {
 		URL,
 		navigator: { clipboard: { writeText: async (text) => { fixture.copiedText = text; } } },
 		document: {
-			getElementById: (id) => elements[id] ?? null,
-			createElement: (tagName) => new Element(tagName)
+			getElementById: fixture.elementById,
+			createElement: (tagName) => {
+				const element = new Element(tagName);
+				element.navigate = fixture.navigate;
+				return element;
+			}
 		},
 		window,
 		fetch: async (url, options = {}) => {
@@ -188,6 +231,127 @@ async function dashboard(configOverrides = {}) {
 	fixture.requests.length = 0;
 	return fixture;
 }
+
+test("dashboard opens Configuration by default with presets in a separate hidden area", async () => {
+	const app = await dashboard();
+	assert.equal(app.elements.configurationView.hidden, false);
+	assert.equal(app.elements.presetsView.hidden, true);
+	assert.equal(app.elements.configurationLink.getAttribute("aria-current"), "page");
+	assert.equal(app.elements.presetsLink.getAttribute("aria-current"), null);
+	assert.ok(app.elements.configurationLink.className.includes("is-active"));
+	assert.equal(app.sectionLink("#presets"), undefined, "Preset area must not be duplicated among config sections");
+	assert.ok(app.sectionLink("#diagnosticsTitle"));
+	assert.equal(app.requests.length, 0);
+});
+
+test("direct preset and configuration section hashes reveal and scroll to the right area", async () => {
+	for (const hash of ["#presets", "#pricing", "#diagnosticsTitle", "#configuration"]) {
+		const app = await dashboard({}, hash);
+		const presets = hash === "#presets";
+		assert.equal(app.elements.configurationView.hidden, presets, hash);
+		assert.equal(app.elements.presetsView.hidden, !presets, hash);
+		assert.equal(app.elements[presets ? "presetsLink" : "configurationLink"].getAttribute("aria-current"), "page");
+		assert.equal(app.elementById(hash.slice(1)).scrollCalls.length, 1, "Direct anchors must scroll after content becomes available");
+		if (hash === "#pricing" || hash === "#diagnosticsTitle") {
+			assert.ok(app.sectionLink(hash).className.includes("is-active"));
+			assert.equal(app.sectionLink(hash).getAttribute("aria-current"), "location");
+		}
+	}
+});
+
+test("navigation measures the expanded header before scrolling each destination", async () => {
+	const app = await dashboard({}, "#presets");
+	app.elements.adminTokenPanel.hidden = false;
+	app.elements.dashboardHeader.offsetHeight = 280;
+	app.sectionLink("#pricing").click();
+	assert.equal(app.elementById("pricing").style.scrollMarginTop, "300px");
+	assert.equal(app.elementById("pricing").scrollCalls.length, 1);
+	app.elements.adminTokenPanel.hidden = true;
+	app.elements.dashboardHeader.offsetHeight = 96;
+	app.elements.presetsLink.click();
+	assert.equal(app.elements.presets.style.scrollMarginTop, "116px", "Returning to another area uses the current header height");
+	assert.equal(app.requests.length, 0);
+});
+
+test("saving and reloading a deep-linked configuration do not scroll the workspace again", async () => {
+	const app = await dashboard({}, "#pricing");
+	assert.equal(app.elementById("pricing").scrollCalls.length, 1);
+	app.edit(90);
+	app.elements.saveButton.click();
+	await settle();
+	assert.equal(app.elementById("pricing").scrollCalls.length, 0, "Saving renders the current area without scrolling");
+	assert.ok(app.sectionLink("#pricing").className.includes("is-active"));
+	app.elements.reloadButton.click();
+	await settle();
+	assert.equal(app.elementById("pricing").scrollCalls.length, 0, "Reloading must also preserve the current scroll position");
+});
+
+test("area navigation preserves the unsaved form and staged preset preview without requests", async () => {
+	const app = await dashboard();
+	app.edit(45);
+	const unsavedInput = app.input();
+	app.elements.presetsLink.click();
+	app.elements.previewPresetButton.click();
+	await settle();
+	const previewRows = [...app.elements.presetChanges.children];
+	const previewTitle = app.elements.presetPreviewTitle.textContent;
+	app.elements.presetName.value = "Keep my name";
+	app.elements.presetNotes.value = "Keep my notes";
+	app.elements.presetText.value = "Keep this draft share code";
+	app.elements.configurationLink.click();
+	assert.equal(app.elements.configurationView.hidden, false);
+	assert.equal(app.elements.presetsView.hidden, true);
+	assert.equal(app.input(), unsavedInput, "Switching areas must not rebuild the form");
+	assert.equal(app.input().value, "45");
+	assert.equal(app.elements.changeStatus.textContent, "1 unsaved change");
+	app.elements.presetsLink.click();
+	assert.equal(app.elements.presetPreview.hidden, false);
+	assert.deepEqual(app.elements.presetChanges.children, previewRows);
+	assert.equal(app.elements.presetPreviewTitle.textContent, previewTitle);
+	assert.equal(app.elements.presetName.value, "Keep my name");
+	assert.equal(app.elements.presetNotes.value, "Keep my notes");
+	assert.equal(app.elements.presetText.value, "Keep this draft share code");
+	assert.equal(app.requests.length, 0);
+	assert.equal(app.confirmations.length, 0);
+	app.elements.applyPresetButton.click();
+	await settle();
+	assert.equal(Number(app.input().value), 60, "The preserved preview remains applicable");
+	assert.equal(app.elements.presetsView.hidden, false, "Applying must keep the current area");
+	assert.equal(app.elements.saveButton.disabled, false, "Header Save Config remains available from presets");
+});
+
+test("section links and browser back and forward switch areas without resetting drafts", async () => {
+	const app = await dashboard({}, "#presets");
+	app.edit(80);
+	app.sectionLink("#pricing").click();
+	assert.equal(app.window.location.hash, "#pricing");
+	assert.equal(app.elements.presetsView.hidden, true);
+	assert.ok(app.sectionLink("#pricing").className.includes("is-active"));
+	assert.equal(app.elementById("pricing").scrollCalls.length, 1);
+	app.window.history.back();
+	assert.equal(app.window.location.hash, "#presets");
+	assert.equal(app.elements.presetsView.hidden, false);
+	assert.equal(app.sectionLink("#pricing").getAttribute("aria-current"), null);
+	app.window.history.forward();
+	assert.equal(app.elements.configurationView.hidden, false);
+	assert.equal(app.elements.configurationLink.getAttribute("aria-current"), "page");
+	assert.equal(app.input().value, "80");
+	assert.equal(app.elements.changeStatus.textContent, "1 unsaved change");
+	assert.equal(app.requests.length, 0);
+	assert.equal(app.confirmations.length, 0);
+});
+
+test("unknown or malformed hashes fall back to Configuration without losing edits", async () => {
+	const app = await dashboard({}, "#presets");
+	app.edit(90);
+	for (const hash of ["#unknown-area", "#%E0%A4%A"]) {
+		app.navigate(hash);
+		assert.equal(app.elements.configurationView.hidden, false);
+		assert.equal(app.elements.presetsView.hidden, true);
+		assert.equal(app.input().value, "90");
+	}
+	assert.equal(app.requests.length, 0);
+});
 
 test("a pending save locks editing/actions and rejects overlapping requests", async () => {
 	const app = await dashboard();

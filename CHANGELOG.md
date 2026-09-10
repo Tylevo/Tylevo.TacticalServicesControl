@@ -2,6 +2,18 @@
 
 ## 1.3.13 - Public Beta (unreleased)
 
+- Make the purchase confirmation arrow larger and slide it up a dedicated
+  area in sync with the hand animation, then fade it out as the phone stows.
+- Let the purchase phone continue from its vertical payment swipe into stowing,
+  removing the temporary animation freeze and timed result-screen holds. Keep
+  payment approval/denial notifications and the normal hands-restoration flow.
+- Use stash roubles for fresh and reset service-payment defaults. Balanced,
+  Casual, Hardcore and Barter use the stash; existing saved wallet choices
+  and the historical Classic 1.3.12 preset are preserved.
+- Give gameplay presets a dedicated page with equal side-by-side panels and
+  always-visible sharing controls. Align it to the full dashboard width,
+  improve dropdown proportions, and group service cards into three columns
+  on desktop with responsive stacking on smaller screens.
 - Lower fresh-install defaults to 25,000 RUB for Focused Sweep, 50,000 for
   UAV, 150,000 for A-10, 250,000 for Double Pass, 125,000 for Extraction, and
   75,000 for Cargo Transfer. Existing configs retain their authored values.
@@ -25,7 +37,8 @@
 - Preserve original payment terms when recovering or replaying a purchase,
   and require the updated payment protocol for Fika manual service requests.
 - Carry forward the phone and cargo improvements from 1.3.12. Quest content
-  is unchanged; the optional add-on retains the matching-version requirement.
+  is unchanged. The main mod now accepts the existing Pilot Questline 1.3.12
+  add-on for SPT 4.1.5, so this update does not require an add-on download.
 
 See the [1.3.13 candidate notes](docs/release-notes-v1.3.13.md) for testing and setup.
 

@@ -8,15 +8,21 @@
 </head>
 <body>
 	<div class="app-shell">
-		<aside class="sidebar" aria-label="Configuration sections">
+		<aside class="sidebar" aria-label="Dashboard navigation">
 			<div class="brand">
-				<div class="brand-mark" aria-hidden="true"><span></span></div>
+				<!-- Original grayscale TerraGroup symbol from the phone icon pack (mask_512); embedded for offline use. -->
+				<img class="brand-mark" width="46" height="46" alt="" src="data:image/png;base64,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">
 				<div>
 					<h1>TERRAGROUP</h1>
 					<p>Tactical Services Control</p>
 				</div>
 			</div>
-			<nav id="sectionNav" class="section-nav"></nav>
+			<nav class="workspace-nav" aria-label="Dashboard areas">
+				<a id="configurationLink" href="#configuration">Configuration</a>
+				<a id="presetsLink" href="#presets">Gameplay presets</a>
+			</nav>
+			<p class="nav-group-label">Configuration sections</p>
+			<nav id="sectionNav" class="section-nav" aria-label="Configuration sections"></nav>
 			<nav class="sic-nav section-nav" aria-label="SPT server pages">
 				<a href="/">SPT SIC</a>
 				<a href="/configs">Config editor</a>
@@ -24,7 +30,7 @@
 		</aside>
 
 		<main class="workspace">
-			<header class="topbar">
+			<header id="dashboardHeader" class="topbar">
 				<div class="topbar-title">
 					<strong>TSC DASHBOARD</strong>
 					<span>Tactical Services Control terminal</span>
@@ -50,63 +56,86 @@
 				</div>
 			</header>
 
-			<div class="overview-band" aria-hidden="true">
-				<div>
-					<span>AUTHORITY</span>
-					<strong>HOST CONFIG</strong>
+			<section id="configurationView" aria-labelledby="configurationTitle">
+				<div id="configuration" class="area-heading">
+					<h1 id="configurationTitle">Configuration</h1>
+					<p>Set service prices, availability and timing. Save Config when your changes are ready.</p>
 				</div>
-				<div>
-					<span>WALLET</span>
-					<strong>STASH / CARRIED</strong>
-				</div>
-				<div>
-					<span>SYNC</span>
-					<strong>FIKA UNTESTED</strong>
-				</div>
-			</div>
-
-			<section id="presets" class="section-panel preset-panel" aria-labelledby="presetsTitle">
-				<div class="section-heading">
-					<div><span class="section-kicker">Play your way</span><h2 id="presetsTitle">Gameplay presets</h2>
-					<p>Choose a starting point or share your own settings. Preview changes, apply them to your draft, then Save Config.</p></div>
-				</div>
-				<div id="presetControls" class="preset-body">
-					<div class="preset-library">
-						<label>Preset<select id="presetSelect" aria-describedby="presetDescription"></select></label>
-						<label>Apply to<select id="presetScope"><option value="all">All gameplay settings</option><option value="pricing">Prices and payment</option><option value="recon">Recon services</option><option value="extraction">UH-60 services</option><option value="fire">Fire support</option></select></label>
-						<button id="previewPresetButton" type="button">Preview preset</button>
-						<button id="deletePresetButton" type="button" disabled>Remove saved preset</button>
-					</div>
-					<p id="presetDescription" class="preset-hint"></p>
-					<details class="preset-sharing"><summary>Save or share your settings</summary>
-						<p class="preset-hint">Saved presets are JSON files on your SPT host. Export a JSON file or copy a complete share code to send to another player or keep a backup. Share codes contain the settings themselves.</p>
-						<div class="preset-metadata"><label>Preset name<input id="presetName" type="text" maxlength="80" value="My TSC preset"></label><label>Description (optional)<input id="presetNotes" type="text" maxlength="500"></label></div>
-						<div class="preset-actions"><button id="savePresetButton" type="button">Save current as preset</button><button id="exportPresetButton" type="button">Export current JSON</button><button id="copyPresetButton" type="button">Get share code</button></div>
-						<label class="preset-text-label">Import JSON or a share code<textarea id="presetText" rows="4" maxlength="49152" spellcheck="false" placeholder="Paste a TSC preset JSON or TSC1. share code"></textarea></label>
-						<div class="preset-actions"><button id="importPresetButton" type="button">Preview pasted preset</button><button id="importPresetFileButton" type="button">Open JSON file</button><input id="presetFile" type="file" accept=".json,application/json" hidden></div>
-						<p class="preset-hint">Presets include gameplay settings only. Dashboard access settings, tokens and player data stay private. Category presets keep your global wallet and use explicit currencies for their selected services.</p>
-					</details>
-					<div id="presetPreview" class="preset-preview" hidden aria-live="polite">
-						<h3 id="presetPreviewTitle"></h3><p id="presetPreviewSummary"></p>
-						<div class="preset-table-wrap"><table><thead><tr><th>Setting</th><th>Current draft</th><th>Preset</th></tr></thead><tbody id="presetChanges"></tbody></table></div>
-						<div class="preset-actions"><button id="applyPresetButton" class="primary" type="button">Apply to draft</button><button id="cancelPresetButton" type="button">Dismiss preview</button></div>
-					</div>
-				</div>
-			</section>
-			<div id="formRoot" class="form-root"></div>
-
-			<section class="section-panel diagnostics-panel" aria-labelledby="diagnosticsTitle">
-				<div class="section-heading">
+				<div class="overview-band" aria-hidden="true">
 					<div>
-						<span class="section-kicker">System</span>
-						<h2 id="diagnosticsTitle">Diagnostics</h2>
+						<span>AUTHORITY</span>
+						<strong>HOST CONFIG</strong>
 					</div>
-					<div class="section-actions">
-						<button id="reloadDiskButton" type="button">Reload From Disk</button>
-						<button id="resetButton" class="danger" type="button">Reset Defaults</button>
+					<div>
+						<span>WALLET</span>
+						<strong>STASH / CARRIED</strong>
+					</div>
+					<div>
+						<span>SYNC</span>
+						<strong>FIKA UNTESTED</strong>
 					</div>
 				</div>
-				<dl id="diagnosticsGrid" class="diagnostics-grid"></dl>
+
+				<div id="formRoot" class="form-root"></div>
+
+				<section class="section-panel diagnostics-panel" aria-labelledby="diagnosticsTitle">
+					<div class="section-heading">
+						<div>
+							<span class="section-kicker">System</span>
+							<h2 id="diagnosticsTitle">Diagnostics</h2>
+						</div>
+						<div class="section-actions">
+							<button id="reloadDiskButton" type="button">Reload From Disk</button>
+							<button id="resetButton" class="danger" type="button">Reset Defaults</button>
+						</div>
+					</div>
+					<dl id="diagnosticsGrid" class="diagnostics-grid"></dl>
+				</section>
+			</section>
+
+			<section id="presetsView" hidden aria-labelledby="presetsTitle">
+				<div id="presets" class="area-heading">
+					<h1 id="presetsTitle">Gameplay presets</h1>
+					<p>Choose a starting point or share your own settings. Preview changes, apply them to your draft, then Save Config.</p>
+				</div>
+				<div id="presetControls" class="preset-layout">
+					<section class="section-panel preset-panel preset-library-panel" aria-labelledby="presetLibraryTitle">
+						<div class="section-heading">
+							<h2 id="presetLibraryTitle">Choose a preset</h2>
+						</div>
+						<div class="preset-body">
+							<div class="preset-library">
+								<label>Preset<select id="presetSelect" aria-describedby="presetDescription"></select></label>
+								<label>Apply to<select id="presetScope"><option value="all">All gameplay settings</option><option value="pricing">Prices and payment</option><option value="recon">Recon services</option><option value="extraction">UH-60 services</option><option value="fire">Fire support</option></select></label>
+							</div>
+							<div class="preset-actions">
+								<button id="previewPresetButton" type="button">Preview preset</button>
+								<button id="deletePresetButton" type="button" disabled>Remove saved preset</button>
+							</div>
+							<p id="presetDescription" class="preset-hint"></p>
+							<div id="presetPreview" class="preset-preview" hidden aria-live="polite">
+								<h3 id="presetPreviewTitle"></h3><p id="presetPreviewSummary"></p>
+								<div class="preset-table-wrap"><table><thead><tr><th>Setting</th><th>Current draft</th><th>Preset</th></tr></thead><tbody id="presetChanges"></tbody></table></div>
+								<div class="preset-actions"><button id="applyPresetButton" class="primary" type="button">Apply to draft</button><button id="cancelPresetButton" type="button">Dismiss preview</button></div>
+							</div>
+						</div>
+					</section>
+
+					<section class="section-panel preset-panel preset-sharing-panel" aria-labelledby="presetSharingTitle">
+						<div class="section-heading">
+							<h2 id="presetSharingTitle">Save or share your settings</h2>
+						</div>
+						<div class="preset-body">
+							<p class="preset-hint">Saved presets are JSON files on your SPT host. Export a JSON file or copy a complete share code to send to another player or keep a backup. Share codes contain the settings themselves.</p>
+							<div class="preset-metadata"><label>Preset name<input id="presetName" type="text" maxlength="80" value="My TSC preset"></label><label>Description (optional)<input id="presetNotes" type="text" maxlength="500"></label></div>
+							<div class="preset-actions"><button id="savePresetButton" type="button">Save current as preset</button><button id="exportPresetButton" type="button">Export current JSON</button><button id="copyPresetButton" type="button">Get share code</button></div>
+							<label class="preset-text-label">Import JSON or a share code<textarea id="presetText" rows="4" maxlength="49152" spellcheck="false" placeholder="Paste a TSC preset JSON or TSC1. share code"></textarea></label>
+							<div class="preset-actions"><button id="importPresetButton" type="button">Preview pasted preset</button><button id="importPresetFileButton" type="button">Open JSON file</button><input id="presetFile" type="file" accept=".json,application/json" hidden></div>
+							<p class="preset-hint">Imported presets appear under Choose a preset for review.</p>
+							<p class="preset-hint">Presets include gameplay settings only. Dashboard access settings, tokens and player data stay private. Category presets keep your global wallet and use explicit currencies for their selected services.</p>
+						</div>
+					</section>
+				</div>
 			</section>
 		</main>
 	</div>

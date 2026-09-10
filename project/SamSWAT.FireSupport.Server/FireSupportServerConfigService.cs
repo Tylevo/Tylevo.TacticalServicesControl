@@ -336,7 +336,7 @@ public sealed class FireSupportServerConfigService(
 		}
 
 		PaymentSource paymentSource = ServicePaymentPolicy.GetPaymentSource(
-			ParseEnum(config.PaymentSource, PaymentSource.CarriedRoubles), configuredCurrency);
+			ParseEnum(config.PaymentSource, PaymentSource.StashRoubles), configuredCurrency);
 		response.PaymentSource = paymentSource.ToString();
 		PaymentCurrency paymentCurrency = configuredCurrency;
 		string currencyTemplateId = PaymentCurrencyInfo.GetTemplateId(paymentCurrency);
@@ -369,7 +369,7 @@ public sealed class FireSupportServerConfigService(
 					currencyTemplateId = PaymentCurrencyInfo.GetTemplateId(paymentCurrency);
 					response.Currency = paymentCurrency.ToString();
 					paymentSource = ServicePaymentPolicy.GetPaymentSource(
-						ParseEnum(config.PaymentSource, PaymentSource.CarriedRoubles), paymentCurrency);
+						ParseEnum(config.PaymentSource, PaymentSource.StashRoubles), paymentCurrency);
 					response.PaymentSource = paymentSource.ToString();
 				}
 				if (replayStatus == PersistentPurchaseReplayStatus.Accepted)
@@ -2456,7 +2456,7 @@ public sealed class FireSupportServerConfigService(
 				FireSupportServerConfigMigration.CurrentConfigSchemaVersion,
 			Revision = 1,
 			PaymentMode = nameof(PaymentMode.PhoneAuthorizations),
-			PaymentSource = nameof(PaymentSource.CarriedRoubles),
+			PaymentSource = nameof(PaymentSource.StashRoubles),
 			PaymentCurrency = nameof(PaymentCurrency.RUB),
 			ServiceCurrencies = new[] { "A10", "DoublePass", "Uav", "FocusedSweep", "Extraction", "PriorityExfil" }
 				.ToDictionary(service => service, _ => "Inherit"),

@@ -445,7 +445,7 @@ public static class FireSupportPayment
 
 	public static PaymentSource GetConfiguredPaymentSource()
 	{
-		return PluginSettings.PaymentSource?.Value ?? PaymentSource.CarriedRoubles;
+		return PluginSettings.PaymentSource?.Value ?? PaymentSource.StashRoubles;
 	}
 
 	public static PaymentSource GetPaymentSourcePolicy() =>

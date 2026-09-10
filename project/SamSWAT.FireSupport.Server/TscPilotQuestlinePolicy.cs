@@ -7,6 +7,10 @@ namespace SamSWAT.FireSupport.ArysReloaded;
 [Injectable(InjectionType.Singleton)]
 public sealed class TscPilotQuestlinePolicy
 {
+	private const string BackwardCompatibleMainVersion = "1.3.13";
+	private const string PreviousCompatibleAddonVersion = "1.3.12";
+	private const string BackwardCompatibleSptVersion = "4.1.5";
+
 	public const string AddonRelativePath = "addons/pilot-questline";
 	public const string QuestRelativePath = AddonRelativePath + "/db/CustomQuests";
 	public const string AssortRelativePath = AddonRelativePath + "/db/CustomAssortSchemes";
@@ -41,9 +45,9 @@ public sealed class TscPilotQuestlinePolicy
 				JsonElement metadata = manifest.RootElement;
 				if (metadata.GetProperty("schemaVersion").GetInt32() != 1 ||
 				    metadata.GetProperty("id").GetString() != "tsc-pilot-questline" ||
-				    metadata.GetProperty("version").GetString() != modVersion ||
+				    !IsCompatibleAddonVersion(metadata.GetProperty("version").GetString(), modVersion, targetSptVersion) ||
 				    metadata.GetProperty("targetSptVersion").GetString() != targetSptVersion)
-					throw InvalidAddon("addon.json does not match this TSC/SPT version");
+					throw InvalidAddon("addon.json is not compatible with this TSC/SPT version");
 
 				ValidateQuests(addonPath, MechanicId, "open_channel.json", [OpenChannelId]);
 				ValidateQuests(addonPath, PilotId, "pilot_introduction.json",
@@ -84,6 +88,14 @@ public sealed class TscPilotQuestlinePolicy
 		IsActive = true;
 	}
 
+	private static bool IsCompatibleAddonVersion(string? addonVersion, string modVersion, string targetSptVersion) =>
+		addonVersion == modVersion ||
+		// These releases have identical quest, dialogue, and assort data. Keep this exception
+		// explicit: a future main/add-on release needs its own compatibility review.
+		(modVersion == BackwardCompatibleMainVersion &&
+		 targetSptVersion == BackwardCompatibleSptVersion &&
+		 addonVersion == PreviousCompatibleAddonVersion);
+
 	private static void ValidateQuests(string addonPath, string traderId, string filename, string[] questIds)
 	{
 		using JsonDocument document = ReadObject(Path.Combine(addonPath, "db/CustomQuests", traderId, "Quests", filename));
@@ -115,5 +127,5 @@ public sealed class TscPilotQuestlinePolicy
 	}
 
 	private static InvalidOperationException InvalidAddon(string reason, Exception? inner = null) =>
-		new($"TSC Pilot Questline add-on is incomplete or incompatible: {reason}. Reinstall the matching add-on, or remove its entire addons/pilot-questline directory while the server is stopped.", inner);
+		new($"TSC Pilot Questline add-on is incomplete or incompatible: {reason}. Reinstall a compatible add-on, or remove its entire addons/pilot-questline directory while the server is stopped.", inner);
 }

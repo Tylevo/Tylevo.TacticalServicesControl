@@ -114,12 +114,7 @@ internal static class PluginSettings
 	internal static ConfigEntry<float> PhoneConfirmSwipeSpeedMultiplier { get; private set; }
 	internal static ConfigEntry<float> PhoneConfirmSwipeStartNormalizedTime { get; private set; }
 	internal static ConfigEntry<float> PhoneConfirmSwipeCommitNormalizedTime { get; private set; }
-	internal static ConfigEntry<bool> PhoneConfirmPauseAtCommit { get; private set; }
 	internal static ConfigEntry<float> PhoneConfirmOutroSpeedMultiplier { get; private set; }
-	internal static ConfigEntry<float> PhoneAuthorizingDisplaySeconds { get; private set; }
-	internal static ConfigEntry<float> PhoneAuthorizedDisplaySeconds { get; private set; }
-	internal static ConfigEntry<float> PhoneDeniedDisplaySeconds { get; private set; }
-	internal static ConfigEntry<float> PhoneRestoreAfterAuthorizedSeconds { get; private set; }
 	internal static ConfigEntry<bool> UavActivationDeviceAnimation { get; private set; }
 	internal static ConfigEntry<bool> UavWristPhoneVisual { get; private set; }
 	internal static ConfigEntry<bool> UavWristPhoneArmPose { get; private set; }
@@ -214,7 +209,7 @@ internal static class PluginSettings
 		PaymentSource = config.Bind(
 			"TerraGroup Payment",
 			"Payment source",
-			global::SamSWAT.FireSupport.ArysReloaded.Unity.PaymentSource.CarriedRoubles,
+			global::SamSWAT.FireSupport.ArysReloaded.Unity.PaymentSource.StashRoubles,
 			new ConfigDescription("Wallet location used for TerraGroup phone purchases."));
 		PaymentCurrency = config.Bind(
 			"TerraGroup Payment",
@@ -566,41 +561,12 @@ internal static class PluginSettings
 			0.78f,
 			HiddenDescription("Outro animation normalizedTime where payment is attempted and the authorizing screen appears",
 				new AcceptableValueRange<float>(0f, 1f)));
-		PhoneConfirmPauseAtCommit = config.Bind(
-			"TerraGroup Phone Animation",
-			"Confirm pause at commit",
-			true,
-			HiddenDescription("Pauses the phone animator at the payment commit while authorizing/result screens are shown"));
 		PhoneConfirmOutroSpeedMultiplier = config.Bind(
 			"TerraGroup Phone Animation",
 			"Confirm outro speed multiplier",
 			1.6f,
-			HiddenDescription("Animator speed used after the result screen when the phone finishes its outro",
+			HiddenDescription("Animator speed used after the payment swipe commits while the phone continues stowing",
 				new AcceptableValueRange<float>(0.25f, 4f)));
-		PhoneAuthorizingDisplaySeconds = config.Bind(
-			"TerraGroup Phone Animation",
-			"Authorizing display seconds",
-			0.25f,
-			HiddenDescription("Seconds to keep the authorizing screen visible after the payment commit",
-				new AcceptableValueRange<float>(0.1f, 5f)));
-		PhoneAuthorizedDisplaySeconds = config.Bind(
-			"TerraGroup Phone Animation",
-			"Authorized display seconds",
-			0.4f,
-			HiddenDescription("Seconds to keep the authorized result screen visible",
-				new AcceptableValueRange<float>(0.1f, 5f)));
-		PhoneDeniedDisplaySeconds = config.Bind(
-			"TerraGroup Phone Animation",
-			"Denied display seconds",
-			0.85f,
-			HiddenDescription("Seconds to keep the denied result screen visible",
-				new AcceptableValueRange<float>(0.1f, 5f)));
-		PhoneRestoreAfterAuthorizedSeconds = config.Bind(
-			"TerraGroup Phone Animation",
-			"Restore after authorized seconds",
-			0f,
-			HiddenDescription("Extra pause after the result screen before resuming the phone outro and restoring the previous weapon",
-				new AcceptableValueRange<float>(0f, 3f)));
 
 		UavActivationDeviceAnimation = config.Bind(
 			"UAV Recon Settings",
@@ -839,12 +805,7 @@ internal static class PluginSettings
 		RemoveFromConfigManager(config, PhoneConfirmSwipeSpeedMultiplier);
 		RemoveFromConfigManager(config, PhoneConfirmSwipeStartNormalizedTime);
 		RemoveFromConfigManager(config, PhoneConfirmSwipeCommitNormalizedTime);
-		RemoveFromConfigManager(config, PhoneConfirmPauseAtCommit);
 		RemoveFromConfigManager(config, PhoneConfirmOutroSpeedMultiplier);
-		RemoveFromConfigManager(config, PhoneAuthorizingDisplaySeconds);
-		RemoveFromConfigManager(config, PhoneAuthorizedDisplaySeconds);
-		RemoveFromConfigManager(config, PhoneDeniedDisplaySeconds);
-		RemoveFromConfigManager(config, PhoneRestoreAfterAuthorizedSeconds);
 		RemoveFromConfigManager(config, UavActivationDeviceAnimation);
 		RemoveFromConfigManager(config, UavWristPhoneVisual);
 		RemoveFromConfigManager(config, UavWristPhoneArmPose);

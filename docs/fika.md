@@ -8,8 +8,8 @@ Install the same TSC version on:
 - Headless host, if used.
 - Every client.
 
-Both the main download and optional Pilot Questline add-on use matching TSC
-server, Core, and Fika components with service protocol 2. Install the add-on
+Use matching TSC 1.3.13 server, Core, and Fika components with service protocol 2.
+The existing Pilot Questline 1.3.12 add-on for SPT 4.1.5 remains compatible. Install the add-on
 only on the SPT server; it determines progression for every connected player.
 Clients use the same TSC files in both modes. Base access has no quest gate.
 With the add-on installed, complete **Back on the Air** to purchase or request

@@ -45,34 +45,99 @@ internal static class TscPilotQuestlinePolicyTests
 	}
 
 	[RegressionTest]
+	private static void VerifiedPreviousAddonAndCurrentCandidateRetainQuestGating()
+	{
+		foreach ((string mainVersion, string addonVersion) in new[]
+		{
+			("1.3.12", "1.3.12"), ("1.3.13", "1.3.12"), ("1.3.13", "1.3.13")
+		})
+		{
+			using var files = new AddonFiles();
+			files.ChangeManifest("version", addonVersion);
+			var policy = new TscPilotQuestlinePolicy();
+			policy.Initialize(files.Root, mainVersion, "4.1.5");
+			AssertEx.True(policy.IsInitialized);
+			AssertEx.True(policy.QuestlineRequired);
+			AssertEx.False(policy.IsActive);
+			policy.Activate();
+			var progression = new TscPilotProgressionService(new ProfileHelper(), policy);
+			PmcData profile = new() { Id = new MongoId("66f51f3a0000000000005201"), Quests = [] };
+			AssertEx.False(progression.HasUnlockedUplink(profile));
+			profile.Quests = [new QuestStatus { QId = new MongoId(TscPilotProgressionService.FinalQuestId),
+				Status = QuestStatusEnum.Success, StartTime = 0, StatusTimers = [] }];
+			AssertEx.True(progression.HasUnlockedUplink(profile));
+		}
+	}
+
+	[RegressionTest]
+	private static void CompatibilityExceptionDoesNotAdmitUnreviewedVersionsOrApplyToOtherMainSptVersions()
+	{
+		foreach ((string mainVersion, string addonVersion, string sptVersion) in new[]
+		{
+			("1.3.12", "1.3.13", "4.1.5"), ("1.3.12", "1.3.11", "4.1.5"),
+			("1.3.13", "1.3.11", "4.1.5"), ("1.3.13", "1.3.14", "4.1.5"),
+			("1.3.13", "2.0.0", "4.1.5"), ("1.3.13", "1.3.12-beta", "4.1.5"),
+			("1.3.13", "1.3.12+unreviewed", "4.1.5"), ("1.3.13", "v1.3.12", "4.1.5"),
+			("1.3.13", " 1.3.12 ", "4.1.5"), ("1.3.13", "", "4.1.5"),
+			("1.3.14", "1.3.12", "4.1.5"), ("1.3.14", "1.3.13", "4.1.5"),
+			("1.3.13", "1.3.12", "4.1.4"), ("1.3.13", "1.3.12", "4.1.6")
+		})
+		{
+			using var files = new AddonFiles();
+			files.ChangeManifest("version", addonVersion);
+			files.ChangeManifest("targetSptVersion", sptVersion);
+			AssertStartupFailsClosed(files, mainVersion, sptVersion);
+		}
+	}
+
+	[RegressionTest]
 	private static void EmptyMalformedMissingAndMismatchedAddonsFailStartupClosed()
 	{
+		foreach (string addonVersion in new[] { "1.3.12", "1.3.13" })
 		foreach (Action<AddonFiles> corrupt in new Action<AddonFiles>[]
 		{
 			files => File.Delete(files.Path("addon.json")),
 			files => File.WriteAllText(files.Path("addon.json"), "{invalid"),
 			files => File.WriteAllText(files.Path("addon.json"), "[]"),
 			files => files.ChangeManifest("schemaVersion", 2),
+			files => files.ChangeManifest("schemaVersion", "1"),
 			files => files.ChangeManifest("id", "some-other-addon"),
 			files => files.ChangeManifest("version", "1.3.10"),
+			files => files.ChangeManifest("version", null),
+			files => files.ChangeManifest("version", 1312),
 			files => files.ChangeManifest("targetSptVersion", "4.1.4"),
+			files => files.ChangeManifest("targetSptVersion", "4.1.6"),
 			files => File.Delete(files.Path("db/CustomAssortSchemes/pilot_repeater.json")),
+			files => files.ChangeJson("db/CustomAssortSchemes/pilot_repeater.json", root =>
+				root[TscPilotQuestlinePolicy.PilotId]!["items"]![0]!["_tpl"] = TscPilotQuestlinePolicy.PhoneTemplateId),
 			files => File.WriteAllText(files.Path("db/CustomQuests/66f51f3a0000000000000a60/Quests/pilot_introduction.json"), "{}"),
+			files => files.ChangeJson("db/CustomQuests/66f51f3a0000000000000a60/Quests/pilot_introduction.json", root =>
+				root[TscPilotProgressionService.FinalQuestId]!["conditions"]!["AvailableForFinish"] = new JsonArray()),
+			files => files.ChangeJson("db/CustomQuests/66f51f3a0000000000000a60/Quests/pilot_introduction.json", root =>
+				root[TscPilotProgressionService.FinalQuestId]!["rewards"]!["Success"] = new JsonArray()),
 			files => File.WriteAllText(files.Path("db/CustomQuests/66f51f3a0000000000000a60/QuestAssort/pilot_introduction.json"), "{}"),
-			files => File.WriteAllText(files.Path("db/CustomQuests/5a7c2eca46aef81a7ca2145d/Locales/en.json"), "{}")
+			files => File.WriteAllText(files.Path("db/CustomQuests/5a7c2eca46aef81a7ca2145d/Locales/en.json"), "{}"),
+			files => files.ChangeJson("db/CustomQuests/66f51f3a0000000000000a60/Locales/en.json", root =>
+				root[TscPilotProgressionService.FinalQuestId + " description"] = " ")
 		})
 		{
 			using var files = new AddonFiles();
+			files.ChangeManifest("version", addonVersion);
 			corrupt(files);
-			var policy = new TscPilotQuestlinePolicy();
-			AssertEx.Contains("incomplete or incompatible", AssertEx.Throws<InvalidOperationException>(
-				() => policy.Initialize(files.Root, "1.3.13", "4.1.5")).Message);
-			AssertEx.True(policy.QuestlineRequired);
-			AssertEx.False(policy.IsInitialized);
-			AssertEx.False(policy.IsActive);
-			AssertEx.Throws<InvalidOperationException>(policy.Activate);
-			AssertEx.Throws<InvalidOperationException>(() => policy.Initialize(files.Root, "1.3.13", "4.1.5"));
+			AssertStartupFailsClosed(files, "1.3.13", "4.1.5");
 		}
+	}
+
+	private static void AssertStartupFailsClosed(AddonFiles files, string mainVersion, string sptVersion)
+	{
+		var policy = new TscPilotQuestlinePolicy();
+		AssertEx.Contains("incomplete or incompatible", AssertEx.Throws<InvalidOperationException>(
+			() => policy.Initialize(files.Root, mainVersion, sptVersion)).Message);
+		AssertEx.True(policy.QuestlineRequired);
+		AssertEx.False(policy.IsInitialized);
+		AssertEx.False(policy.IsActive);
+		AssertEx.Throws<InvalidOperationException>(policy.Activate);
+		AssertEx.Throws<InvalidOperationException>(() => policy.Initialize(files.Root, mainVersion, sptVersion));
 	}
 
 	[RegressionTest]
@@ -106,11 +171,13 @@ internal static class TscPilotQuestlinePolicyTests
 				File.Copy(file, target, true);
 			}
 		}
-		public void ChangeManifest(string key, JsonNode value)
+		public void ChangeManifest(string key, JsonNode? value) =>
+			ChangeJson("addon.json", root => root[key] = value);
+		public void ChangeJson(string relative, Action<JsonNode> change)
 		{
-			JsonNode manifest = JsonNode.Parse(File.ReadAllText(Path("addon.json")))!;
-			manifest[key] = value;
-			File.WriteAllText(Path("addon.json"), manifest.ToJsonString());
+			JsonNode root = JsonNode.Parse(File.ReadAllText(Path(relative)))!;
+			change(root);
+			File.WriteAllText(Path(relative), root.ToJsonString());
 		}
 		public void Dispose() => Directory.Delete(Root, recursive: true);
 	}

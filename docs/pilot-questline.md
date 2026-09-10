@@ -9,14 +9,14 @@ quests. Mechanic restores contact with Pilot, Pilot assembles the handset,
 and the player brings its Shoreline ground relay online. The introduction is
 designed for fresh profiles.
 
-Version 1.3.12 carries forward the 1.3.11 quests without behavior changes.
-Update an installed add-on to 1.3.12 alongside the main mod before restarting
-the server; both packages must match.
+The existing Pilot Questline 1.3.12 add-on for SPT 4.1.5 works with main TSC
+1.3.13. Keep it installed when updating the main mod. Quest content and
+behavior are unchanged, and there is no new add-on download for this release.
 
 ## Install or remove the add-on
 
 Install the main TSC download and its dependencies first. With the game and
-server stopped, extract the matching Pilot Questline add-on ZIP into your SPT
+server stopped, extract the Pilot Questline 1.3.12 add-on for SPT 4.1.5 into your SPT
 root and merge its `SPT_Runtime` folder. The content lands in
 `SPT_Runtime/user/mods/Tylevo.TacticalServicesControl/addons/pilot-questline/`.
 Start the server again to enable progression. Fika uses this one server choice
@@ -25,7 +25,7 @@ for everyone; clients keep the same main TSC download.
 To return to immediate access, stop the game and server, back up your profile
 and TSC storage if you may restore this progression later, remove only the
 `addons/pilot-questline` folder above, and restart. Main TSC updates do not
-remove an installed add-on. Use the add-on that matches your TSC/SPT versions.
+remove an installed add-on. Use the supported add-on for your TSC/SPT versions.
 An incomplete or incompatible add-on stops initialization instead of silently
 opening access. There is no client setting that bypasses server progression.
 

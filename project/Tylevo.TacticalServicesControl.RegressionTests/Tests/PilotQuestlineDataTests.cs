@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 internal static class PilotQuestlineDataTests
@@ -32,6 +34,29 @@ internal static class PilotQuestlineDataTests
 		AssertEx.Equal(5, Directory.GetFiles(Resolve(DataRoot + "CustomQuests"), "*.json", SearchOption.AllDirectories).Length);
 		AssertEx.Equal(0, Directory.GetFiles(Resolve(AddonRoot), "*.dll", SearchOption.AllDirectories).Length,
 			"The optional introduction must work with the shared main mod binaries.");
+	}
+
+	[RegressionTest]
+	private static void PreviousAddonCompatibilityIsBackedByUnchangedPublishedQuestData()
+	{
+		// SHA-256 of the six data files in the published 1.3.12 add-on. Normalize
+		// checkout line endings only; changing any content requires a compatibility review.
+		Dictionary<string, string> publishedHashes = new()
+		{
+			["CustomAssortSchemes/pilot_repeater.json"] = "AAE1ABA7304F25EF83556411BAA5840C15AEF03C25C7819F42236C930BC476E1",
+			["CustomQuests/5a7c2eca46aef81a7ca2145d/Locales/en.json"] = "266E8E6FEED45AE4B594C2F02AB95EFC3E13CE73F602375AABA3BC91370007FF",
+			["CustomQuests/5a7c2eca46aef81a7ca2145d/Quests/open_channel.json"] = "C282505D35B1D172B83F276552657AA87201C98212B16314E65300CD7AAC6F06",
+			["CustomQuests/66f51f3a0000000000000a60/Locales/en.json"] = "532218EB551A19A298725F6A82B2E80159D934603C205FAABCFCBAE3101CC49C",
+			["CustomQuests/66f51f3a0000000000000a60/QuestAssort/pilot_introduction.json"] = "BF81E4D145586FA79831F02B15FD887DC474BF4D74489DC85E6CC6D03FB802A8",
+			["CustomQuests/66f51f3a0000000000000a60/Quests/pilot_introduction.json"] = "45A30E6B0AE5065E093CC3F79BABFE345FE3E1E9F5B185365C09F3882A5ABF19"
+		};
+		AssertEx.Equal(publishedHashes.Count, Directory.GetFiles(Resolve(DataRoot), "*.json", SearchOption.AllDirectories).Length);
+		foreach ((string path, string hash) in publishedHashes)
+		{
+			string content = File.ReadAllText(Resolve(DataRoot + path)).Replace("\r\n", "\n");
+			AssertEx.Equal(hash, Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(content))),
+				$"The reviewed 1.3.12 add-on data changed: {path}.");
+		}
 	}
 
 	[RegressionTest]

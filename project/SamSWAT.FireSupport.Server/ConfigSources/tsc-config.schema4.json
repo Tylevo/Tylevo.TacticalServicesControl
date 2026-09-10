@@ -2,7 +2,7 @@
   "configSchemaVersion": 4,
   "revision": 1,
   "paymentMode": "PhoneAuthorizations",
-  "paymentSource": "CarriedRoubles",
+  "paymentSource": "StashRoubles",
   "paymentCurrency": "RUB",
   "requestCooldownSeconds": 300,
   "prices": {

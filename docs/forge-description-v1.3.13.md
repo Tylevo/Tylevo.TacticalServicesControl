@@ -9,6 +9,8 @@ Fresh installs use **Balanced** prices: Focused Sweep **25,000 RUB**, UAV
 **50,000 RUB**, A-10 Strafe **150,000 RUB**, Double Pass **250,000 RUB**,
 Extraction **125,000 RUB**, and Cargo Transfer **75,000 RUB**. Existing installs
 keep their saved settings until you choose a preset or edit them.
+Fresh installs and Reset Defaults use **stash roubles**; existing wallet
+choices are preserved. Classic 1.3.12 restores the original carried wallet.
 
 The dashboard includes **Balanced, Casual, Hardcore, Barter, and Classic 1.3.12**.
 Preview each change, apply the preset to your draft, then Save Config. Choose
@@ -31,10 +33,17 @@ The Uplink remains **50,000 RUB**, the optional quest repeater remains
 **20,000 RUB**, and cargo's separate native item-handling fee remains in RUB.
 The 1.3.12 phone movement, sprint zoom, and configurable cargo grid are included.
 
-Install UnityToolkit 2.0.2 and WTT CommonLib 3.0.6 separately. Update all TSC
-components and Fika participants together. The optional Pilot Questline must
-match the main **1.3.13** version; quest content is unchanged.
+The dashboard has a dedicated gameplay presets page, aligned selection and
+sharing panels, wider dropdowns, and a darker in-game color theme with green
+switches. The phone's payment swipe flows straight into stowing, with a larger
+upward arrow that follows the hand animation.
 
-Preset native integration and gameplay acceptance remain pending. Current Fika
+Install UnityToolkit 2.0.2 and WTT CommonLib 3.0.6 separately. Update all TSC
+components and Fika participants together. **Keep the existing Pilot Questline
+1.3.12 add-on for SPT 4.1.5.** Main TSC 1.3.13 accepts it, so there is no new
+add-on download. Quests, objectives, rewards, and progression are unchanged.
+
+Native integration checks cover presets and add-on startup. In-game acceptance
+of the latest changes remains pending. Current Fika
 multiplayer remains untested. See the [candidate notes](release-notes-v1.3.13.md)
 for setup and validation limits.

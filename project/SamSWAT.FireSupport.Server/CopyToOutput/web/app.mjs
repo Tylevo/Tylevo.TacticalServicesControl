@@ -21,6 +21,11 @@ const state = {
 
 const elements = {
 	nav: document.getElementById("sectionNav"),
+	configurationView: document.getElementById("configurationView"),
+	presetsView: document.getElementById("presetsView"),
+	configurationLink: document.getElementById("configurationLink"),
+	presetsLink: document.getElementById("presetsLink"),
+	dashboardHeader: document.getElementById("dashboardHeader"),
 	formRoot: document.getElementById("formRoot"),
 	adminToken: document.getElementById("adminToken"),
 	adminTokenPanel: document.getElementById("adminTokenPanel"),
@@ -139,6 +144,8 @@ elements.resetButton.addEventListener("click", () => {
 	}
 });
 
+window.addEventListener("hashchange", () => updateWorkspaceNavigation(true));
+updateWorkspaceNavigation();
 init().catch((error) => showToast(error.message, true));
 
 window.addEventListener("beforeunload", (event) => {
@@ -149,6 +156,36 @@ window.addEventListener("beforeunload", (event) => {
 
 function confirmDiscard() {
 	return state.dirtyPaths.size === 0 || confirm("Discard your unsaved TSC changes and reload the settings?");
+}
+
+function updateWorkspaceNavigation(scrollToTarget = false) {
+	let target;
+	try { target = decodeURIComponent(window.location.hash.slice(1)); }
+	catch { target = "configuration"; }
+	target ||= "configuration";
+	const presets = target === "presets";
+	elements.configurationView.hidden = presets;
+	elements.presetsView.hidden = !presets;
+	setNavigationActive(elements.configurationLink, !presets, "page");
+	setNavigationActive(elements.presetsLink, presets, "page");
+	for (const link of elements.nav.children) {
+		setNavigationActive(link, !presets && link.getAttribute("href") === `#${target}`, "location");
+	}
+	if (scrollToTarget) {
+		const section = state.schema?.sections.some((entry) => entry.id === target);
+		const destination = presets ? "presets" : section || target === "diagnosticsTitle" ? target : "configuration";
+		const anchor = document.getElementById(destination);
+		if (anchor) {
+			anchor.style.scrollMarginTop = `${elements.dashboardHeader.offsetHeight + 20}px`;
+			anchor.scrollIntoView({ block: "start" });
+		}
+	}
+}
+
+function setNavigationActive(link, active, current) {
+	link.classList.toggle("is-active", active);
+	if (active) link.setAttribute("aria-current", current);
+	else link.removeAttribute("aria-current");
 }
 
 async function run(action) {
@@ -192,6 +229,7 @@ async function init() {
 	} catch { state.presetWarning = "Built-in presets are unavailable. Update the server and dashboard together; JSON sharing remains available."; }
 	await loadSavedPresets();
 	render();
+	updateWorkspaceNavigation(true);
 	showToast("Config loaded");
 }
 
@@ -311,6 +349,7 @@ function render() {
 	renderDiagnostics();
 	updateDirtyState();
 	renderPresetLibrary();
+	updateWorkspaceNavigation();
 }
 
 function renderStatus() {
@@ -344,10 +383,6 @@ function updateAdminControls() {
 
 function renderNavigation() {
 	elements.nav.innerHTML = "";
-	const presetsLink = document.createElement("a");
-	presetsLink.href = "#presets";
-	presetsLink.textContent = "Gameplay Presets";
-	elements.nav.appendChild(presetsLink);
 	for (const section of state.schema.sections) {
 		const link = document.createElement("a");
 		link.href = `#${section.id}`;
@@ -793,6 +828,9 @@ function clearPresetPreview() {
 function previewPresetText(text) {
 	clearPresetPreview();
 	previewPreset(parsePreset(text, state.schema));
+	// Imports live in a separate card, which stacks below the preview on small screens.
+	elements.presetPreview.style.scrollMarginTop = `${(elements.dashboardHeader?.offsetHeight || 70) + 20}px`;
+	elements.presetPreview.scrollIntoView({ block: "nearest" });
 }
 
 function previewPreset(preset) {

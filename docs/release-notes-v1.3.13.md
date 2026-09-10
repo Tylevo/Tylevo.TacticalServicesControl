@@ -1,10 +1,15 @@
 # Tylevo's Tactical Services Control v1.3.13 Public Beta
 
-**Unpublished development candidate - SPT 4.1.5 / EFT 0.16.9.5.40743**
+**Release candidate - SPT 4.1.5 / EFT 0.16.9.5.40743**
 
 Support has lower default rouble prices, five built-in gameplay presets, and a
 shareable preset library stored on your SPT host. Each service can also use
 its own currency: RUB, USD, EUR, GP coins, or physical Bitcoin.
+
+**Already using the Pilot Questline 1.3.12 add-on for SPT 4.1.5? Keep it
+installed. Update only the main TSC package.** This release corrects the main
+mod's compatibility check to accept that unchanged add-on. There is no new
+questline download, and quests, objectives, rewards, and progression are unchanged.
 
 ## Rebalanced default prices
 
@@ -12,6 +17,10 @@ Fresh installs use the Balanced prices below. Existing configurations keep
 their saved prices and gameplay settings during an update. Choose **Balanced**
 in the dashboard to review and adopt the new settings, or use **Classic 1.3.12**
 to restore the original values.
+
+Fresh installs and Reset Defaults use **stash roubles**. Balanced, Casual,
+Hardcore and Barter use the stash wallet. Existing saved wallet choices are
+preserved; Classic 1.3.12 restores its original carried wallet.
 
 | Service | Previous default (RUB) | Balanced default (RUB) |
 | --- | ---: | ---: |
@@ -38,7 +47,7 @@ Open **SIC > Mod pages > Tactical Services Control > Gameplay presets**.
 - **Barter:** Focused Sweep and A-10 Strafe each cost 1 GP coin; Double Pass and
   Cargo Transfer each cost 2 GP coins; Extraction costs 1 Bitcoin; UAV costs
   10,000 RUB. This preset uses the stash wallet.
-- **Classic 1.3.12:** the original prices, timing, and gameplay limits.
+- **Classic 1.3.12:** the original prices, carried wallet, timing, and gameplay limits.
 
 Choose a preset and an **Apply to** scope, then select **Preview preset**.
 Review the current and proposed values, choose **Apply to draft**, and use
@@ -86,26 +95,47 @@ history use the matching currency. Purchase recovery retains original price
 and currency terms. Auto-purchase uses the credit from that purchase's source,
 and late responses cannot replace another profile's balance or authorizations.
 
-## Updating a test installation
+## Dashboard and phone polish
+
+The dashboard uses darker gray navigation, the icon-pack TerraGroup logo,
+restrained in-game colors, and bright green switches. Gameplay presets have
+their own page with aligned, side-by-side selection and sharing panels.
+Sharing controls stay visible, dropdowns have more space, and service cards
+use three columns on desktop with responsive stacking on smaller screens.
+
+The purchase phone continues from its vertical swipe into stowing without
+the temporary freeze or timed result-screen holds. A larger arrow travels
+upward with the hand's swipe, then fades away. Payment approval and denial
+notifications remain intact.
+
+## Updating
 
 Close the game and SPT server and back up profiles and TSC configuration/storage,
 including any saved preset library. Install all four TSC DLLs and dashboard
-assets from the same candidate. Dependencies remain **UnityToolkit 2.0.2** and
+assets from the same package. Dependencies remain **UnityToolkit 2.0.2** and
 **WTT CommonLib 3.0.6**, installed separately.
 
-The optional Pilot Questline still requires the matching **1.3.13** add-on.
-Its quests, objectives, rewards, and progression have not changed. All Fika
-participants must update together; mixed payment protocols reject manual
+The optional **Pilot Questline 1.3.12 add-on for SPT 4.1.5 remains compatible**.
+Keep its installed folder when updating. New questline users can use the
+existing 1.3.12 add-on download. This compatibility change is in the new main
+mod; older main releases retain their original compatibility rules.
+All Fika participants must update the main package together; mixed payment protocols reject manual
 service requests rather than interpreting a coin price as cash.
 
 The phone movement, sprint zoom, and configurable cargo grid from 1.3.12 are
-included.
+included. The purchase phone now continues from the vertical swipe into
+stowing without the temporary commit freeze or timed result-screen holds.
+The payment request still resolves before the session finishes; approval and
+denial notifications remain visible outside the phone. Legacy hidden pause
+and result-hold settings no longer affect the sequence.
+The confirmation screen also has a larger upward arrow with a longer travel
+area below the service and price. It follows the hand animation's progress
+and fades away at the payment commit without adding a pause.
 
 ## Validation
 
-This candidate has not been published. Automated checks cover preset transport,
-scope selection, currency inheritance, privacy filtering, and draft preview
-behavior, alongside the payment and config regression checks. New preset
-library native integration and gameplay acceptance remain pending. Automated
-checks do not establish in-game or multiplayer compatibility. The existing
+This release candidate has not been published. The accompanying validation
+record lists the build, package, regression, and native-server checks for the
+exact archive, including startup with the existing 1.3.12 add-on. In-game
+and Fika gameplay acceptance remain separate from automated checks. The existing
 [known issues](known-issues.md) still apply.

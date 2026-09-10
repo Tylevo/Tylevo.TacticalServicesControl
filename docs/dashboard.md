@@ -44,10 +44,14 @@ Hardcore, Barter, and Classic 1.3.12** are built in. The preset controls use
 editor: payment, service prices and currencies, availability, recon, helicopter
 timing and cargo size, cooldown, and authorization limits. The library and
 sharing controls are in the themed dashboard.
+The picker and always-visible sharing panel sit side by side on desktop and
+stack on smaller screens.
 
 Fresh installs use Balanced. Existing installs retain their saved configuration
-when updated; choose Balanced to preview the new prices. All amounts in this
-table are RUB:
+when updated; choose Balanced to preview the new prices and stash wallet.
+Fresh and reset defaults use stash roubles. Balanced, Casual, Hardcore and
+Barter use the stash; Classic retains the original carried wallet. All amounts
+in this table are RUB:
 
 | Service | Balanced | Casual | Hardcore | Classic 1.3.12 |
 | --- | ---: | ---: | ---: | ---: |

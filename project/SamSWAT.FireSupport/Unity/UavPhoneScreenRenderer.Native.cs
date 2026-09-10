@@ -336,7 +336,7 @@ public sealed partial class UavPhoneScreenRenderer
 	}
 
 	private NativeLayout NativePortraitInvoice(TerraGroupPhoneState state, string title, string subtitle,
-		string icon, Color accent, out CanvasGroup group)
+		string icon, Color accent, out CanvasGroup group, bool showWallet = true)
 	{
 		NativeLayout layout = NativeScreen($"Native phone {state}", state, out group, true);
 		NativeChrome(layout, true);
@@ -346,37 +346,43 @@ public sealed partial class UavPhoneScreenRenderer
 		NativeText(layout, GetServiceTitle(_context.SupportType), 27, NativeInk, 42, 373, 492, 68, true, TextAnchor.MiddleCenter);
 		NativeText(layout, _context.SupportType == ESupportType.PriorityExfil ? "DISPATCH AUTHORIZATION" : "AUTHORIZATION COST", 14, NativeMuted, 42, 457, 492, 27, true, TextAnchor.MiddleCenter);
 		NativeText(layout, "", 42, NativeAmber, 42, 491, 492, 60, true, TextAnchor.MiddleCenter, () => NativePrice(_context.SupportType));
-		NativeBox(layout, 42, 581, 492, 95);
-		NativeText(layout, "", 13, NativeMuted, 60, 592, 456, 26, true, live: () => FireSupportPayment.GetEffectiveBalanceLabel(_context.SupportType).ToUpperInvariant());
-		NativeText(layout, "", 24, NativeInk, 60, 624, 296, 35, true, live: NativeBalance);
-		NativeText(layout, "", 14, NativeGreen, 358, 624, 158, 35, true, TextAnchor.MiddleRight, () => NativeHeld(_context.SupportType));
+		if (showWallet)
+		{
+			NativeBox(layout, 42, 581, 492, 95);
+			NativeText(layout, "", 13, NativeMuted, 60, 592, 456, 26, true, live: () => FireSupportPayment.GetEffectiveBalanceLabel(_context.SupportType).ToUpperInvariant());
+			NativeText(layout, "", 24, NativeInk, 60, 624, 296, 35, true, live: NativeBalance);
+			NativeText(layout, "", 14, NativeGreen, 358, 624, 158, 35, true, TextAnchor.MiddleRight, () => NativeHeld(_context.SupportType));
+		}
 		return layout;
 	}
 
 	private void BuildConfirmPaymentPortraitScreen()
 	{
-		NativeLayout layout = NativePortraitInvoice(TerraGroupPhoneState.ConfirmPaymentPortrait, "CONFIRMING PURCHASE", "SECURE AUTHORIZATION", NativeServiceIcon(_context.SupportType), NativeAmber, out _confirmPaymentGroup);
-		NativeBox(layout, 42, 708, 492, 206);
-		NativeText(layout, "SWIPE TO AUTHORIZE", 17, NativeAmber, 62, 722, 452, 26, true, TextAnchor.MiddleCenter);
-		NativeText(layout, "SECURE TRANSFER", 15, NativeMuted, 60, 880, 456, 22, false, TextAnchor.MiddleCenter);
+		// Reserve the lower half for the hand's swipe. The review screen already
+		// shows the wallet; keep the service and cost clear above the moving arrow.
+		NativeLayout layout = NativePortraitInvoice(TerraGroupPhoneState.ConfirmPaymentPortrait, "CONFIRMING PURCHASE", "SECURE AUTHORIZATION", NativeServiceIcon(_context.SupportType), NativeAmber, out _confirmPaymentGroup, showWallet: false);
+		NativeBox(layout, 42, 568, 492, 356);
+		NativeText(layout, "SWIPE TO AUTHORIZE", 17, NativeAmber, 62, 582, 452, 26, true, TextAnchor.MiddleCenter);
+		NativeText(layout, "SECURE TRANSFER", 15, NativeMuted, 60, 930, 456, 22, false, TextAnchor.MiddleCenter);
 		_nativeSwipeLayout = layout;
 		RectTransform visual = NativeRectangle(layout.Root, layout.R(0, 0, 576, 1024), Color.clear);
 		_nativeSwipeVisual = visual.gameObject.AddComponent<CanvasGroup>();
 		_nativeSwipeVisual.alpha = 0;
 		_nativeSwipeVisual.blocksRaycasts = false;
 		_nativeSwipeVisual.interactable = false;
-		_nativeSwipeArrow = NativeRectangle(visual, new Rect(0, 0, 47 * layout.Scale, 84 * layout.Scale), Color.white);
+		_nativeSwipeArrow = NativeRectangle(visual, new Rect(0, 0, 72 * layout.Scale, 108 * layout.Scale), Color.white);
 		Image arrow = _nativeSwipeArrow.GetComponent<Image>();
 		arrow.sprite = LoadOverlaySprite(SwipeArrowRelativePath);
 		arrow.preserveAspect = true;
 		if (arrow.sprite == null)
 		{
 			arrow.color = Color.clear;
-			AddText(_nativeSwipeArrow, "^", layout.F(42), FontStyle.Bold, NativeAmber,
-				new Rect(0, 0, 47 * layout.Scale, 84 * layout.Scale), TextAnchor.MiddleCenter);
+			AddText(_nativeSwipeArrow, "↑", layout.F(72), FontStyle.Bold, NativeAmber,
+				new Rect(0, 0, 72 * layout.Scale, 108 * layout.Scale), TextAnchor.MiddleCenter);
 		}
-		_nativeSwipeFill = NativeRectangle(layout.Root, layout.R(64, 920, 0, 4), NativeAmber);
-		NativeText(layout, "", 14, NativeMuted, 42, 942, 492, 57, false, TextAnchor.MiddleCenter, NativePurchaseNote);
+		_nativeSwipeFill = NativeRectangle(visual, new Rect(64 * layout.Scale, 920 * layout.Scale, 0, 4 * layout.Scale), NativeAmber);
+		SetNativeSwipeProgress(0f);
+		NativeText(layout, "", 14, NativeMuted, 42, 957, 492, 42, false, TextAnchor.MiddleCenter, NativePurchaseNote);
 	}
 
 	private void BuildAuthorizingScreen()
@@ -435,8 +441,10 @@ public sealed partial class UavPhoneScreenRenderer
 		if (_nativeSwipeArrow == null || _nativeSwipeVisual == null) return;
 		progress = Mathf.Clamp01(progress);
 		_nativeSwipeVisual.alpha = ComputeSwipeArrowAlpha(progress);
-		// The arrow is under a full design-grid container, so it uses local scaled coordinates.
-		_nativeSwipeArrow.anchoredPosition = new Vector2(264.5f * _nativeSwipeLayout.Scale, -(785f - progress * 32f) * _nativeSwipeLayout.Scale);
+		// Follow the controller's authored swipe progress, including animation-speed
+		// changes. Local coordinates stay inside the lane at every render aspect.
+		float y = Mathf.Lerp(806f, 614f, progress);
+		_nativeSwipeArrow.anchoredPosition = new Vector2(252f * _nativeSwipeLayout.Scale, -y * _nativeSwipeLayout.Scale);
 		_nativeSwipeFill.sizeDelta = new Vector2(448f * _nativeSwipeLayout.Scale * progress, 4f * _nativeSwipeLayout.Scale);
 	}
 

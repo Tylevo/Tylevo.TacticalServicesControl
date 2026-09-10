@@ -2477,11 +2477,9 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 
 			_phoneScreen?.SetConfirmSwipeAnimationProgress(1f);
 			_phoneScreen?.StopConfirmSwipeAnimation();
-			if (GetConfirmPauseAtCommit())
-			{
-				SetPhoneAnimatorSpeed(0f, "payment commit pause");
-				LogConfirmSequence("animator paused", sequenceStartedAt);
-			}
+			// Continue the authored swipe directly into stowing. Payment still owns
+			// completion below, but network/result presentation must not freeze the rig.
+			SetPhoneAnimatorSpeed(GetConfirmOutroSpeedMultiplier(), "payment commit; continue outro");
 
 			ShowPhoneState(TerraGroupPhoneState.Authorizing, AuthorizingFadeSeconds);
 			LogConfirmSequence("authorizing shown", sequenceStartedAt);
@@ -2516,12 +2514,10 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 				$"paid={success}, source={purchaseResult?.PaymentSource ?? "<unknown>"}, reason={purchaseResult?.Reason ?? string.Empty}, serverRevision={purchaseResult?.ServerRevision ?? 0}");
 			if (success != expectedSuccess)
 			{
-				_authorizationOutroPreplayed = false;
+				// Report the actual outcome without replaying the already-running swipe.
 				TscDiagnostics.LogPhone(
 					$"TSC phone expected payment success changed during confirmation. expected={expectedSuccess}, actual={success}.");
 			}
-
-			yield return new WaitForSecondsRealtime(GetAuthorizingDisplaySeconds());
 
 			ShowPhoneState(
 				success ? TerraGroupPhoneState.Authorized : TerraGroupPhoneState.Denied,
@@ -2531,7 +2527,6 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 				success ? UavPhoneVisualPhase.Authorized : UavPhoneVisualPhase.Cancelled,
 				success,
 				0.9f);
-			yield return new WaitForSecondsRealtime(AuthorizedFadeSeconds);
 			if (success)
 			{
 				LogConfirmSequence("authorization granted", sequenceStartedAt);
@@ -2545,12 +2540,18 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 				LogConfirmSequence("payment denied notification shown", sequenceStartedAt);
 			}
 
-			yield return new WaitForSecondsRealtime(success ? GetAuthorizedDisplaySeconds() : GetDeniedDisplaySeconds());
-			yield return new WaitForSecondsRealtime(GetRestoreAfterAuthorizedSeconds());
+			// Let result fades and remote status use the remaining stow frames.
+			// This waits for motion already in progress, never a frozen display hold.
+			if (_authorizationOutroPreplayed)
+			{
+				yield return WaitForAuthorizationOutro();
+				if (!_confirmationSequenceRunning || _finishNotified)
+				{
+					yield break;
+				}
+			}
 
 			_restoreStarted = true;
-			SetPhoneAnimatorSpeed(GetConfirmOutroSpeedMultiplier(), "result held; resume outro");
-			LogConfirmSequence("animator resumed", sequenceStartedAt);
 			LogConfirmSequence("restore started", sequenceStartedAt);
 			_confirmationSequenceRunning = false;
 			_confirmationSequenceCoroutine = null;
@@ -2768,34 +2769,9 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 		return Mathf.Clamp01(PluginSettings.PhoneConfirmSwipeCommitNormalizedTime?.Value ?? 0.78f);
 	}
 
-	private static bool GetConfirmPauseAtCommit()
-	{
-		return PluginSettings.PhoneConfirmPauseAtCommit?.Value ?? true;
-	}
-
 	private static float GetConfirmOutroSpeedMultiplier()
 	{
 		return Mathf.Clamp(PluginSettings.PhoneConfirmOutroSpeedMultiplier?.Value ?? 1.6f, 0.25f, 4f);
-	}
-
-	private static float GetAuthorizingDisplaySeconds()
-	{
-		return Mathf.Clamp(PluginSettings.PhoneAuthorizingDisplaySeconds?.Value ?? 0.25f, 0.1f, 5f);
-	}
-
-	private static float GetAuthorizedDisplaySeconds()
-	{
-		return Mathf.Clamp(PluginSettings.PhoneAuthorizedDisplaySeconds?.Value ?? 0.4f, 0.1f, 5f);
-	}
-
-	private static float GetDeniedDisplaySeconds()
-	{
-		return Mathf.Clamp(PluginSettings.PhoneDeniedDisplaySeconds?.Value ?? 0.85f, 0.1f, 5f);
-	}
-
-	private static float GetRestoreAfterAuthorizedSeconds()
-	{
-		return Mathf.Clamp(PluginSettings.PhoneRestoreAfterAuthorizedSeconds?.Value ?? 0f, 0f, 3f);
 	}
 
 	private void SelectSupportType(ESupportType supportType)
