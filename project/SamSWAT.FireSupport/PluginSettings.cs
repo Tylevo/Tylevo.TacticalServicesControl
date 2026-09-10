@@ -137,7 +137,6 @@ internal static class PluginSettings
 	internal static ConfigEntry<float> HelicopterSpeedMultiplier { get; private set; }
 	internal static ConfigEntry<float> PriorityExfilHelicopterSpeedMultiplier { get; private set; }
 	internal static ConfigEntry<bool> EnableHelicopterItemTransfer { get; private set; }
-	internal static ConfigEntry<HelicopterTransferFeeSource> HelicopterTransferFeeSource { get; private set; }
 	internal static ConfigEntry<string> Uh60TransferFeeRecoveryJournal { get; private set; }
 	internal static ConfigEntry<string> Uh60TransferFeeRecoveryQuarantine { get; private set; }
 	internal static ConfigEntry<int> RequestCooldown { get; private set; }
@@ -390,15 +389,9 @@ internal static class PluginSettings
 			"Enable mid-raid item transfer",
 			true,
 			new ConfigDescription(
-				"Enables the UH-60 Cargo Transfer service and its requester-only loading interaction in solo raids and for a human Fika host. Turning this off also blocks Cargo purchase and deployment so an authorization cannot be spent on an unusable helicopter. Standard Extraction helicopters never offer cargo. The native EFT transfer screen and delivery ledger are used; transferred items are returned through the native delivery message after the raid. Non-host Fika clients remain fail-closed until native transfer pricing can be synchronized with the host."));
+				"Enables the UH-60 Cargo Transfer service and its requester-only loading interaction in solo raids and for a human Fika host. Turning this off also blocks Cargo purchase and deployment so an authorization cannot be spent on an unusable helicopter. Standard Extraction helicopters never offer cargo. The native EFT transfer screen and delivery ledger are used; transferred items are returned through the native delivery message after the raid. Non-host Fika clients remain fail-closed until native cargo transactions and delivery can be synchronized with the host."));
 		EnableHelicopterItemTransfer.SettingChanged +=
 			OnHelicopterItemTransferSettingChanged;
-		HelicopterTransferFeeSource = config.Bind(
-			"Helicopter Cargo",
-			"Transfer fee source",
-			global::SamSWAT.FireSupport.ArysReloaded.HelicopterTransferFeeSource.Carried,
-			new ConfigDescription(
-				"Chooses where EFT's native RUB handling fee is paid when cargo is sent. Carried preserves EFT's original carried-cash purchase. Stash debits the authenticated PMC stash through the TSC server, while leaving the native item-delivery and messenger flow unchanged. Stash mode fails closed when the server does not support its idempotent transfer-fee endpoint."));
 		Uh60TransferFeeRecoveryJournal = config.Bind(
 			"Internal",
 			"UH-60 transfer fee recovery journal",

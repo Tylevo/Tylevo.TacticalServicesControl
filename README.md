@@ -19,8 +19,9 @@ works across browsers without a database or online account.
 Fresh installs use lower Balanced prices: **Focused Sweep 25,000 RUB, UAV
 50,000 RUB, A-10 150,000 RUB, Double Pass 250,000 RUB, Extraction 125,000 RUB,
 and Cargo Transfer 75,000 RUB**. Existing installs retain saved prices until
-you choose a preset or edit them. The Uplink, quest repeater, and native cargo
-handling fee keep their existing prices.
+you choose a preset or edit them. The Uplink and quest repeater keep their
+existing prices. Buying Cargo Transfer now covers sending your items home;
+there is no extra charge at the helicopter.
 
 Select **RUB, USD, EUR, GP coins, or Bitcoin** separately for each service in SIC
 or the dashboard. GP/BTC come from the PMC stash, including eligible items in
@@ -51,7 +52,7 @@ See the [patch notes](docs/release-notes-v1.3.12.md) for configuration and testi
 
 If you're updating from the last Forge release, TSC v1.0.8, this version brings together the features and fixes developed across the intervening GitHub test builds.
 
-- **UH-60 Cargo Transfer:** send loot home while you stay in the raid. It replaces Priority Exfil. Cargo arrives through Pilot's mail, and the separate item-handling fee can use carried roubles or your stash.
+- **UH-60 Cargo Transfer:** send loot home while you stay in the raid. It replaces Priority Exfil. Cargo arrives through Pilot's mail, with item handling included in the service price.
 - **Pilot's Services tab:** buy support authorizations before entering a raid at **Traders > Pilot > Services**. Browse the compact service list on the left and review the selected service's details on the right. Purchases use your PMC stash balance and existing authorization limits.
 - **A redesigned phone:** live UI, new service artwork, horizontal purchase screens, and smoother, adjustable zoom. Hold **Left Alt** to select with the mouse; the number-key controls remain available.
 - **Optional Pilot Questline add-on:** the main download opens Pilot immediately and sells the Uplink for â‚½50,000. Install the separate add-on to earn access through three quests beginning with Mechanic at level 5. The Uplink has its own fourth special slot.

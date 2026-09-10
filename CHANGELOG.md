@@ -2,45 +2,18 @@
 
 ## 1.3.13 - Public Beta (unreleased)
 
-- Make the purchase confirmation arrow larger and slide it up a dedicated
-  area in sync with the hand animation, then fade it out as the phone stows.
-- Let the purchase phone continue from its vertical payment swipe into stowing,
-  removing the temporary animation freeze and timed result-screen holds. Keep
-  payment approval/denial notifications and the normal hands-restoration flow.
-- Use stash roubles for fresh and reset service-payment defaults. Balanced,
-  Casual, Hardcore and Barter use the stash; existing saved wallet choices
-  and the historical Classic 1.3.12 preset are preserved.
-- Give gameplay presets a dedicated page with equal side-by-side panels and
-  always-visible sharing controls. Align it to the full dashboard width,
-  improve dropdown proportions, and group service cards into three columns
-  on desktop with responsive stacking on smaller screens.
-- Lower fresh-install defaults to 25,000 RUB for Focused Sweep, 50,000 for
-  UAV, 150,000 for A-10, 250,000 for Double Pass, 125,000 for Extraction, and
-  75,000 for Cargo Transfer. Existing configs retain their authored values.
-- Add Balanced, Casual, Hardcore, Barter, and Classic 1.3.12 gameplay presets.
-  Preview changes by category or across all gameplay settings, apply to the
-  dashboard draft, and use Save Config to activate them.
-- Store named custom presets as JSON files in the SPT host's `config/presets/`
-  directory. Export the current draft as JSON or a self-contained share code,
-  and preview imports before applying them. No database or online account is
-  required; admin settings, tokens, and player records are excluded.
-- Keep category preset prices in their intended currency by making inherited
-  service currencies explicit, while preserving the global currency and wallet.
-- Choose a payment currency separately for each service in SIC or the TSC
-  dashboard: RUB, USD, EUR, GP coins, or physical Bitcoin. Existing services
-  inherit the global currency until an override is selected.
-- Take GP coins and Bitcoin from the PMC stash, including items inside stash
-  containers. Prices are whole item counts; changing currencies does not
-  convert the configured amount.
-- Show service-specific prices and balances on the phone and in Pilot's
-  Services tab. Synchronize spent payment items with the native stash.
-- Preserve original payment terms when recovering or replaying a purchase,
-  and require the updated payment protocol for Fika manual service requests.
-- Carry forward the phone and cargo improvements from 1.3.12. Quest content
-  is unchanged. The main mod now accepts the existing Pilot Questline 1.3.12
-  add-on for SPT 4.1.5, so this update does not require an add-on download.
+- **Choose how you pay.** Each service can use RUB, USD, EUR, GP coins or Bitcoin. GP and Bitcoin come from your stash, including containers. Changing currency doesn't convert the price.
+- **Pay once for cargo pickup.** Buying UH-60 Cargo Transfer now covers sending your items home. There's no second charge when you load the helicopter.
+- **Five gameplay presets.** Pick Balanced, Casual, Hardcore, Barter or Classic 1.3.12. Preview the changes and apply everything or just one category.
+- **Save and share your setup.** Save custom presets and share them as JSON files or codes that work offline. **Save Config** activates the settings; saving a preset just keeps a copy.
+- **Stash payments by default.** Fresh installs and Reset Defaults use stash roubles. Updates keep your wallet choice; Classic 1.3.12 uses carried cash.
+- **A cleaner dashboard.** Darker Tarkov-style colors, green switches, wider dropdowns and a dedicated presets page with the sharing controls always visible.
+- **Smoother phone payments.** Removed the pause after the confirmation swipe and added a larger arrow that slides up with your hand.
+- **Keep your questline add-on.** The existing **1.3.12 add-on for SPT 4.1.5** still works. The quests haven't changed, so only the main ZIP needs updating.
 
-See the [1.3.13 candidate notes](docs/release-notes-v1.3.13.md) for testing and setup.
+**Lower Balanced prices (RUB):** Focused Sweep 25,000; UAV 50,000; A-10 150,000; Double Pass 250,000; Extraction 125,000; Cargo Transfer 75,000.
+
+Your saved prices stay unchanged until you edit them or apply a preset.
 
 ## 1.3.12 - Public Beta
 

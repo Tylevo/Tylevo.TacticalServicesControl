@@ -713,8 +713,7 @@ internal static class HelicopterItemTransferSourceContractTests
 		string confirmation = ExtractMember(mainMenuView, "SetConfirmationPresentation");
 		AssertEx.Contains("service.Type == ESupportType.PriorityExfil", confirmation);
 		AssertEx.Contains("This service does not extract your PMC.", confirmation);
-		AssertEx.Contains("A separate RUB handling fee", confirmation);
-		AssertEx.Contains("when cargo is loaded.", confirmation);
+		AssertEx.Contains("Sending items is included in the service price.", confirmation);
 	}
 
 	[RegressionTest]

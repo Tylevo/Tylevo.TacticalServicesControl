@@ -153,6 +153,60 @@ internal static class Uh60TransferFeeJournalTests
 	}
 
 	[RegressionTest]
+	private static void ZeroCreditCancellationRequiresUnchangedFingerprintEvidence()
+	{
+		string directory = CreateTemporaryDirectory();
+		try
+		{
+			var journal = new FireSupportUh60TransferFeeJournal(new TestLogger());
+			journal.Initialize(directory);
+			FireSupportUh60TransferFeeRecord cancelled = CreatePending("cancelled-before-debit", 70);
+			cancelled.PreDebitFingerprint = new string('A', 64);
+			cancelled.ExpectedPostDebitFingerprint = new string('B', 64);
+			AssertEx.True(journal.TryCreate(cancelled, out _, out string createReason), createReason);
+			cancelled.State = FireSupportUh60TransferFeeJournal.RefundedState;
+			cancelled.PreRefundFingerprint = cancelled.PreDebitFingerprint;
+			cancelled.ExpectedPostRefundFingerprint = cancelled.PreDebitFingerprint;
+			AssertEx.True(journal.TrySave(cancelled, out string reason), reason);
+			journal.Initialize(directory);
+			AssertEx.True(journal.TryGet(cancelled.TransactionId, out FireSupportUh60TransferFeeRecord? stored));
+			AssertEx.Equal(FireSupportUh60TransferFeeJournal.RefundedState, stored!.State);
+			AssertEx.Equal(0, stored.RefundCredits.Count);
+
+			int index = 0;
+			foreach (Action<FireSupportUh60TransferFeeRecord> invalidate in new Action<FireSupportUh60TransferFeeRecord>[]
+			{
+				record => record.PreDebitFingerprint = string.Empty,
+				record => record.PreDebitFingerprint = null!,
+				record => record.PreDebitFingerprint = new string('Z', 64),
+				record => record.ExpectedPostDebitFingerprint = record.PreDebitFingerprint,
+				record => record.ExpectedPostDebitFingerprint = string.Empty,
+				record => record.PreRefundFingerprint = record.ExpectedPostDebitFingerprint,
+				record => record.ExpectedPostRefundFingerprint = record.ExpectedPostDebitFingerprint,
+				record => record.State = FireSupportUh60TransferFeeJournal.RefundPendingState
+			})
+			{
+				FireSupportUh60TransferFeeRecord invalid = CreatePending($"invalid-zero-credit-{index++}", 70);
+				invalid.PreDebitFingerprint = new string('A', 64);
+				invalid.ExpectedPostDebitFingerprint = new string('B', 64);
+				AssertEx.True(journal.TryCreate(invalid, out _, out string pendingReason), pendingReason);
+				invalid.State = FireSupportUh60TransferFeeJournal.RefundedState;
+				invalid.PreRefundFingerprint = invalid.PreDebitFingerprint;
+				invalid.ExpectedPostRefundFingerprint = invalid.PreDebitFingerprint;
+				invalidate(invalid);
+				AssertEx.False(journal.TrySave(invalid, out string invalidReason));
+				AssertEx.Equal("InvalidFeeJournalRecord", invalidReason);
+				AssertEx.True(journal.TryGet(invalid.TransactionId, out FireSupportUh60TransferFeeRecord? unchanged));
+				AssertEx.Equal(FireSupportUh60TransferFeeJournal.DebitPendingState, unchanged!.State);
+			}
+		}
+		finally
+		{
+			DeleteTemporaryDirectory(directory);
+		}
+	}
+
+	[RegressionTest]
 	private static void JournalReplaysExactTransactionsAndRejectsConflictingAmount()
 	{
 		string directory = CreateTemporaryDirectory();

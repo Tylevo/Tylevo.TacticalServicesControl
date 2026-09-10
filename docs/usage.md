@@ -109,15 +109,13 @@ corners for the active recon session. Select the mode and corner under
 **UH-60 Cargo Transfer** lands at your marked loading zone and offers
 **SEND ITEMS VIA UH-60**. It sends items home without extracting your PMC.
 
-The service authorization pays for dispatch. EFT charges a separate
-item-handling fee when you submit cargo, always in RUB, regardless of the
-configured authorization currency. In `F12` under **Helicopter Cargo**,
-**Transfer fee source** defaults to **Carried**, using EFT's normal carried
-cash payment. Select **Stash** to pay from your authenticated PMC stash
-through the TSC server.
+Buying the service covers both dispatch and sending your items home. The
+transfer screen shows a zero handling fee, and you do not need to carry cash
+to submit cargo. Set the Cargo Transfer price and currency in SIC or the
+dashboard. The old F12 **Transfer fee source** setting is no longer used.
 
-The helicopter leaves as soon as EFT confirms that the paid items reached
-its saved delivery grid. If you cancel or payment fails, you can try again
+The helicopter leaves as soon as EFT confirms that the submitted items reached
+its saved delivery grid. If you cancel or submission fails, you can try again
 during the remaining landed time. Cargo arrives after the raid through
 **UH-60 Pilot** mail. Normal **BTR Driver** deliveries stay separate; TSC falls
 back to BTR delivery if an accepted cargo delivery cannot be routed through
@@ -158,10 +156,11 @@ cooldowns, timing, and authorization settings. Open it through SIC in the
 SPT launcher.
 
 TSC has `PhoneAuthorizations` and `Hybrid` payment modes, with RUB, USD, or EUR
-payments from carried cash or the stash where configured. The phone shows the
+payments from carried cash or the stash where configured. GP coins and Bitcoin
+can also be selected per service and come from the stash. The phone shows the
 active price and payment source. Pre-raid purchases use the authenticated PMC
 stash; the server determines the price and currency.
 
 Changing currency does **not** convert the price numbers. Review every service
-price before saving a different currency. Cargo Transfer's separate handling
-fee remains RUB-only and uses its own **Carried/Stash** setting in `F12`.
+price before saving a different currency. Cargo Transfer's service price
+includes item handling; loading the helicopter costs nothing extra.

@@ -445,6 +445,25 @@ public sealed class FireSupportUh60TransferFeeJournal(
 			return true;
 		}
 
+		// Retiring an old write-ahead debit may require no refund at all: the
+		// profile still matches its original pre-debit state. Persist that
+		// cancellation without inventing refund credits, but require explicit
+		// unchanged-state evidence so ordinary incomplete refunds stay invalid.
+		if (record.State == RefundedState && record.RefundCredits.Count == 0 &&
+		    record.PreDebitFingerprint is { Length: 64 } &&
+		    record.PreDebitFingerprint.All(char.IsAsciiHexDigit) &&
+		    record.ExpectedPostDebitFingerprint is { Length: 64 } &&
+		    record.ExpectedPostDebitFingerprint.All(char.IsAsciiHexDigit) &&
+		    !string.Equals(record.PreDebitFingerprint, record.ExpectedPostDebitFingerprint,
+			    StringComparison.OrdinalIgnoreCase) &&
+		    string.Equals(record.PreDebitFingerprint, record.PreRefundFingerprint,
+			    StringComparison.OrdinalIgnoreCase) &&
+		    string.Equals(record.PreDebitFingerprint, record.ExpectedPostRefundFingerprint,
+			    StringComparison.OrdinalIgnoreCase))
+		{
+			return true;
+		}
+
 		return record.RefundCredits.All(credit =>
 			       credit != null &&
 			       credit.AmountRoubles > 0 &&

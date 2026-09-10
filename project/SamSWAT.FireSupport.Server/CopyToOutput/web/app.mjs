@@ -104,6 +104,7 @@ const sectionIntros = {
 };
 
 const fieldHelp = {
+	"prices.PriorityExfil": "Includes dispatch and sending your items home. No extra charge at the helicopter.",
 	"priorityExfil.gridWidth": "0 uses native width; 1-10 sets cargo columns. Applies when cargo next opens.",
 	"priorityExfil.gridHeight": "0 uses native height; 1-30 sets cargo rows. Applies when cargo next opens."
 };

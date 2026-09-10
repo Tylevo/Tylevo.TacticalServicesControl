@@ -19,7 +19,9 @@ Compiling against Fika 2.4.2 does not establish multiplayer compatibility.
 
 - UH-60 Cargo Transfer is available to solo players and a requesting human
   host. Other Fika clients and dedicated-headless requesters cannot use it
-  until item-dependent handling prices can be verified by the host.
+  until the native cargo transaction and delivery are supported by the host.
+  The 1.3.13 candidate removes the extra handling fee for supported requesters;
+  this does not enable cargo transfers for non-host clients.
 - Dedicated-headless A-10 damage is experimental and must be enabled
   separately. Bot death/corpse synchronization and remote-player death or
   downed behavior still need live testing.

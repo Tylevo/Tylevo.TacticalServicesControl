@@ -53,14 +53,11 @@ internal static class FireSupportItemTransfer
 	private static bool s_previousPurchasedInRaid;
 	private static bool s_previousLocalServiceAvailability;
 	private static bool s_servicePurchaseObserved;
-	private static bool s_stashFeePurchaseInFlight;
 	private static int s_sessionGeneration;
 	private static int s_serverCargoGridWidth;
 	private static int s_serverCargoGridHeight;
 	private static int s_sessionCargoGridWidth;
 	private static int s_sessionCargoGridHeight;
-	[ThreadStatic]
-	private static bool s_nativePurchaseBypass;
 
 	internal static void SetServerCargoGridSize(int width, int height)
 	{
@@ -188,7 +185,7 @@ internal static class FireSupportItemTransfer
 		if (FireSupportServerConfigClient.IsFikaClientHostAuthorityActive)
 		{
 			FailOpen(
-				"UH-60 cargo transfer is temporarily unavailable to non-host Fika players because EFT's native transfer price is not synchronized with the raid host.");
+				"UH-60 cargo transfer is temporarily unavailable to non-host Fika players because native cargo transactions and delivery are not synchronized with the raid host.");
 			return;
 		}
 
@@ -309,79 +306,57 @@ internal static class FireSupportItemTransfer
 		await refreshTask;
 	}
 
-	internal static bool TryInterceptTraderServicePurchase(
-		InventoryController inventoryController,
+	internal static bool TryOverrideCargoTransferPrice(
+		TransferItemsController controller,
+		Stash temporaryStash,
 		ETraderServiceType serviceType,
-		EFT.Quests.QuestController questController,
-		string subServiceId,
-		out Task<bool> purchaseTask)
+		out int price)
 	{
-		purchaseTask = null;
-		if (s_nativePurchaseBypass ||
-		    PluginSettings.HelicopterTransferFeeSource?.Value !=
-		    HelicopterTransferFeeSource.Stash ||
-		    questController !=
-		    (s_sessionPlayer as LocalPlayer)?.QuestController ||
-		    !IsExactActiveCargoPurchase(
-			    inventoryController,
-			    serviceType))
-		{
-			return false;
-		}
-
-		purchaseTask = PurchaseCargoTransferWithStashFeeAsync(
-			inventoryController,
-			serviceType,
-			questController,
-			subServiceId);
-		return true;
+		price = 0;
+		return controller != null &&
+		       controller == s_transferController &&
+		       IsExactActiveCargoPurchase(
+			       s_sessionPlayer?.InventoryController,
+			       serviceType) &&
+		       OwnsTemporaryCargoStash(controller, temporaryStash);
 	}
 
-	internal static void ApplyStashFeeTransferButtonState(
+	internal static void IncludeCargoHandlingInServicePurchase(
 		InventoryController inventoryController,
-		Stash temporaryStash,
-		TransferItemsController transferController,
-		DefaultUIButton transferButton)
+		EFT.Quests.QuestController questController,
+		string subServiceId,
+		ref GlobalConfiguration.ServiceData serviceData)
 	{
-		if (PluginSettings.HelicopterTransferFeeSource?.Value !=
-		    HelicopterTransferFeeSource.Stash ||
-		    transferButton == null ||
-		    transferController == null ||
-		    transferController != s_transferController ||
-		    temporaryStash == null ||
-		    !IsExactActiveCargoPurchase(
-			    inventoryController,
-			    transferController.ServiceType))
+		if (serviceData == null ||
+		    !string.IsNullOrEmpty(subServiceId) ||
+		    questController != (s_sessionPlayer as LocalPlayer)?.QuestController ||
+		    !IsExactActiveCargoPurchase(inventoryController, serviceData.ServiceType))
 		{
 			return;
 		}
 
-		LocalPlayer player = s_sessionPlayer as LocalPlayer;
-		bool ownsTemporaryStash =
-			player != null &&
-			string.Equals(
-				temporaryStash.Id,
-				player.ProfileId,
-				StringComparison.Ordinal) &&
-			transferController._transferContainers?.Contains(temporaryStash) == true;
-		if (!ownsTemporaryStash)
+		Stash temporaryStash = s_transferController._transferContainers?
+			.FirstOrDefault(stash => OwnsTemporaryCargoStash(s_transferController, stash));
+		if (temporaryStash?.Grids?.Any(grid => grid?.Items?.Any() == true) != true)
 		{
 			return;
 		}
 
-		bool hasItems =
-			temporaryStash.Grids?.Any(
-				grid => grid?.Items?.Any() == true) == true;
-		transferButton.Interactable = hasItems;
-		if (hasItems)
-		{
-			// UpdateCounters may have just applied EFT's carried-cash warning. The
-			// stash path performs an authoritative balance check at Prepare, so
-			// carried money must not leave a stale disabled tooltip behind.
-			transferButton.SetDisabledTooltip(
-				string.Empty,
-				false);
-		}
+		// EFT retains this argument in its operation result and reads it again
+		// when the transaction executes. A private copy keeps the fee absent
+		// even after this screen closes, without changing global BTR/Transit data.
+		serviceData = CargoTransferServiceData.CopyWithIncludedHandling(serviceData);
+	}
+
+	private static bool OwnsTemporaryCargoStash(
+		TransferItemsController controller,
+		Stash temporaryStash)
+	{
+		return controller != null &&
+		       temporaryStash != null &&
+		       s_sessionPlayer != null &&
+		       string.Equals(temporaryStash.Id, s_sessionPlayer.ProfileId, StringComparison.Ordinal) &&
+		       controller._transferContainers?.Contains(temporaryStash) == true;
 	}
 
 	private static bool IsExactActiveCargoPurchase(
@@ -397,440 +372,10 @@ internal static class FireSupportItemTransfer
 		       s_sessionPoint != null &&
 		       s_screenController != null &&
 		       s_transferController != null &&
+		       (serviceType == ETraderServiceType.TransitItemsDelivery ||
+		        serviceType == ETraderServiceType.BtrItemsDelivery) &&
 		       s_transferController.ServiceType == serviceType &&
 		       s_serviceType == serviceType;
-	}
-
-	private static async Task<bool> PurchaseCargoTransferWithStashFeeAsync(
-		InventoryController inventoryController,
-		ETraderServiceType serviceType,
-		EFT.Quests.QuestController questController,
-		string subServiceId)
-	{
-		if (s_stashFeePurchaseInFlight)
-		{
-			FailOpen(
-				"A UH-60 cargo transfer payment is already being processed.");
-			return false;
-		}
-
-		s_stashFeePurchaseInFlight = true;
-		bool prepared = false;
-		string transactionId = Guid.NewGuid().ToString("N");
-		string profileId = s_sessionPlayer?.ProfileId?.Trim() ?? string.Empty;
-		string sessionKey =
-			FireSupportServerConfigClient.GetAuthenticatedSessionKey();
-		int generation = s_sessionGeneration;
-		int nativeFeeRoubles = 0;
-		try
-		{
-			try
-			{
-			if (!TryGetExactNativeFee(
-				    inventoryController,
-				    serviceType,
-				    generation,
-				    out nativeFeeRoubles,
-				    out string feeError))
-			{
-				FailOpen(
-					$"UH-60 cargo transfer payment was not started. {feeError}");
-				return false;
-			}
-
-			if (nativeFeeRoubles == 0)
-			{
-				// There is no stash mutation to authorize or journal. Preserve
-				// the native transfer transaction, but avoid creating a
-				// zero-value server record that could consume journal capacity.
-				return await StartNativePurchaseWithZeroRubCost(
-					inventoryController,
-					serviceType,
-					questController,
-					subServiceId);
-			}
-
-			if (string.IsNullOrWhiteSpace(profileId) ||
-			    string.IsNullOrWhiteSpace(sessionKey) ||
-			    !FireSupportServerConfigClient.IsAuthenticatedProfile(
-				    profileId))
-			{
-				FailOpen(
-					"UH-60 cargo transfer could not verify the authenticated PMC stash.");
-				return false;
-			}
-
-			await Uh60TransferFeeRecoveryStore.RetryMatchingProfileAsync(
-				profileId,
-				"before a new stash-funded cargo purchase");
-			if (!Uh60TransferFeeRecoveryStore.CanStartNewTransaction(
-				    profileId,
-				    out string recoveryBlockReason))
-			{
-				FailOpen(recoveryBlockReason);
-				return false;
-			}
-
-			if (!string.Equals(
-				    sessionKey,
-				    FireSupportServerConfigClient
-					    .GetAuthenticatedSessionKey(),
-				    StringComparison.Ordinal) ||
-			    !FireSupportServerConfigClient.IsAuthenticatedProfile(
-				    profileId) ||
-			    !TryGetExactNativeFee(
-				    inventoryController,
-				    serviceType,
-				    generation,
-				    out int feeAfterRecovery,
-				    out _) ||
-			    feeAfterRecovery != nativeFeeRoubles)
-			{
-				FailOpen(
-					"UH-60 cargo transfer changed while an earlier stash payment was being reconciled.");
-				return false;
-			}
-
-			FireSupportUh60TransferFeeResponse prepareResponse =
-					await FireSupportServerConfigClient
-						.PrepareUh60TransferFeeAsync(
-							profileId,
-							transactionId,
-							nativeFeeRoubles);
-			if (!IsPreparedFeeResponse(prepareResponse))
-			{
-				bool reconciled =
-					await ReconcileAmbiguousPrepareFailureAsync(
-					profileId,
-					transactionId,
-					nativeFeeRoubles,
-					prepareResponse);
-				if (reconciled)
-				{
-					DisplayStashFeeFailure(
-						prepareResponse,
-						"UH-60 cargo transfer fee was declined");
-				}
-				else
-				{
-					FailOpen(
-						"UH-60 cargo transfer did not start, but its stash payment state could not be reconciled. Do not retry this transfer until the TSC server log is checked.");
-				}
-				return false;
-			}
-
-			prepared = true;
-
-			// The server round trip intentionally happens before EFT is allowed
-			// to touch the carried inventory. Revalidate the exact screen,
-			// profile, service, and dynamically calculated native fee so a
-			// closed screen or changed cargo cannot spend a stale quote.
-			if (!string.Equals(
-				    sessionKey,
-				    FireSupportServerConfigClient
-					    .GetAuthenticatedSessionKey(),
-				    StringComparison.Ordinal) ||
-			    !FireSupportServerConfigClient.IsAuthenticatedProfile(
-				    profileId) ||
-			    !TryGetExactNativeFee(
-				    inventoryController,
-				    serviceType,
-				    generation,
-				    out int revalidatedFee,
-				    out _) ||
-			    revalidatedFee != nativeFeeRoubles)
-			{
-				bool refunded = await RefundPreparedStashFeeAsync(
-					profileId,
-					transactionId,
-					nativeFeeRoubles,
-					"cargo session changed before native purchase");
-				prepared = false;
-				FailOpen(
-					refunded
-						? "UH-60 cargo transfer changed while payment was processing. The stash fee was refunded."
-						: "UH-60 cargo transfer changed before submission, but its stash refund could not be confirmed. Do not retry until the TSC server log is checked.");
-				return false;
-			}
-
-			Task<bool> nativePurchaseTask =
-				StartNativePurchaseWithZeroRubCost(
-					inventoryController,
-					serviceType,
-					questController,
-					subServiceId);
-			bool nativePurchaseSucceeded = await nativePurchaseTask;
-			if (!nativePurchaseSucceeded)
-			{
-				bool refunded = await RefundPreparedStashFeeAsync(
-					profileId,
-					transactionId,
-					nativeFeeRoubles,
-					"native purchase returned false");
-				prepared = false;
-				if (!refunded)
-				{
-					FailOpen(
-						"UH-60 cargo was not submitted, but its stash refund could not be confirmed. Do not retry until the TSC server log is checked.");
-				}
-				return false;
-			}
-			}
-			catch (Exception ex)
-			{
-				if (prepared)
-				{
-					bool refunded = await RefundPreparedStashFeeAsync(
-						profileId,
-						transactionId,
-						nativeFeeRoubles,
-						$"native purchase exception: {ex.GetType().Name}");
-					if (!refunded)
-					{
-						FailOpen(
-							"UH-60 cargo was not submitted, but its stash refund could not be confirmed. Do not retry until the TSC server log is checked.");
-					}
-				}
-
-				FireSupportPlugin.LogSource?.LogWarning(
-					$"UH-60 stash-funded cargo purchase failed before native success. transaction={transactionId} {ex}");
-				throw;
-			}
-
-			// EFT has accepted and serialized the native service transaction.
-			// From this point forward it owns delivery persistence. Commit is
-			// idempotent, and an acknowledgement loss must never trigger a
-			// refund that would make a completed transfer free.
-			prepared = false;
-			bool commitIntentPersisted =
-				Uh60TransferFeeRecoveryStore.PersistCommitIntent(
-					profileId,
-					transactionId,
-					nativeFeeRoubles,
-					"native cargo purchase succeeded");
-			bool committed =
-				await Uh60TransferFeeRecoveryStore.TryResolveIntentAsync(
-					profileId,
-					transactionId,
-					"native cargo purchase succeeded");
-			if (!commitIntentPersisted || !committed)
-			{
-				FireSupportPlugin.LogSource?.LogWarning(
-					$"UH-60 cargo transfer completed natively, but its durable fee commit remains pending. transaction={transactionId}. No refund was attempted.");
-			}
-
-			return true;
-		}
-		finally
-		{
-			s_stashFeePurchaseInFlight = false;
-		}
-	}
-
-	private static bool TryGetExactNativeFee(
-		InventoryController inventoryController,
-		ETraderServiceType serviceType,
-		int generation,
-		out int feeRoubles,
-		out string error)
-	{
-		feeRoubles = 0;
-		error = string.Empty;
-		if (generation != s_sessionGeneration ||
-		    !IsExactActiveCargoPurchase(
-			    inventoryController,
-			    serviceType))
-		{
-			error = "The cargo session is no longer active.";
-			return false;
-		}
-
-		if (!Singleton<GlobalConfiguration>.Instantiated ||
-		    Singleton<GlobalConfiguration>.Instance?.ServicesData ==
-		    null ||
-		    !Singleton<GlobalConfiguration>.Instance.ServicesData
-			    .TryGetValue(
-				    serviceType,
-				    out GlobalConfiguration.ServiceData
-					    serviceData) ||
-		    serviceData?.ServiceItemCost == null ||
-		    serviceData.ServiceItemCost.Count != 1 ||
-		    !serviceData.ServiceItemCost.TryGetValue(
-			    PaymentCurrencyInfo.RoubleTemplateId,
-			    out int quotedFee) ||
-		    quotedFee < 0)
-		{
-			error = "EFT's native RUB fee quote was unavailable.";
-			return false;
-		}
-
-		Stash temporaryStash =
-			s_transferController?._transferContainers?.FirstOrDefault(
-				stash =>
-					stash != null &&
-					string.Equals(
-						stash.Id,
-						s_sessionPlayer?.ProfileId,
-						StringComparison.Ordinal));
-		if (temporaryStash == null)
-		{
-			error = "The native cargo staging grid was unavailable.";
-			return false;
-		}
-
-		int calculatedFee =
-			s_transferController.GetGridItemsPrice(temporaryStash);
-		if (calculatedFee != quotedFee)
-		{
-			error = "EFT's native cargo fee changed before payment.";
-			return false;
-		}
-
-		feeRoubles = quotedFee;
-		return true;
-	}
-
-	private static Task<bool> StartNativePurchaseWithZeroRubCost(
-		InventoryController inventoryController,
-		ETraderServiceType serviceType,
-		EFT.Quests.QuestController questController,
-		string subServiceId)
-	{
-		if (!Singleton<GlobalConfiguration>.Instantiated ||
-		    Singleton<GlobalConfiguration>.Instance?.ServicesData ==
-		    null ||
-		    !Singleton<GlobalConfiguration>.Instance.ServicesData
-			    .TryGetValue(
-				    serviceType,
-				    out GlobalConfiguration.ServiceData
-					    serviceData) ||
-		    serviceData?.ServiceItemCost == null)
-		{
-			throw new InvalidOperationException(
-				"EFT's native trader-service cost dictionary was unavailable.");
-		}
-
-		var serviceItemCost = serviceData.ServiceItemCost;
-		KeyValuePair<string, int>[] originalCosts =
-			serviceItemCost.ToArray();
-		Task<bool> nativePurchaseTask;
-		s_nativePurchaseBypass = true;
-		try
-		{
-			serviceItemCost.Clear();
-			serviceItemCost.Add(
-				PaymentCurrencyInfo.RoubleTemplateId,
-				0);
-			nativePurchaseTask =
-				inventoryController.TryPurchaseTraderService(
-					serviceType,
-					questController,
-					subServiceId);
-		}
-		finally
-		{
-			try
-			{
-				// The native async state machine builds its transaction before
-				// returning this Task. Restore the complete dynamic dictionary
-				// now—before awaiting—so no other EFT service observes zero.
-				serviceItemCost.Clear();
-				foreach (KeyValuePair<string, int> cost in originalCosts)
-				{
-					serviceItemCost.Add(cost.Key, cost.Value);
-				}
-			}
-			finally
-			{
-				s_nativePurchaseBypass = false;
-			}
-		}
-
-		return nativePurchaseTask ??
-		       throw new InvalidOperationException(
-			       "EFT returned no native trader-service purchase task.");
-	}
-
-	private static bool IsPreparedFeeResponse(
-		FireSupportUh60TransferFeeResponse response)
-	{
-		return response?.Ok == true &&
-		       (string.Equals(
-			        response.State,
-			        "Prepared",
-			        StringComparison.OrdinalIgnoreCase) ||
-		        string.Equals(
-			        response.State,
-			        "Committed",
-			        StringComparison.OrdinalIgnoreCase));
-	}
-
-	private static async Task<bool> RefundPreparedStashFeeAsync(
-		string profileId,
-		string transactionId,
-		int amountRoubles,
-		string reason,
-		bool notFoundIsSuccess = false)
-	{
-		bool persisted =
-			Uh60TransferFeeRecoveryStore.PersistRefundIntent(
-				profileId,
-				transactionId,
-				amountRoubles,
-				notFoundIsSuccess,
-				reason);
-		bool resolved =
-			await Uh60TransferFeeRecoveryStore.TryResolveIntentAsync(
-				profileId,
-				transactionId,
-				reason);
-		if (!persisted)
-		{
-			FireSupportPlugin.LogSource?.LogError(
-				$"UH-60 cargo transfer fee refund intent could not be durably persisted. transaction={transactionId} trigger={reason}");
-		}
-
-		return resolved;
-	}
-
-	private static async Task<bool> ReconcileAmbiguousPrepareFailureAsync(
-		string profileId,
-		string transactionId,
-		int amountRoubles,
-		FireSupportUh60TransferFeeResponse prepareResponse)
-	{
-		string reason = prepareResponse?.Reason ?? string.Empty;
-		// Native EFT purchase has not started here. Reconcile every rejected
-		// Prepare, not only transport ambiguity: a profile save can succeed
-		// before the server fails to persist Prepared, and an internal failure
-		// can therefore carry a durable debit despite an explicit rejection.
-		// Refund is idempotent for DebitPending/Prepared and harmless when the
-		// transaction never reached the journal.
-		return await RefundPreparedStashFeeAsync(
-			profileId,
-			transactionId,
-			amountRoubles,
-			$"rejected Prepare response: {reason}",
-			notFoundIsSuccess: true);
-	}
-
-	private static void DisplayStashFeeFailure(
-		FireSupportUh60TransferFeeResponse response,
-		string prefix)
-	{
-		string detail = response?.Reason switch
-		{
-			"InsufficientFunds" or
-				"InsufficientRoubles" =>
-				"Not enough RUB is available in the PMC stash.",
-			"ProfileSessionChanged" => "The authenticated PMC profile changed.",
-			"ProfileNotFound" => "The authenticated PMC profile was not found.",
-			"InvalidRequest" => "The native fee quote was invalid.",
-			"RequestFailed" => "The TSC server did not accept the stash payment request.",
-			"ServerConfigUnavailable" => "The TSC server is unavailable or does not support stash-funded cargo fees.",
-			_ => response?.Reason ?? "The TSC server returned an invalid response."
-		};
-		FailOpen($"{prefix}. {detail}");
 	}
 
 	private static async void ObserveLateTraderRefreshAsync(

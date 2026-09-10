@@ -7,7 +7,6 @@ using SamSWAT.FireSupport.ArysReloaded.Unity;
 using SPT.Reflection.Patching;
 using System.Collections.Generic;
 using System.Reflection;
-using System.Threading.Tasks;
 
 namespace SamSWAT.FireSupport.ArysReloaded.Patches;
 
@@ -162,77 +161,67 @@ internal sealed class HelicopterItemTransferPurchaseObservedPatch : ModulePatch
 }
 
 /// <summary>
-/// Substitutes the server-authoritative stash-fee transaction only for the
-/// exact requester-local TSC cargo screen. Every other EFT trader service and
-/// the default carried-RUB cargo mode execute the public native method
-/// unchanged.
+/// Quotes no additional handling charge only for the active UH-60 temporary
+/// cargo grid. EFT keeps its own display, affordability and empty-grid checks.
 /// </summary>
 [UsedImplicitly]
-internal sealed class HelicopterItemTransferStashFeePurchasePatch : ModulePatch
+internal sealed class HelicopterItemTransferIncludedFeeQuotePatch : ModulePatch
 {
 	protected override MethodBase GetTargetMethod()
 	{
 		return AccessTools.Method(
-			typeof(InventoryController),
-			nameof(InventoryController.TryPurchaseTraderService),
-			new[]
-			{
-				typeof(ETraderServiceType),
-				typeof(EFT.Quests.QuestController),
-				typeof(string)
-			});
+			typeof(TransferItemsController),
+			nameof(TransferItemsController.GetGridItemsPrice),
+			new[] { typeof(Stash), typeof(ETraderServiceType), typeof(float), typeof(float) });
 	}
 
 	[PatchPrefix]
 	private static bool Prefix(
-		InventoryController __instance,
-		ETraderServiceType serviceType,
-		EFT.Quests.QuestController questController,
-		string subServiceId,
-		ref Task<bool> __result)
+		TransferItemsController __instance,
+		Stash __0,
+		ETraderServiceType __1,
+		ref int __result)
 	{
-		if (!FireSupportItemTransfer.TryInterceptTraderServicePurchase(
-			    __instance,
-			    serviceType,
-			    questController,
-			    subServiceId,
-			    out Task<bool> stashPurchaseTask))
+		if (!FireSupportItemTransfer.TryOverrideCargoTransferPrice(__instance, __0, __1, out int price))
 		{
 			return true;
 		}
 
-		__result = stashPurchaseTask;
+		__result = price;
 		return false;
 	}
 }
 
 /// <summary>
-/// EFT's transfer panel normally disables its apply button when carried RUB is
-/// below the displayed fee. Stash mode keeps the same native fee display and
-/// item validation, but delegates the balance decision to the authenticated
-/// Prepare request.
+/// Gives native simulation and execution a private service-data copy with no
+/// payment requirements for this exact UH-60 purchase. Native delivery and
+/// every other trader-service requirement remain unchanged.
 /// </summary>
 [UsedImplicitly]
-internal sealed class HelicopterItemTransferStashFeeButtonPatch : ModulePatch
+internal sealed class HelicopterItemTransferIncludedFeePurchasePatch : ModulePatch
 {
 	protected override MethodBase GetTargetMethod()
 	{
 		return AccessTools.Method(
-			typeof(TransferItemsPanel),
-			nameof(TransferItemsPanel.UpdateCounters));
+			typeof(ItemManipulator),
+			nameof(ItemManipulator.PurchaseTraderService),
+			new[]
+			{
+				typeof(GlobalConfiguration.ServiceData),
+				typeof(string),
+				typeof(EFT.Quests.QuestController),
+				typeof(InventoryController),
+				typeof(bool)
+			});
 	}
 
-	[PatchPostfix]
-	private static void Postfix(
-		InventoryController ____inventoryController,
-		Stash ____item,
-		TransferItemsController ____transferItemsController,
-		DefaultUIButton ____transferButton)
+	[PatchPrefix]
+	private static void Prefix(
+		ref GlobalConfiguration.ServiceData __0,
+		string __1,
+		EFT.Quests.QuestController __2,
+		InventoryController __3)
 	{
-		FireSupportItemTransfer.ApplyStashFeeTransferButtonState(
-			____inventoryController,
-			____item,
-			____transferItemsController,
-			____transferButton);
+		FireSupportItemTransfer.IncludeCargoHandlingInServicePurchase(__3, __2, __1, ref __0);
 	}
 }

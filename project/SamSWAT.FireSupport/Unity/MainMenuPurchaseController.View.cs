@@ -223,7 +223,7 @@ public sealed partial class MainMenuPurchaseController
 		if (FireSupportServerConfigClient.GetSnapshotStashBalance(_snapshot, currency) is int balance &&
 		    balance < GetPrice(_snapshot, service.ConfigKey)) return "Not enough stash funds for this authorization.";
 		return service.Type == ESupportType.PriorityExfil
-			? "Cargo only. No PMC extraction. A separate RUB handling fee applies when cargo is loaded."
+			? "Cargo only. No PMC extraction. Sending items is included in the service price."
 			: "Adds one authorization. Deploy it from your Uplink menu in raid.";
 	}
 
@@ -262,7 +262,7 @@ public sealed partial class MainMenuPurchaseController
 			? "Continue the interrupted purchase. Retrying cannot create a second completed charge."
 			: "Purchase one authorization for a future raid. Payment is taken from your stash.";
 		if (service.Type == ESupportType.PriorityExfil)
-			_purchaseConfirmationBody.text += "\n\nCARGO ONLY: This service does not extract your PMC. A separate RUB handling fee is calculated when cargo is loaded.";
+			_purchaseConfirmationBody.text += "\n\nCARGO ONLY: This service does not extract your PMC. Sending items is included in the service price.";
 		_purchaseConfirmationConfirmButton.GetComponentInChildren<Text>().text = retry ? "CONFIRM RETRY" : "CONFIRM PURCHASE";
 	}
 

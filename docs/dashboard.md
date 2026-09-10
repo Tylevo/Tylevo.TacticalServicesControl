@@ -71,8 +71,8 @@ The preview shows the timing changes as well as prices.
 Barter uses the stash wallet: Focused Sweep and A-10 Strafe cost **1 GP** each;
 Double Pass and Cargo Transfer cost **2 GP** each; Extraction costs **1 BTC**;
 UAV costs **10,000 RUB**. The Uplink stays at **50,000 RUB**, the optional
-questline repeater stays at **20,000 RUB**, and EFT still calculates a separate
-RUB handling fee for sent cargo.
+questline repeater stays at **20,000 RUB**. Sending cargo is included in the
+Cargo Transfer service price, with no extra payment at the helicopter.
 
 ### Preview and apply
 

@@ -197,7 +197,7 @@ public sealed partial class UavPhoneScreenRenderer
 	private string NativePurchaseNote() => !NativeAvailable(_context.SupportType)
 		? NativeRestriction(_context.SupportType)
 		: _context.SupportType == ESupportType.PriorityExfil
-			? "Dispatch authorization only. RUB handling fee is charged separately when cargo is loaded."
+			? "Includes dispatch and sending your items home. No extra charge when loading cargo."
 			: "Adds one authorization. Deploy it when you are ready.";
 	private bool NativeCanConfirm() => NativeAvailable(_context.SupportType) && FireSupportPayment.CanAfford(_context.SupportType);
 	private string NativeConfirmLabel()
