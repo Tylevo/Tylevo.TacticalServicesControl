@@ -163,10 +163,13 @@ internal static class PilotQuestlineDataTests
 			using JsonDocument assort = Load(path);
 			AssertEx.Equal(1, assort.RootElement.EnumerateObject().Count());
 			JsonElement shop = assort.RootElement.GetProperty(Pilot);
-			AssertEx.Equal(1, shop.GetProperty("items").GetArrayLength(),
-				"The base phone and optional repeater offers must each exist in only their own package.");
-			AssertEx.Equal(1, shop.GetProperty("barter_scheme").EnumerateObject().Count());
-			AssertEx.Equal(1, shop.GetProperty("loyal_level_items").EnumerateObject().Count());
+			JsonElement[] stock = shop.GetProperty("items").EnumerateArray().ToArray();
+			AssertEx.Equal(1, stock.Count(item => item.GetProperty("_tpl").GetString() == tpl),
+				"The base phone and optional repeater each keep one offer when ordinary Pilot stock expands.");
+			AssertEx.False(stock.Any(item => item.GetProperty("_tpl").GetString() == (tpl == Uplink ? Repeater : Uplink)),
+				"The quest-related offers must stay in their own packages.");
+			AssertEx.Equal(stock.Length, shop.GetProperty("barter_scheme").EnumerateObject().Count());
+			AssertEx.Equal(stock.Length, shop.GetProperty("loyal_level_items").EnumerateObject().Count());
 			JsonElement offerItem = shop.GetProperty("items").EnumerateArray().Single(i => i.GetProperty("_id").GetString() == offer);
 			AssertEx.Equal(tpl, offerItem.GetProperty("_tpl").GetString());
 			AssertEx.True(offerItem.GetProperty("upd").GetProperty("UnlimitedCount").GetBoolean());

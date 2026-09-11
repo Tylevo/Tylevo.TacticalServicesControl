@@ -28,7 +28,12 @@ internal static class PilotTraderSourceContractTests
 		AssertEx.Equal(PilotId, traders[0].Name);
 		JsonElement assortment = traders[0].Value;
 		JsonElement[] items = assortment.GetProperty("items").EnumerateArray().ToArray();
-		AssertEx.Equal(1, items.Length, "The main download stocks the Uplink; the optional add-on supplies its own repeater offer.");
+		AssertEx.Equal(1, items.Count(entry => entry.GetProperty("_tpl").GetString() == UplinkId),
+			"Additional gear must not duplicate the Uplink offer.");
+		AssertEx.Equal(items.Length, items.Select(entry => entry.GetProperty("_id").GetString()).Distinct().Count(),
+			"Each offer needs its own persistent purchase-limit identity.");
+		AssertEx.False(items.Any(entry => entry.GetProperty("_tpl").GetString() == "63a0b2eabea67a6d93009e52"),
+			"The optional quest repeater must not leak into the main shop.");
 		JsonElement item = items.Single(entry => entry.GetProperty("_id").GetString() == OfferId);
 		AssertEx.Equal(OfferId, item.GetProperty("_id").GetString());
 		AssertEx.Equal(UplinkId, item.GetProperty("_tpl").GetString());
@@ -40,7 +45,7 @@ internal static class PilotTraderSourceContractTests
 		AssertEx.Equal(5, update.GetProperty("BuyRestrictionMax").GetInt32());
 
 		JsonProperty[] schemes = assortment.GetProperty("barter_scheme").EnumerateObject().ToArray();
-		AssertEx.Equal(1, schemes.Length);
+		AssertEx.Equal(items.Length, schemes.Length);
 		JsonElement uplinkScheme = assortment.GetProperty("barter_scheme").GetProperty(OfferId);
 		AssertEx.Equal(1, uplinkScheme.GetArrayLength());
 		AssertEx.Equal(1, uplinkScheme[0].GetArrayLength());
@@ -48,8 +53,22 @@ internal static class PilotTraderSourceContractTests
 		AssertEx.Equal(RoubleId, payment.GetProperty("_tpl").GetString());
 		AssertEx.Equal(50000, payment.GetProperty("count").GetInt32());
 		JsonProperty[] loyalty = assortment.GetProperty("loyal_level_items").EnumerateObject().ToArray();
-		AssertEx.Equal(1, loyalty.Length);
+		AssertEx.Equal(items.Length, loyalty.Length);
 		AssertEx.Equal(1, assortment.GetProperty("loyal_level_items").GetProperty(OfferId).GetInt32());
+		foreach (JsonElement stock in items)
+		{
+			string stockId = stock.GetProperty("_id").GetString()!;
+			AssertEx.Equal("hideout", stock.GetProperty("parentId").GetString());
+			AssertEx.Equal("hideout", stock.GetProperty("slotId").GetString());
+			JsonElement stockPrice = assortment.GetProperty("barter_scheme").GetProperty(stockId);
+			AssertEx.Equal(1, stockPrice.GetArrayLength());
+			AssertEx.Equal(1, stockPrice[0].GetArrayLength());
+			AssertEx.Equal(RoubleId, stockPrice[0][0].GetProperty("_tpl").GetString());
+			AssertEx.True(stockPrice[0][0].GetProperty("count").GetInt32() > 0);
+			AssertEx.Equal(1, assortment.GetProperty("loyal_level_items").GetProperty(stockId).GetInt32(),
+				"Pilot currently defines one loyalty level; stock must be reachable.");
+			AssertEx.True(stock.GetProperty("upd").GetProperty("BuyRestrictionMax").GetInt32() > 0);
+		}
 
 		using JsonDocument templates = JsonDocument.Parse(Read(ServerRoot + "CopyToOutput/db/CustomItems/RaidOpsUavDevice.json"));
 		AssertEx.True(templates.RootElement.TryGetProperty(UplinkId, out _),
