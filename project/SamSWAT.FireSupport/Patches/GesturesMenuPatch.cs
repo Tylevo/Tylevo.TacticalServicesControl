@@ -104,7 +104,7 @@ public class GesturesMenuPatch : ModulePatch
 			return false;
 		}
 
-		bool locationIsSuitable = player.Location.ToLower() == "sandbox" || LocationScene.GetAll<AirdropPoint>().AsValueEnumerable().Any();
+		bool locationIsSuitable = player.Location.ToLower() == "sandbox" || player.Location.ToLower() == "icebreaker" || LocationScene.GetAll<AirdropPoint>().AsValueEnumerable().Any();
 		if (!locationIsSuitable)
 		{
 			return false;
