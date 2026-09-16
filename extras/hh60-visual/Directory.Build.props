@@ -1,0 +1,10 @@
+<Project>
+  <!-- This optional companion is not part of the normal TSC solution/release. -->
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <Deterministic>true</Deterministic>
+    <Version>0.2.1</Version>
+  </PropertyGroup>
+</Project>
