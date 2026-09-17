@@ -68,7 +68,7 @@ class ExportSafetyTests(unittest.TestCase):
 
     def test_new_pose_file_allowed(self):
         target = self.root / "new-poses.json"
-        self.assertEqual(safe_output(self.bundle, target, directory=False), target)
+        self.assertEqual(safe_output(self.bundle, target, directory=False), target.resolve())
         self.assertFalse(target.exists())
 
     def test_existing_pose_file_rejected(self):
@@ -80,10 +80,10 @@ class ExportSafetyTests(unittest.TestCase):
 
     def test_new_and_empty_payload_directories_allowed(self):
         target = self.root / "payload"
-        self.assertEqual(safe_output(self.bundle, target, directory=True), target)
+        self.assertEqual(safe_output(self.bundle, target, directory=True), target.resolve())
         self.assertFalse(target.exists())
         target.mkdir()
-        self.assertEqual(safe_output(self.bundle, target, directory=True), target)
+        self.assertEqual(safe_output(self.bundle, target, directory=True), target.resolve())
 
     def test_nonempty_payload_directory_rejected(self):
         target = self.root / "payload"
