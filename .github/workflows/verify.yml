@@ -39,3 +39,19 @@ jobs:
           ./tools/verify-ci.ps1
           -BaseSha $env:VERIFY_BASE_SHA
           -HeadSha $env:VERIFY_HEAD_SHA
+
+      - name: Test optional HH-60 payload validation (synthetic data only)
+        run: dotnet run --project extras/hh60-visual/tests/payload/PayloadTests.csproj --configuration Release
+
+      - name: Test optional HH-60 glass policy (synthetic data only)
+        run: dotnet run --project extras/hh60-visual/tests/glass/GlassPolicyTests.csproj --configuration Release
+
+      - name: Set up Python for offline-export safety tests
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Test local HH-60 exporter guards (no game assets)
+        run: |
+          python -m pip install -r extras/hh60-visual/tools/requirements.txt
+          python -m unittest discover -s extras/hh60-visual/tools -p test_export_safety.py
