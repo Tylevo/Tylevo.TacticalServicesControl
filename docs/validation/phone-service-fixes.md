@@ -5,9 +5,8 @@ and phone-readability issues. Runtime acceptance remains pending.
 
 ## Automated validation
 
-September 20, 2026: `tools/verify-local.ps1` passed for the publishing branch
-using the SPT 4.1.5 reference assemblies with deployment disabled. This branch
-excludes the separate A-10 audio and extended-burst changes:
+September 20, 2026: `tools/verify-local.ps1` passed using the SPT 4.1.5
+reference assemblies with deployment disabled:
 
 - 382 C# regression tests passed, including slot/filter preservation, payment
   migration and replay, nonpersistent payments, prepaid selection, phone

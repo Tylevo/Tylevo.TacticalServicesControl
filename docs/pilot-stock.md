@@ -21,8 +21,6 @@ The green flare remains the ordinary game item; it does not call TSC support. Gl
 
 The existing `jaeger_uav_uplink.json` filename is retained so an overlay update replaces the old installed assortment. It still registers only Pilot, preserves the Uplink offer ID, and gives each new item a stable, separate purchase-limit ID. No vanilla item template or other trader inventory is changed.
 
-A custom flight helmet is being prototyped separately in Blender. The current direction is a gray fighter-pilot helmet with a curved visor, oxygen mask and breathing hose. It is not included in the shop or released package yet. Character fitting, materials, the native equipment prefab, clipping and in-game checks must be completed before it becomes a wearable item.
-
 Verification passed against a fresh disposable SPT 4.1.5 runtime using the published 1.3.13 server binary with only this assortment overlaid: all eight native item purchases, exact prices, exhausted personal purchase limits and the published 1.3.12 add-on's existing locks. The development source also passed the repository's CI checks. No live installation or release archive was changed.
 
 SPT checks nonstackable bulk purchases one item at a time. A direct request for two Aviators with only one purchase remaining added one item, rejected the other and skipped payment. This upstream transaction behavior is recorded in the development evidence; the stock uses ordinary native restrictions and adds no separate checkout path.
