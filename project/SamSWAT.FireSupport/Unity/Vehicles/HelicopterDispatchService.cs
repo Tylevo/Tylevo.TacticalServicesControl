@@ -24,7 +24,8 @@ public abstract class HelicopterDispatchService : FireSupportService
 	}
 
 	public override async UniTaskVoid PlanRequest(
-		CancellationToken cancellationToken)
+		CancellationToken cancellationToken,
+		bool requirePrepaidAuthorization)
 	{
 		SetLocationResult locationResult =
 			await _spotter.SetLocation(checkSpace: true, cancellationToken);
@@ -36,7 +37,7 @@ public abstract class HelicopterDispatchService : FireSupportService
 
 		await _spotter.ConfirmLocation(cancellationToken);
 		FireSupportAuthorizationUse authorizationUse =
-			await FireSupportPayment.TryPayForDeploymentAsync(SupportType);
+			await FireSupportPayment.TryPayForDeploymentAsync(SupportType, requirePrepaidAuthorization);
 		if (!authorizationUse.Ok)
 		{
 			return;
@@ -59,7 +60,7 @@ public abstract class HelicopterDispatchService : FireSupportService
 		CancellationToken cancellationToken)
 	{
 		requestAvailable = false;
-		bool consumedBaseRequest = !authorizationUse.ConsumedAuthorization;
+		bool consumedBaseRequest = authorizationUse.ConsumesBaseRequest;
 		ESupportType effectiveSupportType = authorizationUse.ConsumedAuthorization
 			? authorizationUse.ConsumedAuthorizationType
 			: SupportType;

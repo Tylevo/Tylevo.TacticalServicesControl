@@ -951,10 +951,14 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 			reason = "Server omitted a valid payment currency.";
 			return false;
 		}
-		if (!FireSupportServerConfigClient.GetSnapshotStashBalance(snapshot, currency).HasValue ||
-		    snapshot.Authorizations == null)
+		if (!FireSupportServerConfigClient.GetSnapshotStashBalance(snapshot, currency).HasValue)
 		{
-			reason = "Server omitted the authoritative stash balance or authorization ledger.";
+			reason = "Server did not return the stash balance. Refresh after the profile finishes loading.";
+			return false;
+		}
+		if (snapshot.Authorizations == null)
+		{
+			reason = "Server did not return the authorization ledger. Refresh to recover existing purchases.";
 			return false;
 		}
 
@@ -1218,7 +1222,7 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 			"InsufficientRoubles" or "InsufficientFunds" => "Insufficient stash funds.",
 			"RateLimited" => "Purchase rate-limited. Wait briefly and refresh.",
 			"ServiceUnavailable" => "This service is disabled by the server.",
-			"PaymentSourceNotServerBacked" => "Server payment source is not stash-backed.",
+			"PaymentSourceNotServerBacked" => "Update the TSC server to enable stash payments.",
 			"PurchasePersistenceDisabled" => "Server purchase persistence is disabled.",
 			"PurchaseQuoteChanged" => "Price changed on the server. Review the updated quote and confirm again.",
 			"PurchaseCurrencyMismatch" => "Currency changed on the server. Refresh and confirm again.",
@@ -1243,9 +1247,7 @@ public sealed partial class MainMenuPurchaseController : MonoBehaviour
 
 	private static bool HasMenuPaymentSource(RaidOpsFireSupportServerConfig snapshot, ESupportType type)
 	{
-		return snapshot != null && ServicePaymentPolicy.TryResolveCurrency(snapshot, type, out PaymentCurrency currency) &&
-			Enum.TryParse(snapshot.PaymentSource, true, out PaymentSource source) &&
-			ServicePaymentPolicy.GetPaymentSource(source, currency) != PaymentSource.CarriedRoubles;
+		return snapshot != null && ServicePaymentPolicy.TryResolveCurrency(snapshot, type, out _);
 	}
 
 	private static int GetPrice(RaidOpsFireSupportServerConfig snapshot, string key)

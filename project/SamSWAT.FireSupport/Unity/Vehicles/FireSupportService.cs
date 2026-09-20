@@ -29,5 +29,10 @@ public abstract class FireSupportService(int maxRequests) : IFireSupportService
 		};
 	}
 
-	public abstract UniTaskVoid PlanRequest(CancellationToken cancellationToken);
+	public UniTaskVoid PlanRequest(CancellationToken cancellationToken)
+	{
+		return PlanRequest(cancellationToken, requirePrepaidAuthorization: false);
+	}
+
+	public abstract UniTaskVoid PlanRequest(CancellationToken cancellationToken, bool requirePrepaidAuthorization);
 }

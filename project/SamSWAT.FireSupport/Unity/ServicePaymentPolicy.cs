@@ -52,6 +52,4 @@ public static class ServicePaymentPolicy
 			GetCurrencyCode(config.PaymentCurrency, config.ServiceCurrencies, supportType), out currency);
 	}
 
-	public static PaymentSource GetPaymentSource(PaymentSource source, PaymentCurrency currency) =>
-		PaymentCurrencyInfo.IsStashOnly(currency) ? PaymentSource.StashRoubles : source;
 }

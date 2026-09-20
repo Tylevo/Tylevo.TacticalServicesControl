@@ -6,7 +6,10 @@
 - **Pay once for cargo pickup.** Buying UH-60 Cargo Transfer now covers sending your items home. There's no second charge when you load the helicopter.
 - **Five gameplay presets.** Pick Balanced, Casual, Hardcore, Barter or Classic 1.3.12. Preview the changes and apply everything or just one category.
 - **Save and share your setup.** Save custom presets and share them as JSON files or codes that work offline. **Save Config** activates the settings; saving a preset just keeps a copy.
-- **Stash payments by default.** Fresh installs and Reset Defaults use stash roubles. Updates keep your wallet choice; Classic 1.3.12 uses carried cash.
+- **Stash-only payments.** Every service uses stash funds, including Classic and imported presets. Older carried-money settings migrate automatically; prices and purchased credits are preserved.
+- **Use any special slot.** The Uplink fits existing special slots, including modded pocket layouts, without moving saved items or replacing other mods' slot filters.
+- **Optional deployment after purchase.** Enable **Deploy after phone purchase** in F12 to finish the purchase animation and continue into designation or UAV activation using the purchased authorization.
+- **Readable deployment phone.** Separate deployment zoom controls default to a 45-degree FOV, ease out during sprint, and restore the raid view when the phone closes.
 - **A cleaner dashboard.** Darker Tarkov-style colors, green switches, wider dropdowns and a dedicated presets page with the sharing controls always visible.
 - **Smoother phone payments.** Removed the pause after the confirmation swipe and added a larger arrow that slides up with your hand.
 - **Keep your questline add-on.** The existing **1.3.12 add-on for SPT 4.1.5** still works. The quests haven't changed, so only the main ZIP needs updating.

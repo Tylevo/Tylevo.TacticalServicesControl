@@ -923,7 +923,6 @@ public static class FireSupportServerConfigClient
 			GetPrice(snapshot, "Uav", ESupportType.Uav),
 			GetPrice(snapshot, "FocusedSweep", ESupportType.FocusedSweep),
 			ParseEnum(snapshot.PaymentMode, FireSupportPayment.GetConfiguredPaymentMode()),
-			ParseEnum(snapshot.PaymentSource, FireSupportPayment.GetConfiguredPaymentSource()),
 			GetSnapshotCurrency(snapshot));
 		FireSupportServiceAvailability.SetServerConfigAvailability(
 			GetEnabled(snapshot, "PriorityExfil", FireSupportServiceAvailability.GetConfiguredPriorityExfilEnabled()),

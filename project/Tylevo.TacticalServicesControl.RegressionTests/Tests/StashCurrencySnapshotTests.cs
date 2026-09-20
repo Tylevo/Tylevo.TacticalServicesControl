@@ -263,7 +263,7 @@ internal static class StashCurrencySnapshotTests
 			(ESupportType.Extract, "BTC", 2)
 		})
 		{
-			rig.Configure(type, currency, cost, currency is "GP" or "BTC" ? PaymentSource.CarriedRoubles : PaymentSource.StashRoubles);
+			rig.Configure(type, currency, cost, currency is "GP" or "BTC" ? "CarriedRoubles" : "StashRoubles");
 			FireSupportPurchaseResponse purchase = await rig.Purchase(type, currency, currency, cost);
 			AssertEx.True(purchase.Ok, purchase.Reason);
 			AssertEx.Equal(currency, purchase.Currency);
@@ -290,7 +290,7 @@ internal static class StashCurrencySnapshotTests
 		using var rig = new Rig();
 		rig.Items.Add(Cash(SecondCashId, PaymentCurrencyInfo.BitcoinTemplateId, 1));
 		rig.Items.Add(Cash("66f51f3a0000000000003403", PaymentCurrencyInfo.BitcoinTemplateId, 1, EquipmentId));
-		rig.Configure(ESupportType.Strafe, "BTC", 2, PaymentSource.PreferCarriedThenStash);
+		rig.Configure(ESupportType.Strafe, "BTC", 2, "PreferCarriedThenStash");
 		string before = JsonSerializer.Serialize(rig.Items);
 		FireSupportPurchaseResponse shortage = await rig.Purchase(ESupportType.Strafe, "shortage", "BTC", 2);
 		AssertEx.False(shortage.Ok);
@@ -319,7 +319,7 @@ internal static class StashCurrencySnapshotTests
 			string after = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(finalCount > 0 ? SecondCashId + $":{finalCount}\n" : "")));
 			AssertEx.True(rig.Ledger.TryPreparePersistentPurchase(ProfileId, ESupportType.Strafe,
 				1, cost, currency, startingCount, before, after, 2, "prepared", out _, out _, out string reason), reason);
-			rig.Configure(ESupportType.Strafe, "USD", 9, PaymentSource.CarriedRoubles);
+			rig.Configure(ESupportType.Strafe, "USD", 9, "CarriedRoubles");
 			rig.Ledger.Initialize(Path.Combine(rig.Root, "storage"));
 			FireSupportPurchaseResponse result = await rig.Purchase(ESupportType.Strafe, "prepared", "USD", 9);
 			AssertEx.True(result.Ok, result.Reason);
@@ -359,7 +359,7 @@ internal static class StashCurrencySnapshotTests
 		Item bitcoin = Cash(SecondCashId, PaymentCurrencyInfo.BitcoinTemplateId, 1);
 		bitcoin.Upd = new Upd { SpawnedInSession = true };
 		rig.Items.Add(bitcoin);
-		rig.Configure(ESupportType.Strafe, "BTC", 1, PaymentSource.CarriedRoubles);
+		rig.Configure(ESupportType.Strafe, "BTC", 1, "CarriedRoubles");
 		string before = JsonSerializer.Serialize(rig.Items);
 		rig.OnSave = () => rig.SaveCount == 1 ? Task.FromException(new IOException("Simulated save failure")) : Task.CompletedTask;
 		FireSupportPurchaseResponse result = await rig.Purchase(ESupportType.Strafe, "rollback-btc", "BTC", 1);
@@ -427,7 +427,7 @@ internal static class StashCurrencySnapshotTests
 				new FireSupportProfileMutationGate(), new TscPilotProgressionService(profileHelper, PilotPolicyTestFixture.Create()), new JsonCloner());
 			Service.Initialize(Root);
 			RaidOpsFireSupportServerConfig config = Service.GetConfigSnapshot();
-			config.PaymentSource = nameof(PaymentSource.StashRoubles);
+			config.PaymentSource = "StashRoubles";
 			config.PaymentCurrency = "RUB";
 			config.Prices["A10"] = 100;
 			config.Enabled["A10"] = true;
@@ -439,12 +439,12 @@ internal static class StashCurrencySnapshotTests
 		public async Task<RaidOpsFireSupportServerConfig> Snapshot() =>
 			Decode(await Service.GetSnapshotAsync(new MongoId(SessionId), includeStashCurrencyState: true));
 
-		public void Configure(ESupportType type, string currency, int cost, PaymentSource source)
+		public void Configure(ESupportType type, string currency, int cost, string source)
 		{
 			var config = Service.GetConfigSnapshot();
 			config.ServiceCurrencies[ServicePaymentPolicy.GetServiceKey(type)] = currency;
 			config.Prices[ServicePaymentPolicy.GetServiceKey(type)] = cost;
-			config.PaymentSource = source.ToString();
+			config.PaymentSource = source;
 			AssertEx.True(Service.TryUpdateConfig(config, out string error, out _, config.Revision), error);
 		}
 

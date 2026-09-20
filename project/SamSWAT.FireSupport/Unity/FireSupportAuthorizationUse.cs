@@ -17,6 +17,10 @@ public sealed class FireSupportAuthorizationUse
 
 	public bool Ok { get; set; }
 	public bool ConsumedAuthorization { get; set; }
+	// A nonpersistent direct payment still spends a base request, while retaining
+	// its consumed credit so a rejected dispatch can refund it exactly once.
+	internal bool PurchasedForBaseRequest { get; set; }
+	internal bool ConsumesBaseRequest => !ConsumedAuthorization || PurchasedForBaseRequest;
 	public ESupportType ConsumedAuthorizationType { get; set; }
 	public string RequestId { get; set; } = string.Empty;
 	public bool ServerBacked { get; set; }

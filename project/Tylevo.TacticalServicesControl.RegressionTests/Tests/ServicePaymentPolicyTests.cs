@@ -51,14 +51,10 @@ internal static class ServicePaymentPolicyTests
 	}
 
 	[RegressionTest]
-	private static void CoinPaymentsAlwaysUseStashAndCashRetainsItsConfiguredWallet()
+	private static void StashIsTheOnlyPaymentSourceAndUsesTheReleasedWireValue()
 	{
-		foreach (PaymentSource source in Enum.GetValues<PaymentSource>())
-		foreach (PaymentCurrency currency in Enum.GetValues<PaymentCurrency>())
-		{
-			PaymentSource expected = currency is PaymentCurrency.GP or PaymentCurrency.BTC ? PaymentSource.StashRoubles : source;
-			AssertEx.Equal(expected, ServicePaymentPolicy.GetPaymentSource(source, currency));
-		}
+		AssertEx.Equal(1, Enum.GetValues<PaymentSource>().Length);
+		AssertEx.Equal(1, (int)PaymentSource.StashRoubles);
 		AssertEx.Equal("1 GP", PaymentCurrencyInfo.Format(1, PaymentCurrency.GP));
 		AssertEx.Equal("2 BTC", PaymentCurrencyInfo.Format(2, PaymentCurrency.BTC));
 		AssertEx.Equal("$1,000", PaymentCurrencyInfo.Format(1000, PaymentCurrency.USD));

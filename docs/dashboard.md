@@ -47,10 +47,10 @@ sharing controls are in the themed dashboard.
 The picker and always-visible sharing panel sit side by side on desktop and
 stack on smaller screens.
 
-Fresh installs use Balanced. Existing installs retain their saved configuration
-when updated; choose Balanced to preview the new prices and stash wallet.
-Fresh and reset defaults use stash roubles. Balanced, Casual, Hardcore and
-Barter use the stash; Classic retains the original carried wallet. All amounts
+Fresh installs use Balanced. Existing installs retain their saved prices
+when updated; choose Balanced to preview the new prices.
+All presets and purchases use the stash. Older carried-money settings are
+migrated automatically, including imported presets. All amounts
 in this table are RUB:
 
 | Service | Balanced | Casual | Hardcore | Classic 1.3.12 |
@@ -82,10 +82,10 @@ Cargo Transfer service price, with no extra payment at the helicopter.
 4. Select **Save Config** to update the running server and saved config.
 
 **All gameplay settings** applies every portable field in the preset.
-**Prices and payment** applies global currency and wallet plus service prices
+**Prices and payment** applies global currency plus service prices
 and currency overrides; it leaves payment mode, timing, and availability alone.
 **Recon services**, **UH-60 services**, and **Fire support** apply that category's
-prices, overrides, availability, and timing. Global currency and wallet stay
+prices, overrides, availability, and timing. Global currency stays
 as configured for these category scopes.
 
 A category's **Inherit** currency is resolved to the preset's global currency
@@ -176,9 +176,10 @@ pairs its price with **RUB, USD, EUR, GP, BTC, or Use global / Inherit**. The
 server's global currency supplies inherited values. SIC's native editor exposes
 the same `prices` and `serviceCurrencies` dictionaries.
 
-GP coins and physical Bitcoin always come from the authenticated PMC stash,
-including eligible items inside stash containers. Cash uses the configured
-wallet; pre-raid Pilot Services purchases use the stash. The server calculates
+All service payments come from the authenticated PMC stash,
+including eligible GP coins and physical Bitcoin inside stash containers.
+Payment source is no longer an editable setting or an exported preset field.
+Legacy imports discard the old source setting. The server calculates
 prices and debits the selected asset before granting an authorization.
 
 Changing currency does not convert saved prices. Set GP/BTC prices to whole

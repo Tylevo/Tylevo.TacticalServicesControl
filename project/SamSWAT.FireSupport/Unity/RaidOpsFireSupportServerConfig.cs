@@ -188,6 +188,9 @@ public sealed class FireSupportPurchaseRequest
 
 public sealed class FireSupportPurchaseResponse
 {
+	// Client-only ownership of the credit actually granted for this response.
+	// Internal properties are excluded from both default JSON wire contracts.
+	internal bool? PurchasedAuthorizationServerBacked { get; set; }
 	public bool Ok { get; set; }
 	public string Reason { get; set; } = string.Empty;
 	public string SupportType { get; set; } = string.Empty;

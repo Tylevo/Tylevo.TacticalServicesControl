@@ -168,6 +168,7 @@ namespace SPTarkov.Server.Core.Models.Eft.Common.Tables
 	public sealed class TemplateItem
 	{
 		public MongoId Id { get; set; }
+		public MongoId Parent { get; set; }
 		public TemplateItemProperties? Properties { get; set; }
 	}
 

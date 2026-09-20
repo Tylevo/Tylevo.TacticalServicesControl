@@ -5,6 +5,17 @@ namespace SamSWAT.FireSupport.ArysReloaded.Unity;
 
 internal static class AuthorizationConsumePolicy
 {
+	public static bool ShouldConsumeBeforeCash(PaymentMode mode, bool persistenceEnabled,
+		bool spendCreditsBeforeCash, bool consumePurchasedAuthorization, bool requirePrepaidAuthorization) =>
+		consumePurchasedAuthorization || requirePrepaidAuthorization || mode == PaymentMode.PhoneAuthorizations ||
+		mode == PaymentMode.Hybrid && (!persistenceEnabled || spendCreditsBeforeCash) ||
+		mode == PaymentMode.DirectRadial && !persistenceEnabled;
+
+	public static bool PurchasedForBaseRequest(PaymentMode mode, bool persistenceEnabled,
+		bool consumePurchasedAuthorization, bool requirePrepaidAuthorization) =>
+		!persistenceEnabled && !requirePrepaidAuthorization &&
+		(consumePurchasedAuthorization || mode == PaymentMode.DirectRadial);
+
 	public static bool TryConsume(
 		IDictionary<ESupportType, int> localCredits,
 		IDictionary<ESupportType, int> serverCredits,
@@ -33,15 +44,18 @@ internal static class AuthorizationConsumePolicy
 	{
 		serverBacked = false;
 		if (purchase?.Ok != true || !purchase.AuthorizationGranted || purchase.Cost < 0) return false;
-		// The raid purchase path grants free authorizations locally before any
-		// server request, even when the configured payment source is the stash.
+		if (purchase.PurchasedAuthorizationServerBacked.HasValue)
+		{
+			serverBacked = purchase.PurchasedAuthorizationServerBacked.Value;
+			return true;
+		}
+		// Compatibility for receipts issued by older versions. These names only
+		// identify ownership of an already-paid credit; they cannot select a wallet.
 		if (purchase.Cost == 0 ||
-		    string.Equals(purchase.PaymentSource, nameof(PaymentSource.CarriedRoubles), StringComparison.Ordinal)) return true;
-		// Successful stash responses retain the configured cash preference.
-		// A carried purchase or fallback is explicitly labelled CarriedRoubles.
+		    string.Equals(purchase.PaymentSource, "CarriedRoubles", StringComparison.Ordinal)) return true;
 		serverBacked = purchase.PaymentSource is nameof(PaymentSource.StashRoubles)
-			or nameof(PaymentSource.PreferCarriedThenStash)
-			or nameof(PaymentSource.PreferStashThenCarried);
+			or "PreferCarriedThenStash"
+			or "PreferStashThenCarried";
 		return serverBacked;
 	}
 }

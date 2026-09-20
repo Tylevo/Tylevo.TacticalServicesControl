@@ -25,7 +25,7 @@ there is no extra charge at the helicopter.
 
 Select **RUB, USD, EUR, GP coins, or Bitcoin** separately for each service in SIC
 or the dashboard. GP/BTC come from the PMC stash, including eligible items in
-stash containers; cash uses the configured wallet. Prices are whole units and
+stash containers; cash also comes from the stash. Prices are whole units and
 changing currency does not convert the amount. See the [candidate notes](docs/release-notes-v1.3.13.md)
 and [preset guide](docs/dashboard.md#gameplay-presets-candidate-1313).
 
@@ -55,7 +55,7 @@ If you're updating from the last Forge release, TSC v1.0.8, this version brings 
 - **UH-60 Cargo Transfer:** send loot home while you stay in the raid. It replaces Priority Exfil. Cargo arrives through Pilot's mail, with item handling included in the service price.
 - **Pilot's Services tab:** buy support authorizations before entering a raid at **Traders > Pilot > Services**. Browse the compact service list on the left and review the selected service's details on the right. Purchases use your PMC stash balance and existing authorization limits.
 - **A redesigned phone:** live UI, new service artwork, horizontal purchase screens, and smoother, adjustable zoom. Hold **Left Alt** to select with the mouse; the number-key controls remain available.
-- **Optional Pilot Questline add-on:** the main download opens Pilot immediately and sells the Uplink for â‚½50,000. Install the separate add-on to earn access through three quests beginning with Mechanic at level 5. The Uplink has its own fourth special slot.
+- **Optional Pilot Questline add-on:** the main download opens Pilot immediately and sells the Uplink for â‚½50,000. Install the separate add-on to earn access through three quests beginning with Mechanic at level 5. The Uplink fits any special slot; stock pockets retain its extra fourth slot.
 - **More radar display options:** hold **J** to check active recon on the physical phone, or choose a compact HUD scanner in a screen corner.
 - **More payment options and better recovery:** configure support prices in RUB, USD, or EUR. Authorization use and payment recovery have been strengthened across failed requests, reconnects, and server saves.
 - **A-10 targeting improvements:** corrected shot origins and trajectory compensation address rounds landing short of the designated target.
@@ -97,7 +97,7 @@ With the main download, open **Traders > Pilot > Trading** and buy the **TerraGr
 
 With the optional **Pilot Questline add-on**, begin **Open Channel** with Mechanic at level 5, supply Pilot's repair parts, and restore the Shoreline weather-station relay. Completing **Back on the Air** awards the phone and unlocks services and â‚½50,000 replacements. See the [add-on and questline guide](docs/pilot-questline.md).
 
-TSC does not add phones to random loot in either mode. Put your Uplink in the dedicated fourth special slot, or carry it in your inventory.
+TSC does not add phones to random loot in either mode. Put your Uplink in any special slot, including modded pocket layouts, or carry it in your inventory.
 
 To buy support before a raid, open **Traders > Pilot > Services**. Select a service from the left-hand list, review its description, price, and held authorizations in the right-hand detail panel, then confirm the purchase. The cost comes from the same PMC stash and grants the same persistent authorization as before.
 

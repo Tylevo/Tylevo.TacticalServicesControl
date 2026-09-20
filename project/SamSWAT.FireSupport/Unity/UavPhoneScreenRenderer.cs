@@ -2266,7 +2266,7 @@ public sealed partial class UavPhoneScreenRenderer : MonoBehaviour
 		}
 
 		if (!PaymentCurrencyInfo.TryParse(currency.ToString(), out _)) return "UNAVAILABLE";
-		if (PaymentCurrencyInfo.IsStashOnly(currency)) return PaymentCurrencyInfo.FormatCode(amount, currency);
+		if (PaymentCurrencyInfo.IsBarter(currency)) return PaymentCurrencyInfo.FormatCode(amount, currency);
 		return PaymentCurrencyInfo.GetSymbol(currency) +
 		       " " +
 		       Mathf.Max(0, amount).ToString("N0", CultureInfo.InvariantCulture).Replace(',', ' ');
