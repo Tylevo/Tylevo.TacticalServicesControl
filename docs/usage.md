@@ -26,7 +26,9 @@ the final quest. See the [questline guide](pilot-questline.md) for rewards and
 survival rules. Pilot also delivers your UH-60 cargo mail.
 
 Bring the Uplink into the raid to use its purchase, deployment, and radar
-controls. You can keep it in the dedicated fourth special slot.
+controls. You can keep it in any special slot or carry it in your inventory.
+Modded pocket layouts keep their existing slots and filters; TSC adds phone
+eligibility without moving phones already stored in a profile.
 
 ## Default controls
 
@@ -80,8 +82,16 @@ category and `1` or `2` for the service.
 Check the details on the review screen, then hold Alt and click confirm or
 press `Enter`. The phone turns upright and plays the swipe animation
 automatically; you do not need to drag anything. The swipe commits payment
-using the configured currency and wallet source. Closing the phone after
+using the configured currency from your stash. Closing the phone after
 payment has gone through does not undo the purchase.
+
+To continue straight into deployment, enable **Deploy after phone purchase**
+under **TerraGroup Phone** in `F12`. This is off by default. A successful purchase
+finishes its swipe animation, stows the phone, then opens target designation
+for A-10/UH-60 services or activates the purchased UAV service. It uses the
+authorization you just bought and requires Phone Authorizations or Hybrid mode.
+Failed or cancelled purchases never start deployment. Existing availability
+and cooldown rules still apply; a blocked deployment leaves the credit for later.
 
 ## Deploy support
 
@@ -132,19 +142,22 @@ for its modifier and sensitivity, and can be turned off. The cursor stays on
 the display as the handset moves.
 
 Purchase screens stay horizontal until the final upright swipe confirmation.
-The `K` deployment view and held `J` radar open upright and keep your raid FOV.
-Optional purchase-screen zoom starts after a 0.08-second delay and eases the
+The `K` deployment view and held `J` radar open upright. Deployment has its own
+**Automatic deploy phone zoom** toggle and **Deploy phone zoom FOV** setting;
+the default is enabled at 45 degrees. Lower values make the deployment phone
+larger, independently of purchase zoom. Held radar keeps your raid FOV.
+Purchase and deployment zoom start after a 0.08-second delay and ease the
 camera FOV and hand framing into place over 0.75 seconds by default.
 
 - **Phone zoom in seconds:** 0.25–1.5 seconds; default 0.75.
 - **Phone zoom out seconds:** 0.15–0.8 seconds; default 0.35.
 
 Closing the phone restores the original raid FOV, including after a quick
-reopen. With automatic zoom enabled, sprinting with the horizontal purchase
+reopen. With the corresponding zoom enabled, sprinting with the purchase or deployment
 phone eases back to your raid FOV and hand framing; stopping restores the
-purchase zoom. Both sprint transitions use **Phone zoom in seconds** and its
+phone zoom. Both sprint transitions use **Phone zoom in seconds** and its
 existing easing curve. Closing the phone still uses **Phone zoom out seconds**.
-These zoom settings do not change deployment or radar views.
+Radar views retain their original FOV.
 
 Upright deployment, radar, and Danger Close phones follow the first-person
 left hand during sprint, with reduced walking bob and turning sway.
@@ -156,10 +169,14 @@ cooldowns, timing, and authorization settings. Open it through SIC in the
 SPT launcher.
 
 TSC has `PhoneAuthorizations` and `Hybrid` payment modes, with RUB, USD, or EUR
-payments from carried cash or the stash where configured. GP coins and Bitcoin
+payments from the stash. GP coins and Bitcoin
 can also be selected per service and come from the stash. The phone shows the
 active price and payment source. Pre-raid purchases use the authenticated PMC
 stash; the server determines the price and currency.
+
+Carried-money payment options have been removed. Older saved configs and
+imported presets automatically use the stash; existing prices and purchased
+authorizations remain intact.
 
 Changing currency does **not** convert the price numbers. Review every service
 price before saving a different currency. Cargo Transfer's service price

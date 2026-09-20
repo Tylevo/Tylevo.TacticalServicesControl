@@ -95,7 +95,7 @@ internal static class ServerConfigMigrationTests
 		AssertEx.Equal(4, config.ConfigSchemaVersion);
 		AssertEx.Equal(1, config.Revision);
 		AssertEx.Equal("PhoneAuthorizations", config.PaymentMode);
-		AssertEx.Equal("CarriedRoubles", config.PaymentSource);
+		AssertEx.Equal("StashRoubles", config.PaymentSource);
 		AssertEx.Equal("RUB", config.PaymentCurrency);
 		AssertEx.Equal(300, config.RequestCooldownSeconds);
 
@@ -231,7 +231,7 @@ internal static class ServerConfigMigrationTests
 		AssertEx.Equal(4, config.ConfigSchemaVersion);
 		AssertEx.Equal(27, config.Revision);
 		AssertEx.Equal("Hybrid", config.PaymentMode);
-		AssertEx.Equal("PreferStashThenCarried", config.PaymentSource);
+		AssertEx.Equal("StashRoubles", config.PaymentSource);
 		AssertEx.Equal("RUB", config.PaymentCurrency);
 		AssertEx.Equal(17, config.RequestCooldownSeconds);
 		AssertEx.Equal(101, config.Prices["A10"]);

@@ -5,9 +5,8 @@ namespace SamSWAT.FireSupport.ArysReloaded;
 
 /// <summary>
 /// Runs after SPT's callbacks and normal mod item registration have completed.
-/// The late template reconciliation removes any item filters that WTT-based
-/// mods may have appended after TSC's initial database patch; migration then
-/// sees both loaded profiles and the final, validated slot contract.
+/// The late template reconciliation includes custom pocket layouts registered
+/// after TSC. Existing profile item placements are left untouched.
 /// </summary>
 [Injectable(TypePriority = OnLoadOrder.PostLoad + 1)]
 public sealed class TscUplinkProfileMigrationOnLoad(
@@ -15,7 +14,8 @@ public sealed class TscUplinkProfileMigrationOnLoad(
 {
 	public Task OnLoadAsync(CancellationToken cancellationToken)
 	{
+		cancellationToken.ThrowIfCancellationRequested();
 		uplinkSpecialSlotService.ConfigurePocketTemplates();
-		return uplinkSpecialSlotService.MigrateLoadedProfilesAsync(cancellationToken);
+		return Task.CompletedTask;
 	}
 }

@@ -795,13 +795,13 @@ public sealed class UavPhoneHotkeyController : UpdatableComponentBase
 
 		UavDeviceItem uplinkItem =
 			launchMode == UavPhoneLaunchMode.DangerCloseIncomingCall
-				? UavDeviceInventory.FindUplinkInDedicatedWarningSlot(player)
+				? UavDeviceInventory.FindUplinkInSpecialSlot(player)
 				: UavDeviceInventory.FindCarriedUplink(player);
 		if (uplinkItem == null)
 		{
 			string locationRequirement =
 				launchMode == UavPhoneLaunchMode.DangerCloseIncomingCall
-					? " in SpecialSlot4"
+					? " in a special slot"
 					: " in carried inventory";
 			TscDiagnostics.LogPhone(
 				$"TSC Uplink ignored: no TerraGroup TSC Uplink item was found{locationRequirement}.");

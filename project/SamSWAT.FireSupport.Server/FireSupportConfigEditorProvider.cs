@@ -118,7 +118,6 @@ public sealed class FireSupportConfigEditorProvider(
 	{
 		destination.Revision = source.Revision;
 		destination.PaymentMode = source.PaymentMode;
-		destination.PaymentSource = source.PaymentSource;
 		destination.PaymentCurrency = source.PaymentCurrency;
 		destination.ServiceCurrencies = new Dictionary<string, string>(source.ServiceCurrencies);
 		destination.RequestCooldownSeconds = source.RequestCooldownSeconds;
@@ -140,9 +139,6 @@ public sealed class FireSupportConfigEditorView
 
 	[JsonPropertyName("paymentMode")]
 	public string PaymentMode { get; set; } = string.Empty;
-
-	[JsonPropertyName("paymentSource")]
-	public string PaymentSource { get; set; } = string.Empty;
 
 	[JsonPropertyName("paymentCurrency")]
 	public string PaymentCurrency { get; set; } = string.Empty;
@@ -184,7 +180,6 @@ public sealed class FireSupportConfigEditorView
 		{
 			Revision = config.Revision,
 			PaymentMode = config.PaymentMode,
-			PaymentSource = config.PaymentSource,
 			PaymentCurrency = config.PaymentCurrency,
 			ServiceCurrencies = new Dictionary<string, string>(config.ServiceCurrencies),
 			RequestCooldownSeconds = config.RequestCooldownSeconds,
@@ -210,7 +205,7 @@ public sealed class FireSupportConfigEditorView
 		}
 
 		config.PaymentMode = PaymentMode;
-		config.PaymentSource = PaymentSource;
+		config.PaymentSource = nameof(Unity.PaymentSource.StashRoubles);
 		config.PaymentCurrency = PaymentCurrency;
 		config.ServiceCurrencies = new Dictionary<string, string>(ServiceCurrencies);
 		config.RequestCooldownSeconds = RequestCooldownSeconds;

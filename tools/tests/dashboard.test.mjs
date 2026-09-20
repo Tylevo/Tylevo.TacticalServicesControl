@@ -146,8 +146,7 @@ async function dashboard(configOverrides = {}, initialHash = "") {
 			{ path: "requestCooldownSeconds", label: "Request cooldown", type: "number", min: 0, max: 300 }
 		] },
 		{ id: "payment", label: "Payment", fields: [
-			{ path: "paymentCurrency", label: "Payment Currency", type: "select", options: ["RUB", "USD", "EUR", "GP", "BTC"] },
-			{ path: "paymentSource", label: "Payment Source", type: "select", options: ["CarriedRoubles", "StashRoubles", "PreferCarriedThenStash", "PreferStashThenCarried"] }
+			{ path: "paymentCurrency", label: "Payment Currency", type: "select", options: ["RUB", "USD", "EUR", "GP", "BTC"] }
 		] },
 		{ id: "pricing", label: "Service Pricing", fields: ["A10", "DoublePass", "Uav", "FocusedSweep", "Extraction", "PriorityExfil"].flatMap((key) => [
 			{ path: `prices.${key}`, label: `${key} Price`, type: "number", min: 0, max: 10000000, step: 1, slider: true },
@@ -242,6 +241,23 @@ test("dashboard opens Configuration by default with presets in a separate hidden
 	assert.equal(app.sectionLink("#presets"), undefined, "Preset area must not be duplicated among config sections");
 	assert.ok(app.sectionLink("#diagnosticsTitle"));
 	assert.equal(app.requests.length, 0);
+});
+
+test("payment source has no dashboard field and legacy imports cannot restore carried payment", async () => {
+	const app = await dashboard();
+	assert.equal(app.field("paymentSource"), undefined);
+	assert.equal(descendants(app.elements.diagnosticsGrid).some((element) => element.textContent === "Payment Source"), false);
+	app.elements.presetText.value = JSON.stringify({ format: "tsc-preset", formatVersion: 1,
+		name: "Old wallet", settings: { paymentSource: "CarriedRoubles", "prices.A10": 73 } });
+	app.elements.importPresetButton.click();
+	await settle();
+	app.elements.applyPresetButton.click();
+	await settle();
+	app.elements.saveButton.click();
+	await settle();
+	assert.equal(app.serverConfig.paymentSource, "StashRoubles");
+	assert.equal(app.serverConfig.prices.A10, 73);
+	assert.equal(app.field("paymentSource"), undefined);
 });
 
 test("direct preset and configuration section hashes reveal and scroll to the right area", async () => {

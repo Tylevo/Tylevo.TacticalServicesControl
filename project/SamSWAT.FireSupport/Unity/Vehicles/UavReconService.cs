@@ -14,13 +14,13 @@ public sealed class UavReconService(
 {
 	public override ESupportType SupportType => supportType;
 
-	public override UniTaskVoid PlanRequest(CancellationToken cancellationToken)
+	public override UniTaskVoid PlanRequest(CancellationToken cancellationToken, bool requirePrepaidAuthorization)
 	{
-		ConfirmRequest(cancellationToken).Forget();
+		ConfirmRequest(cancellationToken, requirePrepaidAuthorization).Forget();
 		return default;
 	}
 
-	private async UniTaskVoid ConfirmRequest(CancellationToken cancellationToken)
+	private async UniTaskVoid ConfirmRequest(CancellationToken cancellationToken, bool requirePrepaidAuthorization)
 	{
 		if (UavReconOverlay.TryGetSessionSnapshot(out UavReconOverlay.ReconSessionSnapshot activeRecon))
 		{
@@ -44,7 +44,7 @@ public sealed class UavReconService(
 		controller.CanCallSupport(false);
 
 		FireSupportAuthorizationUse authorizationUse =
-			await FireSupportPayment.TryPayForDeploymentAsync(SupportType);
+			await FireSupportPayment.TryPayForDeploymentAsync(SupportType, requirePrepaidAuthorization);
 		if (!authorizationUse.Ok)
 		{
 			controller.CanCallSupport(true);
@@ -52,7 +52,7 @@ public sealed class UavReconService(
 			return;
 		}
 
-		bool consumedBaseRequest = !authorizationUse.ConsumedAuthorization;
+		bool consumedBaseRequest = authorizationUse.ConsumesBaseRequest;
 		if (consumedBaseRequest)
 		{
 			availableRequests--;

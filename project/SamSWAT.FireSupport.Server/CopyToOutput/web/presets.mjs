@@ -4,7 +4,7 @@ const CODE_PREFIX = "TSC1.";
 const MAX_JSON_BYTES = 32 * 1024;
 const MAX_CODE_LENGTH = 48 * 1024;
 const CURRENCIES = Object.freeze(["RUB", "USD", "EUR", "GP", "BTC"]);
-const SOURCES = Object.freeze(["CarriedRoubles", "StashRoubles", "PreferCarriedThenStash", "PreferStashThenCarried"]);
+const LEGACY_SOURCES = Object.freeze(["CarriedRoubles", "StashRoubles", "PreferCarriedThenStash", "PreferStashThenCarried"]);
 const FORBIDDEN_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 const SCOPES = new Set(["all", "pricing", "recon", "extraction", "fire"]);
 const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
@@ -20,7 +20,6 @@ function field(path, type, scopes, { min, max, integer = false, options } = {}) 
 		options: options ? Object.freeze([...options]) : undefined });
 }
 field("paymentMode", "select", [], { options: ["PhoneAuthorizations", "DirectRadial", "Hybrid"] });
-field("paymentSource", "select", ["pricing"], { options: SOURCES });
 field("paymentCurrency", "select", ["pricing"], { options: CURRENCIES });
 field("requestCooldownSeconds", "number", [], { min: 0, max: 1800, integer: true });
 field("purchasePersistence.enabled", "toggle", []);
@@ -185,6 +184,12 @@ function sanitize(value, fields) {
 	const descriptors = new Map(fields.map((descriptor) => [descriptor.path, descriptor]));
 	preset.settings = {};
 	for (const [path, setting] of Object.entries(value.settings)) {
+		// Import historical wallet settings without making them editable or
+		// including them in newly exported presets.
+		if (path === "paymentSource") {
+			if (!LEGACY_SOURCES.includes(setting)) fail("paymentSource has an unsupported option.");
+			continue;
+		}
 		if (!descriptors.has(path) || !own(policies, path)) fail(`unknown or unavailable setting ${path}.`);
 		preset.settings[path] = validateValue(path, setting, descriptors.get(path));
 	}

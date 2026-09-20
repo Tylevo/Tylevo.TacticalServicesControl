@@ -208,11 +208,23 @@ public sealed class FireSupportPresetStore
 		if (!payload.TryGetProperty("settings", out JsonElement settingsValue) || settingsValue.ValueKind != JsonValueKind.Object)
 		{ error = "Preset settings must be a flat object of editable gameplay fields."; return false; }
 		var settings = new Dictionary<string, object>(StringComparer.Ordinal);
+		var seenSettings = new HashSet<string>(StringComparer.Ordinal);
 		foreach (JsonProperty setting in settingsValue.EnumerateObject())
 		{
-			if (!_fields.TryGetValue(setting.Name, out JsonElement field) || settings.ContainsKey(setting.Name))
+			if (!seenSettings.Add(setting.Name))
 			{ error = $"The preset contains an unknown or duplicate gameplay setting: {setting.Name}."; return false; }
 			JsonElement value = setting.Value;
+			if (setting.Name == "paymentSource")
+			{
+				// This removed setting is accepted only at the legacy import boundary.
+				// It never becomes an editable or newly exported gameplay field.
+				if (value.ValueKind != JsonValueKind.String || value.GetString() is not
+				    ("CarriedRoubles" or "StashRoubles" or "PreferCarriedThenStash" or "PreferStashThenCarried"))
+				{ error = "The preset setting has an invalid type or value: paymentSource."; return false; }
+				continue;
+			}
+			if (!_fields.TryGetValue(setting.Name, out JsonElement field))
+			{ error = $"The preset contains an unknown or duplicate gameplay setting: {setting.Name}."; return false; }
 			bool valid = field.GetProperty("type").GetString() switch
 			{
 				"toggle" => value.ValueKind is JsonValueKind.True or JsonValueKind.False,

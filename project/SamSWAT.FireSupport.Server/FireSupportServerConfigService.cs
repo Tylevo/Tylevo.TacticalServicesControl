@@ -335,9 +335,7 @@ public sealed class FireSupportServerConfigService(
 			return response;
 		}
 
-		PaymentSource paymentSource = ServicePaymentPolicy.GetPaymentSource(
-			ParseEnum(config.PaymentSource, PaymentSource.StashRoubles), configuredCurrency);
-		response.PaymentSource = paymentSource.ToString();
+		response.PaymentSource = nameof(PaymentSource.StashRoubles);
 		PaymentCurrency paymentCurrency = configuredCurrency;
 		string currencyTemplateId = PaymentCurrencyInfo.GetTemplateId(paymentCurrency);
 
@@ -368,9 +366,6 @@ public sealed class FireSupportServerConfigService(
 					paymentCurrency = PaymentCurrencyInfo.Parse(journalEntry.Currency);
 					currencyTemplateId = PaymentCurrencyInfo.GetTemplateId(paymentCurrency);
 					response.Currency = paymentCurrency.ToString();
-					paymentSource = ServicePaymentPolicy.GetPaymentSource(
-						ParseEnum(config.PaymentSource, PaymentSource.StashRoubles), paymentCurrency);
-					response.PaymentSource = paymentSource.ToString();
 				}
 				if (replayStatus == PersistentPurchaseReplayStatus.Accepted)
 				{
@@ -510,12 +505,6 @@ public sealed class FireSupportServerConfigService(
 			if (!preparedRecovery && !IsServiceEnabled(config, supportType))
 			{
 				response.Reason = "ServiceUnavailable";
-				return response;
-			}
-
-			if (!preparedRecovery && !IsServerBackedPaymentSource(paymentSource))
-			{
-				response.Reason = "PaymentSourceNotServerBacked";
 				return response;
 			}
 
@@ -1151,8 +1140,7 @@ public sealed class FireSupportServerConfigService(
 					Field("purchasePersistence.spendCreditsBeforeCash", "Spend Credits First", "toggle"),
 					Field("purchasePersistence.allowAutoPurchaseOnUse", "Allow Auto Purchase On Use", "toggle")),
 				Section("payment", "Payment",
-					Field("paymentCurrency", "Payment Currency", "select", options: new[] { "RUB", "USD", "EUR", "GP", "BTC" }),
-					Field("paymentSource", "Payment Source", "select", options: new[] { "CarriedRoubles", "StashRoubles", "PreferCarriedThenStash", "PreferStashThenCarried" })),
+					Field("paymentCurrency", "Payment Currency", "select", options: new[] { "RUB", "USD", "EUR", "GP", "BTC" })),
 				Section("pricing", "Service Pricing",
 					Field("serviceCurrencies.A10", "A-10 Currency", "select", options: new[] { "Inherit", "RUB", "USD", "EUR", "GP", "BTC" }),
 					Field("prices.A10", "A-10 Price", "number", min: 0, max: 10000000, step: 1, slider: true),
@@ -1982,13 +1970,6 @@ public sealed class FireSupportServerConfigService(
 		return ServicePaymentPolicy.GetServiceKey(supportType);
 	}
 
-	private static bool IsServerBackedPaymentSource(PaymentSource paymentSource)
-	{
-		return paymentSource == PaymentSource.StashRoubles ||
-		       paymentSource == PaymentSource.PreferCarriedThenStash ||
-		       paymentSource == PaymentSource.PreferStashThenCarried;
-	}
-
 	private static void NormalizeConfig(RaidOpsFireSupportServerConfig config)
 	{
 		RaidOpsFireSupportServerConfig defaults = CreateDefaultConfig();
@@ -1999,9 +1980,7 @@ public sealed class FireSupportServerConfigService(
 		config.PaymentMode = Enum.TryParse(config.PaymentMode, ignoreCase: true, out PaymentMode paymentMode)
 			? paymentMode.ToString()
 			: defaults.PaymentMode;
-		config.PaymentSource = Enum.TryParse(config.PaymentSource, ignoreCase: true, out PaymentSource paymentSource)
-			? paymentSource.ToString()
-			: defaults.PaymentSource;
+		config.PaymentSource = nameof(PaymentSource.StashRoubles);
 		if (PaymentCurrencyInfo.TryParse(
 			    config.PaymentCurrency,
 			    out PaymentCurrency paymentCurrency))

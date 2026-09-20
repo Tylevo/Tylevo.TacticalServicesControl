@@ -80,10 +80,10 @@ internal static class SeasonalIntegrationSourceContractTests
 	}
 
 	[RegressionTest]
-	private static void WarningPresentationUsesDedicatedSlotAndUniversalInbound()
+	private static void WarningPresentationUsesAnySpecialSlotAndUniversalInbound()
 	{
 		string warning = ReadProductionSource(WarningNetworkingPath);
-		AssertEx.Contains("UavDeviceInventory.HasUplinkInDedicatedWarningSlot", warning);
+		AssertEx.Contains("UavDeviceInventory.HasUplinkInSpecialSlot", warning);
 		AssertEx.Contains("publication.Kind == DangerCloseWarningKind.Advance", warning);
 		AssertEx.Contains("TryPresentDangerCloseAdvance(publication)", warning);
 		AssertEx.Contains("ApplyDangerCloseTerminal(publication)", warning);
@@ -112,13 +112,10 @@ internal static class SeasonalIntegrationSourceContractTests
 			"Duplicate or late terminal packets must not mutate local phone state.");
 
 		string inventory = ReadProductionSource(UplinkInventoryPath);
-		AssertEx.Contains("DedicatedWarningSlotName = \"SpecialSlot4\"", inventory);
 		AssertEx.Contains("address?.IsSpecialSlotAddress() == true", inventory);
-		AssertEx.Contains("address.Container?.ID", inventory);
-		AssertEx.True(
-			inventory.IndexOf("address.ContainerName", StringComparison.Ordinal) < 0,
-			"Dedicated-slot matching must use the slot container ID, not the parent item's display name.");
-		AssertEx.Contains("FindUplinkInDedicatedWarningSlot", inventory);
+		AssertEx.False(inventory.Contains("SpecialSlot4", StringComparison.Ordinal),
+			"Warnings must work in any equipped special slot, including modded slots.");
+		AssertEx.Contains("FindUplinkInSpecialSlot", inventory);
 	}
 
 	[RegressionTest]
@@ -140,7 +137,7 @@ internal static class SeasonalIntegrationSourceContractTests
 		AssertEx.Contains(
 			"TryOpenUplink(UavPhoneLaunchMode.DangerCloseIncomingCall)",
 			hotkey);
-		AssertEx.Contains("FindUplinkInDedicatedWarningSlot(player)", hotkey);
+		AssertEx.Contains("FindUplinkInSpecialSlot(player)", hotkey);
 		AssertEx.Contains("DangerCloseRingDurationSeconds = 15f", hotkey);
 		AssertEx.Contains("DangerCloseAnswerEquipTimeoutSeconds = 8f", hotkey);
 		AssertEx.Contains("IsDangerCloseAnswerShortcutBound()", hotkey);

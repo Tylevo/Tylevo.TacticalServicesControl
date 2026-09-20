@@ -33,7 +33,6 @@ public static class FireSupportPresetCatalog
 		var barter = Copy(balanced);
 		SetPrices(barter, 1, 2, 10000, 1, 1, 2);
 		barter["paymentCurrency"] = "RUB";
-		barter["paymentSource"] = "StashRoubles";
 		barter["serviceCurrencies.A10"] = "GP";
 		barter["serviceCurrencies.DoublePass"] = "GP";
 		barter["serviceCurrencies.Uav"] = "RUB";
@@ -49,7 +48,7 @@ public static class FireSupportPresetCatalog
 				Preset("casual", "Casual", "Cheaper support, shorter cooldowns, more stored authorizations and stronger recon.", casual),
 				Preset("hardcore", "Hardcore", "Expensive support, longer cooldowns, one stored authorization and reduced recon.", hardcore),
 				Preset("barter", "Barter", "Pay from the stash with GP coins and Bitcoin; UAV support costs 10,000 roubles.", barter),
-				Preset("classic", "Classic 1.3.12", "Restore the original rouble prices, carried wallet, service timing and gameplay defaults.", CreateClassicSettings())
+				Preset("classic", "Classic 1.3.12", "Restore the original rouble prices, service timing and gameplay defaults, paid from stash funds.", CreateClassicSettings())
 			}
 		};
 	}
@@ -62,7 +61,6 @@ public static class FireSupportPresetCatalog
 		{
 			["paymentMode"] = config.PaymentMode,
 			["paymentCurrency"] = config.PaymentCurrency,
-			["paymentSource"] = config.PaymentSource,
 			["requestCooldownSeconds"] = config.RequestCooldownSeconds,
 			["purchasePersistence.enabled"] = config.PurchasePersistence.Enabled,
 			["purchasePersistence.maxStoredAuthorizationsPerService"] = config.PurchasePersistence.MaxStoredAuthorizationsPerService,
@@ -93,7 +91,6 @@ public static class FireSupportPresetCatalog
 		{
 			["paymentMode"] = "PhoneAuthorizations",
 			["paymentCurrency"] = "RUB",
-			["paymentSource"] = "CarriedRoubles",
 			["requestCooldownSeconds"] = 300,
 			["purchasePersistence.enabled"] = true,
 			["purchasePersistence.maxStoredAuthorizationsPerService"] = 2,
