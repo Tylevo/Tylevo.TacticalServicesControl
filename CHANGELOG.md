@@ -1,6 +1,8 @@
 # Changelog
 
-## Source integration - October 7, 2026 (no new release)
+## 1.3.13 - Public Beta (unreleased)
+
+### Source integration - October 7, 2026 (no new release)
 
 - Preserve the original optional HH-60 companion and its contributor history,
   then add the separately reviewed appearance selector and experimental solo
@@ -17,7 +19,7 @@
 
 See [validation and required in-raid checks](docs/validation/consolidation-20261007.md).
 
-## 1.3.13 - Public Beta (unreleased)
+### Candidate features
 
 - **Choose how you pay.** Each service can use RUB, USD, EUR, GP coins or Bitcoin. GP and Bitcoin come from your stash, including containers. Changing currency doesn't convert the price.
 - **Pay once for cargo pickup.** Buying UH-60 Cargo Transfer now covers sending your items home. There's no second charge when you load the helicopter.
