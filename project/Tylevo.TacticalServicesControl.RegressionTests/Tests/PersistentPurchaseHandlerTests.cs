@@ -29,6 +29,61 @@ internal static class PersistentPurchaseHandlerTests
 	];
 
 	[RegressionTest]
+	private static async Task NonpersistentRaidPurchaseUsesStashWithoutCreatingALedgerCredit()
+	{
+		using var rig = new TestRig();
+		RaidOpsFireSupportServerConfig config = rig.Service.GetConfigSnapshot();
+		config.PaymentSource = "CarriedRoubles";
+		config.PaymentMode = "DirectRadial";
+		config.PurchasePersistence.Enabled = false;
+		AssertEx.True(rig.Service.TryUpdateConfig(config, out string error, config.Revision), error);
+		FireSupportPurchaseResponse purchase = await rig.Purchase(ESupportType.Uav, "nonpersistent", persistent: false);
+		AssertEx.True(purchase.Ok, purchase.Reason);
+		AssertEx.True(purchase.AuthorizationGranted);
+		AssertEx.Equal("StashRoubles", purchase.PaymentSource);
+		AssertEx.Equal(Price, purchase.ChargedFromStash);
+		AssertEx.Equal(InitialBalance - Price, rig.Balance);
+		AssertEx.False(purchase.AuthorizationsIncluded);
+		AssertEx.Equal(0, rig.Credits("Uav"));
+		AssertEx.Equal(1, rig.SaveCount);
+	}
+
+	[RegressionTest]
+	private static async Task MigratedWalletsProvideBalancesAndLedgerForMenuAndRaidPurchasesWithoutRechargingExistingCredits()
+	{
+		foreach (string source in new[] { "CarriedRoubles", "StashRoubles", "PreferCarriedThenStash", "PreferStashThenCarried" })
+		foreach (bool menuPurchase in new[] { true, false })
+		{
+			using var rig = new TestRig();
+			FireSupportPurchaseResponse existing = await rig.Purchase(ESupportType.Strafe, "existing");
+			AssertAccepted(existing, "A10", 1, InitialBalance - Price);
+			RaidOpsFireSupportServerConfig config = rig.Service.GetConfigSnapshot();
+			config.PaymentSource = source;
+			AssertEx.True(rig.Service.TryUpdateConfig(config, out string error, config.Revision), error);
+			RaidOpsFireSupportServerConfig snapshot = rig.AuthenticatedSnapshot();
+			AssertEx.Equal("StashRoubles", snapshot.PaymentSource);
+			AssertEx.True(snapshot.PlayerStateIncluded);
+			AssertEx.Equal<int?>(InitialBalance - Price, snapshot.StashCurrencyBalance);
+			AssertEx.Equal(InitialBalance - Price, snapshot.StashCurrencyBalances!["RUB"]);
+			AssertEx.Equal(1, snapshot.Authorizations["A10"]);
+			FireSupportPurchaseResponse replay = await rig.Purchase(ESupportType.Strafe, "existing");
+			AssertEx.True(replay.Ok, replay.Reason);
+			AssertEx.Equal("AlreadyAccepted", replay.Reason);
+			AssertEx.Equal(0, replay.ChargedFromStash);
+			AssertEx.Equal(1, rig.SaveCount);
+			// The legacy in-raid endpoint intentionally keeps its two-second
+			// per-service purchase throttle. Let that real window pass; the menu
+			// checkout remains immediate and existing replay must never debit again.
+			if (!menuPurchase) await Task.Delay(TimeSpan.FromMilliseconds(2100));
+			FireSupportPurchaseResponse next = await rig.Purchase(ESupportType.Strafe, "new", persistent: menuPurchase);
+			AssertAccepted(next, "A10", 2, InitialBalance - 2 * Price);
+			AssertEx.Equal("StashRoubles", next.PaymentSource);
+			AssertEx.Equal(2, rig.SaveCount);
+			AssertEx.Equal(2, rig.AuthenticatedSnapshot().Authorizations["A10"]);
+		}
+	}
+
+	[RegressionTest]
 	private static async Task ImmediateDistinctPersistentPurchasesFillTwoSlotsThenRejectTheThirdForEveryService()
 	{
 		foreach ((ESupportType type, string key) in Services)

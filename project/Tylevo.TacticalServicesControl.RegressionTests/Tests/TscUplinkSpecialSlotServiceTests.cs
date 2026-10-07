@@ -1,419 +1,261 @@
 using SamSWAT.FireSupport.ArysReloaded;
-using SPTarkov.Common.Models.Logging;
 using SPTarkov.Server.Core.Models.Common;
 using SPTarkov.Server.Core.Models.Eft.Common;
 using SPTarkov.Server.Core.Models.Eft.Common.Tables;
 using SPTarkov.Server.Core.Models.Eft.Profile;
 using SPTarkov.Server.Core.Models.Spt.Tables;
 using SPTarkov.Server.Core.Servers;
+using System.Text.Json;
 
 internal static class TscUplinkSpecialSlotServiceTests
 {
 	private const string OtherAllowedItem = "5f4fbaaca5573a5ac31db429";
+	private const string CustomPocketsId = "aaaaaaaaaaaaaaaaaaaaaaaa";
+	private const string ForeignSlotId = "bbbbbbbbbbbbbbbbbbbbbbbb";
+	private static readonly MongoId UplinkId = new(TscUplinkSpecialSlotService.UplinkTemplateId);
 
 	[RegressionTest]
-	private static void MigrationHookRunsAfterSptSaveCallbacksAndNormalModRegistration()
+	private static void ReconciliationRunsAfterNormalModRegistration()
 	{
-		var attribute = (SPTarkov.DI.Annotations.InjectableAttribute?)Attribute.GetCustomAttribute(
-			typeof(TscUplinkProfileMigrationOnLoad),
-			typeof(SPTarkov.DI.Annotations.InjectableAttribute));
-
-		attribute = AssertEx.NotNull(attribute);
-		AssertEx.Equal(
-			SPTarkov.Server.Core.DI.OnLoadOrder.PostLoad + 1,
-			attribute.TypePriority);
-		AssertEx.True(
-			attribute.TypePriority > SPTarkov.Server.Core.DI.OnLoadOrder.SaveCallbacks);
+		var attribute = AssertEx.NotNull((SPTarkov.DI.Annotations.InjectableAttribute?)
+			Attribute.GetCustomAttribute(typeof(TscUplinkProfileMigrationOnLoad),
+				typeof(SPTarkov.DI.Annotations.InjectableAttribute)));
+		AssertEx.Equal(SPTarkov.Server.Core.DI.OnLoadOrder.PostLoad + 1, attribute.TypePriority);
 	}
 
 	[RegressionTest]
-	private static void ConfiguresBothPocketTemplatesWithExclusiveFourthSlot()
+	private static void VanillaPocketsAcceptUplinkInAllSlotsAndRetainFourthSlotCompatibility()
 	{
-		Rig rig = CreateRig();
-
-		rig.Service.ConfigurePocketTemplates();
-
-		AssertPocketContract(rig.Templates, TscUplinkSpecialSlotService.StandardPocketsTemplateId);
-		AssertPocketContract(rig.Templates, TscUplinkSpecialSlotService.UnheardPocketsTemplateId);
+		TemplateTable templates = CreateTemplates();
+		new TscUplinkSpecialSlotService(templates).ConfigurePocketTemplates();
+		foreach (TemplateItem pockets in templates.Items.Values)
+		{
+			Slot[] slots = pockets.Properties!.Slots!.ToArray();
+			AssertEx.Equal(4, slots.Length);
+			foreach (Slot slot in slots) AssertAllowsUplink(slot);
+			foreach (Slot original in slots.Take(3))
+				AssertEx.True(original.Properties!.Filters!.Single().Filter!.Contains(new MongoId(OtherAllowedItem)));
+			Slot fourth = slots[3];
+			AssertEx.Equal("SpecialSlot4", fourth.Name);
+			AssertEx.Equal(pockets.Id, fourth.Parent!.Value);
+			AssertEx.False(fourth.Required ?? true);
+			AssertEx.False(fourth.MergeSlotWithChildren ?? true);
+			AssertEx.False(fourth.Properties!.Filters!.Single().Locked ?? true);
+		}
 	}
 
 	[RegressionTest]
-	private static async Task PostLoadHookReassertsExclusiveFilterAfterLaterWttRegistration()
+	private static void SixSlotLayoutsKeepTheirSlotsOrderAndFilters()
 	{
-		Rig rig = CreateRig();
-		rig.Service.ConfigurePocketTemplates();
-		TemplateItem pockets = rig.Templates.Items[
-			new MongoId(TscUplinkSpecialSlotService.StandardPocketsTemplateId)];
-		Slot dedicated = pockets.Properties!.Slots!.Single(slot =>
-			string.Equals(
-				slot.Name,
-				TscUplinkSpecialSlotService.DedicatedSlotName,
-				StringComparison.OrdinalIgnoreCase));
-		dedicated.Properties!.Filters!.Single().Filter!.Add(new MongoId(OtherAllowedItem));
+		TemplateTable templates = CreateTemplates(6);
+		var originals = templates.Items.ToDictionary(pair => pair.Key,
+			pair => pair.Value.Properties!.Slots!.ToArray());
+		var service = new TscUplinkSpecialSlotService(templates);
+		service.ConfigurePocketTemplates();
+		service.ConfigurePocketTemplates();
+		foreach ((MongoId id, TemplateItem pockets) in templates.Items)
+		{
+			Slot[] slots = pockets.Properties!.Slots!.ToArray();
+			AssertEx.Equal(6, slots.Length);
+			for (int i = 0; i < slots.Length; i++)
+			{
+				AssertEx.True(ReferenceEquals(originals[id][i], slots[i]));
+				AssertEx.Equal($"SpecialSlot{i + 1}", slots[i].Name);
+				AssertAllowsUplink(slots[i]);
+				AssertEx.Equal(2, slots[i].Properties!.Filters!.Single().Filter!.Count);
+			}
+		}
+	}
 
-		var hook = new TscUplinkProfileMigrationOnLoad(rig.Service);
+	[RegressionTest]
+	private static void ForeignFourthSlotIsExtendedWithoutReplacingItsContract()
+	{
+		TemplateTable templates = CreateTemplates();
+		TemplateItem pockets = templates.Items[new MongoId(TscUplinkSpecialSlotService.StandardPocketsTemplateId)];
+		Slot foreign = CreateSlot(4);
+		foreign.Id = new MongoId(ForeignSlotId);
+		foreign.Parent = new MongoId(CustomPocketsId);
+		foreign.Prototype = "foreign-prototype";
+		foreign.Required = true;
+		foreign.MergeSlotWithChildren = true;
+		SlotFilter first = foreign.Properties!.Filters!.Single();
+		first.Locked = true;
+		SlotFilter second = new() { Filter = [new MongoId(OtherAllowedItem)], Locked = false };
+		foreign.Properties.Filters = new[] { first, second };
+		pockets.Properties!.Slots = pockets.Properties.Slots!.Append(foreign).ToArray();
+
+		new TscUplinkSpecialSlotService(templates).ConfigurePocketTemplates();
+
+		AssertEx.Equal(4, pockets.Properties.Slots.Count());
+		AssertEx.True(ReferenceEquals(foreign, pockets.Properties.Slots.Last()));
+		AssertEx.Equal(new MongoId(ForeignSlotId), foreign.Id!.Value);
+		AssertEx.Equal(new MongoId(CustomPocketsId), foreign.Parent!.Value);
+		AssertEx.Equal("foreign-prototype", foreign.Prototype);
+		AssertEx.True(foreign.Required!.Value);
+		AssertEx.True(foreign.MergeSlotWithChildren!.Value);
+		AssertEx.True(first.Locked!.Value);
+		AssertEx.False(second.Locked!.Value);
+		AssertEx.True(ReferenceEquals(first, foreign.Properties.Filters.First()));
+		AssertEx.True(ReferenceEquals(second, foreign.Properties.Filters.Last()));
+		AssertEx.True(first.Filter!.Contains(new MongoId(OtherAllowedItem)));
+		AssertEx.True(second.Filter!.Contains(new MongoId(OtherAllowedItem)));
+		foreach (Slot slot in pockets.Properties.Slots) AssertAllowsUplink(slot);
+	}
+
+	[RegressionTest]
+	private static async Task LateRegistrationPreservesOtherModsAdditionsToOwnedFourthSlot()
+	{
+		TemplateTable templates = CreateTemplates();
+		var service = new TscUplinkSpecialSlotService(templates);
+		service.ConfigurePocketTemplates();
+		Slot fourth = templates.Items[new MongoId(TscUplinkSpecialSlotService.StandardPocketsTemplateId)]
+			.Properties!.Slots!.Single(slot => slot.Name == "SpecialSlot4");
+		SlotFilter filter = fourth.Properties!.Filters!.Single();
+		filter.Filter!.Add(new MongoId(OtherAllowedItem));
+		filter.Locked = true;
+		TemplateItem custom = AddPockets(templates, CustomPocketsId, 6);
+
+		await new TscUplinkProfileMigrationOnLoad(service).OnLoadAsync(CancellationToken.None);
+
+		AssertEx.True(ReferenceEquals(filter, fourth.Properties.Filters!.Single()));
+		AssertEx.True(filter.Filter.Contains(new MongoId(OtherAllowedItem)));
+		AssertEx.True(filter.Locked!.Value);
+		foreach (Slot slot in custom.Properties!.Slots!) AssertAllowsUplink(slot);
+		AssertEx.Equal(6, custom.Properties.Slots!.Count());
+	}
+
+	[RegressionTest]
+	private static void CustomPocketAncestorsAndNamedSpecialSlotsAreSupportedWithoutWideningOtherSlots()
+	{
+		TemplateTable templates = CreateTemplates();
+		AddPockets(templates, CustomPocketsId, 0);
+		TemplateItem descendant = AddPockets(templates, "cccccccccccccccccccccccc", 0, CustomPocketsId);
+		Slot special = CreateSlot(6);
+		special.Name = "CustomSpecialSlotMedical";
+		Slot ordinary = CreateSlot(1);
+		ordinary.Name = "mod_armor_plate";
+		descendant.Properties!.Slots = [special, ordinary];
+		TemplateItem armor = AddPockets(templates, "dddddddddddddddddddddddd", 6, "armor-parent");
+		AddPockets(templates, "eeeeeeeeeeeeeeeeeeeeeeee", 1, "ffffffffffffffffffffffff");
+		AddPockets(templates, "ffffffffffffffffffffffff", 1, "eeeeeeeeeeeeeeeeeeeeeeee");
+
+		new TscUplinkSpecialSlotService(templates).ConfigurePocketTemplates();
+
+		AssertEx.Equal(2, descendant.Properties.Slots.Count());
+		AssertAllowsUplink(special);
+		AssertEx.False(ordinary.Properties!.Filters!.Single().Filter!.Contains(UplinkId));
+		foreach (Slot slot in armor.Properties!.Slots!)
+			AssertEx.False(slot.Properties!.Filters!.Single().Filter!.Contains(UplinkId));
+		AssertEx.Equal(0, templates.Items[new MongoId(CustomPocketsId)].Properties!.Slots!.Count());
+	}
+
+	[RegressionTest]
+	private static void UnrestrictedSpecialSlotsKeepTheirUnrestrictedFilters()
+	{
+		TemplateTable templates = CreateTemplates(6);
+		Slot[] slots = templates.Items[new MongoId(TscUplinkSpecialSlotService.StandardPocketsTemplateId)]
+			.Properties!.Slots!.ToArray();
+		slots[0].Properties!.Filters = null;
+		slots[1].Properties!.Filters = [];
+		slots[2].Properties = null;
+		slots[3].Properties!.Filters!.Single().Filter = [];
+
+		new TscUplinkSpecialSlotService(templates).ConfigurePocketTemplates();
+
+		AssertEx.True(slots[0].Properties!.Filters == null);
+		AssertEx.Equal(0, slots[1].Properties!.Filters!.Count());
+		AssertEx.True(slots[2].Properties == null);
+		AssertAllowsUplink(slots[3]);
+	}
+
+	[RegressionTest]
+	private static void PocketConfigurationIsIdempotentIncludingForeignSlots()
+	{
+		TemplateTable templates = CreateTemplates(6);
+		AddPockets(templates, CustomPocketsId, 3);
+		var service = new TscUplinkSpecialSlotService(templates);
+		service.ConfigurePocketTemplates();
+		string first = JsonSerializer.Serialize(templates.Items.Values);
+		service.ConfigurePocketTemplates();
+		AssertEx.Equal(first, JsonSerializer.Serialize(templates.Items.Values));
+	}
+
+	[RegressionTest]
+	private static async Task ReconciliationNeverMovesOrSavesExistingProfileItems()
+	{
+		TemplateTable templates = CreateTemplates(6);
+		var saveServer = new SaveServer();
+		int saves = 0;
+		saveServer.SaveProfile = _ => { saves++; return Task.FromException(new IOException("Profiles must not be saved")); };
+		var items = new List<Item>();
+		foreach (string slot in new[] { "SpecialSlot1", "SpecialSlot3", "SpecialSlot4", "SpecialSlot6", "hideout", "main" })
+		{
+			items.Add(new Item { Id = $"phone-{slot}", Template = TscUplinkSpecialSlotService.UplinkTemplateId, ParentId = "pockets", SlotId = slot });
+		}
+		items.Add(new Item { Id = "foreign-occupant", Template = OtherAllowedItem, ParentId = "pockets", SlotId = "SpecialSlot4" });
+		saveServer.Profiles[new MongoId("session")] = new SptProfile
+		{
+			CharacterData = new Characters { PmcData = new PmcData { Inventory = new BotBaseInventory { Items = items } } }
+		};
+		string before = JsonSerializer.Serialize(saveServer.Profiles.Values);
+		var hook = new TscUplinkProfileMigrationOnLoad(new TscUplinkSpecialSlotService(templates));
+
+		await hook.OnLoadAsync(CancellationToken.None);
 		await hook.OnLoadAsync(CancellationToken.None);
 
-		IEnumerable<SlotFilter> filters = AssertEx.NotNull(dedicated.Properties.Filters);
-		SlotFilter filter = filters.Single();
-		AssertEx.Equal(1, filter.Filter!.Count);
-		AssertEx.True(filter.Filter.Contains(
-			new MongoId(TscUplinkSpecialSlotService.UplinkTemplateId)));
+		AssertEx.Equal(before, JsonSerializer.Serialize(saveServer.Profiles.Values));
+		AssertEx.Equal(0, saves);
 	}
 
 	[RegressionTest]
-	private static void PocketConfigurationIsIdempotent()
+	private static async Task CancelledReconciliationDoesNotChangeTemplates()
 	{
-		Rig rig = CreateRig();
-
-		rig.Service.ConfigurePocketTemplates();
-		rig.Service.ConfigurePocketTemplates();
-
-		foreach (TemplateItem pockets in rig.Templates.Items.Values)
-		{
-			AssertEx.Equal(
-				1,
-				pockets.Properties!.Slots!.Count(slot =>
-					string.Equals(
-						slot.Name,
-						TscUplinkSpecialSlotService.DedicatedSlotName,
-						StringComparison.OrdinalIgnoreCase)));
-		}
+		TemplateTable templates = CreateTemplates();
+		string before = JsonSerializer.Serialize(templates.Items.Values);
+		using var cancellation = new CancellationTokenSource();
+		cancellation.Cancel();
+		var hook = new TscUplinkProfileMigrationOnLoad(new TscUplinkSpecialSlotService(templates));
+		await AssertEx.ThrowsAsync<OperationCanceledException>(() => hook.OnLoadAsync(cancellation.Token));
+		AssertEx.Equal(before, JsonSerializer.Serialize(templates.Items.Values));
 	}
 
-	[RegressionTest]
-	private static void ForeignFourthSlotConflictPreservesExistingSlotEligibility()
+	private static void AssertAllowsUplink(Slot slot)
 	{
-		Rig rig = CreateRig();
-		TemplateItem pockets = rig.Templates.Items[
-			new MongoId(TscUplinkSpecialSlotService.StandardPocketsTemplateId)];
-		List<Slot> slots = pockets.Properties!.Slots!.ToList();
-		slots.Add(new Slot
-		{
-			Id = new MongoId("aaaaaaaaaaaaaaaaaaaaaaaa"),
-			Name = TscUplinkSpecialSlotService.DedicatedSlotName,
-			Properties = new SlotProperties
-			{
-				Filters =
-				[
-					new SlotFilter { Filter = [new MongoId(OtherAllowedItem)] }
-				]
-			}
-		});
-		pockets.Properties.Slots = slots;
-
-		rig.Service.ConfigurePocketTemplates();
-
-		AssertEx.Equal(
-			1,
-			pockets.Properties.Slots.Count(slot =>
-				string.Equals(
-					slot.Name,
-					TscUplinkSpecialSlotService.DedicatedSlotName,
-					StringComparison.OrdinalIgnoreCase)));
-		foreach (Slot legacy in pockets.Properties.Slots.Where(slot => slot.Name is
-		         "SpecialSlot1" or "SpecialSlot2" or "SpecialSlot3"))
-		{
-			AssertEx.True(legacy.Properties!.Filters!.Single().Filter!.Contains(
-				new MongoId(TscUplinkSpecialSlotService.UplinkTemplateId)));
-		}
-		AssertEx.True(rig.Logger.Warnings.Any(message => message.Contains("foreign")));
+		foreach (SlotFilter filter in slot.Properties!.Filters!)
+			AssertEx.True(filter.Filter!.Contains(UplinkId), $"{slot.Name} must accept the Uplink.");
 	}
 
-	[RegressionTest]
-	private static async Task MigratesOnlyDirectlyEquippedLegacyUplink()
-	{
-		Rig rig = CreateRig();
-		ProfileFixture fixture = AddProfile(rig, "session-a");
-		Item equipped = AddItem(
-			fixture.Items,
-			"equipped-uplink",
-			TscUplinkSpecialSlotService.UplinkTemplateId,
-			fixture.Pockets.Id,
-			"SpecialSlot2");
-		Item stash = AddItem(
-			fixture.Items,
-			"stash-uplink",
-			TscUplinkSpecialSlotService.UplinkTemplateId,
-			"stash-root",
-			"hideout");
-		Item backpack = AddItem(
-			fixture.Items,
-			"backpack-uplink",
-			TscUplinkSpecialSlotService.UplinkTemplateId,
-			"backpack",
-			"main");
-
-		await rig.Service.MigrateLoadedProfilesAsync(CancellationToken.None);
-		await rig.Service.MigrateLoadedProfilesAsync(CancellationToken.None);
-
-		AssertEx.Equal(TscUplinkSpecialSlotService.DedicatedSlotName, equipped.SlotId);
-		AssertEx.Equal("hideout", stash.SlotId);
-		AssertEx.Equal("main", backpack.SlotId);
-		AssertEx.Equal(1, rig.SaveCount, "An already-migrated profile must not be saved twice.");
-	}
-
-	[RegressionTest]
-	private static async Task IgnoresUplinkOnUnsupportedPocketsTemplate()
-	{
-		Rig rig = CreateRig();
-		ProfileFixture fixture = AddProfile(
-			rig,
-			"session-unsupported",
-			"aaaaaaaaaaaaaaaaaaaaaaaa");
-		Item uplink = AddItem(
-			fixture.Items,
-			"unsupported-uplink",
-			TscUplinkSpecialSlotService.UplinkTemplateId,
-			fixture.Pockets.Id,
-			"SpecialSlot1");
-
-		await rig.Service.MigrateLoadedProfilesAsync(CancellationToken.None);
-
-		AssertEx.Equal("SpecialSlot1", uplink.SlotId);
-		AssertEx.Equal(0, rig.SaveCount);
-	}
-
-	[RegressionTest]
-	private static async Task OccupiedFourthSlotFailsClosedWithoutItemLoss()
-	{
-		Rig rig = CreateRig();
-		ProfileFixture fixture = AddProfile(rig, "session-conflict");
-		Item uplink = AddItem(
-			fixture.Items,
-			"legacy-uplink",
-			TscUplinkSpecialSlotService.UplinkTemplateId,
-			fixture.Pockets.Id,
-			"SpecialSlot1");
-		Item occupant = AddItem(
-			fixture.Items,
-			"foreign-occupant",
-			OtherAllowedItem,
-			fixture.Pockets.Id,
-			TscUplinkSpecialSlotService.DedicatedSlotName);
-
-		await rig.Service.MigrateLoadedProfilesAsync(CancellationToken.None);
-
-		AssertEx.Equal("SpecialSlot1", uplink.SlotId);
-		AssertEx.Equal(TscUplinkSpecialSlotService.DedicatedSlotName, occupant.SlotId);
-		AssertEx.Equal(0, rig.SaveCount);
-		AssertEx.True(rig.Logger.Warnings.Any(message => message.Contains("already occupied")));
-	}
-
-	[RegressionTest]
-	private static async Task MultipleLegacyUplinksFailClosedWithoutChoosingOne()
-	{
-		Rig rig = CreateRig();
-		ProfileFixture fixture = AddProfile(rig, "session-ambiguous");
-		Item first = AddItem(
-			fixture.Items,
-			"legacy-one",
-			TscUplinkSpecialSlotService.UplinkTemplateId,
-			fixture.Pockets.Id,
-			"SpecialSlot1");
-		Item second = AddItem(
-			fixture.Items,
-			"legacy-two",
-			TscUplinkSpecialSlotService.UplinkTemplateId,
-			fixture.Pockets.Id,
-			"SpecialSlot3");
-
-		await rig.Service.MigrateLoadedProfilesAsync(CancellationToken.None);
-
-		AssertEx.Equal("SpecialSlot1", first.SlotId);
-		AssertEx.Equal("SpecialSlot3", second.SlotId);
-		AssertEx.Equal(0, rig.SaveCount);
-		AssertEx.True(rig.Logger.Warnings.Any(message => message.Contains("ambiguous")));
-	}
-
-	[RegressionTest]
-	private static async Task SaveFailureRollsBackInMemoryMigration()
-	{
-		Rig rig = CreateRig();
-		ProfileFixture fixture = AddProfile(rig, "session-save-failure");
-		Item uplink = AddItem(
-			fixture.Items,
-			"legacy-uplink",
-			TscUplinkSpecialSlotService.UplinkTemplateId,
-			fixture.Pockets.Id,
-			"SpecialSlot3");
-		rig.SaveServer.SaveProfile = _ =>
-		{
-			rig.SaveCount++;
-			return Task.FromException(new IOException("synthetic save failure"));
-		};
-
-		await rig.Service.MigrateLoadedProfilesAsync(CancellationToken.None);
-
-		AssertEx.Equal("SpecialSlot3", uplink.SlotId);
-		AssertEx.Equal(1, rig.SaveCount);
-		AssertEx.Equal(1, rig.Logger.Errors.Count);
-	}
-
-	private static void AssertPocketContract(TemplateTable templates, string templateId)
-	{
-		TemplateItem pockets = templates.Items[new MongoId(templateId)];
-		List<Slot> slots = pockets.Properties!.Slots!.ToList();
-		Slot dedicated = AssertEx.NotNull(slots.SingleOrDefault(slot =>
-			string.Equals(
-				slot.Name,
-				TscUplinkSpecialSlotService.DedicatedSlotName,
-				StringComparison.OrdinalIgnoreCase)));
-		SlotFilter filter = AssertEx.NotNull(dedicated.Properties?.Filters?.SingleOrDefault());
-
-		AssertEx.False(dedicated.Required ?? true);
-		AssertEx.False(dedicated.MergeSlotWithChildren ?? true);
-		AssertEx.False(filter.Locked ?? true);
-		AssertEx.Equal(1, filter.Filter!.Count);
-		AssertEx.True(filter.Filter.Contains(
-			new MongoId(TscUplinkSpecialSlotService.UplinkTemplateId)));
-
-		foreach (Slot legacy in slots.Where(slot => slot.Name is
-		         "SpecialSlot1" or "SpecialSlot2" or "SpecialSlot3"))
-		{
-			SlotFilter legacyFilter = legacy.Properties!.Filters!.Single();
-			AssertEx.False(legacyFilter.Filter!.Contains(
-				new MongoId(TscUplinkSpecialSlotService.UplinkTemplateId)));
-			AssertEx.True(legacyFilter.Filter.Contains(new MongoId(OtherAllowedItem)));
-		}
-	}
-
-	private static Rig CreateRig()
+	private static TemplateTable CreateTemplates(int slotCount = 3)
 	{
 		var templates = new TemplateTable();
-		AddPocketTemplate(templates, TscUplinkSpecialSlotService.StandardPocketsTemplateId);
-		AddPocketTemplate(templates, TscUplinkSpecialSlotService.UnheardPocketsTemplateId);
-
-		var logger = new RecordingLogger();
-		var saveServer = new SaveServer();
-		var rig = new Rig(
-			templates,
-			logger,
-			saveServer,
-			new TscUplinkSpecialSlotService(logger, templates, saveServer));
-		saveServer.SaveProfile = _ =>
-		{
-			rig.SaveCount++;
-			return Task.CompletedTask;
-		};
-		return rig;
+		AddPockets(templates, TscUplinkSpecialSlotService.StandardPocketsTemplateId, slotCount);
+		AddPockets(templates, TscUplinkSpecialSlotService.UnheardPocketsTemplateId, slotCount);
+		return templates;
 	}
 
-	private static void AddPocketTemplate(TemplateTable templates, string templateId)
+	private static TemplateItem AddPockets(TemplateTable templates, string templateId, int slotCount,
+		string parentId = TscUplinkSpecialSlotService.PocketsParentId)
 	{
-		var slots = new List<Slot>();
-		for (int index = 1; index <= 3; index++)
-		{
-			slots.Add(new Slot
-			{
-				Id = new MongoId($"00000000000000000000000{index}"),
-				Name = $"SpecialSlot{index}",
-				Properties = new SlotProperties
-				{
-					Filters =
-					[
-						new SlotFilter
-						{
-							Filter =
-							[
-								new MongoId(OtherAllowedItem),
-								new MongoId(TscUplinkSpecialSlotService.UplinkTemplateId)
-							]
-						}
-					]
-				}
-			});
-		}
-
-		templates.Items[new MongoId(templateId)] = new TemplateItem
+		var pockets = new TemplateItem
 		{
 			Id = new MongoId(templateId),
-			Properties = new TemplateItemProperties { Slots = slots }
+			Parent = new MongoId(parentId),
+			Properties = new TemplateItemProperties { Slots = Enumerable.Range(1, slotCount).Select(CreateSlot).ToArray() }
 		};
+		templates.Items[pockets.Id] = pockets;
+		return pockets;
 	}
 
-	private static ProfileFixture AddProfile(
-		Rig rig,
-		string sessionId,
-		string pocketsTemplateId = TscUplinkSpecialSlotService.StandardPocketsTemplateId)
+	private static Slot CreateSlot(int index)
 	{
-		rig.Service.ConfigurePocketTemplates();
-		var items = new List<Item>();
-		Item equipment = AddItem(items, "equipment", "equipment-template", null, null);
-		Item pockets = AddItem(items, "pockets", pocketsTemplateId, equipment.Id, "Pockets");
-		AddItem(items, "stash-root", "stash-template", null, null);
-		AddItem(items, "backpack", "backpack-template", equipment.Id, "Backpack");
-
-		rig.SaveServer.Profiles[new MongoId(sessionId)] = new SptProfile
+		return new Slot
 		{
-			CharacterData = new Characters
+			Id = new MongoId(index.ToString("x24")),
+			Name = $"SpecialSlot{index}",
+			Properties = new SlotProperties
 			{
-				PmcData = new PmcData
-				{
-					Inventory = new BotBaseInventory
-					{
-						Equipment = new MongoId(equipment.Id),
-						Stash = new MongoId("stash-root"),
-						Items = items
-					}
-				}
+				Filters = [new SlotFilter { Filter = [new MongoId(OtherAllowedItem)], Locked = false }]
 			}
 		};
-
-		return new ProfileFixture(items, pockets);
-	}
-
-	private static Item AddItem(
-		List<Item> items,
-		string id,
-		string template,
-		string? parentId,
-		string? slotId)
-	{
-		var item = new Item
-		{
-			Id = id,
-			Template = template,
-			ParentId = parentId,
-			SlotId = slotId
-		};
-		items.Add(item);
-		return item;
-	}
-
-	private sealed record ProfileFixture(List<Item> Items, Item Pockets);
-
-	private sealed record Rig(
-		TemplateTable Templates,
-		RecordingLogger Logger,
-		SaveServer SaveServer,
-		TscUplinkSpecialSlotService Service)
-	{
-		public int SaveCount { get; set; }
-	}
-
-	private sealed class RecordingLogger : ISptLogger<TscUplinkSpecialSlotService>
-	{
-		public List<string> Warnings { get; } = [];
-		public List<string> Errors { get; } = [];
-
-		public void Success(string message)
-		{
-		}
-
-		public void Warning(string message)
-		{
-			Warnings.Add(message);
-		}
-
-		public void Error(string message)
-		{
-			Errors.Add(message);
-		}
-
-		public void Error(string message, Exception exception)
-		{
-			Errors.Add(message);
-		}
 	}
 }

@@ -8,6 +8,31 @@ internal static class ServerPresetStoreTests
 	private static readonly JsonSerializerOptions s_json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
 	[RegressionTest]
+	private static void LegacySavedAndImportedWalletsAreDiscardedWithoutChangingPresetPrices()
+	{
+		using var rig = new ServerConfigTestRig();
+		foreach (string source in new[] { "CarriedRoubles", "StashRoubles", "PreferCarriedThenStash", "PreferStashThenCarried" })
+		{
+			AssertEx.True(rig.Service.TrySavePreset(Payload(source, new()
+			{
+				["paymentSource"] = source, ["paymentCurrency"] = "USD", ["prices.A10"] = 73
+			}), out FireSupportPreset? saved, out string error, out bool failure), error);
+			AssertEx.False(failure);
+			AssertEx.False(saved!.Settings.ContainsKey("paymentSource"));
+			string path = Path.Combine(PresetDirectory(rig), saved.Id + ".json");
+			JsonNode disk = JsonNode.Parse(File.ReadAllText(path))!;
+			AssertEx.False(disk["settings"]!.AsObject().ContainsKey("paymentSource"));
+			disk["settings"]!["paymentSource"] = source;
+			File.WriteAllText(path, disk.ToJsonString());
+			FireSupportPreset loaded = rig.Service.GetSavedPresets().Presets.Single(preset => preset.Id == saved.Id);
+			AssertEx.False(loaded.Settings.ContainsKey("paymentSource"));
+			AssertEx.Equal("\"USD\"", JsonSerializer.Serialize(loaded.Settings["paymentCurrency"]));
+			AssertEx.Equal("73", JsonSerializer.Serialize(loaded.Settings["prices.A10"]));
+		}
+		AssertEx.Null(rig.Service.GetSavedPresets().Warning);
+	}
+
+	[RegressionTest]
 	private static void CustomPresetFilesSurviveRestartAndNeverApplyTheSavedDraft()
 	{
 		using var rig = new ServerConfigTestRig();
@@ -70,7 +95,8 @@ internal static class ServerPresetStoreTests
 			("prices.A10", true), ("prices.A10", new { amount = 1 }), ("paymentCurrency", "Roubles"),
 			("serviceCurrencies.A10", "Gold"), ("enabled.A10", 1), ("enabled.A10", "true"),
 			("purchasePersistence.pendingUseTimeoutSeconds", 1), ("priorityExfil.gridWidth", 1000),
-			("uav.scanIntervalSeconds", 0), ("paymentSource", "Wallet")
+			("uav.scanIntervalSeconds", 0), ("paymentSource", "Wallet"),
+			("paymentSource", "carriedroubles"), ("paymentSource", 1), ("paymentSource", true)
 		}) invalid.Add(Payload("Bad", new() { [path] = value }));
 		foreach (string id in new[] { "../tsc-config", "..\\tsc-config", "C:/outside", "balanced", "custom-../../outside", "custom-" + new string('a', 100), "" })
 			invalid.Add(Payload("Bad", new() { ["prices.A10"] = 1 }, id));
@@ -81,6 +107,7 @@ internal static class ServerPresetStoreTests
 		invalid.Add(Parse("{\"format\":\"tsc-preset\",\"formatVersion\":2,\"name\":\"Bad\",\"settings\":{\"prices.A10\":1}}"));
 		invalid.Add(Parse("{\"format\":\"tsc-preset\",\"formatVersion\":1,\"name\":\"Bad\",\"name\":\"Duplicate\",\"settings\":{\"prices.A10\":1}}"));
 		invalid.Add(Parse("{\"format\":\"tsc-preset\",\"formatVersion\":1,\"name\":\"Bad\",\"settings\":{\"prices.A10\":1,\"prices.A10\":2}}"));
+		invalid.Add(Parse("{\"format\":\"tsc-preset\",\"formatVersion\":1,\"name\":\"Bad\",\"settings\":{\"paymentSource\":\"CarriedRoubles\",\"paymentSource\":\"StashRoubles\",\"prices.A10\":1}}"));
 		invalid.Add(Parse("{\"format\":\"tsc-preset\",\"formatVersion\":1,\"name\":\"Bad\",\"settings\":{\"uav.rangeMeters\":1e500}}"));
 		string configBefore = rig.ReadDiskText();
 		foreach (JsonElement payload in invalid)

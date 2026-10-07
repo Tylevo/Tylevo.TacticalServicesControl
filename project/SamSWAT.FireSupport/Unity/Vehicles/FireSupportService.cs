@@ -20,14 +20,16 @@ public abstract class FireSupportService(int maxRequests) : IFireSupportService
 
 	private bool HasRequestBudget()
 	{
-		PaymentMode paymentMode = FireSupportPayment.GetActivePaymentMode();
-		return paymentMode switch
-		{
-			PaymentMode.PhoneAuthorizations => FireSupportAuthorizations.HasDeployable(SupportType),
-			PaymentMode.Hybrid => availableRequests > 0 || FireSupportAuthorizations.HasDeployable(SupportType),
-			_ => availableRequests > 0
-		};
+		return AuthorizationConsumePolicy.HasRequestBudget(
+			FireSupportPayment.GetActivePaymentMode(), availableRequests,
+			FireSupportAuthorizations.HasDeployable(SupportType),
+			FireSupportAuthorizations.HasPrepaidDeployable(SupportType));
 	}
 
-	public abstract UniTaskVoid PlanRequest(CancellationToken cancellationToken);
+	public UniTaskVoid PlanRequest(CancellationToken cancellationToken)
+	{
+		return PlanRequest(cancellationToken, requirePrepaidAuthorization: false);
+	}
+
+	public abstract UniTaskVoid PlanRequest(CancellationToken cancellationToken, bool requirePrepaidAuthorization);
 }

@@ -5,6 +5,24 @@ using System.Text.Json;
 internal static class FireSupportConfigEditorProviderTests
 {
 	[RegressionTest]
+	private static async Task NativeEditorOmitsWalletSelectionAndIgnoresLegacyEditorValues()
+	{
+		using var rig = new ServerConfigTestRig();
+		var registration = new FireSupportConfigEditorProvider(rig.Service).GetConfigs().Single();
+		string editorJson = JsonSerializer.Serialize(registration.RuntimeConfig);
+		AssertEx.False(editorJson.Contains("paymentSource", StringComparison.Ordinal));
+		AssertEx.Null(typeof(FireSupportConfigEditorView).GetProperty("PaymentSource"));
+		// A stale editor may still post the removed field; the DTO ignores it.
+		var draft = JsonSerializer.Deserialize<FireSupportConfigEditorView>(
+			editorJson.Insert(1, "\"paymentSource\":\"PreferCarriedThenStash\","))!;
+		draft.Prices["Uav"] = 73;
+		await registration.SaveToDiskAsync!(draft, CancellationToken.None);
+		AssertEx.Equal("StashRoubles", rig.Service.GetConfigSnapshot().PaymentSource);
+		AssertEx.Equal("StashRoubles", rig.ReadDisk().PaymentSource);
+		AssertEx.Equal(73, rig.ReadDisk().Prices["Uav"]);
+	}
+
+	[RegressionTest]
 	private static async Task NativeServiceCurrencyEditsRoundTripIndependentlyFromTheGlobalDefault()
 	{
 		using var rig = new ServerConfigTestRig();

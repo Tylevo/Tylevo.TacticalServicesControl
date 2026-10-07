@@ -80,7 +80,7 @@ public static class PaymentCurrencyInfo
 		return Normalize(currency).ToString();
 	}
 
-	public static bool IsStashOnly(PaymentCurrency currency) => currency is PaymentCurrency.GP or PaymentCurrency.BTC;
+	public static bool IsBarter(PaymentCurrency currency) => currency is PaymentCurrency.GP or PaymentCurrency.BTC;
 
 	public static bool IsSupportedTemplateId(string templateId) =>
 		string.Equals(templateId, RoubleTemplateId, StringComparison.OrdinalIgnoreCase) ||
@@ -115,7 +115,7 @@ public static class PaymentCurrencyInfo
 
 	public static string Format(int amount, PaymentCurrency currency)
 	{
-		return IsStashOnly(currency)
+		return IsBarter(currency)
 			? FormatCode(amount, currency)
 			: $"{GetSymbol(currency)}{Math.Max(0, amount).ToString("N0", CultureInfo.InvariantCulture)}";
 	}
