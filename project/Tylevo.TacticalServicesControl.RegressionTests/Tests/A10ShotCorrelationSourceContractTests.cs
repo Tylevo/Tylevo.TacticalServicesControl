@@ -83,12 +83,12 @@ internal static class A10ShotCorrelationSourceContractTests
 	}
 
 	[RegressionTest]
-	private static void PlannerBuildsFiftyTimedShotsFromMovingMuzzleOrigins()
+	private static void PlannerBuilds120TimedShotsFromMovingMuzzleOrigins()
 	{
 		string planner = ReadProductionSource(PlannerPath);
 		string compact = CompactWhitespace(planner);
 
-		AssertEx.Contains("const int ShotCount = 50", compact);
+		AssertEx.Contains("const int ShotCount = 120", compact);
 		AssertEx.Contains("BuildMovingMuzzlePlan(", compact);
 		AssertEx.Contains(
 			"projectileOrigin = firstMuzzleOrigin + safeAircraftForward * StrafeSpeed * shotDelay",

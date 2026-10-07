@@ -8,7 +8,45 @@ internal static class A10ShotPlannerTests
 	private const float BallisticTolerance = A10BallisticSolver.VerticalToleranceMeters * 2f;
 
 	[RegressionTest]
-	private static void ImpactPlanIsFiftyRoundsAndDeterministicForASeed()
+	private static void LongerBurstKeepsHeadlessDamageAndVisualArrivalsAligned()
+	{
+		using var physics = new PhysicsScope();
+		using var evaluator = new A10EftTrajectoryEvaluator(1070f, 280f, 30f, 0.316f, 40f);
+		IReadOnlyList<Vector3> impacts = A10ShotPlanner.BuildImpactPlan(Vector3.zero, Vector3.forward, 8675309);
+		List<A10TracerSegment> visuals = A10ShotPlanner.BuildMovingMuzzlePlan(
+			new Vector3(0f, 320f, -1450f), Vector3.forward, impacts, 60f / 1395f, evaluator);
+		List<A10TracerSegment> damage = A10ShotPlanner.BuildMovingMuzzlePlan(
+			new Vector3(0f, 150f, -425f), Vector3.forward, impacts, 60f / 1395f, evaluator);
+		for (int i = 0; i < visuals.Count; i++)
+		{
+			A10TracerSegment visual = visuals[i];
+			A10TracerSegment hit = damage[i];
+			AssertEx.True(A10HeadlessShotTiming.TryAlignArrival(ref visual, ref hit), $"Invalid headless pair {i}");
+			AssertEx.Near(visual.ImpactDelaySeconds, hit.ImpactDelaySeconds, Tolerance);
+		}
+	}
+
+	[RegressionTest]
+	private static void FullBurstMatchesTheUneditedImpactRecordingBody()
+	{
+		using var physics = new PhysicsScope();
+		using var evaluator = new A10EftTrajectoryEvaluator(1070f, 280f, 30f, 0.316f, 40f);
+		IReadOnlyList<Vector3> impacts = A10ShotPlanner.BuildImpactPlan(Vector3.zero, Vector3.forward, 8675309);
+		List<A10TracerSegment> plan = A10ShotPlanner.BuildMovingMuzzlePlan(
+			new Vector3(0f, 320f, -1450f), Vector3.forward, impacts, 60f / 1395f, evaluator);
+		AssertEx.True(plan.All(shot => shot.IsValid));
+		AssertEx.True(A10AudioTiming.TryGetImpactPlaybackWindow(plan, 0f, out float start, out float span));
+		AssertEx.True(start > 3f, "A nearby listener must still wait for the distant aircraft's rounds.");
+		AssertEx.True(span >= 2.6f && span <= 2.9f,
+			$"The full burst must match the recording's ~2.7 s active body, not its echo tail. Actual={span}");
+		AssertEx.True(plan.Max(shot => shot.DelaySeconds) > 5f);
+		float[] arrivals = plan.Select(shot => shot.ImpactDelaySeconds).Order().ToArray();
+		for (int i = 1; i < arrivals.Length; i++)
+			AssertEx.True(arrivals[i] - arrivals[i - 1] < 0.08f, "Ground impacts must remain a continuous burst.");
+	}
+
+	[RegressionTest]
+	private static void ImpactPlanIs120RoundsInTheExistingCorridorAndDeterministicForASeed()
 	{
 		using var physics = new PhysicsScope();
 		var target = new Vector3(100f, 12f, -40f);
@@ -16,7 +54,7 @@ internal static class A10ShotPlannerTests
 		IReadOnlyList<Vector3> first = A10ShotPlanner.BuildImpactPlan(target, aircraftForward, 8675309);
 		IReadOnlyList<Vector3> replay = A10ShotPlanner.BuildImpactPlan(target, aircraftForward, 8675309);
 		IReadOnlyList<Vector3> otherSeed = A10ShotPlanner.BuildImpactPlan(target, aircraftForward, 8675310);
-		AssertEx.Equal(50, first.Count);
+		AssertEx.Equal(120, first.Count);
 		AssertEx.SequenceEqual(first, replay);
 		AssertEx.True(first.Where((impact, index) => !impact.Equals(otherSeed[index])).Any());
 		Vector3 forward = aircraftForward.normalized;
@@ -40,7 +78,7 @@ internal static class A10ShotPlannerTests
 			return [new RaycastHit { point = new Vector3(query.Origin.x, 10f, query.Origin.z) }];
 		};
 		IReadOnlyList<Vector3> impacts = A10ShotPlanner.BuildImpactPlan(new Vector3(0f, 10f, 0f), Vector3.forward, 12);
-		AssertEx.Equal(50, probes);
+		AssertEx.Equal(A10ShotPlanner.ShotCount, probes);
 		AssertEx.True(impacts.All(point => point.y == 10f));
 	}
 
@@ -88,7 +126,7 @@ internal static class A10ShotPlannerTests
 			.Select(index => new Vector3(index * 0.2f, 0f, 1000f + index)).ToArray();
 		IReadOnlyList<A10TracerSegment> plan = A10ShotPlanner.BuildMovingMuzzlePlan(
 			firstMuzzleOrigin, new Vector3(0f, 0f, 10f), impacts, timeBetweenShots, evaluator);
-		AssertEx.Equal(50, plan.Count);
+		AssertEx.Equal(A10ShotPlanner.ShotCount, plan.Count);
 		for (int index = 0; index < plan.Count; index++)
 		{
 			float expectedDelay = index * timeBetweenShots;
@@ -104,7 +142,7 @@ internal static class A10ShotPlannerTests
 			AssertEx.True(shot.FlightTimeSeconds > 0f);
 			AssertEx.Near(expectedDelay + shot.FlightTimeSeconds, shot.ImpactDelaySeconds, Tolerance);
 		}
-		AssertEx.Near(49f * timeBetweenShots * A10ShotPlanner.StrafeSpeed,
+		AssertEx.Near((A10ShotPlanner.ShotCount - 1) * timeBetweenShots * A10ShotPlanner.StrafeSpeed,
 			Vector3.Distance(plan[0].ProjectileOrigin, plan[^1].ProjectileOrigin), Tolerance);
 	}
 

@@ -6,6 +6,31 @@ using UnityEngine;
 internal static class A10TracerBurstPacketTests
 {
 	[RegressionTest]
+	private static void Full120RoundBurstFitsSixExistingPacketsWithoutTruncation()
+	{
+		A10TracerSegment[] shots = Enumerable.Range(0, A10ShotPlanner.ShotCount).Select(index =>
+		{
+			A10TracerSegment shot = MakeShot();
+			shot.DelaySeconds = index * 60f / 1395f;
+			return shot;
+		}).ToArray();
+		var burst = new A10TracerBurst(7, "strike-7:pass:0", 2468, 0, 100f, shots);
+		var replay = new List<A10TracerSegment>();
+		for (int offset = 0; offset < shots.Length; offset += 20)
+		{
+			A10TracerBurstPacket received = RoundTrip(new A10TracerBurstPacket(
+				burst, offset, shots.Length, shots.Skip(offset).Take(20).ToArray()));
+			AssertEx.Equal(120, received.TotalSegments);
+			AssertEx.Equal(offset, received.SegmentOffset);
+			AssertEx.Equal(20, received.Segments.Length);
+			replay.AddRange(received.Segments);
+		}
+		AssertEx.Equal(shots.Length, replay.Count);
+		for (int i = 0; i < shots.Length; i++)
+			AssertEx.Near(shots[i].ImpactDelaySeconds, replay[i].ImpactDelaySeconds, 0.0001f);
+	}
+
+	[RegressionTest]
 	private static void RoundTripUsesImpactArrivalWithoutAddingFlightTimeTwice()
 	{
 		A10TracerSegment shot = MakeShot();

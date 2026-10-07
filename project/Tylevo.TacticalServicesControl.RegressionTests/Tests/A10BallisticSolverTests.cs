@@ -230,20 +230,20 @@ internal static class A10BallisticSolverTests
 	}
 
 	[RegressionTest]
-	private static void FiftyRoundMovingMuzzleSolveHasABoundedNativeWorkBudget()
+	private static void FullBurstMovingMuzzleSolveHasABoundedNativeWorkBudget()
 	{
 		A10NativeTrajectoryTestControl.Reset();
 		using var evaluator = CreateEvaluator();
-		for (int index = 0; index < 50; index++)
+		for (int index = 0; index < A10ShotPlanner.ShotCount; index++)
 		{
 			Vector3 origin = new Vector3(0f, 320f, -1450f + index * (150f * 60f / 1395f));
-			Vector3 target = new Vector3((index % 5 - 2) * 2.5f, 0f, (index - 24.5f) * 0.9f);
+			Vector3 target = new Vector3((index % 5 - 2) * 2.5f, 0f, -22.05f + index * 44.1f / (A10ShotPlanner.ShotCount - 1));
 			AssertEx.True(A10BallisticSolver.TrySolve(origin, target, evaluator, out A10BallisticSolution solution));
 			AssertSolution(origin, target, solution);
 			AssertEx.True(solution.EvaluationCount <= A10BallisticSolver.MaximumEvaluations);
 		}
-		AssertEx.True(A10NativeTrajectoryTestControl.TotalRentals <= 50 * A10BallisticSolver.MaximumEvaluations);
-		AssertEx.True(A10NativeTrajectoryTestControl.TotalSteps < 350000,
+		AssertEx.True(A10NativeTrajectoryTestControl.TotalRentals <= A10ShotPlanner.ShotCount * A10BallisticSolver.MaximumEvaluations);
+		AssertEx.True(A10NativeTrajectoryTestControl.TotalSteps < 840000,
 			$"Unexpected planning cost: {A10NativeTrajectoryTestControl.TotalSteps} native 10ms steps.");
 		AssertEx.Equal(1, A10NativeTrajectoryTestControl.MaximumActiveHistories);
 		AssertEx.Equal(0, A10NativeTrajectoryTestControl.ActiveHistories);

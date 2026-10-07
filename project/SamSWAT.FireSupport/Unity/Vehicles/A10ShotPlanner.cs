@@ -6,14 +6,17 @@ namespace SamSWAT.FireSupport.ArysReloaded.Unity;
 
 public static class A10ShotPlanner
 {
-	public const int ShotCount = 50;
+	// At 1395 RPM the moving muzzle compresses 50 launches into ~1.1 s
+	// of ground impacts. 120 rounds span ~2.7 s, matching the bundled impact
+	// recording's active burst; the rest of that recording is natural decay.
+	public const int ShotCount = 120;
 	public const float AircraftDistance = 2650f;
 	public const float AircraftAltitude = 320f;
 	public const float StrafeSpeed = 150f;
 	public const float GunFireDelaySeconds = 8f;
 	public const float MaximumTracerDistance = 2200f;
 	public const float TracerSegmentLength = 42f;
-	private const float AnchoredReplayLongitudinalSpacing = 0.9f;
+	private const float StrikeCorridorLength = 44.1f;
 	private const float AnchoredReplayLateralSpread = 7.5f;
 	// Search near the designated elevation, including stacked surfaces, rather
 	// than snapping every round to the first roof below a probe 140 m overhead.
@@ -40,7 +43,7 @@ public static class A10ShotPlanner
 		float centerIndex = (ShotCount - 1) * 0.5f;
 		for (int index = 0; index < ShotCount; index++)
 		{
-			float longitudinalOffset = (index - centerIndex) * AnchoredReplayLongitudinalSpacing;
+			float longitudinalOffset = (index - centerIndex) * (StrikeCorridorLength / (ShotCount - 1));
 			float lateralOffset = NextSpread(random, -AnchoredReplayLateralSpread, AnchoredReplayLateralSpread);
 			Vector3 intendedImpact = targetPosition +
 			                         safeAircraftForward * longitudinalOffset +

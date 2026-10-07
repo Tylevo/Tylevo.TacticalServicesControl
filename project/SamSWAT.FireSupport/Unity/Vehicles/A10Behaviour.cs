@@ -46,6 +46,7 @@ public sealed class A10Behaviour : FireSupportBehaviour
 	private const float STRIKE_ENGINE_MIN_DISTANCE = 450f;
 	private const float STRIKE_ENGINE_MAX_DISTANCE = 5000f;
 	private float _currentSpeed = A10ShotPlanner.StrafeSpeed;
+	private float _enginePlaybackStartedAt = -1f;
 
 	public override ESupportType SupportType => ESupportType.Strafe;
 
@@ -182,8 +183,10 @@ public sealed class A10Behaviour : FireSupportBehaviour
 		_fireSupportAudio.PlayVoiceover(EVoiceoverType.JetFiring);
 		await UniTask.WaitForSeconds(1f, cancellationToken: cancellationToken);
 
-		// Fire GAU8
-		Gau8Sequence(strafePos, cancellationToken).Forget();
+		// Audio and projectiles must use the same plan and local launch clock.
+		List<A10TracerSegment> shotPlan = BuildGau8ShotPlan(strafePos, GetGau8TimeBetweenShots());
+		float fireStartNetworkTime = Time.time;
+		Gau8Sequence(shotPlan, fireStartNetworkTime, cancellationToken).Forget();
 
 		if (_gameWorld?.IsMainPlayerAlive() != true || _player?.CameraPosition == null)
 		{
@@ -193,20 +196,37 @@ public sealed class A10Behaviour : FireSupportBehaviour
 		}
 
 		float distanceFromPlayer = Vector3.Distance(_player.CameraPosition.position, strafePos);
-		const float soundSpeedMS = 343;
-		await UniTask.WaitForSeconds(distanceFromPlayer / soundSpeedMS, cancellationToken: cancellationToken);
+		bool hasImpactAudio = A10AudioTiming.TryGetImpactPlaybackWindow(
+			shotPlan, distanceFromPlayer, out float impactAudioDelay, out float impactAudioDuration) &&
+			(_visualOnly || _weapon != null);
+		if (hasImpactAudio)
+		{
+			FireSupportPlugin.LogSource?.LogInfo(
+				$"TSC A-10 impact audio requestId={A10AuthorityDiagnostics.ShortId(_supportRequestId)} pass={_passIndex} launch={fireStartNetworkTime:0.000} delay={impactAudioDelay:0.000}s impactSpan={impactAudioDuration:0.000}s shots={shotPlan.Count}");
+			float waitSeconds = fireStartNetworkTime + impactAudioDelay - Time.time;
+			if (waitSeconds > 0f)
+			{
+				await UniTask.WaitForSeconds(waitSeconds, cancellationToken: cancellationToken);
+			}
 
-		// Play explosion sfx
-		// TODO: This should be the sfx for the actual projectile instead of manually being played here
-		_betterAudio.PlayAtPoint(
-			strafePos,
-			gau8ExpSounds.GetRandomClip(),
-			distanceFromPlayer,
-			BetterAudio.AudioSourceGroupType.Gunshots,
-			1200
-		);
-		gau8Particles.SetActive(false);
-		await UniTask.WaitForSeconds(3.5f, cancellationToken: cancellationToken);
+			if (_gameWorld?.IsMainPlayerAlive() != true || _player?.CameraPosition == null)
+			{
+				ReturnToPool();
+				return;
+			}
+
+			// Keep the original single impact-burst recording, but wait for ballistic
+			// arrival as well as sound propagation. This is a prediction, not a hit callback.
+			A10StrikeAudio.PlayAtPoint(
+				_betterAudio,
+				strafePos,
+				gau8ExpSounds.GetRandomClip(),
+				Vector3.Distance(_player.CameraPosition.position, strafePos),
+				1200, 1f, "impacts", _supportRequestId, _passIndex, cancellationToken
+			);
+			LogStrikeFlyoverState("impacts-started");
+		}
+		await UniTask.WaitForSeconds(A10AudioTiming.ImpactToCannonDelaySeconds, cancellationToken: cancellationToken);
 
 		if (_gameWorld?.IsMainPlayerAlive() != true || _player?.CameraPosition == null)
 		{
@@ -215,21 +235,23 @@ public sealed class A10Behaviour : FireSupportBehaviour
 		}
 
 		// Play GAU8 BRRRT sfx
-		_betterAudio.PlayAtPoint(
-			gau8Transform.position - gau8Transform.forward * 100 - gau8Transform.up * 100,
-			gau8Sound.GetRandomClip(),
-			Vector3.Distance(_player.CameraPosition.position, gau8Transform.position),
-			BetterAudio.AudioSourceGroupType.Gunshots,
-			3200,
-			2
-		);
-		await UniTask.WaitForSeconds(1.5f, cancellationToken: cancellationToken);
+		if (hasImpactAudio)
+		{
+			Vector3 cannonPosition = gau8Transform.position - gau8Transform.forward * 100 - gau8Transform.up * 100;
+			A10CannonAudio.PlayAtPoint(
+				_betterAudio,
+				cannonPosition,
+				gau8Sound.GetRandomClip(),
+				Vector3.Distance(_player.CameraPosition.position, cannonPosition),
+				_supportRequestId, _passIndex, cancellationToken
+			);
+		}
 
-		// Enable flares
-		_flareCountermeasureInstance?.SetActive(true);
+		LogStrikeFlyoverState("cannon-report");
 		await UniTask.WaitForSeconds(8f, cancellationToken: cancellationToken);
 
 		// Play jet leaving voiceover
+		LogStrikeFlyoverState("leaving");
 		_fireSupportAudio.PlayVoiceover(EVoiceoverType.JetLeaving);
 		await UniTask.WaitForSeconds(4f, cancellationToken: cancellationToken);
 
@@ -259,6 +281,12 @@ public sealed class A10Behaviour : FireSupportBehaviour
 
 	private void CleanupTransientObjects()
 	{
+		if (_enginePlaybackStartedAt >= 0f)
+		{
+			LogStrikeFlyoverState("cleanup");
+			_enginePlaybackStartedAt = -1f;
+		}
+
 		if (_flareCountermeasureInstance != null)
 		{
 			DestroyImmediate(_flareCountermeasureInstance);
@@ -298,6 +326,11 @@ public sealed class A10Behaviour : FireSupportBehaviour
 		engineSource.loop = false;
 		engineSource.mute = false;
 		engineSource.volume = STRIKE_ENGINE_VOLUME;
+		// All three authored recordings share priority so the flyby does not
+		// outrank the impact burst and cannon report during voice contention.
+		engineSource.priority = A10StrikeAudio.Priority;
+		engineSource.pitch = 1f;
+		engineSource.dopplerLevel = 0f;
 		engineSource.spatialBlend = 1f;
 		engineSource.rolloffMode = AudioRolloffMode.Logarithmic;
 		engineSource.minDistance = STRIKE_ENGINE_MIN_DISTANCE;
@@ -309,16 +342,40 @@ public sealed class A10Behaviour : FireSupportBehaviour
 
 		engineSource.time = 0f;
 		engineSource.Play();
+		_enginePlaybackStartedAt = Time.time;
+		AudioConfiguration audioConfiguration = AudioSettings.GetConfiguration();
 		FireSupportPlugin.LogSource?.LogInfo(
-			$"TSC A-10 strike flyover audio started clip={clip.name} volume={engineSource.volume:0.00} loop={engineSource.loop} minDistance={engineSource.minDistance:0} maxDistance={engineSource.maxDistance:0}.");
+			$"TSC A-10 strike flyover audio started clip={clip.name} length={clip.length:0.000}s volume={engineSource.volume:0.00} loop={engineSource.loop} priority={engineSource.priority} realVoices={audioConfiguration.numRealVoices} virtualVoices={audioConfiguration.numVirtualVoices} minDistance={engineSource.minDistance:0} maxDistance={engineSource.maxDistance:0}.");
 	}
 
-	private async UniTaskVoid Gau8Sequence(Vector3 strafePos, CancellationToken cancellationToken)
+	private void LogStrikeFlyoverState(string phase)
 	{
-		float timeBetweenShots = GetGau8TimeBetweenShots();
-		List<A10TracerSegment> shotPlan = BuildGau8ShotPlan(strafePos, timeBetweenShots);
+		try
+		{
+			if (engineSource == null || _enginePlaybackStartedAt < 0f)
+			{
+				return;
+			}
+
+			float listenerDistance = _player != null && _player.CameraPosition != null
+				? Vector3.Distance(_player.CameraPosition.position, engineSource.transform.position)
+				: -1f;
+			FireSupportPlugin.LogSource?.LogInfo(
+				$"TSC A-10 flyover state phase={phase} requestId={A10AuthorityDiagnostics.ShortId(_supportRequestId)} pass={_passIndex} elapsed={Time.time - _enginePlaybackStartedAt:0.000}s clipTime={engineSource.time:0.000}s playing={engineSource.isPlaying} virtual={engineSource.isVirtual} enabled={engineSource.isActiveAndEnabled} volume={engineSource.volume:0.00} mute={engineSource.mute} priority={engineSource.priority} listenerDistance={listenerDistance:0.0}m listenerVolume={AudioListener.volume:0.00} listenerPaused={AudioListener.pause} mixer={engineSource.outputAudioMixerGroup?.name ?? "<none>"} flares={_flareCountermeasureInstance != null && _flareCountermeasureInstance.activeInHierarchy}.");
+		}
+		catch (System.Exception)
+		{
+			// Raid teardown may already have destroyed the camera or mixer. Optional
+			// telemetry must never interrupt flight playback or pooled-object cleanup.
+		}
+	}
+
+	private async UniTaskVoid Gau8Sequence(
+		List<A10TracerSegment> shotPlan,
+		float fireStartNetworkTime,
+		CancellationToken cancellationToken)
+	{
 		bool networkTracerAuthority = A10TracerNetworking.IsNetworkAuthorityActive;
-		float fireStartNetworkTime = Time.time;
 		if (shotPlan.Count > 0)
 		{
 			A10TracerSegment firstShot = shotPlan[0];
@@ -380,6 +437,13 @@ public sealed class A10Behaviour : FireSupportBehaviour
 			}
 		}
 
+		// Aircraft effects follow the firing burst, not the listener's audio delay.
+		gau8Particles.SetActive(false);
+		if (!cancellationToken.IsCancellationRequested && _gameWorld?.IsMainPlayerAlive() != false)
+		{
+			_flareCountermeasureInstance?.SetActive(true);
+		}
+		LogStrikeFlyoverState("burst-complete");
 		AccelerateSequence(cancellationToken).Forget();
 	}
 
