@@ -1,5 +1,9 @@
 # Tylevo's Tactical Services Control
 
+An optional, source-only [Icebreaker HH-60 visual companion](extras/hh60-visual/README.md)
+is available for maintainer evaluation. It is not included in the normal release
+and requires separately prepared local assets; the default UH-60 is unchanged.
+
 Call in an A-10 strike, arrange a helicopter extraction or cargo pickup, and locate nearby contacts with UAV reconnaissance. Control your support from the TerraGroup TSC Uplink phone.
 
 **TSC v1.3.13 development candidate Â· SPT 4.1.5 / EFT 0.16.9.5.40743**

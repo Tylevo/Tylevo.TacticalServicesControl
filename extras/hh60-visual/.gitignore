@@ -1,0 +1,12 @@
+# Local inputs and generated EFT-derived data must never be committed.
+/payload/
+/generated/
+/local-assets/
+*.bin
+*.bundle
+*poses*.json
+.venv/
+.build-appdata/
+.dotnet-home/
+bin/
+obj/
