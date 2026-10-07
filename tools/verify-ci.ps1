@@ -209,6 +209,10 @@ foreach ($configuration in @("SPT-3.10 Release", "SPT-3.11 Release", "SPT-4.0 Re
     Assert-SolutionMapping -SolutionText $solutionText -ProjectGuid $testsGuid -SolutionConfiguration $configuration -ProjectConfiguration "Release"
 }
 
+Write-Host "Evaluating portable build configuration and deployment defaults."
+& (Join-Path $PSScriptRoot 'Test-BuildConfiguration.ps1')
+if (-not $?) { throw 'Portable build configuration verification failed.' }
+
 Write-Host "Validating deploy guards."
 $runtimeProjects = @(
     "project\SamSWAT.FireSupport\SamSWAT.FireSupport.Core.csproj",
@@ -223,6 +227,8 @@ foreach ($relativeProject in $runtimeProjects) {
         $projectXml.Project.Target |
             Where-Object {
                 $null -ne $_.PSObject.Properties["Exec"] -or
+                $null -ne $_.PSObject.Properties["Copy"] -or
+                $null -ne $_.PSObject.Properties["Move"] -or
                 $null -ne $_.PSObject.Properties["Delete"] -or
                 $null -ne $_.PSObject.Properties["RemoveDir"]
             }
@@ -234,8 +240,9 @@ foreach ($relativeProject in $runtimeProjects) {
 
     foreach ($target in $mutationTargets) {
         $condition = [string] $target.Condition
-        if ($condition -notmatch [regex]::Escape('$(SkipTscDeploy)')) {
-            throw "Mutating target '$($target.Name)' in '$relativeProject' is not guarded by SkipTscDeploy."
+        $normalizedCondition = [regex]::Replace($condition, '\s+', '')
+        if ($normalizedCondition -cne "'`$(SkipTscDeploy)'!='true'") {
+            throw "Mutating target '$($target.Name)' in '$relativeProject' must run only when SkipTscDeploy is not true."
         }
     }
 }
@@ -751,13 +758,16 @@ $forbiddenTrackedExtensions = @(
 $textExtensions = @(
     ".cs",
     ".csproj",
+    ".config",
     ".css",
+    ".example",
     ".html",
     ".json",
     ".md",
     ".mjs",
     ".props",
     ".ps1",
+    ".py",
     ".sln",
     ".targets",
     ".txt",
@@ -772,6 +782,9 @@ $reviewedUplinkOverrideSha256 =
 
 foreach ($trackedFile in $trackedFiles) {
     $lowerTrackedFile = $trackedFile.ToLowerInvariant()
+    if ($lowerTrackedFile -match '^(?:shared\.user\.props$|\.local/|dependencies/|extras/helicopter-ropes/|extras/hh60-visual/(?:payload|generated|local-assets|exports|data)/)') {
+        throw "Machine-local/private/generated content is tracked: '$trackedFile'."
+    }
     foreach ($extension in $forbiddenTrackedExtensions) {
         if ($lowerTrackedFile.EndsWith($extension, [StringComparison]::Ordinal)) {
             if ($trackedFile.Equals($reviewedUplinkOverride, [StringComparison]::Ordinal)) {
@@ -800,7 +813,7 @@ foreach ($trackedFile in $trackedFiles) {
         }
 
         $content = Get-Content -LiteralPath $fullPath -Raw
-        if ($content -match '(?i)[A-Z]:[\\/](?:Users[\\/][^\\/\s"''`]+|SPT(?:[\\/]|$))') {
+        if ($content -match '(?i)[A-Z]:[\\/](?:Users[\\/][^\\/\s"''`]+|SPT(?:[0-9.]+)?(?:[\\/]|$))') {
             throw "Tracked build/source file contains a user-specific or live-SPT absolute path: '$trackedFile'."
         }
 
@@ -838,5 +851,9 @@ Invoke-Checked -FilePath "dotnet" -Arguments @(
     "--configuration",
     "Release"
 )
+
+Write-Host "Running all proprietary-free HH-60 suites."
+& (Join-Path $PSScriptRoot 'Test-Hh60Synthetic.ps1')
+if (-not $?) { throw 'HH-60 synthetic verification failed.' }
 
 Write-Host "CI-safe verification passed."

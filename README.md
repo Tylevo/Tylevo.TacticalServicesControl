@@ -1,8 +1,11 @@
 # Tylevo's Tactical Services Control
 
-An optional, source-only [Icebreaker HH-60 visual companion](extras/hh60-visual/README.md)
-is available for maintainer evaluation. It is not included in the normal release
-and requires separately prepared local assets; the default UH-60 is unchanged.
+The optional [helicopter companion](extras/hh60-visual/README.md) provides
+UH-60/HH-60 appearance selection and experimental solo escort, targeting,
+door-gun fire, and inbound/pickup cover fire. These features are opt-in,
+source-only, and require separately prepared local assets. They are not included
+in the normal release package. See the [consolidation validation record](docs/validation/consolidation-20261007.md)
+for automated checks and remaining in-raid validation.
 
 Call in an A-10 strike, arrange a helicopter extraction or cargo pickup, and locate nearby contacts with UAV reconnaissance. Control your support from the TerraGroup TSC Uplink phone.
 

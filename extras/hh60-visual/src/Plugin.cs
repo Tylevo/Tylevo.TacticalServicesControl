@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
+using System.Threading;
 using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
@@ -14,17 +15,41 @@ using Object = UnityEngine.Object;
 
 namespace TscHh60Visual
 {
-    [BepInPlugin("local.tsc.hh60visual", "TSC HH60 Visual Adapter", "0.2.1")]
+    public enum HelicopterModel { UH60, HH60 }
+
+    [BepInPlugin("local.tsc.hh60visual", "TSC Helicopter Appearance", "0.10.1")]
     [BepInDependency("com.tylevo.tacticalservicescontrol", "1.3.13")]
-    public sealed class Plugin : BaseUnityPlugin
+    public sealed partial class Plugin : BaseUnityPlugin
     {
         internal const string MarkerName = "TSC_HH60_VISUAL";
-        internal const string ExpectedTscSha256 = "9144491E2C1A359E909148C55817905D00F1330DD783155E5809D5C712E0BF7E";
+#if HH60_VALIDATED_CORE
+        internal const string ExpectedTscSha256 = ValidatedCoreIdentity.Sha256;
+#else
+        // Historical local baseline only. Canonical builds explicitly supply an
+        // audited identity because Core ProductVersion includes the Git commit.
+        internal const string ExpectedTscSha256 = "3B5CF9B9F8647E5C3DD9D701C1C6B1C19054B81FB4B0C12F22441AC25FA57F63";
+#endif
         internal static ManualLogSource Log;
-        internal static ConfigEntry<bool> Enabled;
+        internal static ConfigEntry<HelicopterModel> Model;
         internal static string ScenePath;
         private Harmony _harmony;
         private static Plugin _host;
+        private static readonly HashSet<VisualInstance> Instances = new HashSet<VisualInstance>();
+        private int _selectionDirty;
+        private bool _compatible;
+
+        // The optional local bench is compiled separately from appearance-only tests.
+        partial void BindEscortBench();
+        partial void TickEscortBench();
+        partial void ShutdownEscortBench();
+        partial void DrawEscortBench();
+        partial void BindExtractionCover();
+        partial void HookExtractionCover(Type aircraft);
+        partial void TickExtractionCover();
+        partial void ShutdownExtractionCover();
+
+        internal static void Register(VisualInstance visual) { Instances.Add(visual); }
+        internal static void Unregister(VisualInstance visual) { Instances.Remove(visual); }
 
         internal static Coroutine StartHostCoroutine(IEnumerator routine)
         {
@@ -40,9 +65,16 @@ namespace TscHh60Visual
         {
             _host = this;
             Log = Logger;
-            Enabled = Config.Bind("Visual", "Enabled", false, "Experimental HH60 appearance only. Disabled by default. Restart after changing this setting. No TSC service or interaction changes.");
+            var legacyEnabled = Config.Bind("Visual", "Enabled", false, "Previous appearance setting.");
+            Model = Config.Bind("Visual", "Helicopter model",
+                legacyEnabled.Value ? HelicopterModel.HH60 : HelicopterModel.UH60,
+                "Choose the original UH-60 or the Icebreaker HH-60 with static crew. Changes apply without restarting. The first HH-60 selection may take several seconds to load.");
+            Config.Remove(legacyEnabled.Definition);
+            HelicopterDebugOverlay.Bind(Config);
+            BindEscortBench();
+            BindExtractionCover();
+            Config.Save();
             ScenePath = Path.Combine(Path.GetDirectoryName(Info.Location), "payload", "scene.json");
-            if (!Enabled.Value) { Log.LogInfo("HH60 adapter disabled; original TSC unchanged."); return; }
             var heli = AccessTools.TypeByName("SamSWAT.FireSupport.ArysReloaded.Unity.UH60Behaviour");
             var awake = heli == null ? null : AccessTools.Method(heli, "OnAwake", Type.EmptyTypes);
             if (awake == null || !MatchesHash(heli.Assembly.Location, ExpectedTscSha256))
@@ -51,29 +83,61 @@ namespace TscHh60Visual
                 return;
             }
             if (!File.Exists(ScenePath)) { Log.LogWarning("HH60 payload missing; original model retained: " + ScenePath); return; }
-            // Intentionally exactly one hook. In particular, no AssetLoader or AssetBundle
-            // methods are patched, and no custom bundle is ever loaded by this adapter.
+            // One appearance hook. No AssetLoader or AssetBundle patches. The optional
+            // bench installs separate, read-only impact observers only when summoned.
             _harmony = new Harmony("local.tsc.hh60visual");
             _harmony.Patch(awake, postfix: new HarmonyMethod(typeof(Plugin), nameof(AfterHelicopterAwake)));
-            Log.LogInfo("HH60 v0.2.1 managed mesh/texture loader ready. Native TSC window material binding enabled. Only UH60Behaviour.OnAwake postfix installed; no custom bundle, ropes or service patches.");
+            HookExtractionCover(heli);
+            _compatible = true;
+            Model.SettingChanged += OnModelChanged;
+            Interlocked.Exchange(ref _selectionDirty, 1);
+            Log.LogInfo("Helicopter appearance selector ready: " + Model.Value + ". Change Visual / Helicopter model in F12 to switch models.");
+        }
+
+        private void OnModelChanged(object sender, EventArgs args)
+        {
+            // Config reloads can arrive off-thread; all Unity work stays in Update.
+            Interlocked.Exchange(ref _selectionDirty, 1);
+        }
+
+        private void Update()
+        {
+            if (!_compatible) return;
+            TickExtractionCover();
+            TickEscortBench();
+            if (Interlocked.Exchange(ref _selectionDirty, 0) == 0) return;
+            var selected = Model.Value;
+            foreach (var visual in Instances.ToArray())
+            {
+                if (visual == null) { Instances.Remove(visual); continue; }
+                visual.SetModel(selected);
+            }
+            Log.LogInfo("Helicopter model selected: " + selected);
         }
 
         private static void AfterHelicopterAwake(Component __instance)
         {
-            if (__instance == null || !Enabled.Value || __instance.GetComponent<VisualInstance>() != null) return;
+            if (__instance == null) return;
             VisualInstance visual = null;
             try
             {
                 var anchor = FindDescendant(__instance.transform, "b_vhc_main");
                 if (anchor == null) throw new InvalidDataException("Original TSC b_vhc_main anchor missing.");
-                visual = __instance.gameObject.AddComponent<VisualInstance>();
-                visual.Begin(__instance.transform, anchor, ScenePath);
+                visual = __instance.GetComponent<VisualInstance>();
+                if (visual == null)
+                {
+                    visual = __instance.gameObject.AddComponent<VisualInstance>();
+                    visual.Initialize(__instance.transform, anchor, ScenePath);
+                }
+                visual.SetModel(Model.Value);
             }
             catch (Exception error)
             {
                 if (visual != null) { visual.AbortAndRestore(); Destroy(visual); }
                 Log.LogError("HH60 setup failed; original TSC visual retained: " + error);
             }
+            try { HelicopterDebugOverlay.Attach(__instance.gameObject); }
+            catch (Exception error) { Log.LogWarning("Helicopter debug overlay unavailable: " + error); }
         }
 
         internal static Transform FindDescendant(Transform root, string name)
@@ -108,12 +172,20 @@ namespace TscHh60Visual
 
         private void OnDestroy()
         {
+            _compatible = false;
+            ShutdownExtractionCover();
+            ShutdownEscortBench();
+            if (Model != null) Model.SettingChanged -= OnModelChanged;
             _harmony?.UnpatchSelf();
-            foreach (var visual in Resources.FindObjectsOfTypeAll<VisualInstance>())
+            foreach (var visual in Instances.ToArray())
                 if (visual != null) { visual.AbortAndRestore(); Destroy(visual); }
+            Instances.Clear();
+            HelicopterDebugOverlay.Shutdown();
             SharedResources.Shutdown();
             _host = null;
         }
+
+        private void OnGUI() { DrawEscortBench(); }
     }
 
     // One owner per original TSC aircraft. Objects are constructed under an inactive
@@ -123,13 +195,34 @@ namespace TscHh60Visual
         private readonly List<OriginalRenderer> _original = new List<OriginalRenderer>();
         private readonly List<RotorBinding> _rotors = new List<RotorBinding>();
         private GameObject _visual;
-        private bool _committed, _finished, _cleaning;
+        private Transform _aircraft, _anchor;
+        private string _scenePath;
+        private bool _committed, _ready, _failed, _building, _showRequested, _cleaning;
         private Coroutine _build;
+        private bool _pinnedToHh60;
 
-        internal void Begin(Transform aircraft, Transform anchor, string scenePath)
+        internal bool IsReady => _ready;
+        internal bool HasFailed => _failed;
+        internal void PinToHh60() { _pinnedToHh60 = true; SetModel(HelicopterModel.HH60); }
+
+        internal void Initialize(Transform aircraft, Transform anchor, string scenePath)
         {
-            if (_build != null || _finished) return;
-            _build = Plugin.StartHostCoroutine(RunBuild(Build(aircraft, anchor, scenePath)));
+            _aircraft = aircraft;
+            _anchor = anchor;
+            _scenePath = scenePath;
+            Plugin.Register(this);
+        }
+
+        internal void SetModel(HelicopterModel model)
+        {
+            _showRequested = _pinnedToHh60 || model == HelicopterModel.HH60;
+            if (!_showRequested) { Hide(); return; }
+            if (_ready) { Show(); return; }
+            if (_building || _failed) return;
+            _building = true;
+            var routine = Plugin.StartHostCoroutine(RunBuild(Build(_aircraft, _anchor, _scenePath)));
+            // StartCoroutine may finish or fail before returning its handle.
+            if (_building) _build = routine;
         }
 
         private IEnumerator RunBuild(IEnumerator build)
@@ -144,11 +237,11 @@ namespace TscHh60Visual
                 if (failure != null)
                 {
                     // Do not stop this currently-executing coroutine from inside itself.
-                    _build = null; AbortAndRestore();
+                    _building = false; _build = null; AbortAndRestore();
                     Plugin.Log.LogError("HH60 visual build rejected; original model restored: " + failure);
                     yield break;
                 }
-                if (!moved) { _build = null; yield break; }
+                if (!moved) { _building = false; _build = null; yield break; }
                 yield return current;
             }
         }
@@ -161,7 +254,6 @@ namespace TscHh60Visual
             {
                 if (SharedResources.Failure != null) throw new InvalidOperationException("Shared HH60 resource cache unavailable.", SharedResources.Failure);
                 if (aircraft == null || anchor == null) throw new InvalidOperationException("Original TSC aircraft was destroyed while waiting for shared assets.");
-                if (!Plugin.Enabled.Value) throw new InvalidOperationException("HH60 adapter disabled while waiting for shared assets.");
                 yield return null;
             }
             var cache = SharedResources.Current;
@@ -232,13 +324,10 @@ namespace TscHh60Visual
             AddRotor(aircraft, "b_vhc_rotor", "helicopter_top_rotor");
             AddRotor(aircraft, "b_vhc_rotor_tail", "helicopter_tail_rotor");
             if (_rotors.Count != 2) throw new InvalidDataException("Required main/tail rotor bridge targets missing.");
-            if (!Plugin.Enabled.Value) throw new InvalidOperationException("Adapter disabled during visual construction.");
-
-            // Atomic visual commit: execution cannot yield between hiding and showing.
-            // If any preceding operation failed, all original flags remain unchanged.
-            foreach (var entry in _original) if (entry.Renderer != null) entry.Renderer.forceRenderingOff = true;
-            _visual.SetActive(true);
-            _committed = true; _finished = true;
+            // Finish hidden if the player switched back while construction was running.
+            // The cached visual can then be shown again without rebuilding it.
+            _ready = true;
+            if (_showRequested) Show();
             Plugin.Log.LogInfo("HH60 native glass bound: " + glassSlots + " aircraft window slots -> "
                 + nativeGlass.Material.name + "; shader=" + nativeGlass.Material.shader.name
                 + "; renderQueue=" + nativeGlass.Material.renderQueue
@@ -278,8 +367,12 @@ namespace TscHh60Visual
         private void LateUpdate()
         {
             if (!_committed) return;
-            if (!Plugin.Enabled.Value) { AbortAndRestore(); return; }
             foreach (var entry in _original) if (entry.Renderer != null) entry.Renderer.forceRenderingOff = true;
+            SyncRotors();
+        }
+
+        private void SyncRotors()
+        {
             foreach (var binding in _rotors)
             {
                 if (binding.Source == null || binding.Target == null || binding.Source.parent == null || binding.Target.parent == null) continue;
@@ -289,19 +382,45 @@ namespace TscHh60Visual
             }
         }
 
+        private void Show()
+        {
+            if (_committed || !_ready || _visual == null) return;
+            // Capture each renderer's current flag on every transition, so other
+            // visual settings changed while the original was visible are preserved.
+            foreach (var entry in _original)
+                if (entry.Renderer != null)
+                {
+                    entry.ForceOff = entry.Renderer.forceRenderingOff;
+                    entry.Renderer.forceRenderingOff = true;
+                }
+            SyncRotors();
+            _visual.SetActive(true);
+            _committed = true;
+        }
+
+        private void Hide()
+        {
+            if (_visual != null) _visual.SetActive(false);
+            if (!_committed) return;
+            foreach (var entry in _original)
+                if (entry.Renderer != null) entry.Renderer.forceRenderingOff = entry.ForceOff;
+            _committed = false;
+        }
+
         internal void AbortAndRestore()
         {
             if (_cleaning) return;
             _cleaning = true;
             if (_build != null) { Plugin.StopHostCoroutine(_build); _build = null; }
+            _building = false;
+            Hide();
             if (_visual != null) { _visual.SetActive(false); Destroy(_visual); _visual = null; }
-            foreach (var entry in _original) if (entry.Renderer != null) entry.Renderer.forceRenderingOff = entry.ForceOff;
             _original.Clear(); _rotors.Clear();
-            _committed = false; _finished = true;
+            _ready = false; _failed = true;
             _cleaning = false;
         }
 
-        private void OnDestroy() { AbortAndRestore(); }
+        private void OnDestroy() { AbortAndRestore(); Plugin.Unregister(this); }
         private sealed class OriginalRenderer { public Renderer Renderer; public bool ForceOff; }
         private sealed class OriginalGlass { public Renderer Renderer; public Material Material; public int Slot; }
         private sealed class RotorBinding { public Transform Source, Target; public Quaternion SourceRestInverse, TargetRest; }

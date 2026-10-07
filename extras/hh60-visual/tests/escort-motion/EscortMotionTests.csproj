@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <Compile Include="../../src/EscortFlightMath.cs" Link="Production/EscortFlightMath.cs" />
+    <Compile Include="../../src/EscortActorMotion.cs" Link="Production/EscortActorMotion.cs" />
+    <Compile Include="../../src/EscortRotorSafety.cs" Link="Production/EscortRotorSafety.cs" />
+  </ItemGroup>
+</Project>

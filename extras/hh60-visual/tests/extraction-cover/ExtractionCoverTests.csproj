@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <Compile Include="../../src/Plugin.ExtractionCover.cs" Link="Production/Plugin.ExtractionCover.cs" />
+    <Compile Include="../../src/EscortHeldTrigger.cs" Link="Production/EscortHeldTrigger.cs" />
+    <Compile Include="../../src/EscortManualTriggerInput.cs" Link="Production/EscortManualTriggerInput.cs" />
+    <Compile Include="../../src/EscortBenchSafetyPolicy.cs" Link="Production/EscortBenchSafetyPolicy.cs" />
+  </ItemGroup>
+</Project>

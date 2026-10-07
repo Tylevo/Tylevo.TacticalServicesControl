@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <Compile Include="../../src/Plugin.cs" Link="Production/Plugin.cs" />
+    <Compile Include="../../src/GlassMaterialPolicy.cs" Link="Production/GlassMaterialPolicy.cs" />
+  </ItemGroup>
+  <Import Project="../../src/Hh60CoreIdentity.targets" />
+</Project>

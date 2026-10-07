@@ -1,10 +1,10 @@
 # Building
 
-The current source targets **TSC v1.3.12 for SPT 4.1.5**, with
-**UnityToolkit 2.0.2 installed separately**. The patch adds cargo grid settings
-and improves phone movement and sprint zoom. See the
-[release notes](docs/release-notes-v1.3.12.md) and
-[validation scope](docs/validation/v1.3.12.md). Current Fika multiplayer remains untested.
+The current source targets **TSC v1.3.13 for SPT 4.1.5**, with
+**UnityToolkit 2.0.2 installed separately**. The integrated candidate adds stash payments, phone deployment, portable builds,
+and optional helicopter development. See the
+[release notes](docs/release-notes-v1.3.13.md) and
+[consolidation validation](docs/validation/consolidation-20261007.md). Current Fika multiplayer remains untested.
 
 This repository does not include proprietary EFT or SPT assemblies. Provide local references from your own SPT install.
 
@@ -43,7 +43,19 @@ separately on Arys's existing project page.
 
 ## Reference Paths
 
-Create a local `Shared.User.props` or pass MSBuild properties:
+Copy `Shared.User.props.example` to the ignored `Shared.User.props` and set
+absolute paths to your external reference folders, or pass both MSBuild
+properties explicitly. The local file is imported before dependent paths are
+evaluated. The repository makes no assumptions about its parent folders.
+Command-line properties take precedence. `NuGet.Config` selects nuget.org and
+does not inherit unrelated machine package feeds.
+
+Ordinary builds default to `SkipTscDeploy=true`, so they only produce build
+outputs. Deployment requires an explicit `-p:SkipTscDeploy=false` and an
+intentional installation destination in `SptDir`; never opt in when `SptDir`
+points to a reference-only copy.
+
+Configure these inputs:
 
 - `SptDir`: path to a local SPT 4.1.5 root used for reference lookup and
   optional post-build output. The server runtime is below `SPT_Runtime/`.
@@ -57,7 +69,27 @@ Create a local `Shared.User.props` or pass MSBuild properties:
   the candidate build evidence. The 4.1.4 and earlier reference records remain
   historical; do not assume reference equivalence from the EFT build number.
 
-Use forward slashes or quote paths carefully when paths contain spaces.
+Both folders must be outside the repository. The build normalizes trailing
+directory separators. For example, the SPT reference root contains
+`BepInEx/plugins/` and `SPT_Runtime/`, while the shared assembly root contains
+`410x/hollowed.dll` and the other compile references. Do not commit the local
+props file or copy dependency DLLs into the repository.
+
+With the local configuration in place, build without deployment:
+
+```powershell
+dotnet build .\SamSWAT.FireSupport.ArysReloaded.sln -c "SPT-4.1 Release"
+```
+
+The optional HH-60 companion validates the exact Core DLL produced by the
+reviewed build. Core carries Git revision metadata, so committing source changes
+can change its binary SHA-256 even when an API remains the same. A permanent
+hard-coded Core hash in source becomes stale when that revision changes. After
+building Core, run the HH-60 native contract audit against those exact local
+references and provide its explicitly approved Core hash to the companion build,
+as described in [the HH-60 guide](extras/hh60-visual/README.md). Keep the resulting
+binary identities and audit receipt together outside the repository. This local
+contract check does not establish in-raid or multiplayer acceptance.
 
 ## Verification Layers
 
@@ -73,10 +105,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\verify-ci.ps1
 ```
 
 It runs the zero-dependency regression runner, checks changed-line whitespace,
-validates the solution and deploy guards, parses shipped JSON, checks dashboard
+validates the solution, evaluates default deployment safety and local-path import timing, parses shipped JSON, checks dashboard
 JavaScript syntax and dashboard interaction tests, verifies release/version metadata, checks tracked-file
 hygiene, and validates the declarative package inputs. GitHub Actions runs this
-same command. CI must never download, cache, upload, or redistribute
+same command, including `tools/Test-Hh60Synthetic.ps1`. Its explicit inventory
+runs every synthetic HH-60 project and fails when a new project has not been
+classified. The extraction-gun-visuals suite requires a locally exported native
+`scene.json` and remains a separate local check. CI also runs Python exporter
+and collider safety tests without game assets.
+
+The source hygiene guard rejects private helicopter-rope experiments, generated
+HH-60 payloads, local reference directories and `Shared.User.props`, even if
+someone force-adds them despite the ignore rules. Keep those in an external
+private workspace. CI must never download, cache, upload, or redistribute
 proprietary reference assemblies.
 
 When called by CI, `-BaseSha` and `-HeadSha` make the whitespace check cover the
@@ -103,9 +144,9 @@ the supplied SPT installation. Use `-Configuration` only when intentionally
 checking another configured target.
 
 Build, regression, native API, package, and installation results must identify
-TSC v1.3.12, its source revision, and the standalone Toolkit 2.0.2 references.
-See the [release notes](docs/release-notes-v1.3.12.md) and
-[validation record](docs/validation/v1.3.12.md). The validation record distinguishes maintainer phone acceptance from the
+TSC v1.3.13, its source revision, and the standalone Toolkit 2.0.2 references.
+See the [release notes](docs/release-notes-v1.3.13.md) and
+[validation record](docs/validation/v1.3.13.md). The validation record distinguishes maintainer phone acceptance from the
 remaining gameplay and multiplayer cases.
 
 ### SPT 4.1 client and server contracts
@@ -204,7 +245,7 @@ fixtures that reject missing quests, mixed packages, runtime configs, DLLs,
 duplicate paths, and traversal entries. The main package contract also rejects
 quest/addon assets even if they are accidentally added to its allowlist.
 
-The v1.3.12 package contract retains the verified public v1.0.8 asset layout:
+The v1.3.13 package contract retains the verified public v1.0.8 asset layout:
 
 - Extract the ZIP directly into the SPT installation root.
 - The archive contains exactly `BepInEx/` and `SPT_Runtime/` at top level.
@@ -248,7 +289,7 @@ repository:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\verify-local.ps1 `
   -SptDir "C:\Path\To\SPT" `
   -SptSharedAssembliesDir "C:\Path\To\SPT Assemblies" `
-  -EvidencePath "C:\External\TSC\v1.3.12-build-evidence.json"
+  -EvidencePath "C:\External\TSC\v1.3.13-build-evidence.json"
 ```
 
 `-EvidencePath` must not already exist and must be outside the repository. Once
@@ -258,12 +299,12 @@ directory:
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\New-ReleasePackage.ps1 `
   -BaselineAssetArchive "C:\Path\To\Tylevo.TacticalServicesControl-v1.0.8-SPT4.0.13.zip" `
-  -OutputDirectory "C:\External\TSC\v1.3.12-candidate" `
-  -BuildEvidencePath "C:\External\TSC\v1.3.12-build-evidence.json"
+  -OutputDirectory "C:\External\TSC\v1.3.13-candidate" `
+  -BuildEvidencePath "C:\External\TSC\v1.3.13-build-evidence.json"
 ```
 
 Add `-IncludePilotQuestline` to this same command to also produce the separate
-`Tylevo.TacticalServicesControl-PilotQuestline-v1.3.12-SPT4.1.5-TESTER.zip`.
+`Tylevo.TacticalServicesControl-PilotQuestline-v1.3.13-SPT4.1.5-TESTER.zip`.
 The main archive remains unchanged. The addon is staged in
 `stage-pilot-questline/`, independently checked as a directory and ZIP, then
 extracted into `verify-extracted-pilot-questline/` for exact content/hash
@@ -312,8 +353,8 @@ separate checks recorded in `docs/port/SPT-4.1.4-PORT-LOG.md`.
 
 The four TSC DLLs come only from the fixed project build-output paths recorded in
 the manifest. All four must have the reviewed assembly name,
-`AssemblyVersion`/`FileVersion` `1.3.12.0`, and
-`AssemblyInformationalVersion` `1.3.12+<current-clean-HEAD>`. This rejects old,
+`AssemblyVersion`/`FileVersion` `1.3.13.0`, and
+`AssemblyInformationalVersion` `1.3.13+<current-clean-HEAD>`. This rejects old,
 mixed, or locally modified build outputs. The packager requires the external
 build evidence and matches its HEAD/tree, SDK, configuration, output paths,
 sizes, SHA-256 values, and assembly metadata against those four DLLs. Run the
@@ -333,7 +374,7 @@ working-tree bytes, and the clean HEAD/tree identity is checked again before
 success.
 
 For this port the generated archive name is exactly
-`Tylevo.TacticalServicesControl-v1.3.12-SPT4.1.5-TESTER.zip`. The `TESTER`
+`Tylevo.TacticalServicesControl-v1.3.13-SPT4.1.5-TESTER.zip`. The `TESTER`
 suffix must remain until the 4.1.5 runtime acceptance gates are complete.
 
 The command also writes a new external `*.content-evidence.json` sidecar with

@@ -48,7 +48,8 @@ namespace TscHh60Visual
                 Exception failure = null;
                 try
                 {
-                    if (!Plugin.Enabled.Value) throw new InvalidOperationException("HH60 adapter disabled during shared asset build.");
+                    // A model switch must not cancel or poison the shared cache.
+                    // Each aircraft keeps the completed replacement hidden as needed.
                     moved = builder.MoveNext();
                     if (moved) current = builder.Current;
                 }

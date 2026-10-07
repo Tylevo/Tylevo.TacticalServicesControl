@@ -387,3 +387,14 @@ WIP/
 .idea/
 *.bundle
 !tools/assets/spt-4.1.2/uav_uplink_container.bundle
+
+# Machine-local references, private experiments and generated native payloads.
+/Shared.User.props
+/.local/
+/dependencies/
+/extras/helicopter-ropes/
+/extras/hh60-visual/payload/
+/extras/hh60-visual/generated/
+/extras/hh60-visual/local-assets/
+/extras/hh60-visual/exports/
+/extras/hh60-visual/data/
