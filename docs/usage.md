@@ -6,13 +6,29 @@ the raid or through the Uplink during one, then deploy it when needed.
 
 ## Get the Uplink
 
-Buy the **TerraGroup TSC Uplink** from **UH-60 Pilot** in Trading for
-**₽50,000** at loyalty level 1, up to five per restock. Pilot has no quest
-requirement for now. The server unlocks existing locked Pilot entries at
-startup, and Pilot also delivers your UH-60 cargo mail.
+The main TSC download makes Pilot available immediately. Buy the **TerraGroup
+TSC Uplink** for **₽50,000** in his Trading tab at loyalty level 1, with five
+per restock. Configured services use their normal prices and limits. TSC does
+not add phones to random loot.
+
+If your server has the optional **Pilot Questline add-on**, earn access first.
+At level 5, complete **Open Channel** for Mechanic by handing over 2 Wires
+and 2 Capacitors. He introduces Pilot, whose **Some Assembly Required** quest
+takes 1 Broken GPhone, 1 Electronic components, and 1 Screwdriver. These
+handovers do not require found-in-raid items.
+
+Then complete **Back on the Air**: install Pilot's supplied Radio repeater at
+Shoreline's weather-station radio antenna, survive Shoreline, and report back.
+Pilot awards the **TerraGroup TSC Uplink** and unlocks configured services.
+Replacement phones cost **₽50,000** in his Trading tab at loyalty level 1,
+up to five per restock. Replacement repeaters cost **₽20,000** after accepting
+the final quest. See the [questline guide](pilot-questline.md) for rewards and
+survival rules. Pilot also delivers your UH-60 cargo mail.
 
 Bring the Uplink into the raid to use its purchase, deployment, and radar
-controls. You can keep it in the dedicated fourth special slot.
+controls. You can keep it in any special slot or carry it in your inventory.
+Modded pocket layouts keep their existing slots and filters; TSC adds phone
+eligibility without moving phones already stored in a profile.
 
 ## Default controls
 
@@ -38,19 +54,23 @@ radar, and spotter-confirm bindings.
 
 ## Buy support before a raid
 
-Open **TSC UPLINK** on the main menu's bottom bar, immediately left of
-**Character**. The shortcut only appears on the main menu.
+Open **Traders > Pilot > Services**. The compact service list is on the left;
+the selected service's details are on the right.
 
 1. Wait for your stash balance and purchased authorizations to load.
-2. Select a service card to see its artwork, description, price, availability,
-   and how many authorizations you own.
+2. Select a service from the list. Check its description, price, availability,
+   and held/limit count in the detail panel.
 3. Open the purchase review, check the price and projected balance, then
    confirm. Cancelling the dialog does not send a purchase request.
 
 Purchases use the signed-in PMC's stash and persistent authorization ledger.
 They are available when you enter a raid with the same PMC. The pre-raid store
 requires persistent authorizations and a server-backed stash payment source.
-Its **Dashboard** button opens the active SPT server's TSC dashboard.
+The move to Pilot's Services tab keeps this payment and authorization flow.
+Phone purchasing and deployment controls remain unchanged.
+
+In-game testing of the trader-tab change is pending; see the
+[manual checklist](pilot-services-testing.md).
 
 ## Buy support in raid
 
@@ -62,8 +82,16 @@ category and `1` or `2` for the service.
 Check the details on the review screen, then hold Alt and click confirm or
 press `Enter`. The phone turns upright and plays the swipe animation
 automatically; you do not need to drag anything. The swipe commits payment
-using the configured currency and wallet source. Closing the phone after
+using the configured currency from your stash. Closing the phone after
 payment has gone through does not undo the purchase.
+
+To continue straight into deployment, enable **Deploy after phone purchase**
+under **TerraGroup Phone** in `F12`. This is off by default. A successful purchase
+finishes its swipe animation, stows the phone, then opens target designation
+for A-10/UH-60 services or activates the purchased UAV service. It uses the
+authorization you just bought and requires Phone Authorizations or Hybrid mode.
+Failed or cancelled purchases never start deployment. Existing availability
+and cooldown rules still apply; a blocked deployment leaves the credit for later.
 
 ## Deploy support
 
@@ -91,15 +119,13 @@ corners for the active recon session. Select the mode and corner under
 **UH-60 Cargo Transfer** lands at your marked loading zone and offers
 **SEND ITEMS VIA UH-60**. It sends items home without extracting your PMC.
 
-The service authorization pays for dispatch. EFT charges a separate
-item-handling fee when you submit cargo, always in RUB, regardless of the
-configured authorization currency. In `F12` under **Helicopter Cargo**,
-**Transfer fee source** defaults to **Carried**, using EFT's normal carried
-cash payment. Select **Stash** to pay from your authenticated PMC stash
-through the TSC server.
+Buying the service covers both dispatch and sending your items home. The
+transfer screen shows a zero handling fee, and you do not need to carry cash
+to submit cargo. Set the Cargo Transfer price and currency in SIC or the
+dashboard. The old F12 **Transfer fee source** setting is no longer used.
 
-The helicopter leaves as soon as EFT confirms that the paid items reached
-its saved delivery grid. If you cancel or payment fails, you can try again
+The helicopter leaves as soon as EFT confirms that the submitted items reached
+its saved delivery grid. If you cancel or submission fails, you can try again
 during the remaining landed time. Cargo arrives after the raid through
 **UH-60 Pilot** mail. Normal **BTR Driver** deliveries stay separate; TSC falls
 back to BTR delivery if an accepted cargo delivery cannot be routed through
@@ -116,27 +142,42 @@ for its modifier and sensitivity, and can be turned off. The cursor stays on
 the display as the handset moves.
 
 Purchase screens stay horizontal until the final upright swipe confirmation.
-The `K` deployment view and held `J` radar open upright and keep your raid FOV.
-Optional purchase-screen zoom starts after a 0.08-second delay and eases the
+The `K` deployment view and held `J` radar open upright. Deployment has its own
+**Automatic deploy phone zoom** toggle and **Deploy phone zoom FOV** setting;
+the default is enabled at 45 degrees. Lower values make the deployment phone
+larger, independently of purchase zoom. Held radar keeps your raid FOV.
+Purchase and deployment zoom start after a 0.08-second delay and ease the
 camera FOV and hand framing into place over 0.75 seconds by default.
 
 - **Phone zoom in seconds:** 0.25–1.5 seconds; default 0.75.
 - **Phone zoom out seconds:** 0.15–0.8 seconds; default 0.35.
 
 Closing the phone restores the original raid FOV, including after a quick
-reopen. These zoom settings do not change deployment or radar views.
+reopen. With the corresponding zoom enabled, sprinting with the purchase or deployment
+phone eases back to your raid FOV and hand framing; stopping restores the
+phone zoom. Both sprint transitions use **Phone zoom in seconds** and its
+existing easing curve. Closing the phone still uses **Phone zoom out seconds**.
+Radar views retain their original FOV.
+
+Upright deployment, radar, and Danger Close phones follow the first-person
+left hand during sprint, with reduced walking bob and turning sway.
 
 ## Payments and server settings
 
 The [TSC dashboard](dashboard.md) controls service prices, availability,
 cooldowns, timing, and authorization settings. Open it through SIC in the
-SPT launcher, or from the in-game store's **Dashboard** button.
+SPT launcher.
 
 TSC has `PhoneAuthorizations` and `Hybrid` payment modes, with RUB, USD, or EUR
-payments from carried cash or the stash where configured. The phone shows the
+payments from the stash. GP coins and Bitcoin
+can also be selected per service and come from the stash. The phone shows the
 active price and payment source. Pre-raid purchases use the authenticated PMC
 stash; the server determines the price and currency.
 
+Carried-money payment options have been removed. Older saved configs and
+imported presets automatically use the stash; existing prices and purchased
+authorizations remain intact.
+
 Changing currency does **not** convert the price numbers. Review every service
-price before saving a different currency. Cargo Transfer's separate handling
-fee remains RUB-only and uses its own **Carried/Stash** setting in `F12`.
+price before saving a different currency. Cargo Transfer's service price
+includes item handling; loading the helicopter costs nothing extra.

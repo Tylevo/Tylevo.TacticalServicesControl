@@ -368,7 +368,7 @@ public sealed class UavDeviceActivationController : MonoBehaviour
 
 			var context = new UavPhoneScreenContext(
 				FireSupportPayment.GetActiveCost(ESupportType.Uav),
-				FireSupportPayment.GetCarriedRoubleBalance(),
+				FireSupportPayment.GetEffectiveBalance(ESupportType.Uav),
 				UavReconSettings.GetDurationSeconds());
 
 			_phoneScreen = gameObject.AddComponent<UavPhoneScreenRenderer>();

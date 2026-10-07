@@ -22,6 +22,7 @@ public sealed class FireSupportServerConfigService(
 	SaveServer saveServer,
 	FireSupportAuthorizationLedger authorizationLedger,
 	FireSupportProfileMutationGate profileMutationGate,
+	TscPilotProgressionService pilotProgression,
 	ICloner cloner)
 {
 	private const string ConfigFileName = "tsc-config.json";
@@ -51,6 +52,7 @@ public sealed class FireSupportServerConfigService(
 	private DateTimeOffset _lastLoadedUtc;
 	private DateTimeOffset _lastSavedUtc;
 	private int? _lastDiskOnlySaveBaseRevision;
+	private FireSupportPresetStore? _presetStore;
 
 	public void Initialize(string pathToMod)
 	{
@@ -62,6 +64,7 @@ public sealed class FireSupportServerConfigService(
 		MigrateLegacyAdminTokenPath(configDirectory);
 		_webRootPath = IOPath.Combine(pathToMod, "web");
 		_storagePath = IOPath.Combine(pathToMod, "storage");
+		_presetStore = new FireSupportPresetStore(IOPath.Combine(configDirectory, "presets"), GetDashboardSchema(), CreateDefaultConfig());
 		authorizationLedger.Initialize(_storagePath);
 		EnsureAdminToken();
 
@@ -73,9 +76,9 @@ public sealed class FireSupportServerConfigService(
 			{
 				logger.Error(
 					$"TSC config validation failed: {validationError} " +
-					"Unsafe UH-60 service timing is repaired automatically; an invalid " +
+					"Unsafe UH-60 service timing and cargo grid sizes are repaired automatically; an invalid " +
 					"payment currency remains fail-closed until corrected in the dashboard.");
-				RepairInvalidServiceTimings(candidate);
+				RepairInvalidServiceSettings(candidate);
 			}
 
 			if (candidate.Revision <= 0)
@@ -134,6 +137,21 @@ public sealed class FireSupportServerConfigService(
 
 	public object GetSnapshot(MongoId sessionId, FireSupportPurchaseRequest? request = null)
 	{
+		return GetSnapshotAsync(sessionId, request).GetAwaiter().GetResult();
+	}
+
+	public Task<object> GetSnapshotAsync(
+		MongoId sessionId,
+		FireSupportPurchaseRequest? request = null,
+		bool includeStashCurrencyState = false,
+		bool includePurchaseHistory = false)
+	{
+		// A GET must not publish cash that an in-flight purchase may still roll back.
+		return profileMutationGate.RunAsync(() => Task.FromResult(CreateSnapshot(sessionId, request, includeStashCurrencyState, includePurchaseHistory)));
+	}
+
+	private object CreateSnapshot(MongoId sessionId, FireSupportPurchaseRequest? request, bool includeStashCurrencyState, bool includePurchaseHistory)
+	{
 		RaidOpsFireSupportServerConfig snapshot;
 		lock (_gate)
 		{
@@ -141,11 +159,16 @@ public sealed class FireSupportServerConfigService(
 		}
 
 		snapshot.PlayerStateIncluded = false;
+		snapshot.UplinkUnlocked = null;
+		snapshot.ProgressionPermit = string.Empty;
 		snapshot.StashCurrencyBalance = null;
+		snapshot.StashCurrencyBalances = null;
 		snapshot.StashRoubleBalance = null;
 		snapshot.Authorizations = new Dictionary<string, int>();
 		snapshot.PreparedPurchases = null;
 		snapshot.PreparedPurchaseDetails = null;
+		snapshot.StashCurrencyState = null;
+		snapshot.PurchaseHistory = null;
 		Dictionary<string, string>? preparedPurchases = null;
 		Dictionary<string, FireSupportPreparedPurchaseQuote>?
 			preparedPurchaseDetails = null;
@@ -157,13 +180,20 @@ public sealed class FireSupportServerConfigService(
 			    out _))
 		{
 			snapshot.PlayerStateIncluded = true;
+			snapshot.UplinkUnlocked = pilotProgression.HasUnlockedUplink(pmc);
+			snapshot.ProgressionPermit = pilotProgression.GetPermitForAuthenticatedProfile(pmc, saveSessionId);
+			snapshot.StashCurrencyState = includeStashCurrencyState ? FireSupportStashCurrencySnapshot.Create(pmc) : null;
+			if ((!includeStashCurrencyState || snapshot.StashCurrencyState != null) &&
+			    FireSupportStashCurrencySnapshot.TryGetPaymentItems(pmc, out List<Item> paymentItems))
+				snapshot.StashCurrencyBalances = Enum.GetValues<PaymentCurrency>().ToDictionary(
+					currency => currency.ToString(), currency => (int)Math.Min(int.MaxValue, paymentItems
+						.Where(item => string.Equals(item.Template.ToString(), PaymentCurrencyInfo.GetTemplateId(currency), StringComparison.OrdinalIgnoreCase))
+						.Sum(item => (long)GetStackCount(item))));
 			if (PaymentCurrencyInfo.TryParse(
 				    snapshot.PaymentCurrency,
 				    out PaymentCurrency paymentCurrency))
 			{
-				int stashBalance = CountStashCurrency(
-					pmc,
-					PaymentCurrencyInfo.GetTemplateId(paymentCurrency));
+				int? stashBalance = snapshot.StashCurrencyBalances?.GetValueOrDefault(paymentCurrency.ToString());
 				snapshot.StashCurrencyBalance = stashBalance;
 				// Keep the legacy alias only for RUB. Old clients then fail
 				// closed instead of displaying a rouble balance while a new
@@ -172,6 +202,8 @@ public sealed class FireSupportServerConfigService(
 					paymentCurrency == PaymentCurrency.RUB ? stashBalance : null;
 			}
 			string profileLedgerId = GetCanonicalProfileLedgerId(pmc, saveSessionId);
+			if (includePurchaseHistory)
+				snapshot.PurchaseHistory = authorizationLedger.GetPurchaseHistory(profileLedgerId);
 			preparedPurchaseDetails =
 				authorizationLedger.GetPreparedPersistentPurchaseDetails(profileLedgerId);
 			preparedPurchases = preparedPurchaseDetails.ToDictionary(
@@ -230,10 +262,8 @@ public sealed class FireSupportServerConfigService(
 		{
 			config = CloneConfig(_config);
 		}
-		bool configuredCurrencyValid =
-			PaymentCurrencyInfo.TryParse(
-				config.PaymentCurrency,
-				out PaymentCurrency configuredCurrency);
+		bool supportTypeValid = TryResolveSupportType(request.SupportType, out ESupportType supportType);
+		bool configuredCurrencyValid = ServicePaymentPolicy.TryResolveCurrency(config, supportType, out PaymentCurrency configuredCurrency);
 
 		var response = new FireSupportPurchaseResponse
 		{
@@ -244,16 +274,21 @@ public sealed class FireSupportServerConfigService(
 			PaymentSource = config.PaymentSource,
 			Currency = configuredCurrencyValid
 				? configuredCurrency.ToString()
-				: config.PaymentCurrency?.Trim() ?? string.Empty,
+				: ServicePaymentPolicy.GetCurrencyCode(config.PaymentCurrency, config.ServiceCurrencies, supportType),
 			RequestId = purchaseRequestId.Length <= FireSupportAuthorizationLedger.MaxPersistentPurchaseRequestIdLength
 				? purchaseRequestId
 				: string.Empty
 		};
+		if (!supportTypeValid)
+		{
+			response.Reason = "InvalidSupportType";
+			return response;
+		}
 		if (!configuredCurrencyValid)
 		{
 			// Never reinterpret an invalid current-schema currency as RUB. This
 			// keeps hand-edited or corrupted config files fail-closed until the
-			// administrator selects RUB, USD, or EUR explicitly.
+			// administrator selects a supported currency explicitly.
 			response.Reason = "InvalidPaymentCurrency";
 			return response;
 		}
@@ -285,9 +320,9 @@ public sealed class FireSupportServerConfigService(
 
 		response.RequestId = purchaseRequestId;
 
-		if (!TryResolveSupportType(request.SupportType, out ESupportType supportType))
+		if (!FireSupportStashCurrencySnapshot.TryGetPaymentItems(pmc, out _))
 		{
-			response.Reason = "InvalidSupportType";
+			response.Reason = "ProfileInventoryUnavailable";
 			return response;
 		}
 
@@ -300,8 +335,7 @@ public sealed class FireSupportServerConfigService(
 			return response;
 		}
 
-		PaymentSource paymentSource = ParseEnum(config.PaymentSource, PaymentSource.CarriedRoubles);
-		response.PaymentSource = paymentSource.ToString();
+		response.PaymentSource = nameof(PaymentSource.StashRoubles);
 		PaymentCurrency paymentCurrency = configuredCurrency;
 		string currencyTemplateId = PaymentCurrencyInfo.GetTemplateId(paymentCurrency);
 
@@ -438,6 +472,12 @@ public sealed class FireSupportServerConfigService(
 				}
 			}
 
+			if (!preparedRecovery && !pilotProgression.HasUnlockedUplink(pmc))
+			{
+				response.Reason = TscPilotProgressionService.LockedReason;
+				return response;
+			}
+
 			if (!preparedRecovery &&
 			    !IsExpectedCurrencyAccepted(request.ExpectedCurrency, configuredCurrency))
 			{
@@ -468,13 +508,12 @@ public sealed class FireSupportServerConfigService(
 				return response;
 			}
 
-			if (!preparedRecovery && !IsServerBackedPaymentSource(paymentSource))
-			{
-				response.Reason = "PaymentSourceNotServerBacked";
-				return response;
-			}
-
-			if (!preparedRecovery && IsPurchaseRateLimited(saveSessionId, supportType, purchaseTime))
+			// Persistent checkouts are serialized and journaled by request ID.
+			// A second confirmed checkout may fill another available slot immediately;
+			// replays cannot debit twice and ledger preparation enforces capacity.
+			// Keep the time throttle for legacy purchases without that request journal.
+			if (!requiresPersistentPurchase && !preparedRecovery &&
+			    IsPurchaseRateLimited(saveSessionId, supportType, purchaseTime))
 			{
 				response.Reason = "RateLimited";
 				response.NewBalance = CountStashCurrency(pmc, currencyTemplateId);
@@ -873,7 +912,7 @@ public sealed class FireSupportServerConfigService(
 			SupportType = request.SupportType,
 			ServerRevision = config.Revision,
 			PaymentSource = config.PaymentSource,
-			Currency = PaymentCurrencyInfo.Parse(config.PaymentCurrency).ToString(),
+			Currency = string.Empty,
 			RequestId = request.RequestId
 		};
 
@@ -895,6 +934,7 @@ public sealed class FireSupportServerConfigService(
 			response.Reason = profileDenialReason;
 			return response;
 		}
+		response.Currency = ServicePaymentPolicy.GetCurrencyCode(config.PaymentCurrency, config.ServiceCurrencies, supportType);
 
 		string profileLedgerId = GetCanonicalProfileLedgerId(pmc, saveSessionId);
 		bool ok;
@@ -902,6 +942,12 @@ public sealed class FireSupportServerConfigService(
 		string reason;
 		if (mutation == AuthorizationMutation.Consume)
 		{
+			if (!pilotProgression.HasUnlockedUplink(pmc))
+			{
+				response.Reason = TscPilotProgressionService.LockedReason;
+				return response;
+			}
+
 			ok = authorizationLedger.TryConsume(
 				profileLedgerId,
 				supportType,
@@ -1051,6 +1097,28 @@ public sealed class FireSupportServerConfigService(
 		};
 	}
 
+	public FireSupportPresetCollection GetPresets() => FireSupportPresetCatalog.Create(CreateDefaultConfig());
+
+	public FireSupportSavedPresetCollection GetSavedPresets() => _presetStore?.Read() ??
+		new() { Warning = "The preset library is not initialized." };
+
+	public bool TrySavePreset(JsonElement payload, out FireSupportPreset? preset, out string error, out bool storageFailure)
+	{
+		if (_presetStore != null) return _presetStore.TrySave(payload, out preset, out error, out storageFailure);
+		preset = null;
+		error = "The preset library is not initialized.";
+		storageFailure = true;
+		return false;
+	}
+
+	public bool TryRemovePreset(JsonElement payload, out string error, out bool storageFailure)
+	{
+		if (_presetStore != null) return _presetStore.TryRemove(payload, out error, out storageFailure);
+		error = "The preset library is not initialized.";
+		storageFailure = true;
+		return false;
+	}
+
 	public object GetDashboardSchema()
 	{
 		return new
@@ -1072,14 +1140,19 @@ public sealed class FireSupportServerConfigService(
 					Field("purchasePersistence.spendCreditsBeforeCash", "Spend Credits First", "toggle"),
 					Field("purchasePersistence.allowAutoPurchaseOnUse", "Allow Auto Purchase On Use", "toggle")),
 				Section("payment", "Payment",
-					Field("paymentCurrency", "Payment Currency", "select", options: new[] { "RUB", "USD", "EUR" }),
-					Field("paymentSource", "Payment Source", "select", options: new[] { "CarriedRoubles", "StashRoubles", "PreferCarriedThenStash", "PreferStashThenCarried" })),
+					Field("paymentCurrency", "Payment Currency", "select", options: new[] { "RUB", "USD", "EUR", "GP", "BTC" })),
 				Section("pricing", "Service Pricing",
+					Field("serviceCurrencies.A10", "A-10 Currency", "select", options: new[] { "Inherit", "RUB", "USD", "EUR", "GP", "BTC" }),
 					Field("prices.A10", "A-10 Price", "number", min: 0, max: 10000000, step: 1, slider: true),
+					Field("serviceCurrencies.DoublePass", "Double Pass Currency", "select", options: new[] { "Inherit", "RUB", "USD", "EUR", "GP", "BTC" }),
 					Field("prices.DoublePass", "Double Pass Price", "number", min: 0, max: 10000000, step: 1, slider: true),
+					Field("serviceCurrencies.Uav", "UAV Currency", "select", options: new[] { "Inherit", "RUB", "USD", "EUR", "GP", "BTC" }),
 					Field("prices.Uav", "UAV Price", "number", min: 0, max: 10000000, step: 1, slider: true),
+					Field("serviceCurrencies.FocusedSweep", "Focused Sweep Currency", "select", options: new[] { "Inherit", "RUB", "USD", "EUR", "GP", "BTC" }),
 					Field("prices.FocusedSweep", "Focused Sweep Price", "number", min: 0, max: 10000000, step: 1, slider: true),
+					Field("serviceCurrencies.Extraction", "Extraction Currency", "select", options: new[] { "Inherit", "RUB", "USD", "EUR", "GP", "BTC" }),
 					Field("prices.Extraction", "Extraction Price", "number", min: 0, max: 10000000, step: 1, slider: true),
+					Field("serviceCurrencies.PriorityExfil", "Cargo Transfer Currency", "select", options: new[] { "Inherit", "RUB", "USD", "EUR", "GP", "BTC" }),
 					Field("prices.PriorityExfil", "Cargo Transfer Price", "number", min: 0, max: 10000000, step: 1, slider: true)),
 				Section("services", "Service Toggles",
 					Field("enabled.A10", "A-10 Enabled", "toggle"),
@@ -1096,6 +1169,8 @@ public sealed class FireSupportServerConfigService(
 					Field("focusedSweep.rangeMeters", "Focused Sweep Range", "number", min: 25, max: 1000, step: 25, slider: true),
 					Field("focusedSweep.scanIntervalSeconds", "Focused Sweep Scan Interval", "number", min: 0.1, max: 10, step: 0.05)),
 				Section("extraction", "UH-60 Services",
+					Field("priorityExfil.gridWidth", "Cargo Grid Columns", "number", min: 0, max: CargoGridPolicy.MaxWidth, step: 1),
+					Field("priorityExfil.gridHeight", "Cargo Grid Rows", "number", min: 0, max: CargoGridPolicy.MaxHeight, step: 1),
 					Field("extraction.dispatchDelaySeconds", "Extraction Dispatch Delay", "number", min: 0, max: ExtractionTimingPolicy.MaxDispatchDelaySeconds, step: 1),
 					Field("extraction.waitTimeSeconds", "Extraction Wait Time", "number", min: ExtractionTimingPolicy.MinWaitTimeSeconds, max: ExtractionTimingPolicy.MaxWaitTimeSeconds, step: 5, slider: true),
 					Field("extraction.extractTimeSeconds", "Extraction Time", "number", min: ExtractionTimingPolicy.MinExtractTimeSeconds, max: ExtractionTimingPolicy.MaxExtractTimeSeconds, step: 1),
@@ -1725,7 +1800,7 @@ public sealed class FireSupportServerConfigService(
 
 	private static int CountStashCurrency(PmcData pmc, string currencyTemplateId)
 	{
-		return GetStashCurrencyStacks(pmc, currencyTemplateId).Sum(GetStackCount);
+		return (int)Math.Min(int.MaxValue, GetStashCurrencyStacks(pmc, currencyTemplateId).Sum(item => (long)GetStackCount(item)));
 	}
 
 	private static string ComputeCurrencyInventoryFingerprint(
@@ -1761,7 +1836,6 @@ public sealed class FireSupportServerConfigService(
 			GetStackCount,
 			StringComparer.OrdinalIgnoreCase);
 		var removedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-		List<Item> inventoryItems = pmc.Inventory?.Items ?? new List<Item>();
 		int remaining = amount;
 
 		foreach (Item stack in stacks)
@@ -1778,7 +1852,7 @@ public sealed class FireSupportServerConfigService(
 
 			if (take >= stackCount)
 			{
-				CollectDescendantIds(stackId, inventoryItems, removedIds);
+				removedIds.Add(stackId);
 				continue;
 			}
 
@@ -1833,7 +1907,7 @@ public sealed class FireSupportServerConfigService(
 
 			if (take >= stackCount)
 			{
-				RemoveItemAndChildren(pmc, stack);
+				pmc.Inventory!.Items!.Remove(stack);
 				continue;
 			}
 
@@ -1844,96 +1918,18 @@ public sealed class FireSupportServerConfigService(
 		return amount - remaining;
 	}
 
-	private static IEnumerable<Item> GetStashCurrencyStacks(
-		PmcData pmc,
-		string currencyTemplateId)
+	private static IEnumerable<Item> GetStashCurrencyStacks(PmcData pmc, string currencyTemplateId)
 	{
-		BotBaseInventory? inventory = pmc.Inventory;
-		List<Item>? items = inventory?.Items;
-		if (items == null || inventory == null || !inventory.Stash.HasValue)
-		{
-			yield break;
-		}
-
-		var itemsById = items
-			.Where(item => item != null)
-			.ToDictionary(item => item.Id.ToString(), item => item);
-		string stashId = inventory.Stash.Value.ToString();
-
-		foreach (Item item in items)
-		{
-			if (item == null ||
-			    !string.Equals(
-				    item.Template.ToString(),
-				    currencyTemplateId,
-				    StringComparison.OrdinalIgnoreCase) ||
-			    !IsDescendantOfStash(item, stashId, itemsById))
-			{
-				continue;
-			}
-
-			yield return item;
-		}
+		if (!FireSupportStashCurrencySnapshot.TryGetPaymentItems(pmc, out List<Item> paymentItems))
+			throw new InvalidOperationException("The stash payment inventory is invalid.");
+		return paymentItems.Where(item => string.Equals(item.Template.ToString(), currencyTemplateId, StringComparison.OrdinalIgnoreCase));
 	}
 
-	private static bool IsDescendantOfStash(Item item, string stashId, Dictionary<string, Item> itemsById)
-	{
-		string? parentId = item.ParentId;
-		while (!string.IsNullOrWhiteSpace(parentId))
-		{
-			if (string.Equals(parentId, stashId, StringComparison.OrdinalIgnoreCase))
-			{
-				return true;
-			}
-
-			if (!itemsById.TryGetValue(parentId, out Item? parent))
-			{
-				return false;
-			}
-
-			parentId = parent.ParentId;
-		}
-
-		return false;
-	}
-
-	private static int GetStackCount(Item item)
-	{
-		double count = item.Upd?.StackObjectsCount ?? 1d;
-		return Math.Max(0, (int)Math.Floor(count));
-	}
-
-	private static void RemoveItemAndChildren(PmcData pmc, Item item)
-	{
-		List<Item>? items = pmc.Inventory?.Items;
-		if (items == null)
-		{
-			return;
-		}
-
-		var idsToRemove = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-		CollectDescendantIds(item.Id.ToString(), items, idsToRemove);
-		items.RemoveAll(candidate => candidate != null && idsToRemove.Contains(candidate.Id.ToString()));
-	}
-
-	private static void CollectDescendantIds(string itemId, List<Item> items, HashSet<string> idsToRemove)
-	{
-		if (!idsToRemove.Add(itemId))
-		{
-			return;
-		}
-
-		foreach (Item child in items.Where(candidate =>
-			         candidate != null &&
-			         string.Equals(candidate.ParentId, itemId, StringComparison.OrdinalIgnoreCase)))
-		{
-			CollectDescendantIds(child.Id.ToString(), items, idsToRemove);
-		}
-	}
+	private static int GetStackCount(Item item) => (int)(item.Upd?.StackObjectsCount ?? 1d);
 
 	private static bool TryResolveSupportType(string value, out ESupportType supportType)
 	{
-		if (Enum.TryParse(value, ignoreCase: true, out supportType) && supportType != ESupportType.None)
+		if (Enum.TryParse(value, ignoreCase: true, out supportType) && ServicePaymentPolicy.GetServiceKey(supportType).Length != 0)
 		{
 			return true;
 		}
@@ -1971,23 +1967,7 @@ public sealed class FireSupportServerConfigService(
 
 	private static string GetConfigKey(ESupportType supportType)
 	{
-		return supportType switch
-		{
-			ESupportType.Strafe => "A10",
-			ESupportType.DoubleStrafe => "DoublePass",
-			ESupportType.Extract => "Extraction",
-			ESupportType.PriorityExfil => "PriorityExfil",
-			ESupportType.Uav => "Uav",
-			ESupportType.FocusedSweep => "FocusedSweep",
-			_ => supportType.ToString()
-		};
-	}
-
-	private static bool IsServerBackedPaymentSource(PaymentSource paymentSource)
-	{
-		return paymentSource == PaymentSource.StashRoubles ||
-		       paymentSource == PaymentSource.PreferCarriedThenStash ||
-		       paymentSource == PaymentSource.PreferStashThenCarried;
+		return ServicePaymentPolicy.GetServiceKey(supportType);
 	}
 
 	private static void NormalizeConfig(RaidOpsFireSupportServerConfig config)
@@ -2000,9 +1980,7 @@ public sealed class FireSupportServerConfigService(
 		config.PaymentMode = Enum.TryParse(config.PaymentMode, ignoreCase: true, out PaymentMode paymentMode)
 			? paymentMode.ToString()
 			: defaults.PaymentMode;
-		config.PaymentSource = Enum.TryParse(config.PaymentSource, ignoreCase: true, out PaymentSource paymentSource)
-			? paymentSource.ToString()
-			: defaults.PaymentSource;
+		config.PaymentSource = nameof(PaymentSource.StashRoubles);
 		if (PaymentCurrencyInfo.TryParse(
 			    config.PaymentCurrency,
 			    out PaymentCurrency paymentCurrency))
@@ -2023,6 +2001,12 @@ public sealed class FireSupportServerConfigService(
 			? defaults.RequestCooldownSeconds
 			: config.RequestCooldownSeconds;
 		config.Prices = MergeDictionary(config.Prices, defaults.Prices);
+		foreach (string service in config.ServiceCurrencies.Keys.ToArray())
+		{
+			string selected = config.ServiceCurrencies[service]?.Trim() ?? string.Empty;
+			config.ServiceCurrencies[service] = string.Equals(selected, "Inherit", StringComparison.OrdinalIgnoreCase)
+				? "Inherit" : PaymentCurrencyInfo.TryParse(selected, out PaymentCurrency currency) ? currency.ToString() : selected;
+		}
 		config.Enabled = MergeDictionary(config.Enabled, defaults.Enabled);
 		config.AdminDashboard = NormalizeAdminDashboardSettings(config.AdminDashboard, defaults.AdminDashboard);
 		config.PurchasePersistence = NormalizePurchasePersistenceSettings(config.PurchasePersistence, defaults.PurchasePersistence);
@@ -2116,8 +2100,20 @@ public sealed class FireSupportServerConfigService(
 			    out _))
 		{
 			error =
-				$"paymentCurrency ({config.PaymentCurrency ?? "<missing>"}) must be RUB, USD, or EUR.";
+				$"paymentCurrency ({config.PaymentCurrency ?? "<missing>"}) must be RUB, USD, EUR, GP, or BTC.";
 			return false;
+		}
+
+		string[] serviceKeys = { "A10", "DoublePass", "Uav", "FocusedSweep", "Extraction", "PriorityExfil" };
+		var seenServiceKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		foreach ((string service, string selected) in config.ServiceCurrencies)
+		{
+			if (!serviceKeys.Contains(service, StringComparer.OrdinalIgnoreCase) || !seenServiceKeys.Add(service) ||
+			    (!string.Equals(selected, "Inherit", StringComparison.Ordinal) && !PaymentCurrencyInfo.TryParse(selected, out _)))
+			{
+				error = $"serviceCurrencies.{service} must select Inherit, RUB, USD, EUR, GP, or BTC for one known service.";
+				return false;
+			}
 		}
 
 		if (!TryValidateExtractionTiming(config.Extraction, "extraction", out error))
@@ -2127,6 +2123,15 @@ public sealed class FireSupportServerConfigService(
 
 		if (!TryValidateCargoTiming(
 			    config.PriorityExfil,
+			    "priorityExfil",
+			    out error))
+		{
+			return false;
+		}
+
+		if (!CargoGridPolicy.TryValidate(
+			    config.PriorityExfil.GridWidth,
+			    config.PriorityExfil.GridHeight,
 			    "priorityExfil",
 			    out error))
 		{
@@ -2172,12 +2177,20 @@ public sealed class FireSupportServerConfigService(
 			out error);
 	}
 
-	private static void RepairInvalidServiceTimings(
+	private static void RepairInvalidServiceSettings(
 		RaidOpsFireSupportServerConfig config)
 	{
 		RaidOpsFireSupportServerConfig defaults = CreateDefaultConfig();
 		RepairExtractionTiming(config.Extraction, defaults.Extraction);
 		RepairCargoTiming(config.PriorityExfil, defaults.PriorityExfil);
+		if (!CargoGridPolicy.IsValidWidth(config.PriorityExfil.GridWidth))
+		{
+			config.PriorityExfil.GridWidth = defaults.PriorityExfil.GridWidth;
+		}
+		if (!CargoGridPolicy.IsValidHeight(config.PriorityExfil.GridHeight))
+		{
+			config.PriorityExfil.GridHeight = defaults.PriorityExfil.GridHeight;
+		}
 		int requiredPendingTimeout = GetRequiredPendingUseTimeoutSeconds();
 		if (config.PurchasePersistence?.Enabled == true &&
 		    config.PurchasePersistence.PendingUseTimeoutSeconds <
@@ -2422,17 +2435,19 @@ public sealed class FireSupportServerConfigService(
 				FireSupportServerConfigMigration.CurrentConfigSchemaVersion,
 			Revision = 1,
 			PaymentMode = nameof(PaymentMode.PhoneAuthorizations),
-			PaymentSource = nameof(PaymentSource.CarriedRoubles),
+			PaymentSource = nameof(PaymentSource.StashRoubles),
 			PaymentCurrency = nameof(PaymentCurrency.RUB),
+			ServiceCurrencies = new[] { "A10", "DoublePass", "Uav", "FocusedSweep", "Extraction", "PriorityExfil" }
+				.ToDictionary(service => service, _ => "Inherit"),
 			RequestCooldownSeconds = 300,
 			Prices = new Dictionary<string, int>
 			{
-				["A10"] = 250000,
-				["DoublePass"] = 450000,
-				["Extraction"] = 300000,
-				["PriorityExfil"] = 450000,
-				["Uav"] = 125000,
-				["FocusedSweep"] = 90000
+				["A10"] = 150000,
+				["DoublePass"] = 250000,
+				["Extraction"] = 125000,
+				["PriorityExfil"] = 75000,
+				["Uav"] = 50000,
+				["FocusedSweep"] = 25000
 			},
 			Enabled = new Dictionary<string, bool>
 			{
@@ -2483,6 +2498,8 @@ public sealed class FireSupportServerConfigService(
 			},
 			PriorityExfil = new RaidOpsFireSupportServerConfig.CargoSettings
 			{
+				GridWidth = 0,
+				GridHeight = 0,
 				DispatchDelaySeconds = 3f,
 				WaitTimeSeconds = 20,
 				ExtractTimeSeconds = 10f,

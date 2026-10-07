@@ -18,16 +18,28 @@ slot), Double Pass, phone UI assets, and release maintenance.
 
 Tylevo's Tactical Services Control is released under Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0), matching the upstream Arys Reloaded source license. Arys clarified that the Forge/SPT Hub BY-NC 3.0 listing was due to historical site limitations before the Forge migration.
 
-## Bundled UnityToolkit 2.0.1
+## UnityToolkit — separate dependency
 
-The v1.3.9 release bundles UnityToolkit 2.0.1, with the plugin and prepatcher rebuilt against SPT 4.1 and the companion libraries needed by the upstream package. No separate Toolkit or compatibility-overlay download is required. On 2026-09-05, the maintainer confirmed Arys's explicit permission to bundle this rebuilt dependency with TSC.
+TSC v1.3.11 requires the standalone **UnityToolkit 2.0.2** update for SPT 4.1.5.
+Its binaries and companion libraries are not included in the TSC ZIP. Arys
+remains the author and has added Tylevo as a coauthor on the existing Toolkit
+page to maintain the update. Both new packages are prepared and unpublished.
+
+The earlier claim of explicit permission to bundle Toolkit in v1.3.9 and
+v1.3.10 was a maintainer/assistant misunderstanding. Those packages are held
+as archived drafts; see the [corrected permission record](PERMISSIONS.md).
+This does not change UnityToolkit's MIT license.
 
 - Author: Arys
 - Source: https://github.com/ArysWasTaken/UnityToolkit
-- Upstream release: https://github.com/ArysWasTaken/UnityToolkit/releases/tag/v2.0.1
+- Releases: https://github.com/ArysWasTaken/UnityToolkit/releases
+- Update in preparation: 2.0.2, based on the upstream 2.0.1 source.
 - License: MIT License, reproduced below from the upstream source.
 
-UnityToolkit's companion libraries retain their respective licenses and attribution. TSC's CC BY-NC license and Arys's Toolkit permission do not replace those terms. The full companion-library notices are included at `BepInEx/plugins/UnityToolkit/THIRD_PARTY_NOTICES.txt` and `BepInEx/patchers/UnityToolkit/THIRD_PARTY_NOTICES.txt` in the release ZIP.
+UnityToolkit's companion libraries retain their respective licenses and
+attribution. The standalone Toolkit package carries their complete notices.
+TSC's CC BY-NC license does not replace those terms. The MIT notice below is
+retained for attribution and historical provenance.
 
 MIT License
 
@@ -53,7 +65,11 @@ SOFTWARE.
 
 ## Runtime Dependencies Installed Separately
 
-WTT CommonLib remains required, including its client, server, and serialization prepatcher components. Project Fika is optional for multiplayer testing. WTT and Fika are not bundled in the TSC ZIP. Multiplayer on the current SPT/Fika versions and SPT 4.1.5 have not been tested.
+UnityToolkit 2.0.2 and WTT CommonLib 3.0.6 are required separately. WTT's
+client, server, and serialization prepatcher components are all needed.
+Project Fika is optional for multiplayer testing. None of these dependency
+binaries are bundled in the TSC ZIP. The new TSC 1.3.11/Toolkit 2.0.2 pair
+still needs its own validation; current Fika multiplayer remains untested.
 
 ## Manimal Hacker Mod
 

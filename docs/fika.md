@@ -8,6 +8,18 @@ Install the same TSC version on:
 - Headless host, if used.
 - Every client.
 
+Use matching TSC 1.3.13 server, Core, and Fika components with service protocol 2.
+The existing Pilot Questline 1.3.12 add-on for SPT 4.1.5 remains compatible. Install the add-on
+only on the SPT server; it determines progression for every connected player.
+Clients use the same TSC files in both modes. Base access has no quest gate.
+With the add-on installed, complete **Back on the Air** to purchase or request
+manual support. In both modes the host verifies the requesting player's
+server-issued permission; a host
+that has not completed the quest can still execute an unlocked player's
+request. Passengers do not need the introduction to board an authorized
+extraction. Permission tokens are profile-bound and are omitted from visual
+broadcasts. Refresh TSC state after a server restart if permission is stale.
+
 ## Behavior
 
 - Host config is authoritative while joined.
@@ -26,17 +38,14 @@ Install the same TSC version on:
   authority. Per-player authorization counts are hydrated separately and are
   never broadcast as host-global state.
 - The pre-raid store uses the authenticated SPT session and can only read or mutate the signed-in PMC's stash and ledger.
-- For supported UH-60 Cargo requesters, the local F12 **Transfer fee source**
-  selects either EFT's default carried-RUB purchase or an authenticated stash
-  RUB debit. The native handling quote is separate from the Cargo dispatch
-  authorization and its configurable currency.
-- Stash handling fees use an idempotent server prepare/commit/refund journal.
-  Replays cannot charge twice, cancellation charges nothing, and a missing
-  endpoint on an older server fails closed instead of falling back to carried
-  cash.
+- For supported UH-60 Cargo requesters, the service purchase includes sending
+  items. Submitting cargo costs nothing extra and requires no carried cash.
+  Stock BTR and Transit services keep their normal charges.
+- Old stash handling-fee transactions can still be reconciled after updating;
+  the server no longer accepts new handling-fee debits.
 - A verified Cargo submission ends the landed wait immediately. The human host
   publishes one request-bound reliable departure event so every observer's
-  local UH-60 visual leaves with the host; cancel and payment failure publish
+  local UH-60 visual leaves with the host; cancel and submission failure publish
   nothing and retain the remaining retry window.
 
 ## Live Validation Status

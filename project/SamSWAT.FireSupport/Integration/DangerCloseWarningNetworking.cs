@@ -178,7 +178,7 @@ public static class DangerCloseWarningNetworking
 	private static bool LocalPlayerHasWarningUplink()
 	{
 		GameWorld gameWorld = Singleton<GameWorld>.Instance;
-		return UavDeviceInventory.HasUplinkInDedicatedWarningSlot(
+		return UavDeviceInventory.HasUplinkInSpecialSlot(
 			gameWorld?.MainPlayer);
 	}
 

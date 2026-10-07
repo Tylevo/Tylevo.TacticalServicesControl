@@ -53,6 +53,8 @@
     "speedMultiplier": 1
   },
   "priorityExfil": {
+    "gridWidth": 0,
+    "gridHeight": 0,
     "dispatchDelaySeconds": 3,
     "waitTimeSeconds": 20,
     "extractTimeSeconds": 10,

@@ -6,7 +6,7 @@ using System.Text.Json;
 namespace SamSWAT.FireSupport.ArysReloaded;
 
 [Injectable(InjectionType.Singleton)]
-public sealed class FireSupportAuthorizationLedger(
+public sealed partial class FireSupportAuthorizationLedger(
 	ISptLogger<FireSupportAuthorizationLedger> logger)
 {
 	public const int MaxPersistentPurchaseRequestIdLength = 128;
@@ -1587,7 +1587,7 @@ public sealed class FireSupportAuthorizationLedger(
 	private static bool TryNormalizeCurrency(string? currency, out string canonicalCurrency)
 	{
 		canonicalCurrency = currency?.Trim().ToUpperInvariant() ?? string.Empty;
-		if (canonicalCurrency is "RUB" or "USD" or "EUR")
+		if (canonicalCurrency is "RUB" or "USD" or "EUR" or "GP" or "BTC")
 		{
 			return true;
 		}

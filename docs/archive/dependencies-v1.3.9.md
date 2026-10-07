@@ -1,8 +1,14 @@
 # Historical SPT 4.1.4 dependencies
 
+> **Historical instructions — permission correction.** The old explicit
+> bundling-permission claim was a maintainer/assistant misunderstanding and
+> is withdrawn. TSC v1.3.11 requires standalone Toolkit 2.0.2; both new packages
+> are unpublished. See [current installation guidance](../dependencies.md)
+> and the [corrected permission record](../../PERMISSIONS.md).
+
 This guide preserves the v1.3.8 and v1.3.9 installation differences for older
-packages. Use the [current installation guide](../dependencies.md) for
-**TSC v1.3.10 / SPT 4.1.5**, which includes UnityToolkit.
+packages. Their installation steps are retained as history and do not describe
+the prepared **TSC v1.3.11 / SPT 4.1.5** package.
 
 The v1.3.8 and v1.3.9 GitHub releases are retained as archived drafts. Their
 old release pages and downloads are no longer public. The instructions below

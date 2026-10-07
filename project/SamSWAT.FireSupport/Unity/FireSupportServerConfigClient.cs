@@ -51,12 +51,14 @@ public static class FireSupportServerConfigClient
 
 	public static void OnRaidStarted()
 	{
+		FireSupportProgression.Clear();
 		s_raidActive = true;
 		RestartRefresh("raid started");
 	}
 
 	public static void OnRaidEnded()
 	{
+		FireSupportProgression.Clear();
 		s_raidActive = false;
 		StopRefresh();
 	}
@@ -69,6 +71,8 @@ public static class FireSupportServerConfigClient
 		}
 
 		s_globalSettingsSuppressedByFikaClient = active;
+		FireSupportProgression.Clear();
+		FireSupportProgression.SetHostSupportsProgression(false);
 		TscDiagnostics.LogPayment(
 			$"TSC server global settings {(active ? "suppressed by Fika host authority" : "resumed after Fika host authority cleared")}; per-profile sync remains active: {reason}");
 		if (active)
@@ -148,6 +152,7 @@ public static class FireSupportServerConfigClient
 		}
 
 		FireSupportAuthorizations.Reset();
+		FireSupportProgression.Clear();
 		FireSupportPayment.ClearServerProfileState();
 		FireSupportPayment.NotifySettingsChanged("TSC pre-raid backend session changed");
 	}
@@ -182,7 +187,9 @@ public static class FireSupportServerConfigClient
 			profileId,
 			"pre-raid menu synchronization");
 
-		string route = BuildConfigRoute(profileId);
+		// Full currency stacks are needed only for the native menu inventory;
+		// periodic in-raid configuration polling remains aggregate-only.
+		string route = BuildConfigRoute(profileId) + "&includeStashCurrencyState=true&includePurchaseHistory=true";
 		long mutationEpochAtRequest = CaptureProfileMutationEpoch();
 		TscDiagnostics.LogPayment($"TSC pre-raid player-state snapshot requested: {route}");
 		string body = await SendServerRequestAsync(HttpMethod.Get, route, null, cancellationToken);
@@ -194,6 +201,7 @@ public static class FireSupportServerConfigClient
 		}
 		if (!HasValidSnapshotCurrency(snapshot))
 		{
+			FireSupportProgression.Clear();
 			throw new InvalidOperationException(
 				"The TSC server payment currency is invalid. Select RUB, USD, or EUR in the dashboard.");
 		}
@@ -209,8 +217,15 @@ public static class FireSupportServerConfigClient
 		// profile before a raid.
 		if (!snapshot.PlayerStateIncluded)
 		{
+			FireSupportProgression.Clear();
 			throw new InvalidOperationException(
 				"The TSC server did not include authoritative player state.");
+		}
+		if (snapshot.PurchaseHistory != null && !snapshot.PurchaseHistory.IsValidFor(profileId))
+		{
+			// An invalid optional history must never expose another profile's receipts.
+			snapshot.PurchaseHistory = null;
+			FireSupportPlugin.LogSource.LogWarning("TSC ignored an invalid purchase history snapshot.");
 		}
 
 		if (!TryApplyPlayerState(snapshot, Math.Max(0, snapshot.Revision), mutationEpochAtRequest))
@@ -230,14 +245,16 @@ public static class FireSupportServerConfigClient
 	public static UniTask<FireSupportPurchaseResponse> PurchaseAuthorizationAsync(
 		ESupportType supportType,
 		PaymentCurrency expectedCurrency,
-		int clientKnownRevision)
+		int clientKnownRevision,
+		string expectedSessionKey,
+		string expectedProfileId)
 	{
 		return SendPurchaseRequestAsync(
 			"BuyAuthorization",
 			supportType,
 			requestId: string.Empty,
-			expectedSessionKey: string.Empty,
-			expectedProfileId: string.Empty,
+			expectedSessionKey: expectedSessionKey,
+			expectedProfileId: expectedProfileId,
 			expectedCost: null,
 			expectedCurrency: expectedCurrency,
 			clientKnownRevision: clientKnownRevision);
@@ -468,7 +485,7 @@ public static class FireSupportServerConfigClient
 		PaymentCurrency expectedCurrency,
 		int clientKnownRevision)
 	{
-		expectedCurrency = PaymentCurrencyInfo.Normalize(expectedCurrency);
+		bool validExpectedCurrency = PaymentCurrencyInfo.TryParse(expectedCurrency.ToString(), out _);
 		var fallback = new FireSupportPurchaseResponse
 		{
 			Ok = false,
@@ -477,12 +494,24 @@ public static class FireSupportServerConfigClient
 			Cost = FireSupportPayment.GetActiveCost(supportType),
 			PaymentSource = nameof(PaymentSource.StashRoubles),
 			Currency = PaymentCurrencyInfo.GetCode(expectedCurrency),
-			NewBalance = FireSupportPayment.GetEffectiveBalance(),
+			NewBalance = FireSupportPayment.GetEffectiveBalance(supportType),
 			AuthorizationGranted = false,
 			ServerRevision = Math.Max(clientKnownRevision, s_hostPurchaseRevision),
 			RequestId = requestId ?? string.Empty
 		};
 
+		bool IsBoundProfile() => !string.IsNullOrWhiteSpace(expectedSessionKey) &&
+			!string.IsNullOrWhiteSpace(expectedProfileId) &&
+			string.Equals(expectedSessionKey, GetAuthenticatedSessionKey(), StringComparison.Ordinal) &&
+			IsAuthenticatedProfile(expectedProfileId);
+		FireSupportPurchaseResponse ProfileChanged()
+		{
+			fallback.Reason = "ProfileSessionChanged";
+			fallback.NewBalance = -1;
+			return fallback;
+		}
+		if (!validExpectedCurrency) { fallback.Reason = "InvalidPaymentCurrency"; return fallback; }
+		if (!IsBoundProfile()) return ProfileChanged();
 		BeginProfileMutation();
 		try
 		{
@@ -494,31 +523,9 @@ public static class FireSupportServerConfigClient
 				return fallback;
 			}
 
-			if (persistentPurchase &&
-			    (string.IsNullOrWhiteSpace(expectedSessionKey) ||
-			     string.IsNullOrWhiteSpace(expectedProfileId) ||
-			     !string.Equals(
-				     expectedSessionKey,
-				     GetAuthenticatedSessionKey(),
-				     StringComparison.Ordinal) ||
-			     !IsAuthenticatedProfile(expectedProfileId)))
-			{
-				fallback.Reason = "ProfileSessionChanged";
-				return fallback;
-			}
-
-			// Persistent menu requests must retain the profile captured when the
-			// user clicked. If RequestHandler switches sessions after this check,
-			// the old profile in the body will fail server-side auth/profile
-			// validation instead of charging the newly selected profile.
-			string profileId = persistentPurchase
-				? expectedProfileId.Trim()
-				: GetLocalProfileId();
-			if (string.IsNullOrWhiteSpace(profileId))
-			{
-				fallback.Reason = "ProfileNotFound";
-				return fallback;
-			}
+			// Both purchase flows retain the initiating profile. A session switch
+			// must never redirect the charge or apply the old profile's response.
+			string profileId = expectedProfileId.Trim();
 
 			var body = new FireSupportPurchaseRequest
 			{
@@ -532,19 +539,11 @@ public static class FireSupportServerConfigClient
 				ExpectedCurrency = PaymentCurrencyInfo.GetCode(expectedCurrency),
 				Quantity = 1
 			};
-			if (persistentPurchase &&
-			    (!string.Equals(
-				     expectedSessionKey,
-				     GetAuthenticatedSessionKey(),
-				     StringComparison.Ordinal) ||
-			     !IsAuthenticatedProfile(profileId)))
-			{
-				fallback.Reason = "ProfileSessionChanged";
-				return fallback;
-			}
+			if (!IsBoundProfile()) return ProfileChanged();
 
 			string responseBody = await SendServerRequestAsync(
 				HttpMethod.Post, "purchase", JsonConvert.SerializeObject(body), CancellationToken.None);
+			if (!IsBoundProfile()) return ProfileChanged();
 			FireSupportPurchaseResponse result = JsonConvert.DeserializeObject<FireSupportPurchaseResponse>(responseBody);
 			if (result == null)
 			{
@@ -556,6 +555,7 @@ public static class FireSupportServerConfigClient
 		}
 		catch (Exception ex)
 		{
+			if (!IsBoundProfile()) return ProfileChanged();
 			FireSupportPlugin.LogSource.LogWarning($"FireSupport purchase request {action} failed. {ex}");
 			fallback.Reason = "RequestFailed";
 			return fallback;
@@ -760,6 +760,7 @@ public static class FireSupportServerConfigClient
 	{
 		try
 		{
+			string expectedSessionKey = GetAuthenticatedSessionKey();
 			string profileId = GetLocalProfileId();
 			if (!string.IsNullOrWhiteSpace(profileId))
 			{
@@ -783,6 +784,12 @@ public static class FireSupportServerConfigClient
 			// Close the final gap between an uncancellable RequestHandler task
 			// completing and installing its snapshot into the active raid.
 			cancellationToken.ThrowIfCancellationRequested();
+			if (string.IsNullOrWhiteSpace(expectedSessionKey) ||
+			    !string.Equals(expectedSessionKey, GetAuthenticatedSessionKey(), StringComparison.Ordinal))
+			{
+				FireSupportProgression.Clear();
+				return;
+			}
 			ApplySnapshot(snapshot, mutationEpochAtRequest);
 		}
 		catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -798,8 +805,14 @@ public static class FireSupportServerConfigClient
 		RaidOpsFireSupportServerConfig snapshot,
 		long mutationEpochAtRequest)
 	{
+		if (!snapshot.PlayerStateIncluded || snapshot.UplinkUnlocked != true ||
+		    !FireSupportProgressionState.IsValidPermit(snapshot.ProgressionPermit))
+		{
+			FireSupportProgression.Clear();
+		}
 		if (!HasValidSnapshotCurrency(snapshot))
 		{
+			FireSupportProgression.Clear();
 			if (ShouldApplyLocalGlobalSettings())
 			{
 				ClearServerGlobalOverrides(notify: false);
@@ -839,6 +852,7 @@ public static class FireSupportServerConfigClient
 		}
 		else
 		{
+			FireSupportProgression.Clear();
 			FireSupportPlugin.LogSource.LogWarning(
 				"TSC config snapshot did not include authenticated player state; preserving the last known stash, persistence, and authorization state.");
 		}
@@ -877,6 +891,7 @@ public static class FireSupportServerConfigClient
 
 	private static void ApplyPlayerState(RaidOpsFireSupportServerConfig snapshot, int revision)
 	{
+		FireSupportProgression.ApplySnapshot(GetAuthenticatedSessionKey(), snapshot);
 		PaymentCurrency currency = GetSnapshotCurrency(snapshot);
 		FireSupportPayment.SetServerProfileState(
 			revision,
@@ -886,6 +901,7 @@ public static class FireSupportServerConfigClient
 			snapshot.PurchasePersistence?.RefundFailedDispatch != false,
 			snapshot.PurchasePersistence?.SpendCreditsBeforeCash != false,
 			snapshot.PurchasePersistence?.AllowAutoPurchaseOnUse == true);
+		FireSupportPayment.SetStashBalances(snapshot.StashCurrencyBalances);
 		if (snapshot.Authorizations != null)
 		{
 			// A present empty ledger is authoritative and must clear stale credits.
@@ -895,6 +911,10 @@ public static class FireSupportServerConfigClient
 
 	private static void ApplyGlobalSettings(RaidOpsFireSupportServerConfig snapshot, int revision)
 	{
+		FireSupportPayment.SetServiceCurrencies(snapshot.ServiceCurrencies);
+		FireSupportItemTransfer.SetServerCargoGridSize(
+			snapshot.PriorityExfil?.GridWidth ?? 0,
+			snapshot.PriorityExfil?.GridHeight ?? 0);
 		FireSupportPayment.SetServerConfigGlobals(
 			GetPrice(snapshot, "A10", ESupportType.Strafe),
 			GetPrice(snapshot, "DoublePass", ESupportType.DoubleStrafe),
@@ -903,7 +923,6 @@ public static class FireSupportServerConfigClient
 			GetPrice(snapshot, "Uav", ESupportType.Uav),
 			GetPrice(snapshot, "FocusedSweep", ESupportType.FocusedSweep),
 			ParseEnum(snapshot.PaymentMode, FireSupportPayment.GetConfiguredPaymentMode()),
-			ParseEnum(snapshot.PaymentSource, FireSupportPayment.GetConfiguredPaymentSource()),
 			GetSnapshotCurrency(snapshot));
 		FireSupportServiceAvailability.SetServerConfigAvailability(
 			GetEnabled(snapshot, "PriorityExfil", FireSupportServiceAvailability.GetConfiguredPriorityExfilEnabled()),
@@ -941,6 +960,7 @@ public static class FireSupportServerConfigClient
 	}
 	private static void HandleConfigFailure(string reason)
 	{
+		FireSupportProgression.Clear();
 		FireSupportPlugin.LogSource.LogWarning($"TSC authenticated player-state refresh failed: {reason}");
 		if (!ShouldApplyLocalGlobalSettings())
 		{
@@ -963,6 +983,7 @@ public static class FireSupportServerConfigClient
 
 	private static void ClearServerGlobalOverrides(bool notify)
 	{
+		FireSupportItemTransfer.SetServerCargoGridSize(0, 0);
 		FireSupportPayment.ClearServerGlobalConfig();
 		FireSupportServiceAvailability.ClearServerConfigAvailability();
 		FireSupportTuningSettings.ClearServerConfigTuning();
@@ -985,6 +1006,12 @@ public static class FireSupportServerConfigClient
 		}
 
 		return FireSupportPayment.GetConfiguredCost(supportType);
+	}
+
+	public static PaymentCurrency GetSnapshotCurrency(RaidOpsFireSupportServerConfig snapshot, ESupportType supportType)
+	{
+		return snapshot != null && ServicePaymentPolicy.TryResolveCurrency(snapshot, supportType, out PaymentCurrency currency)
+			? currency : (PaymentCurrency)(-1);
 	}
 
 	public static PaymentCurrency GetSnapshotCurrency(
@@ -1023,8 +1050,12 @@ public static class FireSupportServerConfigClient
 			return null;
 		}
 
-		PaymentCurrency normalizedCurrency =
-			PaymentCurrencyInfo.Normalize(currency);
+		if (snapshot.StashCurrencyBalances != null)
+			return snapshot.StashCurrencyBalances.TryGetValue(currency.ToString(), out int balance) && balance >= 0
+				? balance : null;
+
+		if (!PaymentCurrencyInfo.TryParse(currency.ToString(), out _)) return null;
+		PaymentCurrency normalizedCurrency = currency;
 		if (normalizedCurrency != GetSnapshotCurrency(snapshot))
 		{
 			// The generic balance is denominated in the snapshot's one selected
@@ -1117,6 +1148,57 @@ public static class FireSupportServerConfigClient
 	// VPN, direct), and it carries the caller's session so the server charges the
 	// right player's stash automatically. The Server Config URL is not used for
 	// this and can be left at its default; a wrong value no longer matters.
+	public static async UniTask<FireSupportProgressionVerifyResponse> VerifyProgressionPermitAsync(
+		string permit,
+		string requesterProfileId,
+		CancellationToken cancellationToken)
+	{
+		var denied = new FireSupportProgressionVerifyResponse { Reason = "ProgressionPermitInvalid" };
+		if (!FireSupportProgressionState.IsValidPermit(permit) || string.IsNullOrWhiteSpace(requesterProfileId)) return denied;
+		try
+		{
+			string body = await SendServerRequestAsync(HttpMethod.Post, "progression/verify",
+				JsonConvert.SerializeObject(new FireSupportProgressionVerifyRequest
+				{
+					Permit = permit,
+					RequesterProfileId = requesterProfileId
+				}), cancellationToken);
+			return JsonConvert.DeserializeObject<FireSupportProgressionVerifyResponse>(body) ?? denied;
+		}
+		catch (OperationCanceledException) { throw; }
+		catch (Exception)
+		{
+			// Never log a profile's capability token or authorize on backend failure.
+			denied.Reason = "ProgressionVerificationUnavailable";
+			return denied;
+		}
+	}
+
+	/// <summary>Every manual payment verifies fresh server permission, including free/local modes.</summary>
+	public static async UniTask<bool> EnsureLocalProgressionVerifiedAsync()
+	{
+		string sessionKey = GetAuthenticatedSessionKey();
+		string profileId = GetAuthenticatedProfileId();
+		if (string.IsNullOrWhiteSpace(sessionKey)) { FireSupportProgression.Clear(); return false; }
+		for (int attempt = 0; attempt < 2; attempt++)
+		{
+			if (!FireSupportProgression.UplinkUnlocked)
+			{
+				await FetchConfigOnce(CancellationToken.None);
+			}
+			if (!string.Equals(sessionKey, GetAuthenticatedSessionKey(), StringComparison.Ordinal)) return false;
+			if (!string.IsNullOrEmpty(FireSupportProgression.RestrictionReason)) return false;
+			FireSupportProgressionVerifyResponse result = await VerifyProgressionPermitAsync(
+				FireSupportProgression.Permit, profileId, CancellationToken.None);
+			if (!string.Equals(sessionKey, GetAuthenticatedSessionKey(), StringComparison.Ordinal)) return false;
+			if (result.Ok) return true;
+			FireSupportProgression.Clear();
+			if (result.Reason != "ProgressionPermitInvalid") break;
+		}
+		FireSupportPayment.NotifySettingsChanged("TSC progression verification required");
+		return false;
+	}
+
 	private static async UniTask<string> SendServerRequestAsync(
 		HttpMethod method,
 		string route,

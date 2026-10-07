@@ -8,16 +8,19 @@ public static class FireSupportAuthorizations
 	// Two stores with different owners:
 	// - server credits mirror the server ledger and are replaced wholesale by
 	//   SetFromServer on every config sync;
-	// - local credits are purchases the server never saw (carried currency,
-	//   zero-cost grants). They must survive SetFromServer, and consuming them
+	// - local credits have no persistent server ledger entry (legacy carried
+	//   purchases, free grants, nonpersistent stash purchases). They survive SetFromServer, and consuming them
 	//   must not round-trip the server ledger, or the server rejects the
 	//   consume and the credit becomes unusable.
 	private static readonly Dictionary<ESupportType, int> s_serverAuthorizations = new(new SupportTypeComparer());
 	private static readonly Dictionary<ESupportType, int> s_localAuthorizations = new(new SupportTypeComparer());
+	// Failed nonpersistent cash dispatches keep their original base-request cost.
+	// They must not turn into phone credits that bypass the per-raid budget.
+	private static readonly Dictionary<ESupportType, int> s_baseRequestRefunds = new(new SupportTypeComparer());
 
 	public static int Get(ESupportType type)
 	{
-		return GetServer(type) + GetLocal(type);
+		return GetServer(type) + GetLocal(type) + GetBaseRequestRefunds(type);
 	}
 
 	public static bool Has(ESupportType type)
@@ -29,6 +32,12 @@ public static class FireSupportAuthorizations
 	{
 		return FireSupportServiceAvailability.IsServiceEnabled(type) && Has(type);
 	}
+
+	internal static bool HasLocalDeployable(ESupportType type) =>
+		FireSupportServiceAvailability.IsServiceEnabled(type) && GetLocal(type) + GetBaseRequestRefunds(type) > 0;
+
+	internal static bool HasPrepaidDeployable(ESupportType type) =>
+		FireSupportServiceAvailability.IsServiceEnabled(type) && GetServer(type) + GetLocal(type) > 0;
 
 	public static int GetDeployableCount(ESupportType type)
 	{
@@ -91,7 +100,14 @@ public static class FireSupportAuthorizations
 
 	public static bool TryConsume(ESupportType type, out bool serverBacked)
 	{
+		return TryConsume(type, requiredServerBacked: null, out serverBacked, out _);
+	}
+
+	private static bool TryConsume(ESupportType type, bool? requiredServerBacked,
+		out bool serverBacked, out bool purchasedForBaseRequest)
+	{
 		serverBacked = false;
+		purchasedForBaseRequest = false;
 		if (!FireSupportServiceAvailability.IsServiceEnabled(type))
 		{
 			TscDiagnostics.LogPayment(
@@ -99,26 +115,16 @@ public static class FireSupportAuthorizations
 			return false;
 		}
 
-		// Local credits first: they have no ledger entry to consume server-side.
-		int localCount = GetLocal(type);
-		if (localCount > 0)
-		{
-			s_localAuthorizations[type] = localCount - 1;
-			TscDiagnostics.LogPayment(
-				$"Consumed prepaid {GetSupportName(type)} authorization (local). Remaining={Get(type)}.");
-			return true;
-		}
-
-		int serverCount = GetServer(type);
-		if (serverCount <= 0)
+		// Ordinary use is local-first. An auto-purchase retry must consume only
+		// the source it just purchased, leaving older credits untouched.
+		if (!AuthorizationConsumePolicy.TryConsumeForDeployment(
+			    s_localAuthorizations, s_serverAuthorizations, s_baseRequestRefunds,
+			    type, requiredServerBacked, out serverBacked, out purchasedForBaseRequest))
 		{
 			return false;
 		}
-
-		s_serverAuthorizations[type] = serverCount - 1;
-		serverBacked = true;
 		TscDiagnostics.LogPayment(
-			$"Consumed prepaid {GetSupportName(type)} authorization (server). Remaining={Get(type)}.");
+			$"Consumed prepaid {GetSupportName(type)} authorization ({(serverBacked ? "server" : "local")}). Remaining={Get(type)}.");
 		return true;
 	}
 
@@ -132,9 +138,27 @@ public static class FireSupportAuthorizations
 		out ESupportType consumedType,
 		out bool serverBacked)
 	{
+		return TryConsumeForDeployment(type, out consumedType, out serverBacked, requiredServerBacked: null);
+	}
+
+	public static bool TryConsumeForDeployment(
+		ESupportType type,
+		out ESupportType consumedType,
+		out bool serverBacked,
+		bool? requiredServerBacked)
+	{
+		return TryConsumeForDeployment(type, out consumedType, out serverBacked, out _, requiredServerBacked);
+	}
+
+	internal static bool TryConsumeForDeployment(
+		ESupportType type,
+		out ESupportType consumedType,
+		out bool serverBacked,
+		out bool purchasedForBaseRequest,
+		bool? requiredServerBacked)
+	{
 		consumedType = type;
-		serverBacked = false;
-		return TryConsume(type, out serverBacked);
+		return TryConsume(type, requiredServerBacked, out serverBacked, out purchasedForBaseRequest);
 	}
 
 	public static void Refund(ESupportType type)
@@ -143,6 +167,11 @@ public static class FireSupportAuthorizations
 	}
 
 	public static void Refund(ESupportType type, bool serverBacked)
+	{
+		Refund(type, serverBacked, purchasedForBaseRequest: false);
+	}
+
+	internal static void Refund(ESupportType type, bool serverBacked, bool purchasedForBaseRequest)
 	{
 		if (!IsSupported(type))
 		{
@@ -155,7 +184,8 @@ public static class FireSupportAuthorizations
 		}
 		else
 		{
-			Grant(type, 1);
+			AuthorizationConsumePolicy.RefundLocal(
+				s_localAuthorizations, s_baseRequestRefunds, type, purchasedForBaseRequest);
 		}
 
 		NotificationManager.DisplayMessageNotification(
@@ -167,13 +197,14 @@ public static class FireSupportAuthorizations
 
 	public static void Reset()
 	{
-		if (s_serverAuthorizations.Count == 0 && s_localAuthorizations.Count == 0)
+		if (s_serverAuthorizations.Count == 0 && s_localAuthorizations.Count == 0 && s_baseRequestRefunds.Count == 0)
 		{
 			return;
 		}
 
 		s_serverAuthorizations.Clear();
 		s_localAuthorizations.Clear();
+		s_baseRequestRefunds.Clear();
 		TscDiagnostics.LogPayment("TSC service authorizations reset.");
 	}
 
@@ -185,6 +216,11 @@ public static class FireSupportAuthorizations
 	private static int GetLocal(ESupportType type)
 	{
 		return s_localAuthorizations.TryGetValue(type, out int count) ? count : 0;
+	}
+
+	private static int GetBaseRequestRefunds(ESupportType type)
+	{
+		return s_baseRequestRefunds.TryGetValue(type, out int count) ? count : 0;
 	}
 
 	private static bool IsSupported(ESupportType type)

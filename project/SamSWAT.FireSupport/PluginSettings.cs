@@ -59,7 +59,6 @@ internal static class PluginSettings
 	internal static ConfigEntry<string> ServerConfigAuthToken { get; private set; }
 	internal static ConfigEntry<bool> RequireServerConfigInFika { get; private set; }
 	internal static ConfigEntry<int> ServerConfigRefreshSeconds { get; private set; }
-	internal static ConfigEntry<PaymentSource> PaymentSource { get; private set; }
 	internal static ConfigEntry<PaymentCurrency> PaymentCurrency { get; private set; }
 	internal static ConfigEntry<int> StrafeRequestCostRoubles { get; private set; }
 	internal static ConfigEntry<int> DoubleStrafeRequestCostRoubles { get; private set; }
@@ -96,8 +95,11 @@ internal static class PluginSettings
 	internal static ConfigEntry<bool> PhoneMouseEnabled { get; private set; }
 	internal static ConfigEntry<KeyCode> PhoneMouseModifier { get; private set; }
 	internal static ConfigEntry<float> PhoneMouseSensitivity { get; private set; }
+	internal static ConfigEntry<bool> PhoneAutoDeployAfterPurchase { get; private set; }
 	internal static ConfigEntry<bool> PhoneAutoZoomEnabled { get; private set; }
 	internal static ConfigEntry<float> PhoneZoomFov { get; private set; }
+	internal static ConfigEntry<bool> PhoneDeployZoomEnabled { get; private set; }
+	internal static ConfigEntry<float> PhoneDeployZoomFov { get; private set; }
 	internal static ConfigEntry<float> PhoneZoomInSeconds { get; private set; }
 	internal static ConfigEntry<float> PhoneZoomOutSeconds { get; private set; }
 	internal static ConfigEntry<float> PhoneZoomVerticalFraming { get; private set; }
@@ -114,12 +116,7 @@ internal static class PluginSettings
 	internal static ConfigEntry<float> PhoneConfirmSwipeSpeedMultiplier { get; private set; }
 	internal static ConfigEntry<float> PhoneConfirmSwipeStartNormalizedTime { get; private set; }
 	internal static ConfigEntry<float> PhoneConfirmSwipeCommitNormalizedTime { get; private set; }
-	internal static ConfigEntry<bool> PhoneConfirmPauseAtCommit { get; private set; }
 	internal static ConfigEntry<float> PhoneConfirmOutroSpeedMultiplier { get; private set; }
-	internal static ConfigEntry<float> PhoneAuthorizingDisplaySeconds { get; private set; }
-	internal static ConfigEntry<float> PhoneAuthorizedDisplaySeconds { get; private set; }
-	internal static ConfigEntry<float> PhoneDeniedDisplaySeconds { get; private set; }
-	internal static ConfigEntry<float> PhoneRestoreAfterAuthorizedSeconds { get; private set; }
 	internal static ConfigEntry<bool> UavActivationDeviceAnimation { get; private set; }
 	internal static ConfigEntry<bool> UavWristPhoneVisual { get; private set; }
 	internal static ConfigEntry<bool> UavWristPhoneArmPose { get; private set; }
@@ -142,7 +139,6 @@ internal static class PluginSettings
 	internal static ConfigEntry<float> HelicopterSpeedMultiplier { get; private set; }
 	internal static ConfigEntry<float> PriorityExfilHelicopterSpeedMultiplier { get; private set; }
 	internal static ConfigEntry<bool> EnableHelicopterItemTransfer { get; private set; }
-	internal static ConfigEntry<HelicopterTransferFeeSource> HelicopterTransferFeeSource { get; private set; }
 	internal static ConfigEntry<string> Uh60TransferFeeRecoveryJournal { get; private set; }
 	internal static ConfigEntry<string> Uh60TransferFeeRecoveryQuarantine { get; private set; }
 	internal static ConfigEntry<int> RequestCooldown { get; private set; }
@@ -211,16 +207,12 @@ internal static class PluginSettings
 			60,
 			new ConfigDescription("Seconds between TSC server config refresh attempts while in a raid. Higher values reduce server request logging.",
 				new AcceptableValueRange<int>(0, 3600)));
-		PaymentSource = config.Bind(
-			"TerraGroup Payment",
-			"Payment source",
-			global::SamSWAT.FireSupport.ArysReloaded.Unity.PaymentSource.CarriedRoubles,
-			new ConfigDescription("Wallet location used for TerraGroup phone purchases."));
+		RemoveLegacyPaymentSource(config);
 		PaymentCurrency = config.Bind(
 			"TerraGroup Payment",
 			"Payment currency",
 			global::SamSWAT.FireSupport.ArysReloaded.Unity.PaymentCurrency.RUB,
-			new ConfigDescription("Local fallback currency used only when no server or Fika host currency is available."));
+			new ConfigDescription("Local fallback currency used only when no server or Fika host currency is available. Server service currencies can override it. GP and BTC are whole item counts paid only from the stash."));
 		RequestCooldown = config.Bind(
 			"Main Settings",
 			"Cooldown between support requests",
@@ -230,19 +222,19 @@ internal static class PluginSettings
 		StrafeRequestCostRoubles = config.Bind(
 			"Main Settings",
 			"Autocannon strafe cost",
-			250000,
+			150000,
 			new ConfigDescription("Selected currency units required to request an A-10 autocannon strafe",
 				new AcceptableValueRange<int>(0, 10000000)));
 		DoubleStrafeRequestCostRoubles = config.Bind(
 			"Main Settings",
 			"A-10 double pass cost",
-			450000,
+			250000,
 			new ConfigDescription("Selected currency units required to request two A-10 autocannon passes on the same target",
 				new AcceptableValueRange<int>(0, 10000000)));
 		ExtractionRequestCostRoubles = config.Bind(
 			"Main Settings",
 			"Helicopter extraction cost",
-			300000,
+			125000,
 			new ConfigDescription("Selected currency units required to request a UH-60 extraction",
 				new AcceptableValueRange<int>(0, 10000000)));
 		PriorityExfilRequestCostRoubles = config.Bind(
@@ -250,19 +242,19 @@ internal static class PluginSettings
 			// Legacy config key retained so existing operator values continue
 			// to price the replacement Cargo Transfer authorization.
 			"Priority exfil cost",
-			450000,
+			75000,
 			new ConfigDescription("Selected currency units required to dispatch the UH-60 Cargo Transfer service",
 				new AcceptableValueRange<int>(0, 10000000)));
 		UavRequestCostRoubles = config.Bind(
 			"Main Settings",
 			"UAV recon cost",
-			125000,
+			50000,
 			new ConfigDescription("Selected currency units required to request a timed UAV recon scan",
 				new AcceptableValueRange<int>(0, 10000000)));
 		FocusedSweepRequestCostRoubles = config.Bind(
 			"Main Settings",
 			"Focused sweep cost",
-			90000,
+			25000,
 			new ConfigDescription("Selected currency units required to request a shorter, narrower, faster-refresh UAV sweep",
 				new AcceptableValueRange<int>(0, 10000000)));
 		EnablePriorityExfil = config.Bind(
@@ -395,15 +387,9 @@ internal static class PluginSettings
 			"Enable mid-raid item transfer",
 			true,
 			new ConfigDescription(
-				"Enables the UH-60 Cargo Transfer service and its requester-only loading interaction in solo raids and for a human Fika host. Turning this off also blocks Cargo purchase and deployment so an authorization cannot be spent on an unusable helicopter. Standard Extraction helicopters never offer cargo. The native EFT transfer screen and delivery ledger are used; transferred items are returned through the native delivery message after the raid. Non-host Fika clients remain fail-closed until native transfer pricing can be synchronized with the host."));
+				"Enables the UH-60 Cargo Transfer service and its requester-only loading interaction in solo raids and for a human Fika host. Turning this off also blocks Cargo purchase and deployment so an authorization cannot be spent on an unusable helicopter. Standard Extraction helicopters never offer cargo. The native EFT transfer screen and delivery ledger are used; transferred items are returned through the native delivery message after the raid. Non-host Fika clients remain fail-closed until native cargo transactions and delivery can be synchronized with the host."));
 		EnableHelicopterItemTransfer.SettingChanged +=
 			OnHelicopterItemTransferSettingChanged;
-		HelicopterTransferFeeSource = config.Bind(
-			"Helicopter Cargo",
-			"Transfer fee source",
-			global::SamSWAT.FireSupport.ArysReloaded.HelicopterTransferFeeSource.Carried,
-			new ConfigDescription(
-				"Chooses where EFT's native RUB handling fee is paid when cargo is sent. Carried preserves EFT's original carried-cash purchase. Stash debits the authenticated PMC stash through the TSC server, while leaving the native item-delivery and messenger flow unchanged. Stash mode fails closed when the server does not support its idempotent transfer-fee endpoint."));
 		Uh60TransferFeeRecoveryJournal = config.Bind(
 			"Internal",
 			"UH-60 transfer fee recovery journal",
@@ -452,45 +438,61 @@ internal static class PluginSettings
 			"Phone mouse sensitivity",
 			20f,
 			new ConfigDescription("Speed of the cursor drawn on the phone screen.", new AcceptableValueRange<float>(1f, 80f)));
+		PhoneAutoDeployAfterPurchase = config.Bind(
+			"TerraGroup Phone",
+			"Deploy after phone purchase",
+			false,
+			new ConfigDescription("After a successful phone purchase, finish the purchase animation and immediately start deploying that service. A-10 and UH-60 services open target designation; UAV services activate. Requires Phone Authorizations or Hybrid mode. Off keeps purchases for later deployment with K."));
 		PhoneAutoZoomEnabled = config.Bind(
 			"TerraGroup Phone",
 			"Automatic phone zoom",
 			true,
-			new ConfigDescription("Optionally narrows the camera FOV on authorization purchase screens and enables phone framing. Deploy and held UAV radar screens always preserve the current raid FOV."));
+			new ConfigDescription("Narrows the camera FOV on authorization purchase screens and enables phone framing. Sprinting eases back to the raid view; stopping restores the purchase zoom. Deployment has its own zoom settings. Held UAV radar keeps the raid FOV."));
 		PhoneZoomFov = config.Bind(
 			"TerraGroup Phone",
 			"Phone zoom FOV",
 			45f,
 			new ConfigDescription(
-				"Camera FOV used on authorization purchase screens. Deploy and held UAV radar screens do not zoom. Lower values make the authorization phone appear larger.",
+				"Camera FOV used on authorization purchase screens. Lower values make the authorization phone appear larger. Deployment uses Deploy phone zoom FOV.",
+				new AcceptableValueRange<float>(20f, 75f)));
+		PhoneDeployZoomEnabled = config.Bind(
+			"TerraGroup Phone",
+			"Automatic deploy phone zoom",
+			true,
+			new ConfigDescription("Zooms toward the upright deployment phone for easier reading. Works independently of purchase zoom. Sprinting eases back to the raid view; closing the phone restores your original FOV before target designation."));
+		PhoneDeployZoomFov = config.Bind(
+			"TerraGroup Phone",
+			"Deploy phone zoom FOV",
+			45f,
+			new ConfigDescription("Camera FOV while the deployment phone is raised. Lower values make it larger. Never widens an already narrower raid view. Held UAV radar keeps the raid FOV.",
 				new AcceptableValueRange<float>(20f, 75f)));
 		PhoneZoomVerticalFraming = config.Bind(
 			"TerraGroup Phone",
 			"Phone vertical framing",
 			0.09f,
 			new ConfigDescription(
-				"Raises or lowers the first-person phone while automatic phone zoom is active. Positive values raise the phone toward screen center; negative values lower it.",
+				"Raises or lowers the first-person phone while purchase or deployment zoom is active. Positive values raise the phone toward screen center; negative values lower it.",
 				new AcceptableValueRange<float>(-0.25f, 0.25f)));
 		PhoneZoomInSeconds = config.Bind(
 			"TerraGroup Phone",
 			"Phone zoom in seconds",
 			0.75f,
 			new ConfigDescription(
-				"Time for authorization phone zoom and framing to ease into place as the phone is raised. Higher values give a slower, smoother approach. Deploy and held UAV radar screens retain their current FOV.",
+				"Time for purchase or deployment phone zoom and framing to ease into place as the phone is raised. Sprinting out of zoom and returning to it use this same duration. Higher values give a slower, smoother approach. Held UAV radar retains the raid FOV.",
 				new AcceptableValueRange<float>(0.25f, 1.5f)));
 		PhoneZoomOutSeconds = config.Bind(
 			"TerraGroup Phone",
 			"Phone zoom out seconds",
 			0.35f,
 			new ConfigDescription(
-				"Camera transition time when restoring your original FOV after closing the authorization phone.",
+				"Camera transition time when restoring your original FOV after closing the purchase or deployment phone.",
 				new AcceptableValueRange<float>(0.15f, 0.8f)));
 		PhoneZoomHorizontalFraming = config.Bind(
 			"TerraGroup Phone",
 			"Phone horizontal framing",
 			-0.004f,
 			new ConfigDescription(
-				"Moves the first-person phone horizontally while automatic phone zoom is active. Positive values move the phone right; negative values move it left.",
+				"Moves the first-person phone horizontally while purchase or deployment zoom is active. Positive values move the phone right; negative values move it left.",
 				new AcceptableValueRange<float>(-0.15f, 0.15f)));
 		PhoneFramingDefaultsMigrated = config.Bind(
 			"Internal",
@@ -566,41 +568,12 @@ internal static class PluginSettings
 			0.78f,
 			HiddenDescription("Outro animation normalizedTime where payment is attempted and the authorizing screen appears",
 				new AcceptableValueRange<float>(0f, 1f)));
-		PhoneConfirmPauseAtCommit = config.Bind(
-			"TerraGroup Phone Animation",
-			"Confirm pause at commit",
-			true,
-			HiddenDescription("Pauses the phone animator at the payment commit while authorizing/result screens are shown"));
 		PhoneConfirmOutroSpeedMultiplier = config.Bind(
 			"TerraGroup Phone Animation",
 			"Confirm outro speed multiplier",
 			1.6f,
-			HiddenDescription("Animator speed used after the result screen when the phone finishes its outro",
+			HiddenDescription("Animator speed used after the payment swipe commits while the phone continues stowing",
 				new AcceptableValueRange<float>(0.25f, 4f)));
-		PhoneAuthorizingDisplaySeconds = config.Bind(
-			"TerraGroup Phone Animation",
-			"Authorizing display seconds",
-			0.25f,
-			HiddenDescription("Seconds to keep the authorizing screen visible after the payment commit",
-				new AcceptableValueRange<float>(0.1f, 5f)));
-		PhoneAuthorizedDisplaySeconds = config.Bind(
-			"TerraGroup Phone Animation",
-			"Authorized display seconds",
-			0.4f,
-			HiddenDescription("Seconds to keep the authorized result screen visible",
-				new AcceptableValueRange<float>(0.1f, 5f)));
-		PhoneDeniedDisplaySeconds = config.Bind(
-			"TerraGroup Phone Animation",
-			"Denied display seconds",
-			0.85f,
-			HiddenDescription("Seconds to keep the denied result screen visible",
-				new AcceptableValueRange<float>(0.1f, 5f)));
-		PhoneRestoreAfterAuthorizedSeconds = config.Bind(
-			"TerraGroup Phone Animation",
-			"Restore after authorized seconds",
-			0f,
-			HiddenDescription("Extra pause after the result screen before resuming the phone outro and restoring the previous weapon",
-				new AcceptableValueRange<float>(0f, 3f)));
 
 		UavActivationDeviceAnimation = config.Bind(
 			"UAV Recon Settings",
@@ -800,7 +773,6 @@ internal static class PluginSettings
 		RemoveFromConfigManager(config, ServerConfigAuthToken);
 		RemoveFromConfigManager(config, RequireServerConfigInFika);
 		RemoveFromConfigManager(config, ServerConfigRefreshSeconds);
-		RemoveFromConfigManager(config, PaymentSource);
 		RemoveFromConfigManager(config, PaymentCurrency);
 		RemoveFromConfigManager(config, RequestCooldown);
 		RemoveFromConfigManager(config, StrafeRequestCostRoubles);
@@ -839,12 +811,7 @@ internal static class PluginSettings
 		RemoveFromConfigManager(config, PhoneConfirmSwipeSpeedMultiplier);
 		RemoveFromConfigManager(config, PhoneConfirmSwipeStartNormalizedTime);
 		RemoveFromConfigManager(config, PhoneConfirmSwipeCommitNormalizedTime);
-		RemoveFromConfigManager(config, PhoneConfirmPauseAtCommit);
 		RemoveFromConfigManager(config, PhoneConfirmOutroSpeedMultiplier);
-		RemoveFromConfigManager(config, PhoneAuthorizingDisplaySeconds);
-		RemoveFromConfigManager(config, PhoneAuthorizedDisplaySeconds);
-		RemoveFromConfigManager(config, PhoneDeniedDisplaySeconds);
-		RemoveFromConfigManager(config, PhoneRestoreAfterAuthorizedSeconds);
 		RemoveFromConfigManager(config, UavActivationDeviceAnimation);
 		RemoveFromConfigManager(config, UavWristPhoneVisual);
 		RemoveFromConfigManager(config, UavWristPhoneArmPose);
@@ -1007,6 +974,16 @@ internal static class PluginSettings
 		}
 	}
 
+	private static void RemoveLegacyPaymentSource(ConfigFile config)
+	{
+		// Binding the old key as text consumes BepInEx's orphaned value without
+		// treating any historic wallet name as a current selectable setting.
+		ConfigEntry<string> legacySource = config.Bind("TerraGroup Payment", "Payment source",
+			string.Empty, HiddenDescription("Removed setting: service payments use the stash."));
+		config.Remove(legacySource.Definition);
+		config.Save();
+	}
+
 	private static void SubscribeEffectiveSettingChanges()
 	{
 		TrackEffectiveSetting(PaymentMode);
@@ -1015,7 +992,6 @@ internal static class PluginSettings
 		TrackEffectiveSetting(ServerConfigAuthToken);
 		TrackEffectiveSetting(RequireServerConfigInFika);
 		TrackEffectiveSetting(ServerConfigRefreshSeconds);
-		TrackEffectiveSetting(PaymentSource);
 		TrackEffectiveSetting(PaymentCurrency);
 		TrackEffectiveSetting(StrafeRequestCostRoubles);
 		TrackEffectiveSetting(DoubleStrafeRequestCostRoubles);

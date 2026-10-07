@@ -6,6 +6,63 @@ using System.Reflection;
 
 internal static class ExtractionSettingsRegressionTests
 {
+	// The established prefix is four bool bytes and 24 four-byte numeric
+	// fields. Freeze this slot so removing wallet choices cannot shift peers.
+	private const int PaymentSourceWireOffset = 4 * sizeof(byte) + 24 * sizeof(int);
+
+	[RegressionTest]
+	private static void FikaSettingsPacketsAlwaysWriteTheEstablishedStashValue()
+	{
+		AssertEx.Equal(1, (int)PaymentSource.StashRoubles);
+		foreach (FireSupportSettingsPacket packet in new[] { new FireSupportSettingsPacket(), FireSupportSettingsPacket.CreateRequest() })
+		{
+			AssertEx.Equal(PaymentSource.StashRoubles, packet.PaymentSource);
+			var writer = new NetDataWriter();
+			packet.Serialize(writer);
+			AssertEx.Equal(1, BitConverter.ToInt32(writer.ToArray(), PaymentSourceWireOffset));
+		}
+
+		foreach (int obsoleteSource in new[] { 0, 2, 3 })
+		{
+			FireSupportSettingsPacket packet = CreateSettingsPacket();
+			packet.PaymentSource = (PaymentSource)obsoleteSource;
+			var writer = new NetDataWriter();
+			packet.Serialize(writer);
+			AssertEx.Equal(1, BitConverter.ToInt32(writer.ToArray(), PaymentSourceWireOffset));
+			var actual = new FireSupportSettingsPacket();
+			var reader = new NetDataReader(writer.ToArray());
+			actual.Deserialize(reader);
+			AssertPacketEqual(CreateSettingsPacket(), actual);
+			AssertEx.Equal(0, reader.AvailableBytes);
+		}
+	}
+
+	[RegressionTest]
+	private static void FikaLegacyWalletIntegersMigrateWithoutShiftingTheRemainingPacket()
+	{
+		foreach (int obsoleteSource in new[] { 0, 2, 3 })
+		{
+			FireSupportSettingsPacket expected = CreateSettingsPacket();
+			expected.ServiceCurrencies["A10"] = "BTC";
+			expected.ServiceCurrencies["Extraction"] = "GP";
+			var writer = new NetDataWriter();
+			expected.Serialize(writer);
+			byte[] legacyBytes = writer.ToArray();
+			BitConverter.GetBytes(obsoleteSource).CopyTo(legacyBytes, PaymentSourceWireOffset);
+			var reader = new NetDataReader(legacyBytes);
+			var actual = new FireSupportSettingsPacket();
+			actual.Deserialize(reader);
+			AssertPacketEqual(expected, actual);
+			AssertEx.Equal("BTC", actual.ServiceCurrencies["A10"]);
+			AssertEx.Equal("GP", actual.ServiceCurrencies["Extraction"]);
+			AssertEx.Equal(0, reader.AvailableBytes);
+			var migratedWriter = new NetDataWriter();
+			actual.Serialize(migratedWriter);
+			AssertEx.True(writer.ToArray().SequenceEqual(migratedWriter.ToArray()),
+				"Migration must only canonicalize the old wallet integer, retaining URL, currency and service settings.");
+		}
+	}
+
 	[RegressionTest]
 	private static void FikaSettingsPacketRoundTripsDistinctExtractionContracts()
 	{
@@ -29,7 +86,7 @@ internal static class ExtractionSettingsRegressionTests
 		var writer = new NetDataWriter();
 		packet.Serialize(writer);
 		byte[] legacyBytes = writer.ToArray();
-		Array.Resize(ref legacyBytes, legacyBytes.Length - 2 * sizeof(int));
+		Array.Resize(ref legacyBytes, legacyBytes.Length - FireSupportSettingsPacket.ServiceCurrencyTailBytes - 2 * sizeof(int));
 
 		var legacy = new FireSupportSettingsPacket();
 		var legacyReader = new NetDataReader(legacyBytes);
@@ -61,7 +118,7 @@ internal static class ExtractionSettingsRegressionTests
 		var writer = new NetDataWriter();
 		packet.Serialize(writer);
 		byte[] legacyBytes = writer.ToArray();
-		Array.Resize(ref legacyBytes, legacyBytes.Length - sizeof(int));
+		Array.Resize(ref legacyBytes, legacyBytes.Length - FireSupportSettingsPacket.ServiceCurrencyTailBytes - sizeof(int));
 
 		var legacy = new FireSupportSettingsPacket();
 		var legacyReader = new NetDataReader(legacyBytes);
@@ -75,7 +132,7 @@ internal static class ExtractionSettingsRegressionTests
 	}
 
 	[RegressionTest]
-	private static void FikaSettingsPacketNormalizesInvalidCurrency()
+	private static void FikaSettingsPacketRejectsInvalidCurrencySemantics()
 	{
 		FireSupportSettingsPacket packet = CreateSettingsPacket();
 		packet.PaymentCurrency = (PaymentCurrency)999;
@@ -85,7 +142,8 @@ internal static class ExtractionSettingsRegressionTests
 		var actual = new FireSupportSettingsPacket();
 		actual.Deserialize(new NetDataReader(writer.ToArray()));
 
-		AssertEx.Equal(PaymentCurrency.RUB, actual.PaymentCurrency);
+		AssertEx.Equal((PaymentCurrency)999, actual.PaymentCurrency);
+		AssertEx.Equal(FireSupportServiceSemantics.LegacyVersion, actual.ServiceSemanticsVersion);
 	}
 
 	[RegressionTest]
@@ -484,7 +542,7 @@ internal static class ExtractionSettingsRegressionTests
 			PriorityExfilHelicopterSpeedMultiplier = 1.75f,
 			RequestCooldownSeconds = 217,
 			PaymentMode = PaymentMode.Hybrid,
-			PaymentSource = PaymentSource.PreferStashThenCarried,
+			PaymentSource = PaymentSource.StashRoubles,
 			ServerConfigUrl = "http://127.0.0.1:6969/tsc/config",
 			PaymentCurrency = PaymentCurrency.EUR,
 			ServiceSemanticsVersion = FireSupportServiceSemantics.CurrentVersion

@@ -18,7 +18,14 @@ public static class FireSupportServiceSemantics
 	/// </summary>
 	public const int CargoVersion = 1;
 
-	public const int CurrentVersion = CargoVersion;
+	/// <summary>Manual tasking requires a server-verified profile permission.</summary>
+	public const int ProgressionVersion = 2;
+	/// <summary>Service-specific currencies and stash-only GP/BTC payments.</summary>
+	public const int ServiceCurrencyVersion = 3;
+	public const int CurrentVersion = ServiceCurrencyVersion;
+	public static bool SupportsServiceCurrencies(int version) => version == CurrentVersion;
+
+	public static bool SupportsProgression(int version) => version >= ProgressionVersion;
 
 	public static bool SupportsCargo(int version)
 	{

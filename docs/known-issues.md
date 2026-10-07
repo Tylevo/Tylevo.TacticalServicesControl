@@ -1,17 +1,27 @@
 # Known issues
 
-Current release: **TSC v1.3.10 for SPT 4.1.5**. The maintainer reports that the
-updated local setup is working. The [validation record](validation/v1.3.10.md)
-separates that report from automated and server checks.
+Current release: **TSC v1.3.12 for SPT 4.1.5**, with standalone
+**UnityToolkit 2.0.2** and WTT CommonLib 3.0.6. The maintainer accepted the
+phone movement and sprint zoom changes in-game. Custom cargo grids passed
+configuration/editor checks; their layout and delivery still need gameplay
+coverage. See the [validation record](validation/v1.3.12.md).
 
 ## Multiplayer
+
+The optional [Pilot Questline add-on](pilot-questline.md#validation) retains unrecorded gameplay
+checks, including the weather-station installation and survival after
+death. Matching server, Core, and Fika components with service protocol 2 are
+required for manual support. Earlier package test results do not validate
+these new progression paths.
 
 **Fika support has not been tested on the current SPT/Fika versions.**
 Compiling against Fika 2.4.2 does not establish multiplayer compatibility.
 
 - UH-60 Cargo Transfer is available to solo players and a requesting human
   host. Other Fika clients and dedicated-headless requesters cannot use it
-  until item-dependent handling prices can be verified by the host.
+  until the native cargo transaction and delivery are supported by the host.
+  The 1.3.13 candidate removes the extra handling fee for supported requesters;
+  this does not enable cargo transfers for non-host clients.
 - Dedicated-headless A-10 damage is experimental and must be enabled
   separately. Bot death/corpse synchronization and remote-player death or
   downed behavior still need live testing.
@@ -32,7 +42,7 @@ service.
 - Phone and store layouts need broader coverage across resolutions and combat
   conditions. Pilot's registration and portrait have server checks; exact
   portrait framing and a paid purchase were not individually documented in
-  the latest local test report.
+  earlier local test reports. The remaining Services checklist cases are not closed by phone testing.
 
 Mortar/artillery support and remote third-person phone animation sync are
 not included.

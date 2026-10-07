@@ -72,7 +72,13 @@ public static class FireSupportServiceAvailability
 
 	public static bool IsServiceEnabled(ESupportType supportType)
 	{
-		if (!IsLocalUseAllowed(supportType))
+		return IsLocalUseAllowed(supportType) && IsServiceEnabledForAuthority(supportType);
+	}
+
+	/// <summary>Raid-wide settings, independent of the host player's quest state.</summary>
+	public static bool IsServiceEnabledForAuthority(ESupportType supportType)
+	{
+		if (!string.IsNullOrEmpty(GetOperationalRestrictionReason(supportType)))
 		{
 			return false;
 		}
@@ -95,6 +101,13 @@ public static class FireSupportServiceAvailability
 	}
 
 	public static string GetLocalRestrictionReason(ESupportType supportType)
+	{
+		string progressionRestriction = FireSupportProgression.RestrictionReason;
+		return !string.IsNullOrEmpty(progressionRestriction)
+			? progressionRestriction : GetOperationalRestrictionReason(supportType);
+	}
+
+	private static string GetOperationalRestrictionReason(ESupportType supportType)
 	{
 		if (IsA10Type(supportType) && SeasonalModifiersBridge.IsDangerCloseActive)
 		{
@@ -121,6 +134,10 @@ public static class FireSupportServiceAvailability
 
 	public static string GetLocalRestrictionStatus(ESupportType supportType)
 	{
+		if (!string.IsNullOrEmpty(FireSupportProgression.RestrictionReason))
+		{
+			return FireSupportProgression.RestrictionReason;
+		}
 		if (IsA10Type(supportType) && SeasonalModifiersBridge.IsDangerCloseActive)
 		{
 			return "AUTONOMOUS OPS";

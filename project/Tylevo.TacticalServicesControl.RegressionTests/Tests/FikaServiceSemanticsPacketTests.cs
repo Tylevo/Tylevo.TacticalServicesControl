@@ -9,6 +9,7 @@ internal static class FikaServiceSemanticsPacketTests
 	private static void RequestPacketAppendsSemanticsAndConsumesLegacyFields()
 	{
 		FireSupportRequestPacket expected = CreateRequest();
+		expected.ProgressionPermit = new string('a', 64);
 		AssertEx.Near(
 			8.25f,
 			expected.HelicopterExtractTimeSeconds,
@@ -20,6 +21,7 @@ internal static class FikaServiceSemanticsPacketTests
 		var currentReader = new NetDataReader(currentBytes);
 		current.Deserialize(currentReader);
 		AssertRequestEqual(expected, current);
+		AssertEx.Equal(expected.ProgressionPermit, current.ProgressionPermit);
 		AssertEx.Near(
 			0f,
 			current.HelicopterExtractTimeSeconds,
@@ -30,7 +32,15 @@ internal static class FikaServiceSemanticsPacketTests
 			current.ServiceSemanticsVersion);
 		AssertEx.Equal(0, currentReader.AvailableBytes);
 
-		byte[] withoutOriginBytes = currentBytes.ToArray();
+		var permitWriter = new NetDataWriter();
+		permitWriter.Put(expected.ProgressionPermit);
+		byte[] withoutPermitBytes = currentBytes.ToArray();
+		Array.Resize(ref withoutPermitBytes, withoutPermitBytes.Length - permitWriter.Length);
+		var withoutPermit = new FireSupportRequestPacket();
+		withoutPermit.Deserialize(new NetDataReader(withoutPermitBytes));
+		AssertRequestEqual(expected, withoutPermit);
+		AssertEx.Equal(string.Empty, withoutPermit.ProgressionPermit);
+		byte[] withoutOriginBytes = withoutPermitBytes.ToArray();
 		Array.Resize(ref withoutOriginBytes, withoutOriginBytes.Length - sizeof(int));
 		var withoutOrigin = new FireSupportRequestPacket();
 		var withoutOriginReader = new NetDataReader(withoutOriginBytes);
@@ -42,6 +52,7 @@ internal static class FikaServiceSemanticsPacketTests
 		AssertEx.Equal(FireSupportRequestOrigin.Manual, withoutOrigin.RequestOrigin);
 		AssertEx.Equal(0, withoutOriginReader.AvailableBytes);
 
+		currentBytes = withoutPermitBytes;
 		Array.Resize(ref currentBytes, currentBytes.Length - sizeof(int) * 2);
 		var legacy = new FireSupportRequestPacket();
 		var legacyReader = new NetDataReader(currentBytes);
@@ -56,6 +67,15 @@ internal static class FikaServiceSemanticsPacketTests
 			legacy.ServiceSemanticsVersion);
 		AssertEx.Equal(FireSupportRequestOrigin.Manual, legacy.RequestOrigin);
 		AssertEx.Equal(0, legacyReader.AvailableBytes);
+	}
+
+	[RegressionTest]
+	private static void ManualProgressionGateRequiresCurrentHostVersion()
+	{
+		AssertEx.False(FireSupportServiceSemantics.SupportsProgression(FireSupportServiceSemantics.LegacyVersion));
+		AssertEx.False(FireSupportServiceSemantics.SupportsProgression(FireSupportServiceSemantics.CargoVersion));
+		AssertEx.True(FireSupportServiceSemantics.SupportsProgression(FireSupportServiceSemantics.CurrentVersion));
+		AssertEx.True(FireSupportServiceSemantics.SupportsProgression(FireSupportServiceSemantics.CurrentVersion + 1));
 	}
 
 	[RegressionTest]

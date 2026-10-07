@@ -209,6 +209,10 @@ foreach ($configuration in @("SPT-3.10 Release", "SPT-3.11 Release", "SPT-4.0 Re
     Assert-SolutionMapping -SolutionText $solutionText -ProjectGuid $testsGuid -SolutionConfiguration $configuration -ProjectConfiguration "Release"
 }
 
+Write-Host "Evaluating portable build configuration and deployment defaults."
+& (Join-Path $PSScriptRoot 'Test-BuildConfiguration.ps1')
+if (-not $?) { throw 'Portable build configuration verification failed.' }
+
 Write-Host "Validating deploy guards."
 $runtimeProjects = @(
     "project\SamSWAT.FireSupport\SamSWAT.FireSupport.Core.csproj",
@@ -223,6 +227,8 @@ foreach ($relativeProject in $runtimeProjects) {
         $projectXml.Project.Target |
             Where-Object {
                 $null -ne $_.PSObject.Properties["Exec"] -or
+                $null -ne $_.PSObject.Properties["Copy"] -or
+                $null -ne $_.PSObject.Properties["Move"] -or
                 $null -ne $_.PSObject.Properties["Delete"] -or
                 $null -ne $_.PSObject.Properties["RemoveDir"]
             }
@@ -234,8 +240,9 @@ foreach ($relativeProject in $runtimeProjects) {
 
     foreach ($target in $mutationTargets) {
         $condition = [string] $target.Condition
-        if ($condition -notmatch [regex]::Escape('$(SkipTscDeploy)')) {
-            throw "Mutating target '$($target.Name)' in '$relativeProject' is not guarded by SkipTscDeploy."
+        $normalizedCondition = [regex]::Replace($condition, '\s+', '')
+        if ($normalizedCondition -cne "'`$(SkipTscDeploy)'!='true'") {
+            throw "Mutating target '$($target.Name)' in '$relativeProject' must run only when SkipTscDeploy is not true."
         }
     }
 }
@@ -284,13 +291,13 @@ Assert-SourceWiring `
     -Pattern 'AccessTools\s*\.\s*DeclaredMethod\s*\(\s*typeof\s*\(\s*InputManager\s*\)\s*,\s*nameof\s*\(\s*InputManager\s*\.\s*Create\s*\)\s*,\s*\[\s*typeof\s*\(\s*KeyGroup\s*\[\s*\]\s*\)\s*,\s*typeof\s*\(\s*AxisGroup\s*\[\s*\]\s*\)\s*,\s*typeof\s*\(\s*float\s*\)\s*,\s*typeof\s*\(\s*bool\s*\)\s*\]\s*\)' `
     -Expectation "The SPT 4.1 input-manager patch must select the exact four-parameter Create overload instead of performing an ambiguous name-only lookup."
 
-$mainMenuControllerSourcePath = "project\SamSWAT.FireSupport\Unity\MainMenuPurchaseController.TaskBar.cs"
-$mainMenuControllerSource = Get-NormalizedCSharpSource -RelativePath $mainMenuControllerSourcePath
+$pilotServicesSourcePath = "project\SamSWAT.FireSupport\Unity\PilotServicesView.cs"
+$pilotServicesSource = Get-NormalizedCSharpSource -RelativePath $pilotServicesSourcePath
 Assert-SourceWiring `
-    -RelativePath $mainMenuControllerSourcePath `
-    -NormalizedSource $mainMenuControllerSource `
-    -Pattern 'PreloaderUI\s*\.\s*Instance\s*\?\s*\.\s*MenuTaskBar' `
-    -Expectation "The Uplink shortcut must resolve EFT's persistent bottom bar through PreloaderUI instead of inserting or repositioning center-menu rows."
+    -RelativePath $pilotServicesSourcePath `
+    -NormalizedSource $pilotServicesSource `
+    -Pattern 'root\s*\.\s*transform\s*\.\s*SetParent\s*\(\s*screen\s*\.\s*RectTransform\s*,\s*false\s*\)' `
+    -Expectation "Pilot support purchasing must live inside the native Services screen instead of a standalone menu overlay."
 
 $globalUsingsSourcePath = "project\SamSWAT.FireSupport\GlobalUsings.cs"
 $globalUsingsSource = Get-NormalizedCSharpSource -RelativePath $globalUsingsSourcePath
@@ -525,7 +532,7 @@ $authorizationLedgerSource = Get-NormalizedCSharpSource -RelativePath $authoriza
 Assert-SourceWiring `
     -RelativePath $authorizationLedgerSourcePath `
     -NormalizedSource $authorizationLedgerSource `
-    -Pattern '\[\s*Injectable\s*\(\s*InjectionType\s*\.\s*Singleton\s*\)\s*\]\s*public\s+sealed\s+class\s+FireSupportAuthorizationLedger\b' `
+    -Pattern '\[\s*Injectable\s*\(\s*InjectionType\s*\.\s*Singleton\s*\)\s*\]\s*public\s+sealed\s+(?:partial\s+)?class\s+FireSupportAuthorizationLedger\b' `
     -Expectation "The authorization ledger must remain a singleton so all request handlers share one initialized persistent state."
 
 $serverWiringChecks = @(
@@ -546,7 +553,7 @@ $serverWiringChecks = @(
         Expectation = "Server Cargo validation must delegate to CargoTimingPolicy.TryValidate."
     },
     @{
-        Pattern = 'RepairInvalidServiceTimings\s*\([^)]*\)\s*\{.{0,1200}?RepairExtractionTiming\s*\(\s*config\s*\.\s*Extraction\b.{0,500}?RepairCargoTiming\s*\(\s*config\s*\.\s*PriorityExfil\b'
+        Pattern = 'RepairInvalidServiceSettings\s*\([^)]*\)\s*\{.{0,1200}?RepairExtractionTiming\s*\(\s*config\s*\.\s*Extraction\b.{0,500}?RepairCargoTiming\s*\(\s*config\s*\.\s*PriorityExfil\b'
         Expectation = "Server migration repair must keep standard Extraction and Cargo on their distinct timing contracts."
     },
     @{
@@ -699,6 +706,7 @@ $jsonRoots = @(
     (Join-Path $repositoryRoot "project\SamSWAT.FireSupport\CopyToOutput")
     (Join-Path $repositoryRoot "project\SamSWAT.FireSupport.Server\CopyToOutput")
     (Join-Path $repositoryRoot "project\SamSWAT.FireSupport.Server\ConfigSources")
+    (Join-Path $repositoryRoot "addons\pilot-questline")
 )
 foreach ($jsonRoot in $jsonRoots) {
     foreach ($jsonFile in Get-ChildItem -LiteralPath $jsonRoot -File -Recurse -Filter "*.json") {
@@ -721,6 +729,7 @@ Write-Host "Running dashboard interaction regression tests."
 Invoke-Checked -FilePath "node" -Arguments @(
     "--test",
     (Join-Path $PSScriptRoot "tests\dashboard.test.mjs")
+    (Join-Path $PSScriptRoot "tests\presets.test.mjs")
 )
 
 Write-Host "Validating release identity and metadata."
@@ -749,13 +758,16 @@ $forbiddenTrackedExtensions = @(
 $textExtensions = @(
     ".cs",
     ".csproj",
+    ".config",
     ".css",
+    ".example",
     ".html",
     ".json",
     ".md",
     ".mjs",
     ".props",
     ".ps1",
+    ".py",
     ".sln",
     ".targets",
     ".txt",
@@ -770,6 +782,9 @@ $reviewedUplinkOverrideSha256 =
 
 foreach ($trackedFile in $trackedFiles) {
     $lowerTrackedFile = $trackedFile.ToLowerInvariant()
+    if ($lowerTrackedFile -match '^(?:shared\.user\.props$|\.local/|dependencies/|extras/helicopter-ropes/|extras/hh60-visual/(?:payload|generated|local-assets|exports|data)/)') {
+        throw "Machine-local/private/generated content is tracked: '$trackedFile'."
+    }
     foreach ($extension in $forbiddenTrackedExtensions) {
         if ($lowerTrackedFile.EndsWith($extension, [StringComparison]::Ordinal)) {
             if ($trackedFile.Equals($reviewedUplinkOverride, [StringComparison]::Ordinal)) {
@@ -798,7 +813,7 @@ foreach ($trackedFile in $trackedFiles) {
         }
 
         $content = Get-Content -LiteralPath $fullPath -Raw
-        if ($content -match '(?i)[A-Z]:[\\/](?:Users[\\/][^\\/\s"''`]+|SPT(?:[\\/]|$))') {
+        if ($content -match '(?i)[A-Z]:[\\/](?:Users[\\/][^\\/\s"''`]+|SPT(?:[0-9.]+)?(?:[\\/]|$))') {
             throw "Tracked build/source file contains a user-specific or live-SPT absolute path: '$trackedFile'."
         }
 
@@ -814,9 +829,15 @@ if (-not $?) {
     throw "Package allowlist source validation failed."
 }
 
-Write-Host "Testing the bundled dependency inventory and byte checks with synthetic files."
-& (Join-Path $PSScriptRoot "tests\bundled-dependencies.test.ps1")
-if (-not $?) { throw "Bundled dependency contract tests failed." }
+Write-Host "Testing the TSC-only package contract with synthetic directory and ZIP fixtures."
+& (Join-Path $PSScriptRoot "tests\package-contract.test.ps1")
+if (-not $?) { throw "TSC-only package contract tests failed." }
+
+& (Join-Path $PSScriptRoot 'Test-PilotQuestlinePackage.ps1') -ValidateSourceInputs
+if (-not $?) { throw 'Pilot questline addon source validation failed.' }
+Write-Host 'Testing separate Pilot questline directory and ZIP inventories.'
+& (Join-Path $PSScriptRoot 'tests\pilot-questline-package.test.ps1')
+if (-not $?) { throw 'Pilot questline addon package tests failed.' }
 
 Write-Host "Running proprietary-free regression suite."
 if (-not (Test-Path -LiteralPath $regressionProject -PathType Leaf)) {
@@ -830,5 +851,9 @@ Invoke-Checked -FilePath "dotnet" -Arguments @(
     "--configuration",
     "Release"
 )
+
+Write-Host "Running all proprietary-free HH-60 suites."
+& (Join-Path $PSScriptRoot 'Test-Hh60Synthetic.ps1')
+if (-not $?) { throw 'HH-60 synthetic verification failed.' }
 
 Write-Host "CI-safe verification passed."

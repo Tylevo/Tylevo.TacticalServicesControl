@@ -118,8 +118,8 @@ public sealed class FireSupportConfigEditorProvider(
 	{
 		destination.Revision = source.Revision;
 		destination.PaymentMode = source.PaymentMode;
-		destination.PaymentSource = source.PaymentSource;
 		destination.PaymentCurrency = source.PaymentCurrency;
+		destination.ServiceCurrencies = new Dictionary<string, string>(source.ServiceCurrencies);
 		destination.RequestCooldownSeconds = source.RequestCooldownSeconds;
 		destination.Prices = new Dictionary<string, int>(source.Prices);
 		destination.Enabled = new Dictionary<string, bool>(source.Enabled);
@@ -140,11 +140,11 @@ public sealed class FireSupportConfigEditorView
 	[JsonPropertyName("paymentMode")]
 	public string PaymentMode { get; set; } = string.Empty;
 
-	[JsonPropertyName("paymentSource")]
-	public string PaymentSource { get; set; } = string.Empty;
-
 	[JsonPropertyName("paymentCurrency")]
 	public string PaymentCurrency { get; set; } = string.Empty;
+
+	[JsonPropertyName("serviceCurrencies")]
+	public Dictionary<string, string> ServiceCurrencies { get; set; } = new();
 
 	[JsonPropertyName("requestCooldownSeconds")]
 	public int RequestCooldownSeconds { get; set; }
@@ -180,8 +180,8 @@ public sealed class FireSupportConfigEditorView
 		{
 			Revision = config.Revision,
 			PaymentMode = config.PaymentMode,
-			PaymentSource = config.PaymentSource,
 			PaymentCurrency = config.PaymentCurrency,
+			ServiceCurrencies = new Dictionary<string, string>(config.ServiceCurrencies),
 			RequestCooldownSeconds = config.RequestCooldownSeconds,
 			Prices = new Dictionary<string, int>(config.Prices),
 			Enabled = new Dictionary<string, bool>(config.Enabled),
@@ -197,7 +197,7 @@ public sealed class FireSupportConfigEditorView
 
 	public RaidOpsFireSupportServerConfig ApplyTo(RaidOpsFireSupportServerConfig config)
 	{
-		if (Prices is null || Enabled is null || PurchasePersistence is null || Uav is null
+		if (Prices is null || ServiceCurrencies is null || Enabled is null || PurchasePersistence is null || Uav is null
 			|| FocusedSweep is null || Extraction is null || PriorityExfil is null || DoublePass is null)
 		{
 			throw new InvalidOperationException(
@@ -205,8 +205,9 @@ public sealed class FireSupportConfigEditorView
 		}
 
 		config.PaymentMode = PaymentMode;
-		config.PaymentSource = PaymentSource;
+		config.PaymentSource = nameof(Unity.PaymentSource.StashRoubles);
 		config.PaymentCurrency = PaymentCurrency;
+		config.ServiceCurrencies = new Dictionary<string, string>(ServiceCurrencies);
 		config.RequestCooldownSeconds = RequestCooldownSeconds;
 		config.Prices = new Dictionary<string, int>(Prices);
 		config.Enabled = new Dictionary<string, bool>(Enabled);
@@ -297,6 +298,8 @@ public sealed class FireSupportExtractionEditorView
 
 public sealed class FireSupportCargoEditorView
 {
+	public int GridWidth { get; set; }
+	public int GridHeight { get; set; }
 	public float DispatchDelaySeconds { get; set; }
 	public int WaitTimeSeconds { get; set; }
 	public float SpeedMultiplier { get; set; }
@@ -304,6 +307,8 @@ public sealed class FireSupportCargoEditorView
 	public static FireSupportCargoEditorView FromConfig(
 		RaidOpsFireSupportServerConfig.CargoSettings config) => new()
 	{
+		GridWidth = config.GridWidth,
+		GridHeight = config.GridHeight,
 		DispatchDelaySeconds = config.DispatchDelaySeconds,
 		WaitTimeSeconds = config.WaitTimeSeconds,
 		SpeedMultiplier = config.SpeedMultiplier
@@ -311,6 +316,8 @@ public sealed class FireSupportCargoEditorView
 
 	public void ApplyTo(RaidOpsFireSupportServerConfig.CargoSettings config)
 	{
+		config.GridWidth = GridWidth;
+		config.GridHeight = GridHeight;
 		config.DispatchDelaySeconds = DispatchDelaySeconds;
 		config.WaitTimeSeconds = WaitTimeSeconds;
 		config.SpeedMultiplier = SpeedMultiplier;

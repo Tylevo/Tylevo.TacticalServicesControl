@@ -1,6 +1,7 @@
 using Comfort.Common;
 using EFT;
 using EFT.CameraControl;
+using EFT.Communications;
 using EFT.InventoryLogic;
 using EFT.UI.Screens;
 using System;
@@ -28,11 +29,20 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 	private const float UprightDeferredRestoreTimeoutSeconds = 2.25f;
 	private const float UprightHiddenHandsCameraOffset = 1.5f;
 
+	private static UavDeviceController s_uprightPhoneGripOwner;
 	private static UavDeviceController s_phoneZoomOwner;
 	private static float s_phoneZoomOriginalFov;
 	private static Vector3 s_phoneFramingOriginalOffset;
 	private static WeakReference<CameraManager> s_phoneZoomRestoreCamera;
 	private static float s_phoneZoomRestoreUntil;
+	private static int s_phoneSessionGeneration;
+
+	internal static int PhoneSessionGeneration => s_phoneSessionGeneration;
+	internal static bool IsPhoneZoomRestorePending =>
+		s_phoneZoomRestoreCamera != null &&
+		s_phoneZoomRestoreCamera.TryGetTarget(out CameraManager camera) &&
+		CameraManager.Exist && ReferenceEquals(camera, CameraManager.Instance) &&
+		Time.time < s_phoneZoomRestoreUntil;
 
 	private Player _ownerPlayer;
 	private AudioSource _tapAudioSource;
@@ -52,6 +62,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 	private bool _confirmationSequenceRunning;
 	private bool _paymentAttempted;
 	private bool _authorizationGranted;
+	private readonly PhonePurchaseDeploymentTransition _purchaseDeploymentTransition = new();
 	private bool _restoreStarted;
 	private bool _phoneVisualTerminalPhaseSent;
 	private Coroutine _confirmationSequenceCoroutine;
@@ -86,6 +97,8 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 	private Vector3 _phoneFramingStartOffset;
 	private float _phoneZoomStartFov;
 	private float _phoneZoomTargetFov;
+	private float _phoneZoomRaisedFov;
+	private bool _phoneZoomSprintSuppressed;
 	private int _phoneZoomFirstWritableFrame = -1;
 	private bool _phonePresentationOwnershipObserved;
 	private bool _phonePointerActive;
@@ -93,15 +106,16 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 	private bool _phonePointerMouseOwned;
 	private int _phonePointerMouseFrame = -1;
 	private UavPhonePointerInputNode _phonePointerInputNode;
+	private UavPhoneGripBinding _phoneGripBinding;
 
 	public Animator PhoneAnimator { get; private set; }
 	public UavPhoneLaunchMode LaunchMode { get; set; } = UavPhoneLaunchMode.ManualAuthorization;
 	public bool IsAuthorizationSessionActive => _authorizationSessionActive;
 
 	/// <summary>
-	/// Support type committed from the deploy selector. The hotkey controller
-	/// dispatches it after the phone is stowed and hands are restored, so the
-	/// authorization is only consumed when the actual deployment starts.
+	/// Support type committed from the deploy selector or purchase handoff.
+	/// The raid controller dispatches it after camera restoration, and the
+	/// authorization is consumed only when deployment is confirmed.
 	/// </summary>
 	public ESupportType PendingDeployment { get; private set; } = ESupportType.None;
 
@@ -193,6 +207,10 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 		try
 		{
 			_ownerPlayer = player;
+			if (player?.IsYourPlayer == true)
+			{
+				unchecked { s_phoneSessionGeneration++; }
+			}
 			base.InitializeController(player, weaponPrefab);
 			EnsurePhonePointerInputNode();
 			ApplyPhoneZoom();
@@ -354,9 +372,12 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 			return;
 		}
 
+		// Once payment starts it must settle, but closing the phone still cancels
+		// the optional deployment. A late successful receipt remains available.
+		_purchaseDeploymentTransition.Cancel();
 		if (_confirmationSequenceRunning && (_paymentAttempted || _restoreStarted))
 		{
-			TscDiagnostics.LogPhone("TSC phone cancel ignored: confirmation payment/restore is already committed.");
+			TscDiagnostics.LogPhone("TSC phone deployment cancelled; committed payment/restore will finish.");
 			return;
 		}
 
@@ -374,6 +395,13 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 
 	private void Update()
 	{
+		// Remove last render's mesh-only correction before EFT samples the
+		// item animation again. The authored rig always remains authoritative.
+		_phoneGripBinding?.RestoreAuthoredPose();
+		if (_phoneGripBinding != null && !ShouldFollowUprightPhoneGrip())
+		{
+			StopUprightPhoneGripFollow();
+		}
 		if (_ownerPlayer?.IsYourPlayer == true && ReferenceEquals(_ownerPlayer.HandsController, this) && !_finishNotified)
 		{
 			EnsurePhonePointerInputNode();
@@ -473,11 +501,9 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 
 		if (_confirmationSequenceRunning)
 		{
-			if (!_paymentAttempted &&
-			    !_restoreStarted &&
-			    (Input.GetKeyDown(KeyCode.Escape) || (!SuppressLegacyPhoneMouse && Input.GetMouseButtonDown(1))))
+			if (Input.GetKeyDown(KeyCode.Escape) || (!SuppressLegacyPhoneMouse && Input.GetMouseButtonDown(1)))
 			{
-				CancelConfirmationSequenceBeforeCommit();
+				CancelAuthorizationSession();
 			}
 
 			return;
@@ -548,7 +574,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 		{
 			return !_authorizationInputLocked && _deployPoseReady && Time.unscaledTime >= _deployInputArmedAt;
 		}
-		return _confirmationSequenceRunning ? !_paymentAttempted : !_authorizationInputLocked;
+		return _confirmationSequenceRunning || !_authorizationInputLocked;
 	}
 
 	private void EnsurePhonePointerInputNode()
@@ -1449,6 +1475,88 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 		_tuckedRightArms.Clear();
 	}
 
+	private bool ShouldFollowUprightPhoneGrip()
+	{
+		return IsUprightPhoneMode(LaunchMode) &&
+		       _ownerPlayer?.IsYourPlayer == true &&
+		       ReferenceEquals(_ownerPlayer.HandsController, this) &&
+		       _deployPosePinned && !_finishNotified && !_restoreStarted;
+	}
+
+	internal static bool ShouldDampenUprightPhoneMotion(EFT.Animations.ProceduralWeaponAnimation animation)
+	{
+		UavDeviceController owner = s_uprightPhoneGripOwner;
+		return owner != null && owner._phoneGripBinding != null &&
+		       owner.ShouldFollowUprightPhoneGrip() &&
+		       owner._ownerPlayer.PointOfView == EPointOfView.FirstPerson &&
+		       ReferenceEquals(owner._ownerPlayer.ProceduralWeaponAnimation, animation);
+	}
+
+	private void StartUprightPhoneGripFollow()
+	{
+		if (_phoneGripBinding != null || !ShouldFollowUprightPhoneGrip())
+		{
+			return;
+		}
+
+		try
+		{
+			_phoneGripBinding = UavPhoneGripBinding.TryCreate(_ownerPlayer, PhoneAnimator);
+		}
+		catch (Exception ex)
+		{
+			FireSupportPlugin.LogSource.LogWarning($"TSC upright phone grip binding skipped. mode={LaunchMode}. {ex}");
+			return;
+		}
+		if (_phoneGripBinding == null)
+		{
+			FireSupportPlugin.LogSource.LogWarning(
+				$"TSC upright phone grip could not bind the local hand; keeping the authored phone presentation. mode={LaunchMode}.");
+			return;
+		}
+
+		// EFT finishes its sprint/body IK in LateUpdate. Follow the visible
+		// gripping hand only after that pass, without moving the animation rig.
+		s_uprightPhoneGripOwner = this;
+		Application.onBeforeRender += ApplyUprightPhoneGrip;
+		FireSupportPlugin.LogSource.LogInfo($"TSC upright phone grip follow enabled. mode={LaunchMode}.");
+	}
+
+	private void ApplyUprightPhoneGrip()
+	{
+		if (!ShouldFollowUprightPhoneGrip())
+		{
+			StopUprightPhoneGripFollow();
+			return;
+		}
+
+		try
+		{
+			if (_ownerPlayer.PointOfView != EPointOfView.FirstPerson)
+			{
+				_phoneGripBinding?.RestoreAuthoredPose();
+				return;
+			}
+			_phoneGripBinding?.Apply();
+		}
+		catch (Exception ex)
+		{
+			StopUprightPhoneGripFollow();
+			FireSupportPlugin.LogSource.LogWarning($"TSC upright phone grip follow stopped. mode={LaunchMode}. {ex}");
+		}
+	}
+
+	private void StopUprightPhoneGripFollow()
+	{
+		if (ReferenceEquals(s_uprightPhoneGripOwner, this))
+		{
+			s_uprightPhoneGripOwner = null;
+		}
+		Application.onBeforeRender -= ApplyUprightPhoneGrip;
+		_phoneGripBinding?.Dispose();
+		_phoneGripBinding = null;
+	}
+
 	private void SuppressUprightPresentationUntilVertical(WeaponPrefab weaponPrefab)
 	{
 		if (weaponPrefab == null ||
@@ -1769,6 +1877,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 			MaintainPhoneFraming();
 			RestoreUprightPresentationRenderers(
 				"portrait pose render boundary completed");
+			StartUprightPhoneGripFollow();
 		}
 		catch (Exception ex)
 		{
@@ -2008,6 +2117,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 
 	private void FinishDeploySession(bool success)
 	{
+		StopUprightPhoneGripFollow();
 		if (_finishNotified)
 		{
 			return;
@@ -2026,6 +2136,10 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 			SetPhoneAnimatorSpeed(GetConfirmOutroSpeedMultiplier(), "deploy session finish; resume outro");
 		}
 
+		if (success && PendingDeployment != ESupportType.None)
+		{
+			RestorePhoneZoom();
+		}
 		FinishAuthorizationSession(playOutro: !_authorizationOutroPreplayed, success);
 
 		// Dispatch from the raid-lifetime controller, not the phone restore
@@ -2037,7 +2151,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 			FireSupportController fireSupportController = FireSupportController.Instance;
 			if (fireSupportController != null)
 			{
-				fireSupportController.ScheduleDeployAfterHandsRestore(PendingDeployment);
+				fireSupportController.ScheduleDeployAfterHandsRestore(PendingDeployment, requirePrepaidAuthorization: true);
 			}
 			else
 			{
@@ -2060,6 +2174,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 		string presentationName,
 		string reason)
 	{
+		StopUprightPhoneGripFollow();
 		// Radar and warning views are presentation-only. Their outro must not
 		// publish purchase/cancel visual packets.
 		if (_finishNotified)
@@ -2291,6 +2406,11 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 		}
 
 		_confirmationSequenceRunning = true;
+		_purchaseDeploymentTransition.Begin(
+			PluginSettings.PhoneAutoDeployAfterPurchase?.Value == true &&
+			PhonePurchaseDeploymentTransition.UsesPrepaidAuthorization(FireSupportPayment.GetActivePaymentMode()),
+			LaunchMode == UavPhoneLaunchMode.ManualAuthorization,
+			_selectedSupportType);
 		ReleasePhonePointer();
 		PublishPhoneVisualPhase(UavPhoneVisualPhase.Confirming, duration: 4.0f);
 		_confirmationSequenceCoroutine = StartCoroutine(RunConfirmationSequence());
@@ -2381,11 +2501,9 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 
 			_phoneScreen?.SetConfirmSwipeAnimationProgress(1f);
 			_phoneScreen?.StopConfirmSwipeAnimation();
-			if (GetConfirmPauseAtCommit())
-			{
-				SetPhoneAnimatorSpeed(0f, "payment commit pause");
-				LogConfirmSequence("animator paused", sequenceStartedAt);
-			}
+			// Continue the authored swipe directly into stowing. Payment still owns
+			// completion below, but network/result presentation must not freeze the rig.
+			SetPhoneAnimatorSpeed(GetConfirmOutroSpeedMultiplier(), "payment commit; continue outro");
 
 			ShowPhoneState(TerraGroupPhoneState.Authorizing, AuthorizingFadeSeconds);
 			LogConfirmSequence("authorizing shown", sequenceStartedAt);
@@ -2414,18 +2532,17 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 			}
 
 			_authorizationGranted = success;
+			bool openDesignationAfterPurchase = _purchaseDeploymentTransition.RecordPurchaseResult(success, purchaseResult);
 			LogConfirmSequence(
 				"payment result",
 				sequenceStartedAt,
 				$"paid={success}, source={purchaseResult?.PaymentSource ?? "<unknown>"}, reason={purchaseResult?.Reason ?? string.Empty}, serverRevision={purchaseResult?.ServerRevision ?? 0}");
 			if (success != expectedSuccess)
 			{
-				_authorizationOutroPreplayed = false;
+				// Report the actual outcome without replaying the already-running swipe.
 				TscDiagnostics.LogPhone(
 					$"TSC phone expected payment success changed during confirmation. expected={expectedSuccess}, actual={success}.");
 			}
-
-			yield return new WaitForSecondsRealtime(GetAuthorizingDisplaySeconds());
 
 			ShowPhoneState(
 				success ? TerraGroupPhoneState.Authorized : TerraGroupPhoneState.Denied,
@@ -2435,12 +2552,22 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 				success ? UavPhoneVisualPhase.Authorized : UavPhoneVisualPhase.Cancelled,
 				success,
 				0.9f);
-			yield return new WaitForSecondsRealtime(AuthorizedFadeSeconds);
 			if (success)
 			{
 				LogConfirmSequence("authorization granted", sequenceStartedAt);
 				FireSupportDeploymentSelection.Select(selectedSupportType);
-				FireSupportPayment.NotifyAuthorizationPurchased(selectedSupportType);
+				if (openDesignationAfterPurchase)
+				{
+					NotificationManager.DisplayMessageNotification(
+						$"{FireSupportPayment.GetSupportName(selectedSupportType)} authorization ready. Deploying after the phone is stowed.",
+						ENotificationDurationType.Default,
+						ENotificationIconType.Default,
+						null);
+				}
+				else
+				{
+					FireSupportPayment.NotifyAuthorizationPurchased(selectedSupportType);
+				}
 				LogConfirmSequence("notification shown", sequenceStartedAt);
 			}
 			else
@@ -2449,12 +2576,18 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 				LogConfirmSequence("payment denied notification shown", sequenceStartedAt);
 			}
 
-			yield return new WaitForSecondsRealtime(success ? GetAuthorizedDisplaySeconds() : GetDeniedDisplaySeconds());
-			yield return new WaitForSecondsRealtime(GetRestoreAfterAuthorizedSeconds());
+			// Let result fades and remote status use the remaining stow frames.
+			// This waits for motion already in progress, never a frozen display hold.
+			if (_authorizationOutroPreplayed)
+			{
+				yield return WaitForAuthorizationOutro();
+				if (!_confirmationSequenceRunning || _finishNotified)
+				{
+					yield break;
+				}
+			}
 
 			_restoreStarted = true;
-			SetPhoneAnimatorSpeed(GetConfirmOutroSpeedMultiplier(), "result held; resume outro");
-			LogConfirmSequence("animator resumed", sequenceStartedAt);
 			LogConfirmSequence("restore started", sequenceStartedAt);
 			_confirmationSequenceRunning = false;
 			_confirmationSequenceCoroutine = null;
@@ -2672,34 +2805,9 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 		return Mathf.Clamp01(PluginSettings.PhoneConfirmSwipeCommitNormalizedTime?.Value ?? 0.78f);
 	}
 
-	private static bool GetConfirmPauseAtCommit()
-	{
-		return PluginSettings.PhoneConfirmPauseAtCommit?.Value ?? true;
-	}
-
 	private static float GetConfirmOutroSpeedMultiplier()
 	{
 		return Mathf.Clamp(PluginSettings.PhoneConfirmOutroSpeedMultiplier?.Value ?? 1.6f, 0.25f, 4f);
-	}
-
-	private static float GetAuthorizingDisplaySeconds()
-	{
-		return Mathf.Clamp(PluginSettings.PhoneAuthorizingDisplaySeconds?.Value ?? 0.25f, 0.1f, 5f);
-	}
-
-	private static float GetAuthorizedDisplaySeconds()
-	{
-		return Mathf.Clamp(PluginSettings.PhoneAuthorizedDisplaySeconds?.Value ?? 0.4f, 0.1f, 5f);
-	}
-
-	private static float GetDeniedDisplaySeconds()
-	{
-		return Mathf.Clamp(PluginSettings.PhoneDeniedDisplaySeconds?.Value ?? 0.85f, 0.1f, 5f);
-	}
-
-	private static float GetRestoreAfterAuthorizedSeconds()
-	{
-		return Mathf.Clamp(PluginSettings.PhoneRestoreAfterAuthorizedSeconds?.Value ?? 0f, 0f, 3f);
 	}
 
 	private void SelectSupportType(ESupportType supportType)
@@ -2754,7 +2862,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 		return new UavPhoneScreenContext(
 			_selectedSupportType,
 			FireSupportPayment.GetActiveCost(_selectedSupportType),
-			FireSupportPayment.GetEffectiveBalance(),
+			FireSupportPayment.GetEffectiveBalance(_selectedSupportType),
 			UavReconSettings.GetDurationSeconds(_selectedSupportType));
 	}
 
@@ -2764,6 +2872,23 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 		if (_finishNotified)
 		{
 			return;
+		}
+
+		// Commit the optional handoff only after the normal purchase/result/outro
+		// sequence finishes. Consume this intent before callbacks can re-enter or
+		// destroy the phone; the raid controller owns the actual deferred request.
+		FireSupportController deploymentController = FireSupportController.Instance;
+		bool continueToDesignation = _purchaseDeploymentTransition.TryComplete(
+			success,
+			PhonePurchaseDeploymentTransition.UsesPrepaidAuthorization(FireSupportPayment.GetActivePaymentMode()),
+			FireSupportAuthorizations.HasDeployable(_purchaseDeploymentTransition.PendingSupport),
+			deploymentController?.IsInitialized == true &&
+			_ownerPlayer?.IsYourPlayer == true && _ownerPlayer.ActiveHealthController?.IsAlive == true,
+			out ESupportType purchasedSupport);
+		if (continueToDesignation)
+		{
+			PendingDeployment = purchasedSupport;
+			RestorePhoneZoom();
 		}
 
 		_authorizationSessionActive = false;
@@ -2793,6 +2918,10 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 		PublishPhoneVisualPhase(UavPhoneVisualPhase.End, success, 0.35f);
 
 		NotifyAuthorizationFinished(success);
+		if (continueToDesignation && deploymentController != null)
+		{
+			deploymentController.ScheduleDeployAfterHandsRestore(purchasedSupport, requirePrepaidAuthorization: true);
+		}
 	}
 
 	private void PublishPhoneVisualPhase(UavPhoneVisualPhase phase, bool success = false, float duration = 0f)
@@ -2820,6 +2949,8 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 		_finishNotified = true;
 		_finishPending = true;
 		_finishSuccess = success;
+		// Teardown and late purchase callbacks cannot revive a cancelled session.
+		_purchaseDeploymentTransition.Cancel();
 
 		if (IsUprightPhoneMode(LaunchMode))
 		{
@@ -2917,6 +3048,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 
 	public void ShutdownPhoneScreenForExternalRestore()
 	{
+		StopUprightPhoneGripFollow();
 		RestorePhoneZoom();
 		ResetPhoneAnimatorSpeed("external restore");
 		ShutdownPhoneScreen();
@@ -2924,7 +3056,13 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 
 	private void LateUpdate()
 	{
-		if (!_phoneZoomApplied || _phoneZoomFirstWritableFrame < 0 || s_phoneZoomOwner != this)
+		if (!_phoneZoomApplied || s_phoneZoomOwner != this)
+		{
+			return;
+		}
+
+		MaintainPurchasePhoneSprintZoom();
+		if (!_phoneZoomApplied || _phoneZoomFirstWritableFrame < 0)
 		{
 			return;
 		}
@@ -2971,7 +3109,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 
 	private bool HasPhonePresentationOwnership()
 	{
-		if (IsUprightPhoneMode(LaunchMode))
+		if (IsUprightPhoneMode(LaunchMode) && LaunchMode != UavPhoneLaunchMode.DeployMenu)
 		{
 			return true;
 		}
@@ -2993,7 +3131,9 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 	{
 		if (_phoneZoomApplied ||
 		    _phoneFramingApplied ||
-		    PluginSettings.PhoneAutoZoomEnabled?.Value != true ||
+		    !PhoneZoomPolicy.IsPresentationEnabled(LaunchMode,
+			    PluginSettings.PhoneAutoZoomEnabled?.Value == true,
+			    PluginSettings.PhoneDeployZoomEnabled?.Value == true) ||
 		    _ownerPlayer?.IsYourPlayer != true ||
 		    !CameraManager.Exist ||
 		    CameraManager.Instance == null)
@@ -3029,12 +3169,14 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 				: s_phoneFramingOriginalOffset;
 			_phonePresentationOwnershipObserved = ReferenceEquals(_ownerPlayer.HandsController, this);
 
-			bool preserveRaidFov = IsUprightPhoneMode(LaunchMode);
+			bool preserveRaidFov = PhoneZoomPolicy.PreservesRaidFov(LaunchMode);
 			float targetFov = s_phoneZoomOriginalFov;
 			if (!preserveRaidFov)
 			{
-				float configuredFov = Mathf.Clamp(PluginSettings.PhoneZoomFov?.Value ?? 45f, 20f, 75f);
-				targetFov = Mathf.Min(s_phoneZoomOriginalFov, configuredFov);
+				_phoneZoomRaisedFov = PhoneZoomPolicy.GetRaisedFov(LaunchMode, s_phoneZoomOriginalFov,
+					PluginSettings.PhoneZoomFov?.Value ?? 45f, PluginSettings.PhoneDeployZoomFov?.Value ?? 45f);
+				_phoneZoomSprintSuppressed = IsPurchasePhoneSprinting();
+				targetFov = _phoneZoomSprintSuppressed ? s_phoneZoomOriginalFov : _phoneZoomRaisedFov;
 				_phoneZoomApplied = true;
 			}
 
@@ -3073,6 +3215,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 
 	private void MaintainPhoneFraming()
 	{
+		MaintainPurchasePhoneSprintZoom();
 		if (!_phoneFramingApplied || s_phoneZoomOwner != this)
 		{
 			return;
@@ -3085,14 +3228,74 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 		}
 
 		Vector3 framedOffset = s_phoneFramingOriginalOffset;
-		framedOffset.x -= GetPhoneHorizontalFraming();
-		framedOffset.y -= GetPhoneVerticalFraming();
+		if (!_phoneZoomSprintSuppressed)
+		{
+			framedOffset.x -= GetPhoneHorizontalFraming();
+			framedOffset.y -= GetPhoneVerticalFraming();
+		}
 		framedOffset.y += GetUprightRevealLowerOffset();
 		if (_phonePresentationTransition.TrySample(Time.unscaledTime, s_phoneZoomOwner, out float blend))
 		{
 			framedOffset = Vector3.Lerp(_phoneFramingStartOffset, framedOffset, blend);
 		}
 		handsContainer.CameraOffset = framedOffset;
+	}
+
+	private bool IsPurchasePhoneSprinting()
+	{
+		return PhoneZoomPolicy.SupportsSprintZoom(LaunchMode) &&
+		       _ownerPlayer?.MovementContext != null && _ownerPlayer.IsSprintEnabled;
+	}
+
+	private void MaintainPurchasePhoneSprintZoom()
+	{
+		if (!_phoneZoomApplied || s_phoneZoomOwner != this ||
+		    _finishNotified || _restoreStarted ||
+		    !PhoneZoomPolicy.SupportsSprintZoom(LaunchMode))
+		{
+			return;
+		}
+
+		bool sprinting = IsPurchasePhoneSprinting();
+		if (sprinting == _phoneZoomSprintSuppressed)
+		{
+			return;
+		}
+
+		if (!HasPhonePresentationOwnership() || !CameraManager.Exist ||
+		    !ReferenceEquals(_phoneZoomCamera, CameraManager.Instance) || _phoneZoomCamera.Camera == null)
+		{
+			RestorePhoneZoom();
+			return;
+		}
+
+		try
+		{
+			// Keep both directions on the original zoom-in clock. Rebase from
+			// the currently visible presentation so a rapid sprint toggle does
+			// not jump to the endpoint of an unfinished transition.
+			if (!_phonePresentationTransition.TryRestart(Time.unscaledTime, s_phoneZoomOwner))
+			{
+				RestorePhoneZoom();
+				return;
+			}
+			_phoneZoomStartFov = _phoneZoomCamera.Camera.fieldOfView;
+			if (_ownerPlayer?.ProceduralWeaponAnimation?.HandsContainer != null)
+			{
+				_phoneFramingStartOffset = _ownerPlayer.ProceduralWeaponAnimation.HandsContainer.CameraOffset;
+			}
+			_phoneZoomSprintSuppressed = sprinting;
+			_phoneZoomTargetFov = sprinting ? s_phoneZoomOriginalFov : _phoneZoomRaisedFov;
+			_phoneZoomFirstWritableFrame = Time.frameCount + 1;
+			_phoneZoomCamera.SetFov(_phoneZoomStartFov, 0f, true);
+			FireSupportPlugin.LogSource.LogInfo(
+				$"TSC phone sprint zoom. mode={LaunchMode}, sprinting={sprinting}, fromFov={_phoneZoomStartFov:F1}, targetFov={_phoneZoomTargetFov:F1}.");
+		}
+		catch (Exception ex)
+		{
+			RestorePhoneZoom();
+			FireSupportPlugin.LogSource.LogWarning($"TSC Uplink phone sprint zoom stopped. {ex}");
+		}
 	}
 
 	private float GetUprightRevealLowerOffset()
@@ -3138,6 +3341,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 		_uprightRevealStartedAt = -1f;
 		_phonePresentationTransition.Cancel();
 		_phoneZoomFirstWritableFrame = -1;
+		_phoneZoomSprintSuppressed = false;
 		if (!_phoneZoomApplied && !_phoneFramingApplied)
 		{
 			return;
@@ -3308,6 +3512,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 
 	private void OnDisable()
 	{
+		StopUprightPhoneGripFollow();
 		_phonePointerNeedsModifierRelease = true;
 		DetachPhonePointerInputNode();
 		_phonePointerMouseOwned = false;
@@ -3342,6 +3547,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 
 	private void OnDestroy()
 	{
+		StopUprightPhoneGripFollow();
 		DetachPhonePointerInputNode();
 		_phonePointerMouseOwned = false;
 		if (!_finishNotified &&

@@ -16,6 +16,7 @@ public sealed class FireSupportHttpListener(
 	FireSupportServerConfigService configService,
 	FireSupportUh60DeliveryService uh60DeliveryService,
 	FireSupportUh60TransferFeeService uh60TransferFeeService,
+	TscPilotProgressionService pilotProgression,
 	ISptLogger<FireSupportHttpListener> logger) : IHttpListener
 {
 	private const string PublicRoot = "/tsc";
@@ -25,6 +26,7 @@ public sealed class FireSupportHttpListener(
 	{
 		["index.html"] = "text/html; charset=utf-8",
 		["app.mjs"] = "application/javascript; charset=utf-8",
+		["presets.mjs"] = "application/javascript; charset=utf-8",
 		["styles.css"] = "text/css; charset=utf-8"
 	};
 
@@ -96,7 +98,12 @@ public sealed class FireSupportHttpListener(
 				return;
 			}
 
-			await WriteJsonAsync(httpContext, 200, configService.GetSnapshot(sessionId, ReadIdentityFromQuery(httpContext)));
+			bool includeStashCurrencyState = bool.TryParse(
+				httpContext.Request.Query["includeStashCurrencyState"].ToString(), out bool includeState) && includeState;
+			bool includePurchaseHistory = bool.TryParse(
+				httpContext.Request.Query["includePurchaseHistory"].ToString(), out bool includeHistory) && includeHistory;
+			await WriteJsonAsync(httpContext, 200, await configService.GetSnapshotAsync(
+				sessionId, ReadIdentityFromQuery(httpContext), includeStashCurrencyState, includePurchaseHistory));
 			return;
 		}
 
@@ -104,6 +111,31 @@ public sealed class FireSupportHttpListener(
 		    string.Equals(path, "/tsc/schema", StringComparison.OrdinalIgnoreCase))
 		{
 			await WriteJsonAsync(httpContext, 200, configService.GetDashboardSchema());
+			return;
+		}
+
+		if (string.Equals(method, HttpMethods.Get, StringComparison.OrdinalIgnoreCase) &&
+		    string.Equals(path, "/tsc/presets", StringComparison.OrdinalIgnoreCase))
+		{
+			await WriteJsonAsync(httpContext, 200, configService.GetPresets());
+			return;
+		}
+
+		if (string.Equals(path, "/tsc/presets/saved", StringComparison.OrdinalIgnoreCase) ||
+		    string.Equals(path, "/tsc/presets/remove", StringComparison.OrdinalIgnoreCase))
+		{
+			await HandleSavedPresetsAsync(path, httpContext);
+			return;
+		}
+
+		if (string.Equals(method, HttpMethods.Post, StringComparison.OrdinalIgnoreCase) &&
+		    string.Equals(path, TscPilotProgressionService.VerifyRoute, StringComparison.OrdinalIgnoreCase))
+		{
+			// The opaque permit authenticates this limited verification. A Fika
+			// headless host must never impersonate its requester's HTTP session.
+			FireSupportProgressionVerifyRequest? request =
+				await ReadJsonAsync<FireSupportProgressionVerifyRequest>(httpContext);
+			await WriteJsonAsync(httpContext, 200, pilotProgression.Verify(request));
 			return;
 		}
 
@@ -155,6 +187,70 @@ public sealed class FireSupportHttpListener(
 
 		httpContext.Response.Headers.Allow = "GET, POST";
 		await WriteJsonAsync(httpContext, 404, new { error = "Unknown TSC route." });
+	}
+
+	private async Task HandleSavedPresetsAsync(string path, HttpContext httpContext)
+	{
+		httpContext.Response.Headers.CacheControl = "no-store";
+		if (!IsAdminRequestAuthorized(httpContext))
+		{
+			await WriteJsonAsync(httpContext, 403, new { error = "Saved presets require dashboard administrator access." });
+			return;
+		}
+		bool removing = string.Equals(path, "/tsc/presets/remove", StringComparison.OrdinalIgnoreCase);
+		if (!removing && HttpMethods.IsGet(httpContext.Request.Method))
+		{
+			await WriteJsonAsync(httpContext, 200, configService.GetSavedPresets());
+			return;
+		}
+		if (!HttpMethods.IsPost(httpContext.Request.Method))
+		{
+			httpContext.Response.Headers.Allow = removing ? "POST" : "GET, POST";
+			await WriteJsonAsync(httpContext, 405, new { error = "Unsupported saved preset method." });
+			return;
+		}
+		if (httpContext.Request.ContentLength > FireSupportPresetStore.MaxPresetBytes)
+		{
+			await WriteJsonAsync(httpContext, 413, new { error = "Preset requests must be at most 32 KiB." });
+			return;
+		}
+		string encoding = httpContext.Request.Headers["Content-Encoding"].ToString();
+		if (!string.IsNullOrEmpty(encoding) && !string.Equals(encoding, "identity", StringComparison.OrdinalIgnoreCase))
+		{
+			await WriteJsonAsync(httpContext, 415, new { error = "Preset requests must contain uncompressed JSON." });
+			return;
+		}
+		JsonElement payload;
+		try
+		{
+			payload = await FireSupportPresetStore.ReadRequestAsync(httpContext.Request.Body, httpContext.RequestAborted);
+		}
+		catch (InvalidDataException)
+		{
+			await WriteJsonAsync(httpContext, 413, new { error = "Preset requests must be at most 32 KiB." });
+			return;
+		}
+		catch (JsonException)
+		{
+			await WriteJsonAsync(httpContext, 400, new { error = "Invalid preset JSON." });
+			return;
+		}
+		if (removing)
+		{
+			if (!configService.TryRemovePreset(payload, out string error, out bool storageFailure))
+			{
+				await WriteJsonAsync(httpContext, storageFailure ? 500 : 400, new { error });
+				return;
+			}
+			await WriteJsonAsync(httpContext, 200, new { ok = true });
+			return;
+		}
+		if (!configService.TrySavePreset(payload, out FireSupportPreset? preset, out string saveError, out bool saveStorageFailure))
+		{
+			await WriteJsonAsync(httpContext, saveStorageFailure ? 500 : 400, new { error = saveError });
+			return;
+		}
+		await WriteJsonAsync(httpContext, 200, new { preset });
 	}
 
 	private async Task HandleUh60MessengerAvatarAsync(
@@ -286,7 +382,7 @@ public sealed class FireSupportHttpListener(
 			await WriteJsonAsync(httpContext, 404, new
 			{
 				error = "TSC dashboard asset not found.",
-				hint = $"Expected dashboard files (index.html, app.mjs, styles.css) in: {configService.WebRootPath}. Re-extract the TSC release zip with the server stopped if the folder is missing."
+				hint = $"Expected dashboard files (index.html, app.mjs, presets.mjs, styles.css) in: {configService.WebRootPath}. Re-extract the TSC release zip with the server stopped if the folder is missing."
 			});
 			return;
 		}

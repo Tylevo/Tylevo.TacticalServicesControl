@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <Compile Include="../../src/EscortBenchSafetyPolicy.cs" Link="Production/EscortBenchSafetyPolicy.cs" />
+    <Compile Include="../../src/EscortBenchColliderOwner.cs" Link="Production/EscortBenchColliderOwner.cs" />
+  </ItemGroup>
+</Project>

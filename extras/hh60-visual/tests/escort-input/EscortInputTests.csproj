@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- CI uses synthetic types. Opt in to installed API checks with NativeInput=true and GameRoot. -->
+  <PropertyGroup Condition="'$(NativeInput)' == 'true'">
+    <OutputPath>bin/$(Configuration)/native/</OutputPath>
+    <IntermediateOutputPath>obj/$(Configuration)/native/</IntermediateOutputPath>
+    <NativeManaged>$(GameRoot)/EscapeFromTarkov_Data/Managed</NativeManaged>
+    <DefineConstants>$(DefineConstants);NATIVE_INPUT</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/EscortManualTriggerInput.cs" Link="Production/EscortManualTriggerInput.cs" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(NativeInput)' == 'true'">
+    <Compile Remove="RuntimeStubs.cs" />
+    <Reference Include="BepInEx"><HintPath>$(GameRoot)/BepInEx/core/BepInEx.dll</HintPath></Reference>
+    <Reference Include="UnityEngine"><HintPath>$(NativeManaged)/UnityEngine.dll</HintPath></Reference>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>$(NativeManaged)/UnityEngine.CoreModule.dll</HintPath></Reference>
+    <Reference Include="UnityEngine.InputLegacyModule"><HintPath>$(NativeManaged)/UnityEngine.InputLegacyModule.dll</HintPath></Reference>
+  </ItemGroup>
+  <Target Name="RequireNativeInputReferences" BeforeTargets="ResolveReferences" Condition="'$(NativeInput)' == 'true'">
+    <Error Condition="'$(GameRoot)' == '' Or !Exists('$(GameRoot)/BepInEx/core/BepInEx.dll')"
+           Text="Native input checks require -p:GameRoot pointing to local game references." />
+  </Target>
+</Project>

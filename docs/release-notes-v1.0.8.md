@@ -1,10 +1,10 @@
 # Tylevo's Tactical Services Control v1.0.8 Public Beta
 
 > **Historical documentation.** These instructions and results describe this
-> earlier version. For TSC v1.3.10 on SPT 4.1.5, use the
-> [current release notes](release-notes-v1.3.10.md) and
-> [installation guide](dependencies.md). See the [archive index](archive/README.md)
-> for earlier release availability.
+> earlier version. For TSC v1.3.12 / SPT 4.1.5, use the
+> [release notes](release-notes-v1.3.12.md) and [installation guide](dependencies.md).
+> Install UnityToolkit 2.0.2 and WTT CommonLib 3.0.6 separately.
+> See the [archive index](archive/README.md) for older availability.
 
 Install-ready beta package for SPT 4.0.13. Extract it into the SPT root while the game and server are closed.
 

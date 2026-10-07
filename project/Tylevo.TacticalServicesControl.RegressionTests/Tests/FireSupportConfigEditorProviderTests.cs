@@ -5,6 +5,46 @@ using System.Text.Json;
 internal static class FireSupportConfigEditorProviderTests
 {
 	[RegressionTest]
+	private static async Task NativeEditorOmitsWalletSelectionAndIgnoresLegacyEditorValues()
+	{
+		using var rig = new ServerConfigTestRig();
+		var registration = new FireSupportConfigEditorProvider(rig.Service).GetConfigs().Single();
+		string editorJson = JsonSerializer.Serialize(registration.RuntimeConfig);
+		AssertEx.False(editorJson.Contains("paymentSource", StringComparison.Ordinal));
+		AssertEx.Null(typeof(FireSupportConfigEditorView).GetProperty("PaymentSource"));
+		// A stale editor may still post the removed field; the DTO ignores it.
+		var draft = JsonSerializer.Deserialize<FireSupportConfigEditorView>(
+			editorJson.Insert(1, "\"paymentSource\":\"PreferCarriedThenStash\","))!;
+		draft.Prices["Uav"] = 73;
+		await registration.SaveToDiskAsync!(draft, CancellationToken.None);
+		AssertEx.Equal("StashRoubles", rig.Service.GetConfigSnapshot().PaymentSource);
+		AssertEx.Equal("StashRoubles", rig.ReadDisk().PaymentSource);
+		AssertEx.Equal(73, rig.ReadDisk().Prices["Uav"]);
+	}
+
+	[RegressionTest]
+	private static async Task NativeServiceCurrencyEditsRoundTripIndependentlyFromTheGlobalDefault()
+	{
+		using var rig = new ServerConfigTestRig();
+		var registration = new FireSupportConfigEditorProvider(rig.Service).GetConfigs().Single();
+		var draft = FireSupportConfigEditorView.FromConfig(rig.Service.GetConfigSnapshot());
+		draft.PaymentCurrency = "USD";
+		draft.ServiceCurrencies["A10"] = "gp";
+		draft.ServiceCurrencies["Extraction"] = "BTC";
+		AssertEx.Equal("Inherit", rig.Service.GetConfigSnapshot().ServiceCurrencies["A10"]);
+		await registration.ApplyToRuntimeAsync!(draft, CancellationToken.None);
+		var applied = (FireSupportConfigEditorView)registration.RuntimeConfig;
+		AssertEx.Equal("GP", applied.ServiceCurrencies["A10"]);
+		AssertEx.Equal("BTC", applied.ServiceCurrencies["Extraction"]);
+		AssertEx.Equal("USD", applied.PaymentCurrency);
+		await registration.SaveToDiskAsync!(applied, CancellationToken.None);
+		AssertEx.Equal("GP", rig.ReadDisk().ServiceCurrencies["A10"]);
+		AssertEx.Equal("BTC", rig.ReadDisk().ServiceCurrencies["Extraction"]);
+		AssertEx.Equal("Inherit", rig.ReadDisk().ServiceCurrencies["Uav"]);
+		AssertEx.Equal("USD", rig.ReadDisk().PaymentCurrency);
+	}
+
+	[RegressionTest]
 	private static async Task NativeRegistrationsHaveIndependentSnapshotsForConcurrentSessions()
 	{
 		using var rig = new ServerConfigTestRig();

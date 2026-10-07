@@ -269,19 +269,16 @@ internal static class HelicopterItemTransferSourceContractTests
 
 		AssertEx.Contains("IsLocalUseAllowed(supportType)", enabled);
 		AssertEx.Contains(
-			"FireSupportServerConfigClient.IsFikaClientHostAuthorityActive",
+			"GetOperationalRestrictionReason(supportType)",
 			restriction);
 		AssertEx.Contains(
 			"PluginSettings.EnableHelicopterItemTransfer?.Value",
-			restriction);
+			availability);
 		AssertEx.Contains(
 			"FireSupportServiceAvailability.IsServiceEnabled(type)",
 			authorizations);
 		AssertEx.Contains(
-			"FireSupportServiceAvailability.IsLocalUseAllowed(supportType)",
-			persistentPurchase);
-		AssertEx.Contains(
-			"fallback.Reason = \"ServiceUnavailable\"",
+			"FireSupportServerConfigClient.PurchasePersistentAuthorizationAsync(",
 			persistentPurchase);
 		AssertEx.Contains(
 			"FireSupportServiceAvailability.IsServiceEnabled(supportType)",
@@ -716,8 +713,7 @@ internal static class HelicopterItemTransferSourceContractTests
 		string confirmation = ExtractMember(mainMenuView, "SetConfirmationPresentation");
 		AssertEx.Contains("service.Type == ESupportType.PriorityExfil", confirmation);
 		AssertEx.Contains("This service does not extract your PMC.", confirmation);
-		AssertEx.Contains("A separate RUB handling fee", confirmation);
-		AssertEx.Contains("when cargo is loaded.", confirmation);
+		AssertEx.Contains("Sending items is included in the service price.", confirmation);
 	}
 
 	[RegressionTest]

@@ -15,9 +15,9 @@ using IOPath = System.IO.Path;
 namespace SamSWAT.FireSupport.ArysReloaded;
 
 /// <summary>
-/// Server-authoritative stash payment for the native UH-60 cargo-transfer fee.
-/// The client supplies the exact RUB quote shown by EFT, then prepares the
-/// debit before allowing the stock transfer purchase to proceed.
+/// Recovery endpoint for previously journaled UH-60 cargo-transfer fees.
+/// Cargo handling is now included in the service purchase; new fee debits
+/// are never created, but old payments can still be committed or refunded.
 /// </summary>
 [Injectable(InjectionType.Singleton)]
 public sealed class FireSupportUh60TransferFeeService(
@@ -29,6 +29,8 @@ public sealed class FireSupportUh60TransferFeeService(
 	FireSupportUh60TransferFeeJournal journal)
 {
 	public const string Route = "/tsc/uh60-transfer/fee";
+	public const string IncludedInServiceReason =
+		"Cargo handling is included in the service purchase. Update your TSC client.";
 
 	public void Initialize(string pathToMod)
 	{
@@ -131,10 +133,8 @@ public sealed class FireSupportUh60TransferFeeService(
 
 		if (string.Equals(action, "Prepare", StringComparison.OrdinalIgnoreCase))
 		{
-			return await PrepareAsync(
+			return Prepare(
 				pmc,
-				saveSessionId,
-				profileId,
 				transactionId,
 				request.AmountRoubles,
 				record);
@@ -175,10 +175,8 @@ public sealed class FireSupportUh60TransferFeeService(
 			record.AmountRoubles);
 	}
 
-	private async Task<FireSupportUh60TransferFeeResponse> PrepareAsync(
+	private FireSupportUh60TransferFeeResponse Prepare(
 		PmcData pmc,
-		MongoId saveSessionId,
-		string profileId,
 		string transactionId,
 		int amountRoubles,
 		FireSupportUh60TransferFeeRecord? record)
@@ -232,100 +230,20 @@ public sealed class FireSupportUh60TransferFeeService(
 					record.AmountRoubles);
 			}
 
-			return await ResumeDebitAsync(pmc, saveSessionId, record);
+			return RecoverLegacyDebit(pmc, record);
 		}
 
-		if (pmc.Inventory?.Items == null)
-		{
-			return CreateResponse(
-				pmc,
-				false,
-				"ProfileInventoryUnavailable",
-				string.Empty,
-				transactionId,
-				amountRoubles);
-		}
-
-		int stashBalance = CountStashRoubles(pmc);
-		if (stashBalance < amountRoubles)
-		{
-			return CreateResponse(
-				pmc,
-				false,
-				"InsufficientRoubles",
-				string.Empty,
-				transactionId,
-				amountRoubles);
-		}
-
-		if (!TryBuildDebitPlan(
-			    pmc,
-			    amountRoubles,
-			    out List<FireSupportUh60TransferFeeDebit> debits,
-			    out string expectedPostDebitFingerprint))
-		{
-			return CreateResponse(
-				pmc,
-				false,
-				"PaymentMutationFailed",
-				string.Empty,
-				transactionId,
-				amountRoubles);
-		}
-
-		DateTimeOffset now = DateTimeOffset.UtcNow;
-		var pendingRecord = new FireSupportUh60TransferFeeRecord
-		{
-			TransactionId = transactionId,
-			ProfileId = profileId,
-			AmountRoubles = amountRoubles,
-			State = FireSupportUh60TransferFeeJournal.DebitPendingState,
-			CreatedUtc = now,
-			UpdatedUtc = now,
-			PreDebitFingerprint = ComputeRoubleFingerprint(pmc),
-			ExpectedPostDebitFingerprint =
-				expectedPostDebitFingerprint,
-			Debits = debits
-		};
-		if (!journal.TryCreate(
-			    pendingRecord,
-			    out FireSupportUh60TransferFeeRecord? current,
-			    out string createReason))
-		{
-			if (current != null &&
-			    string.Equals(
-				    current.ProfileId,
-				    profileId,
-				    StringComparison.OrdinalIgnoreCase) &&
-			    current.AmountRoubles == amountRoubles)
-			{
-				return await PrepareAsync(
-					pmc,
-					saveSessionId,
-					profileId,
-					transactionId,
-					amountRoubles,
-					current);
-			}
-
-			return CreateResponse(
-				pmc,
-				false,
-				createReason,
-				string.Empty,
-				transactionId,
-				amountRoubles);
-		}
-
-		return await ResumeDebitAsync(
+		return CreateResponse(
 			pmc,
-			saveSessionId,
-			current!);
+			false,
+			IncludedInServiceReason,
+			string.Empty,
+			transactionId,
+			amountRoubles);
 	}
 
-	private async Task<FireSupportUh60TransferFeeResponse> ResumeDebitAsync(
+	private FireSupportUh60TransferFeeResponse RecoverLegacyDebit(
 		PmcData pmc,
-		MongoId saveSessionId,
 		FireSupportUh60TransferFeeRecord record)
 	{
 		string currentFingerprint = ComputeRoubleFingerprint(pmc);
@@ -351,89 +269,43 @@ public sealed class FireSupportUh60TransferFeeService(
 				record.AmountRoubles);
 		}
 
-		if (pmc.Inventory?.Items == null)
+		// This legacy write-ahead entry never reached the profile. Do not finish
+		// its debit after cargo handling has become part of the service price.
+		FireSupportUh60TransferFeeResponse cancelled = CancelUndebitedLegacyFee(
+			pmc, record, currentFingerprint);
+		if (!cancelled.Ok)
 		{
-			return CreateResponse(
-				pmc,
-				false,
-				"ProfileInventoryUnavailable",
-				record.State,
-				record.TransactionId,
-				record.AmountRoubles);
+			return cancelled;
 		}
+		return CreateResponse(
+			pmc,
+			false,
+			IncludedInServiceReason,
+			record.State,
+			record.TransactionId,
+			record.AmountRoubles);
+	}
 
-		List<Item>? inventorySnapshot = cloner.Clone(pmc.Inventory.Items);
-		if (inventorySnapshot == null)
+	private FireSupportUh60TransferFeeResponse CancelUndebitedLegacyFee(
+		PmcData pmc,
+		FireSupportUh60TransferFeeRecord record,
+		string unchangedFingerprint)
+	{
+		// A zero-credit terminal record is valid only with durable evidence that
+		// cancellation left the same profile state that preceded the old debit.
+		record.PreRefundFingerprint = unchangedFingerprint;
+		record.ExpectedPostRefundFingerprint = unchangedFingerprint;
+		record.RefundCredits.Clear();
+		record.State = FireSupportUh60TransferFeeJournal.RefundedState;
+		record.UpdatedUtc = DateTimeOffset.UtcNow;
+		if (!journal.TrySave(record, out string reason))
 		{
-			return CreateResponse(
-				pmc,
-				false,
-				"PaymentSnapshotFailed",
-				record.State,
-				record.TransactionId,
-				record.AmountRoubles);
+			return CreateResponse(pmc, false, reason,
+				FireSupportUh60TransferFeeJournal.DebitPendingState,
+				record.TransactionId, record.AmountRoubles);
 		}
-
-		try
-		{
-			int charged = ApplyDebitPlan(pmc, record.Debits);
-			if (charged != record.AmountRoubles ||
-			    !string.Equals(
-				    ComputeRoubleFingerprint(pmc),
-				    record.ExpectedPostDebitFingerprint,
-				    StringComparison.OrdinalIgnoreCase))
-			{
-				pmc.Inventory.Items = inventorySnapshot;
-				return CreateResponse(
-					pmc,
-					false,
-					"PaymentMutationFailed",
-					record.State,
-					record.TransactionId,
-					record.AmountRoubles);
-			}
-		}
-		catch (Exception exception)
-		{
-			pmc.Inventory.Items = inventorySnapshot;
-			logger.Error(
-				$"TSC UH-60 stash fee debit failed transactionId={FormatId(record.TransactionId)} profileId={FormatId(record.ProfileId)}",
-				exception);
-			return CreateResponse(
-				pmc,
-				false,
-				"PaymentMutationFailed",
-				record.State,
-				record.TransactionId,
-				record.AmountRoubles);
-		}
-
-		try
-		{
-			await saveServer.SaveProfileAsync(saveSessionId);
-		}
-		catch (Exception exception)
-		{
-			logger.Error(
-				$"TSC UH-60 stash fee save failed transactionId={FormatId(record.TransactionId)} profileId={FormatId(record.ProfileId)}",
-				exception);
-			bool rolledBack = await TryRollbackDebitAsync(
-				pmc,
-				saveSessionId,
-				inventorySnapshot,
-				record.TransactionId);
-			return CreateResponse(
-				pmc,
-				false,
-				rolledBack
-					? "ProfileSaveFailed"
-					: "PaymentRollbackFailed",
-				record.State,
-				record.TransactionId,
-				record.AmountRoubles);
-		}
-
-		return FinalizePrepared(pmc, record, "Prepared");
+		return CreateResponse(pmc, true, "RefundedBeforeDebit", record.State,
+			record.TransactionId, record.AmountRoubles);
 	}
 
 	private FireSupportUh60TransferFeeResponse FinalizePrepared(
@@ -577,29 +449,7 @@ public sealed class FireSupportUh60TransferFeeService(
 				    record.PreDebitFingerprint,
 				    StringComparison.OrdinalIgnoreCase))
 			{
-				// The write-ahead entry exists but no debit reached the
-				// profile. Mark it refunded without minting any RUB.
-				record.State =
-					FireSupportUh60TransferFeeJournal.RefundedState;
-				record.UpdatedUtc = DateTimeOffset.UtcNow;
-				if (!journal.TrySave(record, out string noDebitReason))
-				{
-					return CreateResponse(
-						pmc,
-						false,
-						noDebitReason,
-						FireSupportUh60TransferFeeJournal.DebitPendingState,
-						record.TransactionId,
-						record.AmountRoubles);
-				}
-
-				return CreateResponse(
-					pmc,
-					true,
-					"RefundedBeforeDebit",
-					record.State,
-					record.TransactionId,
-					record.AmountRoubles);
+				return CancelUndebitedLegacyFee(pmc, record, currentFingerprint);
 			}
 
 			if (!string.Equals(
@@ -852,109 +702,6 @@ public sealed class FireSupportUh60TransferFeeService(
 		return record;
 	}
 
-	private bool TryBuildDebitPlan(
-		PmcData pmc,
-		int amountRoubles,
-		out List<FireSupportUh60TransferFeeDebit> debits,
-		out string expectedPostDebitFingerprint)
-	{
-		debits = new List<FireSupportUh60TransferFeeDebit>();
-		expectedPostDebitFingerprint = string.Empty;
-		List<Item> stacks = GetStashRoubleStacks(pmc).ToList();
-		var projectedCounts = stacks.ToDictionary(
-			stack => stack.Id.ToString(),
-			GetStackCount,
-			StringComparer.OrdinalIgnoreCase);
-		int remaining = amountRoubles;
-		foreach (Item stack in stacks)
-		{
-			if (remaining <= 0)
-			{
-				break;
-			}
-
-			int debitAmount = Math.Min(
-				projectedCounts[stack.Id.ToString()],
-				remaining);
-			if (debitAmount <= 0)
-			{
-				continue;
-			}
-
-			Item? originalItem = cloner.Clone(stack);
-			if (originalItem == null)
-			{
-				return false;
-			}
-
-			debits.Add(new FireSupportUh60TransferFeeDebit
-			{
-				OriginalItem = originalItem,
-				AmountRoubles = debitAmount
-			});
-			projectedCounts[stack.Id.ToString()] -= debitAmount;
-			remaining -= debitAmount;
-		}
-
-		if (remaining != 0)
-		{
-			return false;
-		}
-
-		expectedPostDebitFingerprint = ComputeRoubleFingerprint(
-			projectedCounts
-				.Where(pair => pair.Value > 0)
-				.Select(pair =>
-					new KeyValuePair<string, int>(
-						pair.Key.ToLowerInvariant(),
-						pair.Value)));
-		return true;
-	}
-
-	private static int ApplyDebitPlan(
-		PmcData pmc,
-		IEnumerable<FireSupportUh60TransferFeeDebit> debits)
-	{
-		int charged = 0;
-		foreach (FireSupportUh60TransferFeeDebit debit in debits)
-		{
-			Item? original = debit.OriginalItem;
-			Item? current = FindInventoryItem(
-				pmc,
-				original?.Id.ToString());
-			if (original == null ||
-			    current == null ||
-			    !IsStashRouble(pmc, current))
-			{
-				throw new InvalidOperationException(
-					"UH-60 fee debit target is no longer a stash RUB stack.");
-			}
-
-			int stackCount = GetStackCount(current);
-			if (debit.AmountRoubles <= 0 ||
-			    stackCount < debit.AmountRoubles)
-			{
-				throw new InvalidOperationException(
-					"UH-60 fee debit target no longer contains the quoted RUB amount.");
-			}
-
-			if (stackCount == debit.AmountRoubles)
-			{
-				RemoveItemAndChildren(pmc, current);
-			}
-			else
-			{
-				current.Upd ??= new Upd();
-				current.Upd.StackObjectsCount =
-					stackCount - debit.AmountRoubles;
-			}
-
-			charged = checked(charged + debit.AmountRoubles);
-		}
-
-		return charged;
-	}
-
 	private bool TryBuildRefundPlan(
 		PmcData pmc,
 		FireSupportUh60TransferFeeRecord record,
@@ -1156,34 +903,6 @@ public sealed class FireSupportUh60TransferFeeService(
 
 			item.Upd ??= new Upd();
 			item.Upd.StackObjectsCount = mutation.BeforeCount;
-		}
-	}
-
-	private async Task<bool> TryRollbackDebitAsync(
-		PmcData pmc,
-		MongoId saveSessionId,
-		List<Item> inventorySnapshot,
-		string transactionId)
-	{
-		if (pmc.Inventory == null)
-		{
-			return false;
-		}
-
-		try
-		{
-			pmc.Inventory.Items = inventorySnapshot;
-			await saveServer.SaveProfileAsync(saveSessionId);
-			logger.Warning(
-				$"TSC UH-60 transfer-fee debit rolled back transactionId={FormatId(transactionId)}");
-			return true;
-		}
-		catch (Exception exception)
-		{
-			logger.Error(
-				$"TSC UH-60 transfer-fee debit rollback save failed transactionId={FormatId(transactionId)}",
-				exception);
-			return false;
 		}
 	}
 

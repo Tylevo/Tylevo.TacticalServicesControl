@@ -1,6 +1,83 @@
 # Changelog
 
+## 1.3.13 - Public Beta (unreleased)
+
+### Source integration - October 7, 2026 (no new release)
+
+- Preserve the original optional HH-60 companion and its contributor history,
+  then add the separately reviewed appearance selector and experimental solo
+  escort, targeting, door-gun, and inbound/pickup cover-fire work (0.10.1).
+- Fix UH-60 muzzle flashes binding to a cached HH-60 visual. Cover fire still
+  stops on departure; multiplayer firing remains disabled.
+- Keep refunded cash requests tied to their original per-raid budget and allow
+  cancelling deployment after payment has committed without cancelling settlement.
+- Use explicit ignored local reference configuration; ordinary builds do not deploy.
+  Add synthetic helicopter checks to CI and audit the exact Core binary before
+  building its hash-pinned companion.
+- Keep later A-10 audio/round-planner work on a separate development branch.
+  Private rope integration and extracted assets remain outside Git.
+
+See [validation and required in-raid checks](docs/validation/consolidation-20261007.md).
+
+### Candidate features
+
+- **Choose how you pay.** Each service can use RUB, USD, EUR, GP coins or Bitcoin. GP and Bitcoin come from your stash, including containers. Changing currency doesn't convert the price.
+- **Pay once for cargo pickup.** Buying UH-60 Cargo Transfer now covers sending your items home. There's no second charge when you load the helicopter.
+- **Five gameplay presets.** Pick Balanced, Casual, Hardcore, Barter or Classic 1.3.12. Preview the changes and apply everything or just one category.
+- **Save and share your setup.** Save custom presets and share them as JSON files or codes that work offline. **Save Config** activates the settings; saving a preset just keeps a copy.
+- **Stash-only payments.** Every service uses stash funds, including Classic and imported presets. Older carried-money settings migrate automatically; prices and purchased credits are preserved.
+- **Use any special slot.** The Uplink fits existing special slots, including modded pocket layouts, without moving saved items or replacing other mods' slot filters.
+- **Optional deployment after purchase.** Enable **Deploy after phone purchase** in F12 to finish the purchase animation and continue into designation or UAV activation using the purchased authorization.
+- **Readable deployment phone.** Separate deployment zoom controls default to a 45-degree FOV, ease out during sprint, and restore the raid view when the phone closes.
+- **A cleaner dashboard.** Darker Tarkov-style colors, green switches, wider dropdowns and a dedicated presets page with the sharing controls always visible.
+- **Smoother phone payments.** Removed the pause after the confirmation swipe and added a larger arrow that slides up with your hand.
+- **Keep your questline add-on.** The existing **1.3.12 add-on for SPT 4.1.5** still works. The quests haven't changed, so only the main ZIP needs updating.
+
+**Lower Balanced prices (RUB):** Focused Sweep 25,000; UAV 50,000; A-10 150,000; Double Pass 250,000; Extraction 125,000; Cargo Transfer 75,000.
+
+Your saved prices stay unchanged until you edit them or apply a preset.
+
+## 1.3.12 - Public Beta
+
+September 8, 2026, for SPT 4.1.5.
+
+- Keep the first-person upright deployment, radar, and Danger Close phone
+  attached to the animated left hand during sprint.
+- Reduce walking bob and turning sway while holding an upright phone.
+- Ease the horizontal purchase phone out of zoom during sprint and back in
+  after stopping, using the same curve and duration in both directions.
+- Add UH-60 Cargo Grid Columns and Rows to the dashboard and SIC config
+  editor. Zero keeps the native size for that dimension; custom grids support
+  up to 10 columns and 30 rows and apply when the next cargo screen opens.
+- Supply the matching 1.3.12 optional Pilot Questline add-on. Quest behavior
+  is unchanged from 1.3.11; update an installed add-on alongside the main mod.
+
+The maintainer accepted the phone changes in-game on September 8. The tested
+candidate passed 305 C# regression tests and 10 dashboard tests; cargo settings
+also passed 27 native SIC checks. Cargo grid gameplay and current Fika
+multiplayer remain unverified. See the [1.3.12 release notes](docs/release-notes-v1.3.12.md).
+
+## 1.3.11 - Public Beta
+
+Published September 7, 2026, for SPT 4.1.5.
+
+- Move pre-raid purchases into Pilot's Services tab, with refreshed artwork,
+  purchase history, and native trader balance synchronization.
+- Offer the separate optional Pilot Questline add-on. The main mod retains
+  immediate Pilot access; the add-on introduces three quests to earn the Uplink.
+- Require UnityToolkit 2.0.2 and WTT CommonLib 3.0.6 as separate dependencies.
+  Remove Toolkit binaries and companion libraries from the TSC package.
+- Correct the earlier claim of permission to bundle Toolkit and retain
+  v1.3.9 and v1.3.10 as archived drafts; see the [permission record](PERMISSIONS.md).
+- Carry forward the phone, Cargo Transfer, Pilot, radar, payment, A-10, and
+  SIC improvements since the SPT 4.0.13 Forge release.
+
+See the [historical cumulative 1.3.11 release notes](docs/release-notes-v1.3.11.md).
+
 ## 1.3.10 - Public Beta
+
+> Historical release, now held as a draft. The bundling-permission claim below
+> was incorrect; see the [corrected permission record](PERMISSIONS.md).
 
 Published September 5, 2026 for SPT 4.1.5.
 
@@ -36,6 +113,9 @@ See the [cumulative v1.3.10 release notes](docs/release-notes-v1.3.10.md).
 
 ## 1.3.9 - Public Beta
 
+> Historical release, now held as a draft. The bundling-permission claim below
+> was incorrect; see the [corrected permission record](PERMISSIONS.md).
+
 Published September 5, 2026 for SPT 4.1.4.
 
 - Bundle UnityToolkit 2.0.1 with its plugin and prepatcher rebuilt against
@@ -62,11 +142,11 @@ See [SIC and dashboard setup](docs/dashboard.md) and the
 ## 1.3.8 - Public Beta
 
 Published September 5, 2026 for SPT 4.1.4. This release includes the preceding
-1.3.0–1.3.7 development updates listed below; see the cumulative
+1.3.0â€“1.3.7 development updates listed below; see the cumulative
 [release notes](docs/release-notes-v1.3.8.md) for the full upgrade overview.
 
 - Move the physical TSC Uplink offer from Jaeger to UH-60 Pilot, preserving
-  its ₽50,000 price, loyalty level 1 requirement, and five-per-restock limit.
+  its â‚½50,000 price, loyalty level 1 requirement, and five-per-restock limit.
 - Make Pilot available by default and unlock existing locked Pilot profile
   entries without resetting standing, sales, loyalty, or other traders.
 - Use the supplied Pilot portrait for both Trading and cargo mail, with a
@@ -413,7 +493,7 @@ declare build, server-boot, client, raid, or Fika acceptance.
 
 ### Changed
 
-- The YY gesture wheel is retired from the main workflow. Deployment now goes through the TSC Uplink phone: after purchasing an authorization, a notification shows the deploy key, and pressing it (default `K`, configurable as "Open deploy key") pulls the phone out already vertical with a deploy selector listing only the authorizations you currently hold, styled to match the purchase screens. The phone is held one-handed (the free hand is tucked out of view; "Deploy hide right hand" config). Number keys (1-6) select a service, tapping (LMB, or Enter) deploys it — the spotter or UAV starts within half a second while the phone stows — and Backspace/Escape/RMB puts the phone away. A short arming delay after opening prevents stray clicks from spending an authorization, and the selector shows a "Station busy" countdown while the support cooldown runs. The authorization is only consumed when the deployment actually starts, exactly as before. UAV deploys from the Uplink no longer replay the activation-device phone animation; the radar starts immediately.
+- The YY gesture wheel is retired from the main workflow. Deployment now goes through the TSC Uplink phone: after purchasing an authorization, a notification shows the deploy key, and pressing it (default `K`, configurable as "Open deploy key") pulls the phone out already vertical with a deploy selector listing only the authorizations you currently hold, styled to match the purchase screens. The phone is held one-handed (the free hand is tucked out of view; "Deploy hide right hand" config). Number keys (1-6) select a service, tapping (LMB, or Enter) deploys it â€” the spotter or UAV starts within half a second while the phone stows â€” and Backspace/Escape/RMB puts the phone away. A short arming delay after opening prevents stray clicks from spending an authorization, and the selector shows a "Station busy" countdown while the support cooldown runs. The authorization is only consumed when the deployment actually starts, exactly as before. UAV deploys from the Uplink no longer replay the activation-device phone animation; the radar starts immediately.
 - The rangefinder is no longer required as a target designator. A-10 and UH-60 targeting uses the same spotter view raycast from your camera with any item in hands; Enter confirms each targeting step (LMB still works, but fires a held weapon), and Alt+RMB or Backspace cancels. Purchase and deploy remain separate phone states, so buying a double pass and deploying it can no longer disagree about which A-10 option is used.
 - The old YY radial and its rangefinder flow are still available behind the new "Enable legacy YY radial" config toggle (default off) for this release, and will be removed once the deploy phone is stable.
 - Fika A-10 authority is now explicit: single-player and a human Fika host keep the original Arys runtime/ballistic path; a Fika client is visual-only; a dedicated headless host may use only the gated experimental damage path.
@@ -455,7 +535,7 @@ declare build, server-boot, client, raid, or Fika acceptance.
 
 ### Fixed
 
-- Carried-rouble purchases no longer lose your money. Authorizations bought with carried roubles used to vanish within seconds of purchase — the service showed AUTH REQ again unless you deployed it almost immediately, and the roubles were spent either way. These purchases now persist for the whole raid and can be deployed whenever you're ready.
+- Carried-rouble purchases no longer lose your money. Authorizations bought with carried roubles used to vanish within seconds of purchase â€” the service showed AUTH REQ again unless you deployed it almost immediately, and the roubles were spent either way. These purchases now persist for the whole raid and can be deployed whenever you're ready.
 - Non-host Fika players now see A-10 tracers reliably. Tracer playback was scheduled against the host's clock, which is unrelated to the client's; depending on which machine had more uptime, tracers rendered all at once or never. Clients now anchor playback to their own packet arrival time.
 - Non-host Fika players now see the GAU-8 impact explosions. Only the host simulates the A-10 ballistics, so detonation effects existed only there; clients now emit the same big_smoky_explosion effect at each round's impact point during tracer playback, matching the host's view.
 - Potentially fixed a freeze (movement and camera locked, weapon still usable) affecting loot pickups after the phone had been opened from its special slot and cancelled with the uplink hotkey. Two hand-restore flows raced; quick-use sessions are now restored by the game alone. The race was intermittent by nature, so please report if it still occurs on this version.

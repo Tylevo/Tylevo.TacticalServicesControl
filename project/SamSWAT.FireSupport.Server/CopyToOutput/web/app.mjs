@@ -1,4 +1,7 @@
+import { createPreset, validatePreset, parsePreset, encodePreset, applyPreset } from "./presets.mjs";
+
 const BASE_PATH = "/tsc";
+const MAX_SAVED_PRESETS = 30;
 
 const state = {
 	schema: null,
@@ -8,11 +11,21 @@ const state = {
 	adminToken: "",
 	adminTokenPanelOpen: false,
 	busy: false,
-	dirtyPaths: new Set()
+	dirtyPaths: new Set(),
+	builtInPresets: [],
+	savedPresets: [],
+	presetWarning: "",
+	libraryWarning: "",
+	pendingPreset: null
 };
 
 const elements = {
 	nav: document.getElementById("sectionNav"),
+	configurationView: document.getElementById("configurationView"),
+	presetsView: document.getElementById("presetsView"),
+	configurationLink: document.getElementById("configurationLink"),
+	presetsLink: document.getElementById("presetsLink"),
+	dashboardHeader: document.getElementById("dashboardHeader"),
 	formRoot: document.getElementById("formRoot"),
 	adminToken: document.getElementById("adminToken"),
 	adminTokenPanel: document.getElementById("adminTokenPanel"),
@@ -29,8 +42,43 @@ const elements = {
 	lastSavedStatus: document.getElementById("lastSavedStatus"),
 	diagnosticsGrid: document.getElementById("diagnosticsGrid"),
 	adminTokenHint: document.getElementById("adminTokenHint"),
-	toast: document.getElementById("toast")
+	toast: document.getElementById("toast"),
+	presetControls: document.getElementById("presetControls"),
+	presetSelect: document.getElementById("presetSelect"),
+	presetScope: document.getElementById("presetScope"),
+	presetDescription: document.getElementById("presetDescription"),
+	presetName: document.getElementById("presetName"),
+	presetNotes: document.getElementById("presetNotes"),
+	presetText: document.getElementById("presetText"),
+	presetFile: document.getElementById("presetFile"),
+	presetPreview: document.getElementById("presetPreview"),
+	presetPreviewTitle: document.getElementById("presetPreviewTitle"),
+	presetPreviewSummary: document.getElementById("presetPreviewSummary"),
+	presetChanges: document.getElementById("presetChanges"),
+	applyPresetButton: document.getElementById("applyPresetButton"),
+	deletePresetButton: document.getElementById("deletePresetButton")
 };
+
+document.getElementById("previewPresetButton").addEventListener("click", () => run(() => previewPreset(selectedPreset())));
+document.getElementById("savePresetButton").addEventListener("click", () => run(saveCurrentPreset));
+document.getElementById("exportPresetButton").addEventListener("click", () => run(exportCurrentPreset));
+document.getElementById("copyPresetButton").addEventListener("click", () => run(shareCurrentPreset));
+document.getElementById("importPresetButton").addEventListener("click", () => run(() => previewPresetText(elements.presetText.value)));
+document.getElementById("importPresetFileButton").addEventListener("click", () => elements.presetFile.click());
+document.getElementById("cancelPresetButton").addEventListener("click", clearPresetPreview);
+elements.applyPresetButton.addEventListener("click", () => run(applyPreviewedPreset));
+elements.deletePresetButton.addEventListener("click", () => run(removeSavedPreset));
+elements.presetSelect.addEventListener("change", () => { clearPresetPreview(); renderPresetDescription(); });
+elements.presetScope.addEventListener("change", clearPresetPreview);
+elements.presetFile.addEventListener("change", () => run(async () => {
+	const file = elements.presetFile.files?.[0];
+	try {
+		if (!file) return;
+		clearPresetPreview();
+		if (file.size > 32768) throw new Error("Preset JSON files must be 32 KB or smaller.");
+		previewPresetText(await file.text());
+	} finally { elements.presetFile.value = ""; }
+}));
 
 const serviceMetaRules = [
 	{ key: "a10", title: "A-10 Strafe", code: "CAS", summary: "Autocannon strike", pattern: /a-?10|strafe(?!.*double)/i },
@@ -50,9 +98,15 @@ const sectionIntros = {
 	payment: "Select which wallet supplies the configured payment currency.",
 	services: "Enable or lock service packages before players can purchase them.",
 	recon: "UAV and focused sweep scan timing, range, and refresh behavior.",
-	extraction: "UH-60 extraction and cargo-transfer dispatch, wait, and arrival tuning.",
+	extraction: "UH-60 extraction and cargo-transfer dispatch, wait, arrival, and cargo grid size. Larger items occupy multiple inventory cells.",
 	fire: "A-10, double-pass, and fire support behavior.",
 	diagnostics: "Live route and server state."
+};
+
+const fieldHelp = {
+	"prices.PriorityExfil": "Includes dispatch and sending your items home. No extra charge at the helicopter.",
+	"priorityExfil.gridWidth": "0 uses native width; 1-10 sets cargo columns. Applies when cargo next opens.",
+	"priorityExfil.gridHeight": "0 uses native height; 1-30 sets cargo rows. Applies when cargo next opens."
 };
 
 elements.adminToken.value = state.adminToken;
@@ -91,6 +145,8 @@ elements.resetButton.addEventListener("click", () => {
 	}
 });
 
+window.addEventListener("hashchange", () => updateWorkspaceNavigation(true));
+updateWorkspaceNavigation();
 init().catch((error) => showToast(error.message, true));
 
 window.addEventListener("beforeunload", (event) => {
@@ -101,6 +157,36 @@ window.addEventListener("beforeunload", (event) => {
 
 function confirmDiscard() {
 	return state.dirtyPaths.size === 0 || confirm("Discard your unsaved TSC changes and reload the settings?");
+}
+
+function updateWorkspaceNavigation(scrollToTarget = false) {
+	let target;
+	try { target = decodeURIComponent(window.location.hash.slice(1)); }
+	catch { target = "configuration"; }
+	target ||= "configuration";
+	const presets = target === "presets";
+	elements.configurationView.hidden = presets;
+	elements.presetsView.hidden = !presets;
+	setNavigationActive(elements.configurationLink, !presets, "page");
+	setNavigationActive(elements.presetsLink, presets, "page");
+	for (const link of elements.nav.children) {
+		setNavigationActive(link, !presets && link.getAttribute("href") === `#${target}`, "location");
+	}
+	if (scrollToTarget) {
+		const section = state.schema?.sections.some((entry) => entry.id === target);
+		const destination = presets ? "presets" : section || target === "diagnosticsTitle" ? target : "configuration";
+		const anchor = document.getElementById(destination);
+		if (anchor) {
+			anchor.style.scrollMarginTop = `${elements.dashboardHeader.offsetHeight + 20}px`;
+			anchor.scrollIntoView({ block: "start" });
+		}
+	}
+}
+
+function setNavigationActive(link, active, current) {
+	link.classList.toggle("is-active", active);
+	if (active) link.setAttribute("aria-current", current);
+	else link.removeAttribute("aria-current");
 }
 
 async function run(action) {
@@ -119,6 +205,7 @@ async function run(action) {
 
 function updateBusyState() {
 	elements.formRoot.inert = state.busy;
+	elements.presetControls.inert = state.busy;
 	for (const button of [elements.reloadButton, elements.reloadDiskButton, elements.resetButton,
 		elements.unlockAdminButton, elements.applyAdminTokenButton]) {
 		button.disabled = state.busy;
@@ -136,7 +223,14 @@ async function init() {
 	state.config = config;
 	state.original = cloneConfig(config);
 	state.health = health;
+	try {
+		const catalog = await requestJson(`${BASE_PATH}/presets`);
+		if (catalog.format !== "tsc-preset" || catalog.formatVersion !== 1 || !Array.isArray(catalog.presets)) throw new Error("Unsupported preset catalog.");
+		state.builtInPresets = catalog.presets.map((preset) => validatePreset(preset, state.schema));
+	} catch { state.presetWarning = "Built-in presets are unavailable. Update the server and dashboard together; JSON sharing remains available."; }
+	await loadSavedPresets();
 	render();
+	updateWorkspaceNavigation(true);
 	showToast("Config loaded");
 }
 
@@ -149,6 +243,8 @@ async function loadConfig() {
 	state.original = cloneConfig(config);
 	state.health = health;
 	state.dirtyPaths.clear();
+	clearPresetPreview();
+	await loadSavedPresets();
 	render();
 	showToast("Config reloaded");
 }
@@ -158,7 +254,12 @@ async function saveConfig() {
 	const body = cloneConfig(state.config);
 	delete body.playerStateIncluded;
 	delete body.stashCurrencyBalance;
+	delete body.stashCurrencyBalances;
 	delete body.stashRoubleBalance;
+	delete body.stashCurrencyState;
+	delete body.purchaseHistory;
+	delete body.uplinkUnlocked;
+	delete body.progressionPermit;
 	delete body.authorizations;
 	delete body.preparedPurchases;
 	delete body.preparedPurchaseDetails;
@@ -181,6 +282,7 @@ async function saveConfig() {
 	state.original = cloneConfig(updated);
 	state.dirtyPaths.clear();
 	state.health = await requestJson(`${BASE_PATH}/health`);
+	clearPresetPreview();
 	render();
 	elements.lastSavedStatus.textContent = `Saved ${new Date().toLocaleTimeString()}`;
 	showToast("Config saved");
@@ -201,6 +303,7 @@ async function postAdmin(route) {
 	state.config = updated;
 	state.original = cloneConfig(updated);
 	state.dirtyPaths.clear();
+	clearPresetPreview();
 	state.health = await requestJson(`${BASE_PATH}/health`);
 	render();
 	showToast(route === "reset" ? "Defaults restored" : "Config reloaded from disk");
@@ -222,6 +325,8 @@ async function validateAdminToken() {
 	state.adminTokenPanelOpen = false;
 	updateAdminControls();
 	renderDiagnostics();
+	await loadSavedPresets();
+	renderPresetLibrary();
 	showToast("Admin token accepted");
 }
 
@@ -244,6 +349,8 @@ function render() {
 	renderSections();
 	renderDiagnostics();
 	updateDirtyState();
+	renderPresetLibrary();
+	updateWorkspaceNavigation();
 }
 
 function renderStatus() {
@@ -251,7 +358,7 @@ function renderStatus() {
 	elements.routeStatus.classList.toggle("is-online", Boolean(state.health?.ok));
 	elements.revisionStatus.textContent = `Revision ${state.config?.revision ?? "--"}`;
 	elements.paymentStatus.textContent = state.config
-		? `${getPaymentSourceName()} / ${getPaymentCurrency()}`
+		? `Stash / ${getPaymentCurrency()}`
 		: "Payment --";
 }
 
@@ -318,7 +425,20 @@ function renderSections() {
 		grid.className = shouldUseServiceDeck(section)
 			? "field-grid service-deck"
 			: "field-grid";
+		const groupedPaths = new Set();
 		for (const field of section.fields) {
+			if (groupedPaths.has(field.path)) continue;
+			if (section.id === "pricing" && field.path?.startsWith("prices.")) {
+				const serviceKey = field.path.slice("prices.".length);
+				const currencyField = section.fields.find((entry) => entry.path === `serviceCurrencies.${serviceKey}`);
+				if (currencyField) {
+					grid.appendChild(renderPricingCard(field, currencyField));
+					groupedPaths.add(currencyField.path);
+					continue;
+				}
+			}
+			if (section.id === "pricing" && field.path?.startsWith("serviceCurrencies.") &&
+				section.fields.some((entry) => entry.path === field.path.replace("serviceCurrencies.", "prices."))) continue;
 			grid.appendChild(renderField(field, section));
 		}
 		panel.appendChild(grid);
@@ -335,7 +455,7 @@ function shouldUseServiceDeck(section) {
 }
 
 function getSectionKicker(section) {
-	if (section.id?.includes("pricing")) return getPaymentCurrency();
+	if (section.id?.includes("pricing")) return "Per-service";
 	if (section.id === "services") return "Availability";
 	if (section.id?.includes("recon")) return "Recon";
 	if (section.id?.includes("extraction")) return "Extraction";
@@ -346,58 +466,86 @@ function getSectionKicker(section) {
 
 function getSectionIntro(section) {
 	if (section.id?.includes("pricing")) {
-		return `Displayed phone prices and authoritative payment costs in ${getPaymentCurrencyName()}.`;
+		return "Choose a currency and amount for each service. Use global follows the payment setting. GP coins and Bitcoin come from the stash. Changing currency keeps the amount; set the item count you want.";
 	}
 	if (section.id?.includes("payment")) {
-		return `Select which wallet supplies the configured ${getPaymentCurrencyName()}.`;
+		return `Default currency: ${getPaymentCurrencyName()}. Each service can override it below. All services are paid from stash funds.`;
 	}
 	return sectionIntros[section.id] || "Server-authoritative service configuration.";
 }
 
-function getPaymentCurrency() {
-	const value = String(state.config?.paymentCurrency || "RUB").trim().toUpperCase();
-	return value === "RUB" || value === "USD" || value === "EUR"
+function getPaymentCurrency(serviceKey) {
+	let selected = state.config?.paymentCurrency ?? "RUB";
+	if (serviceKey && Object.prototype.hasOwnProperty.call(state.config?.serviceCurrencies ?? {}, serviceKey)) {
+		const override = state.config.serviceCurrencies[serviceKey];
+		if (String(override).trim().toUpperCase() !== "INHERIT") selected = override;
+	}
+	const value = String(selected ?? "").trim().toUpperCase();
+	return ["RUB", "USD", "EUR", "GP", "BTC"].includes(value)
 		? value
 		: "INVALID";
 }
 
-function getPaymentCurrencyName() {
+function getPaymentCurrencyName(serviceKey) {
 	return {
 		RUB: "roubles (RUB)",
 		USD: "US dollars (USD)",
 		EUR: "euros (EUR)",
+		GP: "GP coins (GP)",
+		BTC: "Bitcoin (BTC)",
 		INVALID: "an invalid payment currency"
-	}[getPaymentCurrency()];
-}
-
-function getPaymentSourceName(value = state.config?.paymentSource) {
-	return {
-		CarriedRoubles: "Carried",
-		StashRoubles: "Stash",
-		PreferCarriedThenStash: "Carried, then stash",
-		PreferStashThenCarried: "Stash, then carried"
-	}[value] || value || "Payment --";
+	}[getPaymentCurrency(serviceKey)];
 }
 
 function getSelectOptionLabel(path, value) {
-	if (path === "paymentSource") {
-		return getPaymentSourceName(value);
-	}
-	if (path === "paymentCurrency") {
+	if (path === "paymentCurrency" || path?.startsWith("serviceCurrencies.")) {
 		return {
+			Inherit: `Use global (${getPaymentCurrency()})`,
 			RUB: "RUB — Roubles",
 			USD: "USD — US Dollars",
-			EUR: "EUR — Euros"
+			EUR: "EUR — Euros",
+			GP: "GP — GP coins (stash)",
+			BTC: "BTC — Bitcoin (stash)"
 		}[value] || value;
 	}
 	return value;
 }
 
 function getFieldStep(field) {
-	if (field.path?.startsWith("prices.") && getPaymentCurrency() !== "RUB") {
+	if (field.path?.startsWith("prices.") && getPaymentCurrency(field.path.slice("prices.".length)) !== "RUB") {
 		return 1;
 	}
 	return field.step ?? 1;
+}
+
+function renderPricingCard(priceField, currencyField) {
+	const card = document.createElement("article");
+	card.className = "field-row service-card pricing-card";
+	const meta = getServiceMeta(priceField);
+	card.dataset.service = meta.key;
+	const badge = document.createElement("span");
+	badge.className = "service-code";
+	badge.textContent = meta.code;
+	const titleWrap = document.createElement("span");
+	titleWrap.className = "service-title-wrap";
+	const title = document.createElement("strong");
+	title.className = "service-title";
+	title.textContent = meta.title;
+	const summary = document.createElement("span");
+	summary.className = "service-summary";
+	const currency = getPaymentCurrency(priceField.path.slice("prices.".length));
+	const itemPayment = currency === "GP" || currency === "BTC";
+	summary.textContent = itemPayment
+		? `${getPaymentCurrencyName(priceField.path.slice("prices.".length))} from stash. Price is the item count.`
+		: `${currency} · Stash`;
+	titleWrap.append(title, summary);
+	card.append(badge, titleWrap);
+	const controls = { id: "pricing-controls" };
+	card.append(
+		renderField({ ...currencyField, label: "Payment currency" }, controls),
+		renderField({ ...priceField, label: `Price (${currency})`, slider: itemPayment ? false : priceField.slider }, controls)
+	);
+	return card;
 }
 
 function renderField(field, section) {
@@ -421,7 +569,7 @@ function renderField(field, section) {
 		serviceTitle.textContent = meta.title;
 		const serviceSummary = document.createElement("span");
 		serviceSummary.className = "service-summary";
-		serviceSummary.textContent = meta.summary;
+		serviceSummary.textContent = fieldHelp[field.path] || meta.summary;
 		titleWrap.append(serviceTitle, serviceSummary);
 
 		row.append(badge, titleWrap);
@@ -457,11 +605,11 @@ function renderField(field, section) {
 			optionEl.textContent = getSelectOptionLabel(field.path, option);
 			select.appendChild(optionEl);
 		}
-		select.value = value ?? "";
+		select.value = value ?? (field.path?.startsWith("serviceCurrencies.") ? "Inherit" : "");
 		select.addEventListener("change", () => {
 			setPath(state.config, field.path, select.value);
 			markDirty(field.path);
-			if (field.path === "paymentCurrency") {
+			if (field.path === "paymentCurrency" || field.path?.startsWith("serviceCurrencies.")) {
 				renderStatus();
 				renderSections();
 				renderDiagnostics();
@@ -488,10 +636,10 @@ function renderField(field, section) {
 			controlWrap.classList.add("has-range");
 			range = document.createElement("input");
 			range.type = "range";
-			range.value = value ?? 0;
 			range.step = getFieldStep(field);
 			range.min = field.min ?? 0;
 			range.max = field.max ?? Math.max(Number(value ?? 0), 1);
+			range.value = value ?? 0;
 			range.addEventListener("input", () => {
 				const numericValue = normalizeNumber(range.value, getFieldStep(field), field.min, field.max);
 				number.value = numericValue;
@@ -534,7 +682,6 @@ function renderDiagnostics() {
 	const rows = [
 		["Route Status", state.health?.ok ? "Online" : "Unavailable"],
 		["Config Revision", state.config?.revision ?? "--"],
-		["Payment Source", getPaymentSourceName()],
 		["Payment Currency", getPaymentCurrency()],
 		["Payment Mode", state.config?.paymentMode ?? "--"],
 		["Request Cooldown", `${state.config?.requestCooldownSeconds ?? "--"} sec`],
@@ -551,6 +698,167 @@ function renderDiagnostics() {
 		dd.textContent = value;
 		elements.diagnosticsGrid.append(dt, dd);
 	}
+}
+
+async function loadSavedPresets() {
+	try {
+		const library = await requestJson(`${BASE_PATH}/presets/saved`, { headers: adminHeaders() });
+		const saved = library.presets;
+		if (!Array.isArray(saved) || saved.length > MAX_SAVED_PRESETS) throw new Error("Invalid preset library.");
+		state.savedPresets = saved.map((preset) => validatePreset(preset, state.schema));
+		if (state.savedPresets.some((preset) => !preset.id)) throw new Error("A saved preset has no identifier.");
+		state.libraryWarning = library.warning || "";
+	} catch (error) {
+		state.savedPresets = [];
+		state.libraryWarning = error.status === 403 ? "Unlock Admin to load the host's saved presets." : "The host's saved presets could not be loaded. JSON import and export are still available.";
+	}
+}
+
+function selectedPreset() {
+	const [kind, id] = elements.presetSelect.value.split(":");
+	const collection = kind === "custom" ? state.savedPresets : state.builtInPresets;
+	const preset = collection.find((entry) => entry.id === id);
+	if (!preset) throw new Error("Choose a preset first, or import one below.");
+	return preset;
+}
+
+function renderPresetLibrary(preferred = elements.presetSelect.value) {
+	elements.presetSelect.innerHTML = "";
+	for (const [kind, label, presets] of [["builtin", "Built-in", state.builtInPresets], ["custom", "Saved on the SPT host", state.savedPresets]]) {
+		if (!presets.length) continue;
+		const group = document.createElement("optgroup");
+		group.label = label;
+		for (const preset of presets) {
+			const option = document.createElement("option");
+			option.value = `${kind}:${preset.id}`;
+			option.textContent = preset.name;
+			group.appendChild(option);
+		}
+		elements.presetSelect.appendChild(group);
+	}
+	const choices = [...state.builtInPresets.map((entry) => `builtin:${entry.id}`), ...state.savedPresets.map((entry) => `custom:${entry.id}`)];
+	elements.presetSelect.value = choices.includes(preferred) ? preferred : choices[0] || "";
+	renderPresetDescription();
+}
+
+function renderPresetDescription() {
+	let description = "Import a JSON file or share code to get started.";
+	try { description = selectedPreset().description || "Custom gameplay settings."; } catch {}
+	elements.presetDescription.textContent = [description, state.presetWarning, state.libraryWarning].filter(Boolean).join(" ");
+	elements.deletePresetButton.disabled = !elements.presetSelect.value.startsWith("custom:");
+}
+
+function currentPreset() {
+	return createPreset(state.config, state.schema, elements.presetName.value, elements.presetNotes.value);
+}
+
+async function presetHostRequest(route, body) {
+	requireAdminToken();
+	try {
+		return await requestJson(`${BASE_PATH}/presets/${route}`, { method: "POST", headers: adminHeaders(), body: JSON.stringify(body) });
+	} catch (error) { handleAdminFailure(error); throw error; }
+}
+
+async function saveCurrentPreset() {
+	const preset = currentPreset();
+	const existing = state.savedPresets.find((entry) => entry.name.toLowerCase() === preset.name.toLowerCase());
+	if (existing && !confirm(`Replace your saved preset "${existing.name}" with the current draft settings?`)) return;
+	if (!existing && state.savedPresets.length >= MAX_SAVED_PRESETS) throw new Error(`You can save up to ${MAX_SAVED_PRESETS} presets. Export or remove one first.`);
+	if (existing) preset.id = existing.id;
+	const saved = validatePreset((await presetHostRequest("saved", preset)).preset, state.schema);
+	if (!saved.id) throw new Error("The host did not return the saved preset identifier. Reload Config to check the library.");
+	state.savedPresets = [...state.savedPresets.filter((entry) => entry.id !== saved.id), saved];
+	state.libraryWarning = "";
+	renderPresetLibrary(`custom:${saved.id}`);
+	showToast("Preset saved on the SPT host");
+}
+
+async function removeSavedPreset() {
+	if (!elements.presetSelect.value.startsWith("custom:")) return;
+	const preset = selectedPreset();
+	if (!confirm(`Remove "${preset.name}" from the host's preset library? Your current settings will stay as they are.`)) return;
+	await presetHostRequest("remove", { id: preset.id });
+	state.savedPresets = state.savedPresets.filter((entry) => entry.id !== preset.id);
+	clearPresetPreview();
+	renderPresetLibrary();
+	showToast("Saved preset removed");
+}
+
+function exportCurrentPreset() {
+	const preset = currentPreset();
+	const url = URL.createObjectURL(new Blob([JSON.stringify(preset, null, 2) + "\n"], { type: "application/json" }));
+	const link = document.createElement("a");
+	link.href = url;
+	link.download = `${preset.name.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-|-$/g, "") || "tsc-preset"}.tsc-preset.json`;
+	link.click();
+	setTimeout(() => URL.revokeObjectURL(url), 1000);
+	showToast("Preset JSON exported");
+}
+
+async function shareCurrentPreset() {
+	const code = encodePreset(currentPreset());
+	elements.presetText.value = code;
+	try {
+		await navigator.clipboard.writeText(code);
+		showToast("Share code copied. It is also shown below.");
+	} catch {
+		elements.presetText.focus();
+		elements.presetText.select();
+		showToast("Share code ready below. Copy it to share your settings.");
+	}
+}
+
+function clearPresetPreview() {
+	state.pendingPreset = null;
+	elements.presetPreview.hidden = true;
+}
+
+function previewPresetText(text) {
+	clearPresetPreview();
+	previewPreset(parsePreset(text, state.schema));
+	// Imports live in a separate card, which stacks below the preview on small screens.
+	elements.presetPreview.style.scrollMarginTop = `${(elements.dashboardHeader?.offsetHeight || 70) + 20}px`;
+	elements.presetPreview.scrollIntoView({ block: "nearest" });
+}
+
+function previewPreset(preset) {
+	const scope = elements.presetScope.value || "all";
+	const checked = validatePreset(preset, state.schema);
+	const result = applyPreset(state.config, checked, state.schema, scope);
+	state.pendingPreset = { preset: checked, scope, base: JSON.stringify(state.config), result };
+	elements.presetName.value = checked.name;
+	elements.presetNotes.value = checked.description || "";
+	elements.presetPreviewTitle.textContent = checked.name;
+	elements.presetPreviewSummary.textContent = result.changes.length
+		? `${result.changes.length} settings will change in your draft. Save Config applies the draft to the server.`
+		: "These settings already match your current draft.";
+	elements.presetChanges.innerHTML = "";
+	for (const change of result.changes) {
+		const row = document.createElement("tr");
+		for (const value of [change.label || change.path, change.before, change.after]) {
+			const cell = document.createElement("td");
+			cell.textContent = value === undefined ? "Default" : typeof value === "boolean" ? (value ? "On" : "Off") : String(value);
+			row.appendChild(cell);
+		}
+		elements.presetChanges.appendChild(row);
+	}
+	elements.applyPresetButton.disabled = !result.changes.length;
+	elements.presetPreview.hidden = false;
+}
+
+function applyPreviewedPreset() {
+	const pending = state.pendingPreset;
+	if (!pending) return;
+	if (pending.base !== JSON.stringify(state.config) || pending.scope !== (elements.presetScope.value || "all")) {
+		previewPreset(pending.preset);
+		showToast("Your draft changed. Review the refreshed preview before applying.");
+		return;
+	}
+	state.config = pending.result.config;
+	for (const change of pending.result.changes) markDirty(change.path);
+	clearPresetPreview();
+	render();
+	showToast("Preset applied to draft. Select Save Config to use these settings.");
 }
 
 function markDirty(path) {

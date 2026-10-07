@@ -9,7 +9,7 @@ namespace SamSWAT.FireSupport.ArysReloaded;
 /// </summary>
 internal static class FireSupportServerConfigMigration
 {
-	internal const int CurrentConfigSchemaVersion = 3;
+	internal const int CurrentConfigSchemaVersion = 4;
 	internal const float LegacyStandardExtractionDispatchDelaySeconds = 8f;
 
 	/// <summary>
@@ -25,6 +25,10 @@ internal static class FireSupportServerConfigMigration
 		ArgumentNullException.ThrowIfNull(defaults);
 
 		int sourceSchemaVersion = config.ConfigSchemaVersion;
+		// Normalize current-schema files too: old presets and saved dashboard
+		// settings can still contain a carried-wallet policy. This changes only
+		// future payment routing, never the profile's credits or purchase journal.
+		config.PaymentSource = nameof(PaymentSource.StashRoubles);
 		if (sourceSchemaVersion < CurrentConfigSchemaVersion)
 		{
 			if (sourceSchemaVersion < 2)
@@ -62,18 +66,28 @@ internal static class FireSupportServerConfigMigration
 
 			// Existing prices were authored as RUB amounts. The new currency
 			// selector therefore defaults to RUB without converting any values.
-			config.PaymentCurrency = nameof(PaymentCurrency.RUB);
+			if (sourceSchemaVersion < 3)
+				config.PaymentCurrency = nameof(PaymentCurrency.RUB);
 			config.ConfigSchemaVersion = CurrentConfigSchemaVersion;
 		}
+		config.ServiceCurrencies ??= new Dictionary<string, string>();
+		foreach (string service in new[] { "A10", "DoublePass", "Uav", "FocusedSweep", "Extraction", "PriorityExfil" })
+			if (!config.ServiceCurrencies.Keys.Any(key => string.Equals(key, service, StringComparison.OrdinalIgnoreCase)))
+				config.ServiceCurrencies.Add(service, "Inherit");
 
 		// These fields are populated only on authenticated response snapshots.
 		// Never accept or persist them as shared administrator configuration.
 		config.PlayerStateIncluded = false;
+		config.UplinkUnlocked = null;
+		config.ProgressionPermit = string.Empty;
 		config.StashCurrencyBalance = null;
+		config.StashCurrencyBalances = null;
 		config.StashRoubleBalance = null;
 		config.Authorizations = new Dictionary<string, int>();
 		config.PreparedPurchases = null;
 		config.PreparedPurchaseDetails = null;
+		config.StashCurrencyState = null;
+		config.PurchaseHistory = null;
 
 		return sourceSchemaVersion;
 	}

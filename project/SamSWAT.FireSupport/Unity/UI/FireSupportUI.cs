@@ -30,6 +30,7 @@ public class FireSupportUI : UpdatableComponentBase, IPointerEnterHandler, IPoin
 
 	private bool _isUnderPointer;
 	private bool _rangefinderInHands;
+	private Text _progressionNotice;
 	private readonly Color _enabledColor = new(1, 1, 1, 1);
 	private readonly Color _disabledColor = new(1, 1, 1, 0.4f);
 	private readonly HashSet<ESupportType> _missingOptionLogs = new(new SupportTypeComparer());
@@ -90,7 +91,15 @@ public class FireSupportUI : UpdatableComponentBase, IPointerEnterHandler, IPoin
 		if (!HasFinishedInitialization || _player == null) return;
 		
 		_rangefinderInHands = HasRangefinderEquipped();
-		bool canUseFireSupport = _rangefinderInHands || HasUavRequestAvailable();
+		string progressionReason = FireSupportProgression.RestrictionReason;
+		if (_progressionNotice != null)
+		{
+			_progressionNotice.text = progressionReason;
+			_progressionNotice.gameObject.SetActive(!string.IsNullOrEmpty(progressionReason));
+		}
+		// Keep locked options inspectable; request selection still checks availability.
+		bool canUseFireSupport = _rangefinderInHands || HasUavRequestAvailable() ||
+			!string.IsNullOrEmpty(progressionReason);
 		
 		tooltip.SetUnlockStatus(canUseFireSupport);
 		
@@ -311,6 +320,7 @@ public class FireSupportUI : UpdatableComponentBase, IPointerEnterHandler, IPoin
 		fireSupportUiT.localPosition = new Vector3(0, -255, 0);
 		fireSupportUiT.localScale = new Vector3(1.4f, 1.4f, 1);
 		_menuOffset = Screen.height / 2f - fireSupportUiT.position.y;
+		CreateProgressionNotice();
 
 		Transform infoPanelTransform = SpotterNotice.transform.parent;
 		infoPanelTransform.parent = Singleton<GameUI>.Instance.transform;
@@ -326,6 +336,28 @@ public class FireSupportUI : UpdatableComponentBase, IPointerEnterHandler, IPoin
 			// mode is off. Deployment goes through the TSC Uplink deploy phone.
 			gameObject.SetActive(false);
 		}
+	}
+
+	private void CreateProgressionNotice()
+	{
+		FireSupportUIElement reference = Array.Find(supportOptions,
+			option => option != null && option.AmountText != null);
+		if (reference == null) return;
+
+		GameObject notice = new("TSC quest requirement", typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+		notice.layer = gameObject.layer;
+		notice.transform.SetParent(transform, false);
+		RectTransform rect = (RectTransform)notice.transform;
+		rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
+		rect.anchoredPosition = new Vector2(0f, 170f);
+		rect.sizeDelta = new Vector2(560f, 44f);
+		_progressionNotice = notice.GetComponent<Text>();
+		_progressionNotice.font = reference.AmountText.font;
+		_progressionNotice.fontSize = 20;
+		_progressionNotice.alignment = TextAnchor.MiddleCenter;
+		_progressionNotice.color = new Color(0.85f, 0.71f, 0.42f, 1f);
+		_progressionNotice.raycastTarget = false;
+		notice.SetActive(false);
 	}
 
 	/// <summary>

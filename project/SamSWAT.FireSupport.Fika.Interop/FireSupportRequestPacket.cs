@@ -25,6 +25,7 @@ public class FireSupportRequestPacket : INetSerializable
 	public float HelicopterSpeedMultiplier;
 	public int ServiceSemanticsVersion = FireSupportServiceSemantics.CurrentVersion;
 	public FireSupportRequestOrigin RequestOrigin = FireSupportRequestOrigin.Manual;
+	public string ProgressionPermit = string.Empty;
 
 	public FireSupportRequestPacket()
 	{
@@ -114,6 +115,7 @@ public class FireSupportRequestPacket : INetSerializable
 		writer.Put(HelicopterSpeedMultiplier);
 		writer.Put(ServiceSemanticsVersion);
 		writer.Put((int)RequestOrigin);
+		writer.Put(ProgressionPermit ?? string.Empty);
 	}
 
 	public void Deserialize(NetDataReader reader)
@@ -144,6 +146,9 @@ public class FireSupportRequestPacket : INetSerializable
 		RequestOrigin = reader.AvailableBytes >= sizeof(int)
 			? (FireSupportRequestOrigin)reader.GetInt()
 			: FireSupportRequestOrigin.Manual;
+		ProgressionPermit = reader.AvailableBytes > 0
+			? reader.GetString() ?? string.Empty
+			: string.Empty;
 	}
 
 	public void EnsureRequestId()

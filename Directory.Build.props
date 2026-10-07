@@ -1,6 +1,9 @@
 <Project>
+  <!-- Machine-local inputs must be read before any dependent paths are evaluated. -->
+  <Import Project="$(MSBuildThisFileDirectory)Shared.User.props"
+          Condition="Exists('$(MSBuildThisFileDirectory)Shared.User.props')" />
   <PropertyGroup>
-    <Version>1.3.10</Version>
+    <Version>1.3.13</Version>
     <AssemblyVersion>$(Version)</AssemblyVersion>
     <FileVersion>$(Version)</FileVersion>
     <TargetSptVersion>4.1.5</TargetSptVersion>
@@ -17,31 +20,21 @@
     <DefaultItemExcludes>$(DefaultItemExcludes);Build\**</DefaultItemExcludes>
   </PropertyGroup>
   <PropertyGroup>
-    <SptDir Condition=" '$(SptDir)' == '' ">$(MSBuildThisFileDirectory)..\..\SPT\</SptDir>
-
-    <!--
-      This is the path to where all your different SPT versions' assemblies are stored.
-      For example, my SPT Assemblies folder is laid out like so:
-        SPT Assemblies
-        ↳ 38x
-          ↳ ..
-          ↳ Assembly-CSharp.dll
-        ↳ 39x
-        ↳ 310x
-        ↳ 311x
-    -->
-    <SptSharedAssembliesDir Condition=" '$(SptSharedAssembliesDir)' == '' ">..\..\..\..\SPT Assemblies\</SptSharedAssembliesDir>
-
-    <!--
-      The SPT version to target.
-      This is used to find the corresponding SPT version's assembles in <SptSharedAssembliesDir>.
-      The value here is mostly a fallback value if you do not have a build configuration set up yet.
-    -->
+    <!-- Ordinary builds never install files. Deployment is an explicit opt-in. -->
+    <SkipTscDeploy Condition=" '$(SkipTscDeploy)' == '' ">true</SkipTscDeploy>
+    <!-- Set both input roots in Shared.User.props or on the command line.
+         No repository depth, sibling checkout, or live installation is assumed. -->
+    <SptDir Condition=" '$(SptDir)' != '' ">$([MSBuild]::EnsureTrailingSlash('$(SptDir)'))</SptDir>
+    <SptSharedAssembliesDir Condition=" '$(SptSharedAssembliesDir)' != '' ">$([MSBuild]::EnsureTrailingSlash('$(SptSharedAssembliesDir)'))</SptSharedAssembliesDir>
+    <!-- Global command-line properties cannot be reassigned. Normalize into
+         derived properties as well, so callers need not supply a trailing slash. -->
+    <TscSptRoot Condition=" '$(SptDir)' != '' ">$([MSBuild]::EnsureTrailingSlash('$(SptDir)'))</TscSptRoot>
+    <TscSharedAssembliesRoot Condition=" '$(SptSharedAssembliesDir)' != '' ">$([MSBuild]::EnsureTrailingSlash('$(SptSharedAssembliesDir)'))</TscSharedAssembliesRoot>
     <SptVersion Condition=" '$(SptVersion)' == '' ">410x</SptVersion>
-    <SptBepInExPluginsDir>$(SptDir)BepInEx\plugins\</SptBepInExPluginsDir>
-    <SptBepInExPatchersDir>$(SptDir)BepInEx\patchers\</SptBepInExPatchersDir>
-    <SptServerRuntimeDir>$(SptDir)SPT_Runtime\</SptServerRuntimeDir>
-    <SptServerModsDir>$(SptServerRuntimeDir)user\mods\</SptServerModsDir>
+    <SptBepInExPluginsDir Condition=" '$(SptDir)' != '' ">$(TscSptRoot)BepInEx\plugins\</SptBepInExPluginsDir>
+    <SptBepInExPatchersDir Condition=" '$(SptDir)' != '' ">$(TscSptRoot)BepInEx\patchers\</SptBepInExPatchersDir>
+    <SptServerRuntimeDir Condition=" '$(SptDir)' != '' ">$(TscSptRoot)SPT_Runtime\</SptServerRuntimeDir>
+    <SptServerModsDir Condition=" '$(SptServerRuntimeDir)' != '' ">$(SptServerRuntimeDir)user\mods\</SptServerModsDir>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <OutputPath>Build\Debug\</OutputPath>

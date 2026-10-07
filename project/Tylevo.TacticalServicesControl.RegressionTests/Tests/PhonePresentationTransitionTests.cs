@@ -103,6 +103,73 @@ internal static class PhonePresentationTransitionTests
 		AssertEx.Near(1f, immediate, 0.00001f);
 	}
 
+	[RegressionTest]
+	private static void SprintOutAndReturnUseTheOriginalRaiseDurationAndCurve()
+	{
+		var owner = new object();
+		var originalRaise = new PhonePresentationTransition();
+		var sprintTransition = new PhonePresentationTransition();
+		originalRaise.Begin(owner, 0.08f, 0.75f);
+		sprintTransition.Begin(owner, 0.08f, 0.75f);
+		foreach (float edgeTime in new[] { 2f, 4f, 6f })
+		{
+			AssertEx.True(sprintTransition.TryRestart(edgeTime, owner));
+			foreach (float elapsed in new[] { 0f, 0.1875f, 0.375f, 0.5625f, 0.75f })
+			{
+				AssertEx.True(originalRaise.TrySample(0.08f + elapsed, owner, out float originalBlend));
+				AssertEx.True(sprintTransition.TrySample(edgeTime + elapsed, owner, out float sprintBlend));
+				AssertEx.Near(originalBlend, sprintBlend, 0.000001f,
+					"Sprint fade-out and return fade-in must keep the existing opening curve and duration.");
+			}
+			AssertEx.True(sprintTransition.TrySample(edgeTime + 0.75f, owner, out float complete));
+			AssertEx.Near(75f, Interpolate(45f, 75f, complete), 0.00001f);
+		}
+	}
+
+	[RegressionTest]
+	private static void SprintReversalCanRebaseFovAndFramingAtTheirVisibleValues()
+	{
+		var owner = new object();
+		var transition = new PhonePresentationTransition();
+		transition.Begin(owner, 0f, 0.75f);
+		AssertEx.True(transition.TrySample(0.25f, owner, out float openingBlend));
+		float fovBeforeSprint = Interpolate(75f, 45f, openingBlend);
+		float framingBeforeSprint = Interpolate(0f, 0.09f, openingBlend);
+		AssertEx.True(transition.TryRestart(0.25f, owner));
+		AssertEx.True(transition.TrySample(0.25f, owner, out float sprintStart));
+		AssertEx.Near(fovBeforeSprint, Interpolate(fovBeforeSprint, 75f, sprintStart), 0.00001f);
+		AssertEx.Near(framingBeforeSprint, Interpolate(framingBeforeSprint, 0f, sprintStart), 0.00001f);
+		AssertEx.True(transition.TrySample(0.5f, owner, out float sprintBlend));
+		float fovBeforeStop = Interpolate(fovBeforeSprint, 75f, sprintBlend);
+		float framingBeforeStop = Interpolate(framingBeforeSprint, 0f, sprintBlend);
+		AssertEx.True(fovBeforeStop > fovBeforeSprint);
+		AssertEx.True(framingBeforeStop < framingBeforeSprint);
+		AssertEx.True(transition.TryRestart(0.5f, owner));
+		AssertEx.True(transition.TrySample(0.5f, owner, out float returnStart));
+		AssertEx.Near(fovBeforeStop, Interpolate(fovBeforeStop, 45f, returnStart), 0.00001f);
+		AssertEx.Near(framingBeforeStop, Interpolate(framingBeforeStop, 0.09f, returnStart), 0.00001f);
+		AssertEx.True(transition.TrySample(1.25f, owner, out float complete));
+		AssertEx.Near(45f, Interpolate(fovBeforeStop, 45f, complete), 0.00001f);
+		AssertEx.Near(0.09f, Interpolate(framingBeforeStop, 0.09f, complete), 0.00001f);
+	}
+
+	[RegressionTest]
+	private static void SprintEdgeCannotReviveAClosedOrReplacedPresentation()
+	{
+		var owner = new object();
+		var replacement = new object();
+		var transition = new PhonePresentationTransition();
+		transition.Begin(owner, 0f, 0.75f);
+		AssertEx.False(transition.TryRestart(0.25f, replacement));
+		AssertEx.False(transition.TryRestart(0.5f, owner));
+		transition.Begin(owner, 1f, 0.75f);
+		transition.Cancel();
+		AssertEx.False(transition.TryRestart(1.25f, owner));
+		transition.Begin(owner, 2f, 0.75f);
+		AssertEx.False(transition.TryRestart(float.NaN, owner));
+		AssertEx.False(transition.TrySample(2.5f, owner, out _));
+	}
+
 	private static float Interpolate(float from, float to, float blend)
 	{
 		return from + (to - from) * blend;

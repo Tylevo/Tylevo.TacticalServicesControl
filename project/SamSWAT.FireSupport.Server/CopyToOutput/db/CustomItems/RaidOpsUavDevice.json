@@ -39,12 +39,8 @@
     "fleaPriceRoubles": 50000,
     "handbookPriceRoubles": 50000,
     "addtoBots": false,
-    "addtoStaticLootContainers": true,
-    "staticLootContainers": [
-      { "containerName": "LOOTCONTAINER_PC_BLOCK", "probability": 4000 },
-      { "containerName": "LOOTCONTAINER_TOOLBOX", "probability": 3000 },
-      { "containerName": "LOOTCONTAINER_DUFFLE_BAG", "probability": 2000 }
-    ],
+    "addtoStaticLootContainers": false,
+    "staticLootContainers": [],
     "addLooseLoot": false,
     "addLooseLootProbability": 0,
     "addtoHallOfFame": false,

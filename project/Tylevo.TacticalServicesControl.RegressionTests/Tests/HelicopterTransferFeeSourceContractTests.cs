@@ -2,8 +2,6 @@ using System.Text.RegularExpressions;
 
 internal static class HelicopterTransferFeeSourceContractTests
 {
-	private const string FeeSourcePath =
-		"project/SamSWAT.FireSupport/Unity/HelicopterTransferFeeSource.cs";
 	private const string SettingsPath =
 		"project/SamSWAT.FireSupport/PluginSettings.cs";
 	private const string AdapterPath =
@@ -28,305 +26,135 @@ internal static class HelicopterTransferFeeSourceContractTests
 		"project/SamSWAT.FireSupport.Server/FireSupportUh60DeliveryCallbacks.cs";
 
 	[RegressionTest]
-	private static void FeeSourceIsDedicatedAndDefaultsToNativeCarriedRoubles()
+	private static void ObsoleteFeeSelectorIsRemovedWhileRecoverySettingsRemain()
 	{
 		string settings = ReadProductionSource(SettingsPath);
-		string feeSource = ReadProductionSource(FeeSourcePath);
 		string adapter = ReadProductionSource(AdapterPath);
-
-		AssertEx.Contains("enum HelicopterTransferFeeSource", feeSource);
-		AssertEx.Contains("Carried", feeSource);
-		AssertEx.Contains("Stash", feeSource);
-		AssertEx.Equal(
-			2,
-			Regex.Matches(
-				feeSource,
-				@"^\s*(?:Carried|Stash)\s*(?:=\s*\d+)?\s*,?\s*$",
-				RegexOptions.Multiline | RegexOptions.CultureInvariant).Count,
-			"The cargo fee selector must remain a two-way choice between EFT-native carried RUB and TSC-server stash RUB.");
-
-		AssertEx.Contains(
-			"ConfigEntry<HelicopterTransferFeeSource> HelicopterTransferFeeSource",
-			settings);
-		string binding = SliceAround(
-			settings,
-			"HelicopterTransferFeeSource = config.Bind(",
-			900);
-		AssertEx.Contains("\"Helicopter Cargo\"", binding);
-		AssertEx.Contains("\"Transfer fee source\"", binding);
-		AssertEx.Contains(
-			"HelicopterTransferFeeSource.Carried",
-			binding);
-		AssertEx.False(
-			binding.Contains("PluginSettings.PaymentSource", StringComparison.Ordinal) ||
-			binding.Contains("PluginSettings.PaymentCurrency", StringComparison.Ordinal),
-			"The cargo handling-fee selector must not alias the general TSC authorization wallet or currency settings.");
-
-		AssertEx.Contains(
-			"PluginSettings.HelicopterTransferFeeSource",
-			adapter);
-		AssertEx.False(
-			adapter.Contains("PluginSettings.PaymentSource", StringComparison.Ordinal),
-			"Cargo handling-fee interception must be independent from the general authorization payment source.");
-		AssertEx.False(
-			adapter.Contains("PluginSettings.PaymentCurrency", StringComparison.Ordinal),
-			"The native cargo handling fee remains RUB-only and must be independent from the authorization currency.");
+		AssertEx.False(settings.Contains("HelicopterTransferFeeSource", StringComparison.Ordinal));
+		AssertEx.False(settings.Contains("\"Transfer fee source\"", StringComparison.Ordinal));
+		AssertEx.Contains("Uh60TransferFeeRecoveryJournal = config.Bind(", settings);
+		AssertEx.Contains("Uh60TransferFeeRecoveryQuarantine = config.Bind(", settings);
+		AssertEx.False(adapter.Contains("PluginSettings.PaymentSource", StringComparison.Ordinal));
+		AssertEx.False(adapter.Contains("PluginSettings.PaymentCurrency", StringComparison.Ordinal));
 	}
 
 	[RegressionTest]
-	private static void NativeCarriedModeBypassesTheInterceptorWithoutHttp()
+	private static void NativePurchasePatchChangesOnlyTheServiceDataArgument()
 	{
-		string adapter = ReadProductionSource(AdapterPath);
 		string patches = ReadProductionSource(InteractionPatchesPath);
-		string intercept = ExtractMember(
-			adapter,
-			"TryInterceptTraderServicePurchase");
-
-		AssertEx.Contains("s_nativePurchaseBypass", intercept);
-		AssertEx.Contains(
-			"HelicopterTransferFeeSource.Stash",
-			intercept);
-		AssertEx.Contains("return false", intercept);
-		AssertBefore(
-			intercept,
-			"HelicopterTransferFeeSource.Stash",
-			"PurchaseCargoTransferWithStashFeeAsync(",
-			"The default carried-RUB mode must exit before the stash transaction task is created.");
-		AssertEx.False(
-			intercept.Contains(
-				"PrepareUh60TransferFeeAsync",
-				StringComparison.Ordinal),
-			"The interception gate itself must perform no HTTP work for bypassed native purchases.");
-
-		string stashPurchasePatch = SliceAround(
-			patches,
-			"internal sealed class HelicopterItemTransferStashFeePurchasePatch",
-			2600);
-		string patchPrefix = ExtractMember(
-			stashPurchasePatch,
-			"Prefix");
-		AssertEx.Contains(
-			"TryInterceptTraderServicePurchase",
-			patchPrefix);
-		AssertEx.Contains("return true", patchPrefix);
-		AssertEx.Contains("__result = stashPurchaseTask", patchPrefix);
-		AssertEx.Contains("return false", patchPrefix);
+		string purchasePatch = SliceAround(patches,
+			"internal sealed class HelicopterItemTransferIncludedFeePurchasePatch", 2400);
+		AssertEx.Contains("typeof(ItemManipulator)", purchasePatch);
+		AssertEx.Contains("nameof(ItemManipulator.PurchaseTraderService)", purchasePatch);
+		AssertEx.Contains("typeof(GlobalConfiguration.ServiceData)", purchasePatch);
+		AssertEx.Contains("typeof(EFT.Quests.QuestController)", purchasePatch);
+		AssertEx.Contains("typeof(InventoryController)", purchasePatch);
+		AssertEx.Contains("typeof(bool)", purchasePatch);
+		string prefix = ExtractMember(purchasePatch, "Prefix");
+		AssertEx.Contains("ref GlobalConfiguration.ServiceData __0", prefix);
+		AssertEx.Contains("IncludeCargoHandlingInServicePurchase", prefix);
+		AssertEx.False(prefix.Contains("__result", StringComparison.Ordinal),
+			"The native transaction must produce its own success/failure result.");
+		AssertEx.False(prefix.Contains("return false", StringComparison.Ordinal));
+		AssertEx.False(prefix.Contains("simulate", StringComparison.Ordinal),
+			"Both native simulation and execution must receive the included-fee data.");
 	}
 
 	[RegressionTest]
-	private static void StashInterceptionRequiresTheExactActiveCargoSession()
+	private static void IncludedHandlingRequiresExactRequesterControllerAndCargoSession()
 	{
 		string adapter = ReadProductionSource(AdapterPath);
-		string gate = ExtractMember(
-			adapter,
-			"IsExactActiveCargoPurchase");
-		string quote = ExtractMember(
-			adapter,
-			"TryGetExactNativeFee");
-
-		AssertEx.Contains(
+		string gate = ExtractMember(adapter, "IsExactActiveCargoPurchase");
+		foreach (string boundary in new[]
+		{
 			"!FireSupportServerConfigClient.IsFikaClientHostAuthorityActive",
-			gate);
-		AssertEx.Contains("player != null", gate);
-		AssertEx.Contains("player.IsYourPlayer", gate);
-		AssertEx.Contains("player == s_servicePlayer", gate);
-		AssertEx.Contains(
-			"player.InventoryController == inventoryController",
-			gate);
-		AssertEx.Contains("s_sessionPoint != null", gate);
-		AssertEx.Contains("s_screenController != null", gate);
-		AssertEx.Contains("s_transferController != null", gate);
-		AssertEx.Contains(
-			"s_transferController.ServiceType == serviceType",
-			gate);
-		AssertEx.Contains("s_serviceType == serviceType", gate);
+			"player != null", "player.IsYourPlayer", "player == s_servicePlayer",
+			"player.InventoryController == inventoryController", "s_sessionPoint != null",
+			"s_screenController != null", "s_transferController != null",
+			"serviceType == ETraderServiceType.TransitItemsDelivery",
+			"serviceType == ETraderServiceType.BtrItemsDelivery",
+			"s_transferController.ServiceType == serviceType", "s_serviceType == serviceType"
+		})
+		{
+			AssertEx.Contains(boundary, gate);
+		}
 
-		AssertEx.Contains(
-			"generation != s_sessionGeneration",
-			quote);
-		AssertEx.Contains(
-			"IsExactActiveCargoPurchase(",
-			quote);
-		AssertEx.Contains(
-			"serviceData.ServiceItemCost.Count != 1",
-			quote);
-		AssertEx.Contains(
-			"PaymentCurrencyInfo.RoubleTemplateId",
-			quote);
-		AssertEx.Contains(
-			"s_transferController.GetGridItemsPrice(temporaryStash)",
-			quote);
-		AssertEx.Contains(
-			"calculatedFee != quotedFee",
-			quote);
+		string include = ExtractMember(adapter, "IncludeCargoHandlingInServicePurchase");
+		AssertEx.Contains("!string.IsNullOrEmpty(subServiceId)", include);
+		AssertEx.Contains("questController != (s_sessionPlayer as LocalPlayer)?.QuestController", include);
+		AssertEx.Contains("IsExactActiveCargoPurchase(inventoryController, serviceData.ServiceType)", include);
+		AssertEx.Contains("OwnsTemporaryCargoStash(s_transferController, stash)", include);
+		AssertEx.Contains("temporaryStash?.Grids?.Any(grid => grid?.Items?.Any() == true) != true", include);
+		AssertBefore(include, "IsExactActiveCargoPurchase(", "CopyWithIncludedHandling(",
+			"A native service-data copy must only be supplied after the exact session and ownership checks.");
 	}
 
 	[RegressionTest]
-	private static void NativeZeroCostBypassIsThreadScopedAndRestoredBeforeAwait()
+	private static void NativeZeroQuoteIsScopedToTheRequesterTemporaryGrid()
 	{
 		string adapter = ReadProductionSource(AdapterPath);
-		string native = ExtractMember(
-			adapter,
-			"StartNativePurchaseWithZeroRubCost");
+		string quote = ExtractMember(adapter, "TryOverrideCargoTransferPrice");
+		string owns = ExtractMember(adapter, "OwnsTemporaryCargoStash");
+		AssertEx.Contains("price = 0", quote);
+		AssertEx.Contains("controller == s_transferController", quote);
+		AssertEx.Contains("IsExactActiveCargoPurchase(", quote);
+		AssertEx.Contains("OwnsTemporaryCargoStash(controller, temporaryStash)", quote);
+		AssertEx.Contains("string.Equals(temporaryStash.Id, s_sessionPlayer.ProfileId, StringComparison.Ordinal)", owns);
+		AssertEx.Contains("controller._transferContainers?.Contains(temporaryStash) == true", owns);
 
-		AssertEx.True(
-			Regex.IsMatch(
-				adapter,
-				@"\[ThreadStatic\]\s*" +
-				@"private\s+static\s+bool\s+s_nativePurchaseBypass\s*;",
-				RegexOptions.CultureInvariant),
-			"The recursive native purchase guard must be scoped to the invoking thread.");
-		AssertEx.Contains(
-			"var serviceItemCost = serviceData.ServiceItemCost",
-			native);
-		AssertEx.Contains(
-			"KeyValuePair<string, int>[] originalCosts",
-			native);
-		AssertEx.Contains("s_nativePurchaseBypass = true", native);
-		AssertEx.Contains("serviceItemCost.Clear()", native);
-		AssertEx.Contains(
-			"inventoryController.TryPurchaseTraderService(",
-			native);
-		AssertEx.Contains("finally", native);
-		AssertEx.Contains(
-			"foreach (KeyValuePair<string, int> cost in originalCosts)",
-			native);
-		AssertEx.Contains(
-			"serviceItemCost.Add(cost.Key, cost.Value)",
-			native);
-		AssertEx.Contains("s_nativePurchaseBypass = false", native);
-		AssertEx.False(
-			native.Contains("await ", StringComparison.Ordinal),
-			"The full ServiceItemCost dictionary and recursion guard must be restored synchronously before the native task is awaited.");
-		AssertBefore(
-			native,
-			"serviceItemCost.Add(cost.Key, cost.Value)",
-			"return nativePurchaseTask",
-			"The exact dynamic cost dictionary must be restored before the native task is returned to an awaiting caller.");
+		string patches = ReadProductionSource(InteractionPatchesPath);
+		string quotePatch = SliceAround(patches,
+			"internal sealed class HelicopterItemTransferIncludedFeeQuotePatch", 1200);
+		AssertEx.Contains("typeof(TransferItemsController)", quotePatch);
+		AssertEx.Contains("typeof(Stash), typeof(ETraderServiceType), typeof(float), typeof(float)", quotePatch);
+		AssertEx.Contains("return true", quotePatch);
+		AssertEx.Contains("__result = price", quotePatch);
+		AssertEx.False(patches.Contains("nameof(TransferItemsPanel.UpdateCounters)", StringComparison.Ordinal),
+			"Native counters retain their empty-grid and affordability rules; the fee quote alone changes.");
 	}
 
 	[RegressionTest]
-	private static void ClientLifecycleRefundsOnlyBeforeNativeSuccess()
+	private static void IncludedHandlingDoesNotMutateGlobalServiceCosts()
 	{
 		string adapter = ReadProductionSource(AdapterPath);
-		string purchase = ExtractMember(
-			adapter,
-			"PurchaseCargoTransferWithStashFeeAsync");
-
-		AssertBefore(
-			purchase,
-			"PrepareUh60TransferFeeAsync(",
-			"StartNativePurchaseWithZeroRubCost(",
-			"The stash debit must be prepared before EFT can run its zero-carried-cost native transaction.");
-		AssertEx.Contains(
-			"if (!IsPreparedFeeResponse(prepareResponse))",
-			purchase);
-		AssertEx.Contains(
-			"revalidatedFee != nativeFeeRoubles",
-			purchase);
-		AssertEx.Contains(
-			"if (!nativePurchaseSucceeded)",
-			purchase);
-		AssertEx.Contains(
-			"RefundPreparedStashFeeAsync(",
-			purchase);
-		AssertEx.Contains(
-			"No refund was attempted.",
-			purchase);
-
-		int nativeSuccess = purchase.IndexOf(
-			"bool nativePurchaseSucceeded = await nativePurchaseTask",
-			StringComparison.Ordinal);
-		int catchIndex = purchase.IndexOf(
-			"catch (Exception ex)",
-			nativeSuccess,
-			StringComparison.Ordinal);
-		int commit = purchase.IndexOf(
-			"PersistCommitIntent(",
-			catchIndex,
-			StringComparison.Ordinal);
-		AssertEx.True(
-			nativeSuccess >= 0 &&
-			catchIndex > nativeSuccess &&
-			commit > catchIndex,
-			"The refundable exception boundary must end after native execution and before persisting commit intent.");
-		string preCommit =
-			purchase[catchIndex..commit];
-		AssertEx.Contains(
-			"prepared = false",
-			preCommit,
-			"Once EFT reports native success, the catch path must be disarmed before the durable idempotent commit intent.");
-		string commitAcknowledgement = purchase[commit..];
-		AssertEx.False(
-			commitAcknowledgement.Contains(
-				"RefundPreparedStashFeeAsync(",
-				StringComparison.Ordinal),
-			"A failed commit acknowledgement must never refund a completed native transfer.");
-		string catchBlock = purchase[catchIndex..commit];
-		AssertEx.Contains("if (prepared)", catchBlock);
+		string include = ExtractMember(adapter, "IncludeCargoHandlingInServicePurchase");
+		AssertEx.Contains("serviceData = CargoTransferServiceData.CopyWithIncludedHandling(serviceData)", include);
+		AssertEx.False(adapter.Contains("ServiceItemCost", StringComparison.Ordinal),
+			"The adapter must not clear, restore or retain a reference to the global payment dictionary.");
+		AssertEx.False(adapter.Contains("s_nativePurchaseBypass", StringComparison.Ordinal));
+		AssertEx.False(adapter.Contains("StartNativePurchaseWithZeroRubCost", StringComparison.Ordinal));
 	}
 
 	[RegressionTest]
-	private static void LegacyOrUnavailableServerFailsClosedBeforeNativePurchase()
+	private static void NewCargoTransfersNeverStartSeparateFeeTransactions()
 	{
 		string adapter = ReadProductionSource(AdapterPath);
+		foreach (string retiredCall in new[]
+		{
+			"PrepareUh60TransferFeeAsync", "PersistCommitIntent", "PersistRefundIntent",
+			"PurchaseCargoTransferWithStashFeeAsync", "Uh60TransferFeeRecoveryStore"
+		})
+		{
+			AssertEx.False(adapter.Contains(retiredCall, StringComparison.Ordinal),
+				"Sending newly purchased cargo must not start or await an additional fee transaction.");
+		}
 		string client = ReadProductionSource(ServerClientPath);
-		string purchase = ExtractMember(
-			adapter,
-			"PurchaseCargoTransferWithStashFeeAsync");
-		string send = ExtractMember(
-			client,
-			"SendUh60TransferFeeActionAsync");
-
-		AssertEx.Contains(
-			"Reason = \"ServerConfigUnavailable\"",
-			send);
-		AssertEx.Contains("\"uh60-transfer/fee\"", send);
-		AssertEx.Contains("catch (Exception ex)", send);
-		AssertEx.Contains(
-			"fallback.Reason = \"RequestFailed\"",
-			send);
-		AssertEx.Contains(
-			"fails Prepare before EFT's",
-			send);
-		AssertBefore(
-			purchase,
-			"if (!IsPreparedFeeResponse(prepareResponse))",
-			"StartNativePurchaseWithZeroRubCost(",
-			"A missing legacy route must be rejected before the native purchase can consume or transfer anything.");
+		AssertEx.Contains("RetryMatchingProfileAsync", client,
+			"Startup/profile recovery must still reconcile payments from older clients.");
 	}
 
 	[RegressionTest]
-	private static void AmbiguousPrepareFailureReconcilesTheSameTransactionBeforeReturning()
+	private static void IncludedHandlingPreservesNativePurchaseAndDeliveryObservation()
 	{
 		string adapter = ReadProductionSource(AdapterPath);
-		string purchase = ExtractMember(
-			adapter,
-			"PurchaseCargoTransferWithStashFeeAsync");
-		string reconcile = ExtractMember(
-			adapter,
-			"ReconcileAmbiguousPrepareFailureAsync");
-
-		AssertBefore(
-			purchase,
-			"ReconcileAmbiguousPrepareFailureAsync(",
-			"return false",
-			"An ambiguous Prepare response must be reconciled before the native purchase is rejected.");
-		AssertEx.Contains(
-			"Reconcile every rejected",
-			reconcile);
-		AssertEx.Contains(
-			"RefundPreparedStashFeeAsync(",
-			reconcile);
-		AssertEx.Contains("profileId", reconcile);
-		AssertEx.Contains("transactionId", reconcile);
-		AssertEx.Contains("amountRoubles", reconcile);
-		AssertEx.Contains(
-			"notFoundIsSuccess: true",
-			reconcile);
-		AssertEx.Contains(
-			"Native EFT purchase has not started here.",
-			reconcile);
+		string observed = ExtractMember(adapter, "NotifyServicePurchased");
+		AssertEx.Contains("s_servicePurchaseObserved = true", observed);
+		AssertEx.Contains("CollectTemporaryTransferItemIds(controller, profileId)", observed);
+		AssertEx.Contains("MarkVerifiedUh60TransferAsync(", observed);
+		string close = ExtractMember(adapter, "OnScreenClosed");
+		AssertEx.Contains("if (purchaseObserved)", close);
+		AssertEx.Contains("point?.BeginSuccessfulTransfer(player)", close);
+		AssertEx.Contains("CleanupSession(generation, endPointSession: true)", close);
 	}
 
 	[RegressionTest]
@@ -422,115 +250,63 @@ internal static class HelicopterTransferFeeSourceContractTests
 	}
 
 	[RegressionTest]
-	private static void ServerPrepareCommitRefundLifecycleIsWriteAheadAndTerminal()
+	private static void ServerFeeEndpointRetiresDebitsAndPreservesLegacyTerminalRecovery()
 	{
 		string service = ReadProductionSource(ServerServicePath);
-		string prepare = ExtractMember(service, "PrepareAsync");
-		string resumeDebit = ExtractMember(service, "ResumeDebitAsync");
-		string finalizePrepared = ExtractMember(
-			service,
-			"FinalizePrepared");
+		string prepare = ExtractMember(service, "Prepare");
+		string recoverDebit = ExtractMember(service, "RecoverLegacyDebit");
+		string finalizePrepared = ExtractMember(service, "FinalizePrepared");
 		string commit = ExtractMember(service, "CommitAsync");
 		string refund = ExtractMember(service, "RefundAsync");
-		string finalizeRefunded = ExtractMember(
-			service,
-			"FinalizeRefunded");
+		string finalizeRefunded = ExtractMember(service, "FinalizeRefunded");
 
 		AssertEx.Contains("\"AlreadyPrepared\"", prepare);
 		AssertEx.Contains("\"AlreadyCommitted\"", prepare);
 		AssertEx.Contains("\"FeeTransactionRefunded\"", prepare);
-		AssertEx.Contains(
-			"FireSupportUh60TransferFeeJournal.DebitPendingState",
-			prepare);
-		AssertBefore(
-			prepare,
-			"journal.TryCreate(",
-			"ResumeDebitAsync(",
-			"The DebitPending journal entry must be durable before any stash debit is resumed.");
-
-		AssertBefore(
-			resumeDebit,
-			"ApplyDebitPlan(",
-			"saveServer.SaveProfileAsync(",
-			"The exact debit plan must be applied before the authoritative profile is saved.");
-		AssertBefore(
-			resumeDebit,
-			"saveServer.SaveProfileAsync(",
-			"FinalizePrepared(",
-			"The fee may enter Prepared only after the debited profile has been saved.");
-		AssertEx.Contains(
-			"FireSupportUh60TransferFeeJournal.PreparedState",
-			finalizePrepared);
+		AssertEx.Contains("IncludedInServiceReason", prepare);
+		AssertEx.False(service.Contains("journal.TryCreate(", StringComparison.Ordinal),
+			"The retired endpoint must never create a new handling-fee transaction.");
+		AssertEx.False(service.Contains("ApplyDebitPlan(", StringComparison.Ordinal),
+			"Legacy recovery must never apply an unpaid debit after handling fees are removed.");
+		AssertEx.Contains("record.ExpectedPostDebitFingerprint", recoverDebit);
+		AssertEx.Contains("\"RecoveredPrepared\"", recoverDebit);
+		AssertEx.Contains("record.PreDebitFingerprint", recoverDebit);
+		AssertEx.Contains("CancelUndebitedLegacyFee(", recoverDebit);
+		AssertEx.Contains("\"FeePaymentStateAmbiguous\"", recoverDebit);
+		AssertEx.Contains("FireSupportUh60TransferFeeJournal.PreparedState", finalizePrepared);
 		AssertEx.Contains("journal.TrySave(", finalizePrepared);
 
-		AssertEx.Contains(
-			"FireSupportUh60TransferFeeJournal.PreparedState",
-			commit);
-		AssertEx.Contains(
-			"FireSupportUh60TransferFeeJournal.CommittedState",
-			commit);
+		AssertEx.Contains("FireSupportUh60TransferFeeJournal.PreparedState", commit);
+		AssertEx.Contains("FireSupportUh60TransferFeeJournal.CommittedState", commit);
 		AssertEx.Contains("\"AlreadyCommitted\"", commit);
 		AssertEx.Contains("journal.TrySave(", commit);
-
-		AssertEx.Contains(
-			"FireSupportUh60TransferFeeJournal.CommittedState",
-			refund);
 		AssertEx.Contains("\"FeeTransactionCommitted\"", refund);
-		AssertBefore(
-			refund,
-			"\"FeeTransactionCommitted\"",
-			"TryBuildRefundPlan(",
+		AssertBefore(refund, "\"FeeTransactionCommitted\"", "TryBuildRefundPlan(",
 			"A committed native transfer must be rejected before any refund plan is created.");
-		AssertEx.Contains(
-			"FireSupportUh60TransferFeeJournal.RefundPendingState",
-			refund);
-		AssertEx.Contains(
-			"FireSupportUh60TransferFeeJournal.RefundedState",
-			finalizeRefunded);
+		AssertEx.Contains("FireSupportUh60TransferFeeJournal.RefundPendingState", refund);
+		AssertEx.Contains("FireSupportUh60TransferFeeJournal.RefundedState", finalizeRefunded);
 		AssertEx.Contains("journal.TrySave(", finalizeRefunded);
 	}
 
 	[RegressionTest]
-	private static void StashFeesUseOnlyNestedRoubleStacksAndAdditiveRefundPlans()
+	private static void LegacyFeeRefundsUseOnlyNestedRoubleStacksAndAdditivePlans()
 	{
 		string service = ReadProductionSource(ServerServicePath);
-		string stacks = ExtractMember(
-			service,
-			"GetStashRoubleStacks");
-		string descendant = ExtractMember(
-			service,
-			"IsDescendantOfStash");
-		string debitPlan = ExtractMember(
-			service,
-			"TryBuildDebitPlan");
-		string applyDebit = ExtractMember(
-			service,
-			"ApplyDebitPlan");
-		string refundPlan = ExtractMember(
-			service,
-			"TryBuildRefundPlan");
-		string applyRefund = ExtractMember(
-			service,
-			"TryApplyRefundPlan");
-
-		AssertEx.Contains(
-			"PaymentCurrencyInfo.RoubleTemplateId",
-			stacks);
+		string stacks = ExtractMember(service, "GetStashRoubleStacks");
+		string descendant = ExtractMember(service, "IsDescendantOfStash");
+		string refundPlan = ExtractMember(service, "TryBuildRefundPlan");
+		string applyRefund = ExtractMember(service, "TryApplyRefundPlan");
+		AssertEx.Contains("PaymentCurrencyInfo.RoubleTemplateId", stacks);
 		AssertEx.Contains("inventory.Stash", stacks);
 		AssertEx.Contains("IsDescendantOfStash(", stacks);
 		AssertEx.Contains("parentId = parent.ParentId", descendant);
 		AssertEx.Contains("stashId", descendant);
-		AssertEx.Contains("GetStashRoubleStacks(pmc)", debitPlan);
-		AssertEx.Contains("IsStashRouble(pmc, current)", applyDebit);
 		AssertEx.Contains("record.Debits", refundPlan);
 		AssertEx.Contains("BeforeCount", refundPlan);
 		AssertEx.Contains("RestoredItem", refundPlan);
 		AssertEx.Contains("checked(", applyRefund);
-		AssertEx.False(
-			Regex.IsMatch(
-				refundPlan + applyRefund,
-				@"Inventory\.Items\s*=\s*record\.",
-				RegexOptions.CultureInvariant),
+		AssertEx.False(Regex.IsMatch(refundPlan + applyRefund,
+			@"Inventory\.Items\s*=\s*record\.", RegexOptions.CultureInvariant),
 			"Refund must apply captured RUB-stack credits, never replace the live inventory with a stale journal snapshot.");
 	}
 

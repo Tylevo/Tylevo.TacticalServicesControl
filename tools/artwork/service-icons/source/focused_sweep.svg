@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 96 96" role="img"><title>focused_sweep</title>
+<ellipse fill="none" stroke="#dcd8c8" stroke-width="3.2" cx="48" cy="48" rx="28" ry="28"/>
+<ellipse fill="none" stroke="#dcd8c8" stroke-width="3.2" cx="48" cy="48" rx="15" ry="15"/>
+<polyline fill="none" stroke="#dcd8c8" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" points="48,48 65,28"/>
+<path fill="#dcd8c8" fill-rule="evenodd" d="M44,48 A4,4 0 1,0 52,48 A4,4 0 1,0 44,48 Z"/>
+<path fill="#dcd8c8" fill-rule="evenodd" d="M57,35.5 A3.5,3.5 0 1,0 64,35.5 A3.5,3.5 0 1,0 57,35.5 Z"/>
+<polyline fill="none" stroke="#dcd8c8" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" points="12,28 12,12 28,12"/>
+<polyline fill="none" stroke="#dcd8c8" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" points="68,12 84,12 84,28"/>
+<polyline fill="none" stroke="#dcd8c8" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" points="12,68 12,84 28,84"/>
+<polyline fill="none" stroke="#dcd8c8" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" points="68,84 84,84 84,68"/>
+</svg>
