@@ -179,7 +179,7 @@ try {
         Require ((Get-Strings $raid) -contains 'com.fika.core') 'Fika restriction remains compiled'
         Require (Test-Calls $raid 'get_IsAI') 'Solo raid guard still distinguishes human actors'
         Require (Test-Calls $raid 'get_IsAlive') 'Solo raid guard still requires a living caller'
-    
+
     }
 
     # Resolve compiled external API shapes used for native emission and prediction.
