@@ -372,9 +372,12 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 			return;
 		}
 
+		// Once payment starts it must settle, but closing the phone still cancels
+		// the optional deployment. A late successful receipt remains available.
+		_purchaseDeploymentTransition.Cancel();
 		if (_confirmationSequenceRunning && (_paymentAttempted || _restoreStarted))
 		{
-			TscDiagnostics.LogPhone("TSC phone cancel ignored: confirmation payment/restore is already committed.");
+			TscDiagnostics.LogPhone("TSC phone deployment cancelled; committed payment/restore will finish.");
 			return;
 		}
 
@@ -498,11 +501,9 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 
 		if (_confirmationSequenceRunning)
 		{
-			if (!_paymentAttempted &&
-			    !_restoreStarted &&
-			    (Input.GetKeyDown(KeyCode.Escape) || (!SuppressLegacyPhoneMouse && Input.GetMouseButtonDown(1))))
+			if (Input.GetKeyDown(KeyCode.Escape) || (!SuppressLegacyPhoneMouse && Input.GetMouseButtonDown(1)))
 			{
-				CancelConfirmationSequenceBeforeCommit();
+				CancelAuthorizationSession();
 			}
 
 			return;
@@ -573,7 +574,7 @@ public sealed class UavDeviceController : Player.UsableItemController, IQuickUse
 		{
 			return !_authorizationInputLocked && _deployPoseReady && Time.unscaledTime >= _deployInputArmedAt;
 		}
-		return _confirmationSequenceRunning ? !_paymentAttempted : !_authorizationInputLocked;
+		return _confirmationSequenceRunning || !_authorizationInputLocked;
 	}
 
 	private void EnsurePhonePointerInputNode()

@@ -31,7 +31,7 @@ internal static class ProgressionDispatchSourceContractTests
 		AssertEx.True(localCredit >= 0 && cash > localCredit,
 			"A refunded direct-payment credit must pass preflight even if the first payment spent the last stash cash.");
 		string credits = Read("project/SamSWAT.FireSupport/Unity/FireSupportAuthorizations.cs");
-		AssertEx.Contains("FireSupportServiceAvailability.IsServiceEnabled(type) && GetLocal(type) > 0", credits);
+		AssertEx.Contains("FireSupportServiceAvailability.IsServiceEnabled(type) && GetLocal(type) + GetBaseRequestRefunds(type) > 0", credits);
 	}
 
 	[RegressionTest]
@@ -151,6 +151,45 @@ internal static class ProgressionDispatchSourceContractTests
 			Member(source, "public static AuthorityOutcome FromResult("));
 		AssertEx.False(Read("project/SamSWAT.FireSupport.Fika.Interop/FireSupportAuthorityResultPacket.cs")
 			.Contains("ProgressionPermit", StringComparison.Ordinal));
+	}
+
+	[RegressionTest]
+	private static void LocalRefundProvenanceReachesConsumptionAndBudgetChecks()
+	{
+		string payment = Read("project/SamSWAT.FireSupport/Unity/FireSupportPayment.cs");
+		AssertEx.Contains("purchasedForBaseRequest: authorizationUse.PurchasedForBaseRequest",
+			Member(payment, "public static async UniTask<bool> RefundConsumedAuthorizationAsync("));
+		AssertEx.Contains("PurchasedForBaseRequest = refundedBaseRequest ||",
+			Member(payment, "private static async UniTask<FireSupportAuthorizationUse> TryPayForDeploymentCoreAsync("));
+		string credits = Read("project/SamSWAT.FireSupport/Unity/FireSupportAuthorizations.cs");
+		AssertEx.Contains("s_localAuthorizations, s_serverAuthorizations, s_baseRequestRefunds",
+			Member(credits, "private static bool TryConsume("));
+		AssertEx.Contains("s_baseRequestRefunds.Clear();", Member(credits, "public static void Reset()"));
+		string budget = Member(Read("project/SamSWAT.FireSupport/Unity/Vehicles/FireSupportService.cs"),
+			"private bool HasRequestBudget()");
+		AssertEx.Contains("AuthorizationConsumePolicy.HasRequestBudget(", budget);
+		AssertEx.Contains("FireSupportAuthorizations.HasPrepaidDeployable(SupportType)", budget);
+	}
+
+	[RegressionTest]
+	private static void PhoneCancelAfterPaymentDisarmsDeploymentWithoutAbortingThePurchase()
+	{
+		string controller = Read("project/SamSWAT.FireSupport/Unity/UavDeviceController.cs");
+		string cancel = Member(controller, "public void CancelAuthorizationSession()");
+		int disarm = cancel.IndexOf("_purchaseDeploymentTransition.Cancel();", StringComparison.Ordinal);
+		int committedPayment = cancel.IndexOf("if (_confirmationSequenceRunning && (_paymentAttempted || _restoreStarted))", StringComparison.Ordinal);
+		AssertEx.True(disarm >= 0 && committedPayment > disarm,
+			"Cancel must disarm the deployment before leaving a committed purchase to finish.");
+		string input = Member(Member(controller, "private void Update()"), "if (_confirmationSequenceRunning)");
+		AssertEx.Contains("Input.GetKeyDown(KeyCode.Escape)", input);
+		AssertEx.Contains("Input.GetMouseButtonDown(1)", input);
+		AssertEx.Contains("CancelAuthorizationSession();", input);
+		AssertEx.False(input.Contains("_paymentAttempted", StringComparison.Ordinal),
+			"Escape and right-click must still reach cancellation while payment is pending or complete.");
+		string ownership = Member(controller, "internal bool OwnsPhoneCancelInput()");
+		AssertEx.Contains("return _confirmationSequenceRunning || !_authorizationInputLocked;", ownership);
+		AssertEx.False(ownership.Contains("_paymentAttempted", StringComparison.Ordinal),
+			"EFT must not open its pause screen instead of delivering the phone cancellation after payment.");
 	}
 
 	private static string Member(string source, string marker)
