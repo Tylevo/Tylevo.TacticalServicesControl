@@ -1,10 +1,10 @@
 # Building
 
 The current source targets **TSC v1.3.13 for SPT 4.1.5**, with
-**UnityToolkit 2.0.2 installed separately**. The patch adds cargo grid settings
-and improves phone movement and sprint zoom. See the
+**UnityToolkit 2.0.2 installed separately**. The integrated candidate adds stash payments, phone deployment, portable builds,
+and optional helicopter development. See the
 [release notes](docs/release-notes-v1.3.13.md) and
-[validation scope](docs/validation/v1.3.13.md). Current Fika multiplayer remains untested.
+[consolidation validation](docs/validation/consolidation-20261007.md). Current Fika multiplayer remains untested.
 
 This repository does not include proprietary EFT or SPT assemblies. Provide local references from your own SPT install.
 

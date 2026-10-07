@@ -51,3 +51,7 @@ Invoke-Case 'mismatch-rejected-before-audit-or-build' $shell @('-NoProfile', '-F
     '-GameRoot', $output, '-CoreDll', $fakeCore, '-ValidatedCoreSha256', ('0' * 64),
     '-DotNet', 'HH60_TEST_COMPILER_MUST_NOT_RUN') 'Selected Core does not match the explicitly supplied validated hash.'
 Write-Output "PASS $passed Core identity build/guard scenarios; no game references or native assets were used. Logs: $output"
+
+# Expected negative child processes must not leak failure into pwsh -File/CI.
+# Every nonzero result has already been matched to its required rejection above.
+$global:LASTEXITCODE = 0
