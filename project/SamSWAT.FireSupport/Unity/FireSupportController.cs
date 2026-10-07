@@ -208,21 +208,55 @@ public class FireSupportController : UIInputNode
 	/// </summary>
 	public void ScheduleDeployAfterHandsRestore(ESupportType supportType)
 	{
-		FireSupportPlugin.LogSource.LogInfo($"TSC deploy scheduled: {supportType}.");
-		StartCoroutine(DeployAfterHandsRestore(supportType));
+		ScheduleDeployAfterHandsRestore(supportType, requirePrepaidAuthorization: false);
 	}
 
-	private System.Collections.IEnumerator DeployAfterHandsRestore(ESupportType supportType)
+	public void ScheduleDeployAfterHandsRestore(ESupportType supportType, bool requirePrepaidAuthorization)
 	{
-		// The spotter and UAV flows are camera/UI driven and independent of
-		// the hands controller, and uplink deploys suppress the activation
-		// device re-equip, so there is no hand-swap race to wait out. Waiting
-		// for the full stow + weapon re-equip added ~3-4s between the tap and
-		// the designator appearing; a short beat keeps the inputs distinct.
-		yield return new WaitForSecondsRealtime(0.35f);
+		FireSupportPlugin.LogSource.LogInfo($"TSC deploy scheduled: {supportType}.");
+		var handoff = new PhoneDeploymentHandoff(UavDeviceController.PhoneSessionGeneration, Time.unscaledTime);
+		StartCoroutine(DeployAfterHandsRestore(supportType, requirePrepaidAuthorization, handoff));
+	}
+
+	private System.Collections.IEnumerator DeployAfterHandsRestore(
+		ESupportType supportType,
+		bool requirePrepaidAuthorization,
+		PhoneDeploymentHandoff handoff)
+	{
+		// The phone starts its zoom restore when deployment is committed.
+		// Wait for that native scaled-time transition, including pauses, while
+		// retaining the short input-separation beat. A reopened phone cancels
+		// this intent rather than deploying over a newer interaction.
+		while (true)
+		{
+			PhoneDeploymentHandoffState state = handoff.Advance(
+				UavDeviceController.PhoneSessionGeneration,
+				Time.unscaledTime,
+				UavDeviceController.IsPhoneZoomRestorePending,
+				Time.timeScale <= 0f);
+			if (state == PhoneDeploymentHandoffState.Cancelled)
+			{
+				FireSupportPlugin.LogSource.LogInfo($"TSC phone deployment superseded by a newer phone session: {supportType}.");
+				yield break;
+			}
+			if (state == PhoneDeploymentHandoffState.Ready)
+			{
+				break;
+			}
+			yield return null;
+		}
+
+		if (requirePrepaidAuthorization &&
+		    (!PhonePurchaseDeploymentTransition.UsesPrepaidAuthorization(FireSupportPayment.GetActivePaymentMode()) ||
+		     !FireSupportAuthorizations.HasDeployable(supportType)))
+		{
+			FireSupportPlugin.LogSource.LogInfo(
+				$"TSC purchase-to-designation handoff skipped: prepaid authorization no longer deployable for {supportType}.");
+			yield break;
+		}
 
 		FireSupportPlugin.LogSource.LogInfo($"TSC deploy dispatch: {supportType}.");
-		RequestSupport(supportType);
+		RequestSupport(supportType, requirePrepaidAuthorization);
 	}
 
 	/// <summary>
@@ -231,6 +265,11 @@ public class FireSupportController : UIInputNode
 	/// already committed a specific authorization.
 	/// </summary>
 	public void RequestSupport(ESupportType supportType)
+	{
+		RequestSupport(supportType, requirePrepaidAuthorization: false);
+	}
+
+	public void RequestSupport(ESupportType supportType, bool requirePrepaidAuthorization)
 	{
 		try
 		{
@@ -277,7 +316,7 @@ public class FireSupportController : UIInputNode
 			// The deploy phone already played the authorization; don't pull it
 			// back out for the UAV activation animation.
 			UavDeviceActivationController.SuppressNextActivation();
-			service.PlanRequest(destroyCancellationToken).Forget();
+			service.PlanRequest(destroyCancellationToken, requirePrepaidAuthorization).Forget();
 		}
 		catch (OperationCanceledException) {}
 		catch (Exception ex)

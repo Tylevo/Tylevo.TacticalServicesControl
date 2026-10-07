@@ -13,7 +13,7 @@ internal static class ServerPresetTests
 		using var rig = new ServerConfigTestRig();
 		AssertEx.Equal("StashRoubles", new RaidOpsFireSupportServerConfig().PaymentSource);
 		var nativeView = (FireSupportConfigEditorView)new FireSupportConfigEditorProvider(rig.Service).GetConfigs().Single().RuntimeConfig;
-		AssertEx.Equal("StashRoubles", nativeView.PaymentSource);
+		AssertEx.False(JsonSerializer.SerializeToElement(nativeView, s_json).TryGetProperty("paymentSource", out _));
 		var expected = new Dictionary<string, int>
 		{
 			["A10"] = 150000, ["DoublePass"] = 250000, ["Uav"] = 50000,
@@ -30,10 +30,10 @@ internal static class ServerPresetTests
 	}
 
 	[RegressionTest]
-	private static void ExistingPricesCurrencyAndExplicitWalletChoicesSurviveInitializationAndReload()
+	private static void ExistingWalletsMigrateToStashWithoutChangingPricesOrCurrencyOnInitializationAndReload()
 	{
 		foreach (int schema in new[] { 3, 4 })
-		foreach (string source in Enum.GetNames<PaymentSource>())
+		foreach (string source in new[] { "CarriedRoubles", "StashRoubles", "PreferCarriedThenStash", "PreferStashThenCarried" })
 		{
 			using var rig = new ServerConfigTestRig();
 			RaidOpsFireSupportServerConfig existing = ReadReference(3);
@@ -47,9 +47,10 @@ internal static class ServerPresetTests
 			rig.Service.Initialize(Directory.GetParent(Path.GetDirectoryName(rig.ConfigPath)!)!.FullName);
 			AssertEx.True(rig.Service.TryReloadConfig(out RaidOpsFireSupportServerConfig loaded, out string error), error);
 			AssertEx.Equal("EUR", loaded.PaymentCurrency);
-			AssertEx.Equal(source, loaded.PaymentSource);
-			AssertEx.Equal(source, rig.ReadDisk().PaymentSource);
-			AssertEx.Equal(source, ((FireSupportConfigEditorView)new FireSupportConfigEditorProvider(rig.Service).GetConfigs().Single().RuntimeConfig).PaymentSource);
+			AssertEx.Equal("StashRoubles", loaded.PaymentSource);
+			AssertEx.Equal("StashRoubles", rig.ReadDisk().PaymentSource);
+			AssertEx.False(JsonSerializer.SerializeToElement(new FireSupportConfigEditorProvider(rig.Service)
+				.GetConfigs().Single().RuntimeConfig, s_json).TryGetProperty("paymentSource", out _));
 			AssertEx.Equal("BTC", loaded.ServiceCurrencies["Extraction"]);
 			foreach ((string service, int price) in existing.Prices)
 			{
@@ -86,34 +87,36 @@ internal static class ServerPresetTests
 		carried.PaymentSource = "CarriedRoubles";
 		AssertEx.True(rig.Service.TryUpdateConfig(carried, out string error, carried.Revision), error);
 		int previousRevision = rig.Service.GetConfigSnapshot().Revision;
-		AssertEx.Equal("CarriedRoubles", rig.ReadDisk().PaymentSource);
+		AssertEx.Equal("StashRoubles", rig.ReadDisk().PaymentSource);
 		AssertEx.True(rig.Service.TryResetConfig(out RaidOpsFireSupportServerConfig reset, out error), error);
 		AssertEx.Equal(previousRevision + 1, reset.Revision);
 		AssertEx.Equal("StashRoubles", reset.PaymentSource);
 		AssertEx.Equal("StashRoubles", rig.Service.GetConfigSnapshot().PaymentSource);
 		AssertEx.Equal("StashRoubles", rig.ReadDisk().PaymentSource);
 		var registration = new FireSupportConfigEditorProvider(rig.Service).GetConfigs().Single();
-		AssertEx.Equal("StashRoubles", ((FireSupportConfigEditorView)registration.RuntimeConfig).PaymentSource);
-		AssertEx.Equal("StashRoubles", ((FireSupportConfigEditorView)(await registration.LoadFromDiskAsync!(CancellationToken.None))!).PaymentSource);
+		AssertEx.False(JsonSerializer.SerializeToElement(registration.RuntimeConfig, s_json).TryGetProperty("paymentSource", out _));
+		AssertEx.False(JsonSerializer.SerializeToElement(await registration.LoadFromDiskAsync!(CancellationToken.None), s_json)
+			.TryGetProperty("paymentSource", out _));
 		AssertEx.True(rig.Service.TryReloadConfig(out RaidOpsFireSupportServerConfig reloaded, out error), error);
 		AssertEx.Equal("StashRoubles", reloaded.PaymentSource);
 	}
 
 	[RegressionTest]
-	private static void CurrentPresetsUseStashWhileClassicRetainsItsHistoricalCarriedWallet()
+	private static void PresetsOmitWalletSelectionWithoutRewritingHistoricalReference()
 	{
 		using var rig = new ServerConfigTestRig();
 		RaidOpsFireSupportServerConfig custom = rig.Service.GetConfigSnapshot();
 		custom.PaymentSource = "PreferCarriedThenStash";
 		AssertEx.True(rig.Service.TryUpdateConfig(custom, out string error, custom.Revision), error);
+		custom = rig.Service.GetConfigSnapshot();
 		foreach (FireSupportPreset preset in rig.Service.GetPresets().Presets)
 		{
-			string expected = preset.Id == "classic" ? "CarriedRoubles" : "StashRoubles";
+			string expected = "StashRoubles";
 			RaidOpsFireSupportServerConfig applied = ApplySettings(custom, preset.Settings);
 			AssertEx.Equal(expected, applied.PaymentSource);
-			AssertEx.Equal(expected, (string)preset.Settings["paymentSource"]);
+			AssertEx.False(preset.Settings.ContainsKey("paymentSource"));
 		}
-		AssertEx.Equal("PreferCarriedThenStash", rig.Service.GetConfigSnapshot().PaymentSource);
+		AssertEx.Equal("StashRoubles", rig.Service.GetConfigSnapshot().PaymentSource);
 		AssertEx.Equal("CarriedRoubles", ReadReference(3).PaymentSource);
 	}
 
@@ -126,6 +129,7 @@ internal static class ServerPresetTests
 			.SelectMany(section => section.GetProperty("fields").EnumerateArray())
 			.Where(field => field.GetProperty("type").GetString() != "readonly" && !field.GetProperty("path").GetString()!.StartsWith("adminDashboard.", StringComparison.Ordinal))
 			.ToDictionary(field => field.GetProperty("path").GetString()!, field => field, StringComparer.Ordinal);
+		AssertEx.False(fields.ContainsKey("paymentSource"));
 		FireSupportPresetCollection catalog = rig.Service.GetPresets();
 		JsonElement envelope = JsonSerializer.SerializeToElement(catalog, s_json);
 		AssertEx.Equal("tsc-preset", envelope.GetProperty("format").GetString());
@@ -242,7 +246,7 @@ internal static class ServerPresetTests
 			AssertEx.True(ServicePaymentPolicy.TryResolveCurrency(barter, service, out PaymentCurrency actual));
 			AssertEx.Equal(currency, actual);
 			AssertEx.Equal(price, barter.Prices[ServicePaymentPolicy.GetServiceKey(service)]);
-			AssertEx.Equal(PaymentSource.StashRoubles, ServicePaymentPolicy.GetPaymentSource(Enum.Parse<PaymentSource>(barter.PaymentSource), actual));
+			AssertEx.Equal(nameof(PaymentSource.StashRoubles), barter.PaymentSource);
 		}
 	}
 

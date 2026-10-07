@@ -9,4 +9,5 @@ public interface IFireSupportService
 
 	public bool IsRequestAvailable();
 	public UniTaskVoid PlanRequest(CancellationToken cancellationToken);
+	public UniTaskVoid PlanRequest(CancellationToken cancellationToken, bool requirePrepaidAuthorization);
 }

@@ -59,7 +59,6 @@ internal static class PluginSettings
 	internal static ConfigEntry<string> ServerConfigAuthToken { get; private set; }
 	internal static ConfigEntry<bool> RequireServerConfigInFika { get; private set; }
 	internal static ConfigEntry<int> ServerConfigRefreshSeconds { get; private set; }
-	internal static ConfigEntry<PaymentSource> PaymentSource { get; private set; }
 	internal static ConfigEntry<PaymentCurrency> PaymentCurrency { get; private set; }
 	internal static ConfigEntry<int> StrafeRequestCostRoubles { get; private set; }
 	internal static ConfigEntry<int> DoubleStrafeRequestCostRoubles { get; private set; }
@@ -96,8 +95,11 @@ internal static class PluginSettings
 	internal static ConfigEntry<bool> PhoneMouseEnabled { get; private set; }
 	internal static ConfigEntry<KeyCode> PhoneMouseModifier { get; private set; }
 	internal static ConfigEntry<float> PhoneMouseSensitivity { get; private set; }
+	internal static ConfigEntry<bool> PhoneAutoDeployAfterPurchase { get; private set; }
 	internal static ConfigEntry<bool> PhoneAutoZoomEnabled { get; private set; }
 	internal static ConfigEntry<float> PhoneZoomFov { get; private set; }
+	internal static ConfigEntry<bool> PhoneDeployZoomEnabled { get; private set; }
+	internal static ConfigEntry<float> PhoneDeployZoomFov { get; private set; }
 	internal static ConfigEntry<float> PhoneZoomInSeconds { get; private set; }
 	internal static ConfigEntry<float> PhoneZoomOutSeconds { get; private set; }
 	internal static ConfigEntry<float> PhoneZoomVerticalFraming { get; private set; }
@@ -205,11 +207,7 @@ internal static class PluginSettings
 			60,
 			new ConfigDescription("Seconds between TSC server config refresh attempts while in a raid. Higher values reduce server request logging.",
 				new AcceptableValueRange<int>(0, 3600)));
-		PaymentSource = config.Bind(
-			"TerraGroup Payment",
-			"Payment source",
-			global::SamSWAT.FireSupport.ArysReloaded.Unity.PaymentSource.StashRoubles,
-			new ConfigDescription("Wallet location used for TerraGroup phone purchases."));
+		RemoveLegacyPaymentSource(config);
 		PaymentCurrency = config.Bind(
 			"TerraGroup Payment",
 			"Payment currency",
@@ -440,45 +438,61 @@ internal static class PluginSettings
 			"Phone mouse sensitivity",
 			20f,
 			new ConfigDescription("Speed of the cursor drawn on the phone screen.", new AcceptableValueRange<float>(1f, 80f)));
+		PhoneAutoDeployAfterPurchase = config.Bind(
+			"TerraGroup Phone",
+			"Deploy after phone purchase",
+			false,
+			new ConfigDescription("After a successful phone purchase, finish the purchase animation and immediately start deploying that service. A-10 and UH-60 services open target designation; UAV services activate. Requires Phone Authorizations or Hybrid mode. Off keeps purchases for later deployment with K."));
 		PhoneAutoZoomEnabled = config.Bind(
 			"TerraGroup Phone",
 			"Automatic phone zoom",
 			true,
-			new ConfigDescription("Optionally narrows the camera FOV on authorization purchase screens and enables phone framing. Sprinting eases back to the raid view; stopping restores the purchase zoom. Deploy and held UAV radar screens always preserve the current raid FOV."));
+			new ConfigDescription("Narrows the camera FOV on authorization purchase screens and enables phone framing. Sprinting eases back to the raid view; stopping restores the purchase zoom. Deployment has its own zoom settings. Held UAV radar keeps the raid FOV."));
 		PhoneZoomFov = config.Bind(
 			"TerraGroup Phone",
 			"Phone zoom FOV",
 			45f,
 			new ConfigDescription(
-				"Camera FOV used on authorization purchase screens. Deploy and held UAV radar screens do not zoom. Lower values make the authorization phone appear larger.",
+				"Camera FOV used on authorization purchase screens. Lower values make the authorization phone appear larger. Deployment uses Deploy phone zoom FOV.",
+				new AcceptableValueRange<float>(20f, 75f)));
+		PhoneDeployZoomEnabled = config.Bind(
+			"TerraGroup Phone",
+			"Automatic deploy phone zoom",
+			true,
+			new ConfigDescription("Zooms toward the upright deployment phone for easier reading. Works independently of purchase zoom. Sprinting eases back to the raid view; closing the phone restores your original FOV before target designation."));
+		PhoneDeployZoomFov = config.Bind(
+			"TerraGroup Phone",
+			"Deploy phone zoom FOV",
+			45f,
+			new ConfigDescription("Camera FOV while the deployment phone is raised. Lower values make it larger. Never widens an already narrower raid view. Held UAV radar keeps the raid FOV.",
 				new AcceptableValueRange<float>(20f, 75f)));
 		PhoneZoomVerticalFraming = config.Bind(
 			"TerraGroup Phone",
 			"Phone vertical framing",
 			0.09f,
 			new ConfigDescription(
-				"Raises or lowers the first-person phone while automatic phone zoom is active. Positive values raise the phone toward screen center; negative values lower it.",
+				"Raises or lowers the first-person phone while purchase or deployment zoom is active. Positive values raise the phone toward screen center; negative values lower it.",
 				new AcceptableValueRange<float>(-0.25f, 0.25f)));
 		PhoneZoomInSeconds = config.Bind(
 			"TerraGroup Phone",
 			"Phone zoom in seconds",
 			0.75f,
 			new ConfigDescription(
-				"Time for authorization phone zoom and framing to ease into place as the phone is raised. Sprinting out of zoom and returning to it use this same duration. Higher values give a slower, smoother approach. Deploy and held UAV radar screens retain their current FOV.",
+				"Time for purchase or deployment phone zoom and framing to ease into place as the phone is raised. Sprinting out of zoom and returning to it use this same duration. Higher values give a slower, smoother approach. Held UAV radar retains the raid FOV.",
 				new AcceptableValueRange<float>(0.25f, 1.5f)));
 		PhoneZoomOutSeconds = config.Bind(
 			"TerraGroup Phone",
 			"Phone zoom out seconds",
 			0.35f,
 			new ConfigDescription(
-				"Camera transition time when restoring your original FOV after closing the authorization phone.",
+				"Camera transition time when restoring your original FOV after closing the purchase or deployment phone.",
 				new AcceptableValueRange<float>(0.15f, 0.8f)));
 		PhoneZoomHorizontalFraming = config.Bind(
 			"TerraGroup Phone",
 			"Phone horizontal framing",
 			-0.004f,
 			new ConfigDescription(
-				"Moves the first-person phone horizontally while automatic phone zoom is active. Positive values move the phone right; negative values move it left.",
+				"Moves the first-person phone horizontally while purchase or deployment zoom is active. Positive values move the phone right; negative values move it left.",
 				new AcceptableValueRange<float>(-0.15f, 0.15f)));
 		PhoneFramingDefaultsMigrated = config.Bind(
 			"Internal",
@@ -759,7 +773,6 @@ internal static class PluginSettings
 		RemoveFromConfigManager(config, ServerConfigAuthToken);
 		RemoveFromConfigManager(config, RequireServerConfigInFika);
 		RemoveFromConfigManager(config, ServerConfigRefreshSeconds);
-		RemoveFromConfigManager(config, PaymentSource);
 		RemoveFromConfigManager(config, PaymentCurrency);
 		RemoveFromConfigManager(config, RequestCooldown);
 		RemoveFromConfigManager(config, StrafeRequestCostRoubles);
@@ -961,6 +974,16 @@ internal static class PluginSettings
 		}
 	}
 
+	private static void RemoveLegacyPaymentSource(ConfigFile config)
+	{
+		// Binding the old key as text consumes BepInEx's orphaned value without
+		// treating any historic wallet name as a current selectable setting.
+		ConfigEntry<string> legacySource = config.Bind("TerraGroup Payment", "Payment source",
+			string.Empty, HiddenDescription("Removed setting: service payments use the stash."));
+		config.Remove(legacySource.Definition);
+		config.Save();
+	}
+
 	private static void SubscribeEffectiveSettingChanges()
 	{
 		TrackEffectiveSetting(PaymentMode);
@@ -969,7 +992,6 @@ internal static class PluginSettings
 		TrackEffectiveSetting(ServerConfigAuthToken);
 		TrackEffectiveSetting(RequireServerConfigInFika);
 		TrackEffectiveSetting(ServerConfigRefreshSeconds);
-		TrackEffectiveSetting(PaymentSource);
 		TrackEffectiveSetting(PaymentCurrency);
 		TrackEffectiveSetting(StrafeRequestCostRoubles);
 		TrackEffectiveSetting(DoubleStrafeRequestCostRoubles);

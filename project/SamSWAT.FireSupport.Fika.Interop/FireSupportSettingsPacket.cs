@@ -35,7 +35,7 @@ public class FireSupportSettingsPacket : INetSerializable
 	public float PriorityExfilHelicopterSpeedMultiplier;
 	public int RequestCooldownSeconds;
 	public PaymentMode PaymentMode;
-	public PaymentSource PaymentSource;
+	public PaymentSource PaymentSource = global::SamSWAT.FireSupport.ArysReloaded.Unity.PaymentSource.StashRoubles;
 	public string ServerConfigUrl;
 	public PaymentCurrency PaymentCurrency;
 	public Dictionary<string, string> ServiceCurrencies = new();
@@ -86,7 +86,9 @@ public class FireSupportSettingsPacket : INetSerializable
 		writer.Put(PriorityExfilHelicopterSpeedMultiplier);
 		writer.Put(RequestCooldownSeconds);
 		writer.Put((int)PaymentMode);
-		writer.Put((int)PaymentSource);
+		// Keep the original four-byte field and StashRoubles wire value (1).
+		// Legacy wallet selections are no longer active runtime choices.
+		writer.Put((int)global::SamSWAT.FireSupport.ArysReloaded.Unity.PaymentSource.StashRoubles);
 		writer.Put(ServerConfigUrl ?? string.Empty);
 		writer.Put((int)PaymentCurrency);
 		// Legacy readers must see unsupported progression semantics before they
@@ -134,7 +136,10 @@ public class FireSupportSettingsPacket : INetSerializable
 		PriorityExfilHelicopterSpeedMultiplier = reader.GetFloat();
 		RequestCooldownSeconds = reader.GetInt();
 		PaymentMode = (PaymentMode)reader.GetInt();
-		PaymentSource = (PaymentSource)reader.GetInt();
+		// Consume the legacy wallet selector without allowing an older peer
+		// to reactivate carried-currency spending or shift the following fields.
+		reader.GetInt();
+		PaymentSource = global::SamSWAT.FireSupport.ArysReloaded.Unity.PaymentSource.StashRoubles;
 		ServerConfigUrl = reader.GetString();
 		PaymentCurrency = reader.AvailableBytes >= sizeof(int)
 			? (PaymentCurrency)reader.GetInt()

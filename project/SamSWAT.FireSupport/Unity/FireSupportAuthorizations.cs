@@ -8,8 +8,8 @@ public static class FireSupportAuthorizations
 	// Two stores with different owners:
 	// - server credits mirror the server ledger and are replaced wholesale by
 	//   SetFromServer on every config sync;
-	// - local credits are purchases the server never saw (carried currency,
-	//   zero-cost grants). They must survive SetFromServer, and consuming them
+	// - local credits have no persistent server ledger entry (legacy carried
+	//   purchases, free grants, nonpersistent stash purchases). They survive SetFromServer, and consuming them
 	//   must not round-trip the server ledger, or the server rejects the
 	//   consume and the credit becomes unusable.
 	private static readonly Dictionary<ESupportType, int> s_serverAuthorizations = new(new SupportTypeComparer());
@@ -29,6 +29,9 @@ public static class FireSupportAuthorizations
 	{
 		return FireSupportServiceAvailability.IsServiceEnabled(type) && Has(type);
 	}
+
+	internal static bool HasLocalDeployable(ESupportType type) =>
+		FireSupportServiceAvailability.IsServiceEnabled(type) && GetLocal(type) > 0;
 
 	public static int GetDeployableCount(ESupportType type)
 	{

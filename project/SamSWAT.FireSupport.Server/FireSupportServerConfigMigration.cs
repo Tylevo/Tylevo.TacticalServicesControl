@@ -25,6 +25,10 @@ internal static class FireSupportServerConfigMigration
 		ArgumentNullException.ThrowIfNull(defaults);
 
 		int sourceSchemaVersion = config.ConfigSchemaVersion;
+		// Normalize current-schema files too: old presets and saved dashboard
+		// settings can still contain a carried-wallet policy. This changes only
+		// future payment routing, never the profile's credits or purchase journal.
+		config.PaymentSource = nameof(PaymentSource.StashRoubles);
 		if (sourceSchemaVersion < CurrentConfigSchemaVersion)
 		{
 			if (sourceSchemaVersion < 2)

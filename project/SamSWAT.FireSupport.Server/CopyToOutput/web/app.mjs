@@ -358,7 +358,7 @@ function renderStatus() {
 	elements.routeStatus.classList.toggle("is-online", Boolean(state.health?.ok));
 	elements.revisionStatus.textContent = `Revision ${state.config?.revision ?? "--"}`;
 	elements.paymentStatus.textContent = state.config
-		? `${getPaymentSourceName()} / ${getPaymentCurrency()}`
+		? `Stash / ${getPaymentCurrency()}`
 		: "Payment --";
 }
 
@@ -469,7 +469,7 @@ function getSectionIntro(section) {
 		return "Choose a currency and amount for each service. Use global follows the payment setting. GP coins and Bitcoin come from the stash. Changing currency keeps the amount; set the item count you want.";
 	}
 	if (section.id?.includes("payment")) {
-		return `Default currency: ${getPaymentCurrencyName()}. Each service can override it below. The wallet setting applies to cash; GP coins and Bitcoin always use the stash.`;
+		return `Default currency: ${getPaymentCurrencyName()}. Each service can override it below. All services are paid from stash funds.`;
 	}
 	return sectionIntros[section.id] || "Server-authoritative service configuration.";
 }
@@ -497,19 +497,7 @@ function getPaymentCurrencyName(serviceKey) {
 	}[getPaymentCurrency(serviceKey)];
 }
 
-function getPaymentSourceName(value = state.config?.paymentSource) {
-	return {
-		CarriedRoubles: "Carried",
-		StashRoubles: "Stash",
-		PreferCarriedThenStash: "Carried, then stash",
-		PreferStashThenCarried: "Stash, then carried"
-	}[value] || value || "Payment --";
-}
-
 function getSelectOptionLabel(path, value) {
-	if (path === "paymentSource") {
-		return getPaymentSourceName(value);
-	}
 	if (path === "paymentCurrency" || path?.startsWith("serviceCurrencies.")) {
 		return {
 			Inherit: `Use global (${getPaymentCurrency()})`,
@@ -549,7 +537,7 @@ function renderPricingCard(priceField, currencyField) {
 	const itemPayment = currency === "GP" || currency === "BTC";
 	summary.textContent = itemPayment
 		? `${getPaymentCurrencyName(priceField.path.slice("prices.".length))} from stash. Price is the item count.`
-		: `${currency} · ${getPaymentSourceName()}`;
+		: `${currency} · Stash`;
 	titleWrap.append(title, summary);
 	card.append(badge, titleWrap);
 	const controls = { id: "pricing-controls" };
@@ -621,7 +609,7 @@ function renderField(field, section) {
 		select.addEventListener("change", () => {
 			setPath(state.config, field.path, select.value);
 			markDirty(field.path);
-			if (field.path === "paymentCurrency" || field.path?.startsWith("serviceCurrencies.") || field.path === "paymentSource") {
+			if (field.path === "paymentCurrency" || field.path?.startsWith("serviceCurrencies.")) {
 				renderStatus();
 				renderSections();
 				renderDiagnostics();
@@ -694,7 +682,6 @@ function renderDiagnostics() {
 	const rows = [
 		["Route Status", state.health?.ok ? "Online" : "Unavailable"],
 		["Config Revision", state.config?.revision ?? "--"],
-		["Payment Source", getPaymentSourceName()],
 		["Payment Currency", getPaymentCurrency()],
 		["Payment Mode", state.config?.paymentMode ?? "--"],
 		["Request Cooldown", `${state.config?.requestCooldownSeconds ?? "--"} sec`],

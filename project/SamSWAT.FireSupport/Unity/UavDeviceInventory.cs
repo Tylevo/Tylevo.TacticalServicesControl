@@ -5,8 +5,6 @@ namespace SamSWAT.FireSupport.ArysReloaded.Unity;
 
 internal static class UavDeviceInventory
 {
-	private const string DedicatedWarningSlotName = "SpecialSlot4";
-
 	public static UavDeviceItem FindCarriedUplink(Player player)
 	{
 		if (player?.InventoryController != null)
@@ -44,12 +42,12 @@ internal static class UavDeviceInventory
 		return address == null ? "<no address>" : $"{address.GetType().FullName}:{address}";
 	}
 
-	public static bool HasUplinkInDedicatedWarningSlot(Player player)
+	public static bool HasUplinkInSpecialSlot(Player player)
 	{
-		return FindUplinkInDedicatedWarningSlot(player) != null;
+		return FindUplinkInSpecialSlot(player) != null;
 	}
 
-	public static UavDeviceItem FindUplinkInDedicatedWarningSlot(Player player)
+	public static UavDeviceItem FindUplinkInSpecialSlot(Player player)
 	{
 		if (player?.Profile?.Inventory?.AllRealPlayerItems == null)
 		{
@@ -58,13 +56,9 @@ internal static class UavDeviceInventory
 
 		foreach (Item item in player.Profile.Inventory.AllRealPlayerItems)
 		{
-			ItemAddress address = item?.CurrentAddress;
+			ItemAddress address = item?.CurrentAddress ?? item?.Parent;
 			if (IsValidUplink(item) &&
-			    address?.IsSpecialSlotAddress() == true &&
-			    string.Equals(
-				    address.Container?.ID,
-				    DedicatedWarningSlotName,
-				    System.StringComparison.OrdinalIgnoreCase))
+			    address?.IsSpecialSlotAddress() == true)
 			{
 				return (UavDeviceItem)item;
 			}

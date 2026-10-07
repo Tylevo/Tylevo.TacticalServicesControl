@@ -1,8 +1,5 @@
-using Comfort.Common;
 using Cysharp.Threading.Tasks;
-using EFT;
 using EFT.Communications;
-using EFT.InventoryLogic;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -38,7 +35,6 @@ public static class FireSupportPayment
 	private static int? _syncedUavCost;
 	private static int? _syncedFocusedSweepCost;
 	private static PaymentMode? _syncedPaymentMode;
-	private static PaymentSource? _syncedPaymentSource;
 	private static PaymentCurrency? _syncedPaymentCurrency;
 	private static int? _serverStrafeCost;
 	private static int? _serverDoubleStrafeCost;
@@ -47,7 +43,6 @@ public static class FireSupportPayment
 	private static int? _serverUavCost;
 	private static int? _serverFocusedSweepCost;
 	private static PaymentMode? _serverPaymentMode;
-	private static PaymentSource? _serverPaymentSource;
 	private static PaymentCurrency? _serverPaymentCurrency;
 	private static int? _serverStashCurrencyBalance;
 	private static PaymentCurrency? _serverStashBalanceCurrency;
@@ -138,7 +133,7 @@ public static class FireSupportPayment
 			case "ServiceUnavailable":
 				return $"{GetSupportName(supportType)} is disabled in host settings.";
 			case "PaymentSourceNotServerBacked":
-				return "Use stash-backed payment or carried funds.";
+				return "Update the TSC server to enable stash payments.";
 			case "PurchaseCurrencyMismatch":
 				return "Refresh TSC pricing and confirm the purchase again.";
 			case "InvalidPaymentCurrency":
@@ -175,7 +170,6 @@ public static class FireSupportPayment
 		bool hadSyncedSettings =
 			HasSyncedCosts ||
 			_syncedPaymentMode.HasValue ||
-			_syncedPaymentSource.HasValue ||
 			_syncedPaymentCurrency.HasValue;
 		_syncedStrafeCost = null;
 		_syncedDoubleStrafeCost = null;
@@ -184,12 +178,11 @@ public static class FireSupportPayment
 		_syncedUavCost = null;
 		_syncedFocusedSweepCost = null;
 		_syncedPaymentMode = null;
-		_syncedPaymentSource = null;
 		_syncedPaymentCurrency = null;
 		s_syncedServiceCurrencies = null;
 		if (hadSyncedSettings)
 		{
-			TscDiagnostics.LogPayment("Cleared host TSC prices, payment mode, payment source, and currency.");
+			TscDiagnostics.LogPayment("Cleared host TSC prices, payment mode, and currency.");
 		}
 	}
 
@@ -224,6 +217,19 @@ public static class FireSupportPayment
 		int focusedSweepCost,
 		PaymentMode paymentMode,
 		PaymentSource paymentSource,
+		PaymentCurrency paymentCurrency) =>
+		// Compatibility for older interop callers. The source argument is ignored.
+		SetServerConfigGlobals(strafeCost, doubleStrafeCost, extractionCost, priorityExfilCost,
+			uavCost, focusedSweepCost, paymentMode, paymentCurrency);
+
+	public static void SetServerConfigGlobals(
+		int strafeCost,
+		int doubleStrafeCost,
+		int extractionCost,
+		int priorityExfilCost,
+		int uavCost,
+		int focusedSweepCost,
+		PaymentMode paymentMode,
 		PaymentCurrency paymentCurrency)
 	{
 		_serverStrafeCost = strafeCost;
@@ -233,18 +239,16 @@ public static class FireSupportPayment
 		_serverUavCost = uavCost;
 		_serverFocusedSweepCost = focusedSweepCost;
 		_serverPaymentMode = paymentMode;
-		_serverPaymentSource = paymentSource;
 		_serverPaymentCurrency = PaymentCurrencyInfo.Normalize(paymentCurrency);
 		_serverPaymentCurrencyInvalid = false;
 		TscDiagnostics.LogPayment(
-			$"Using server URL TSC globals: mode={paymentMode}, source={paymentSource}, currency={GetActivePaymentCurrency()}, A-10={FormatCurrency(strafeCost)}, A-10 double pass={FormatCurrency(doubleStrafeCost)}, UH-60 extraction={FormatCurrency(extractionCost)}, UH-60 cargo transfer={FormatCurrency(priorityExfilCost)}, UAV={FormatCurrency(uavCost)}, Focused sweep={FormatCurrency(focusedSweepCost)}");
+			$"Using server URL TSC globals: mode={paymentMode}, source=StashRoubles, currency={GetActivePaymentCurrency()}, A-10={FormatCurrency(strafeCost)}, A-10 double pass={FormatCurrency(doubleStrafeCost)}, UH-60 extraction={FormatCurrency(extractionCost)}, UH-60 cargo transfer={FormatCurrency(priorityExfilCost)}, UAV={FormatCurrency(uavCost)}, Focused sweep={FormatCurrency(focusedSweepCost)}");
 	}
 
 	public static void ClearServerConfig()
 	{
 		bool hadServerSettings = HasServerConfigCosts ||
 		                         _serverPaymentMode.HasValue ||
-		                         _serverPaymentSource.HasValue ||
 		                         _serverPaymentCurrency.HasValue ||
 		                         _serverStashCurrencyBalance.HasValue ||
 		                         _serverConfigUnavailable;
@@ -255,7 +259,6 @@ public static class FireSupportPayment
 		_serverUavCost = null;
 		_serverFocusedSweepCost = null;
 		_serverPaymentMode = null;
-		_serverPaymentSource = null;
 		_serverPaymentCurrency = null;
 		s_serverServiceCurrencies.Clear();
 		_serverStashCurrencyBalance = null;
@@ -279,7 +282,6 @@ public static class FireSupportPayment
 	{
 		bool hadServerGlobalSettings = HasServerConfigCosts ||
 		                               _serverPaymentMode.HasValue ||
-		                               _serverPaymentSource.HasValue ||
 		                               _serverPaymentCurrency.HasValue;
 		_serverStrafeCost = null;
 		_serverDoubleStrafeCost = null;
@@ -288,7 +290,6 @@ public static class FireSupportPayment
 		_serverUavCost = null;
 		_serverFocusedSweepCost = null;
 		_serverPaymentMode = null;
-		_serverPaymentSource = null;
 		_serverPaymentCurrency = null;
 		s_serverServiceCurrencies.Clear();
 		if (hadServerGlobalSettings)
@@ -323,8 +324,7 @@ public static class FireSupportPayment
 
 	public static void SetSyncedPaymentSource(PaymentSource paymentSource)
 	{
-		_syncedPaymentSource = paymentSource;
-		TscDiagnostics.LogPayment($"Using host TSC payment source: {paymentSource}");
+		// Legacy Fika packet field: read it without restoring a payment selector.
 	}
 
 	public static void SetSyncedPaymentCurrency(PaymentCurrency paymentCurrency)
@@ -342,7 +342,6 @@ public static class FireSupportPayment
 		int? stashCurrencyBalance)
 	{
 		_serverPaymentMode = paymentMode;
-		_serverPaymentSource = paymentSource;
 		_serverPaymentCurrency = PaymentCurrencyInfo.Normalize(paymentCurrency);
 		_serverConfigRevision = revision;
 		_serverStashCurrencyBalance = stashCurrencyBalance;
@@ -353,7 +352,7 @@ public static class FireSupportPayment
 		_serverPaymentCurrencyInvalid = false;
 		_serverConfigUnavailableReason = null;
 		TscDiagnostics.LogPayment(
-			$"Using server URL TSC payment revision={revision}: mode={paymentMode}, source={paymentSource}, currency={_serverPaymentCurrency}, stashBalance={(stashCurrencyBalance.HasValue ? FormatCurrency(stashCurrencyBalance.Value, _serverPaymentCurrency.Value) : "unknown")}");
+			$"Using server URL TSC payment revision={revision}: mode={paymentMode}, source=StashRoubles, currency={_serverPaymentCurrency}, stashBalance={(stashCurrencyBalance.HasValue ? FormatCurrency(stashCurrencyBalance.Value, _serverPaymentCurrency.Value) : "unknown")}");
 	}
 
 	public static void SetServerProfileState(
@@ -445,17 +444,15 @@ public static class FireSupportPayment
 
 	public static PaymentSource GetConfiguredPaymentSource()
 	{
-		return PluginSettings.PaymentSource?.Value ?? PaymentSource.StashRoubles;
+		return PaymentSource.StashRoubles;
 	}
 
 	public static PaymentSource GetPaymentSourcePolicy() =>
-		_syncedPaymentSource ?? _serverPaymentSource ?? GetConfiguredPaymentSource();
+		PaymentSource.StashRoubles;
 
 	public static PaymentSource GetActivePaymentSource(ESupportType supportType = ESupportType.None)
 	{
-		return ServicePaymentPolicy.GetPaymentSource(
-			GetPaymentSourcePolicy(),
-			GetActivePaymentCurrency(supportType));
+		return PaymentSource.StashRoubles;
 	}
 
 	public static PaymentCurrency GetConfiguredPaymentCurrency()
@@ -520,47 +517,16 @@ public static class FireSupportPayment
 		return GetActiveCost(supportType);
 	}
 
-	public static int GetCarriedRoubleBalance()
-	{
-		return GetCarriedCurrency();
-	}
-
-	public static int GetCarriedCurrencyBalance()
-	{
-		return GetCarriedCurrency();
-	}
-
 	public static int GetEffectiveBalance(ESupportType supportType = ESupportType.None)
 	{
 		if (!PaymentCurrencyInfo.TryParse(GetActivePaymentCurrency(supportType).ToString(), out _)) return -1;
-		PaymentSource paymentSource = GetActivePaymentSource(supportType);
-		PaymentCurrency paymentCurrency = GetActivePaymentCurrency(supportType);
-		int carriedCurrency = GetCarriedCurrency(supportType);
-		int? stashCurrency = GetServerStashBalance(paymentCurrency);
-		return paymentSource switch
-		{
-			PaymentSource.CarriedRoubles => carriedCurrency,
-			PaymentSource.StashRoubles => stashCurrency ?? -1,
-			PaymentSource.PreferCarriedThenStash => stashCurrency.HasValue
-				? carriedCurrency + stashCurrency.Value
-				: carriedCurrency,
-			PaymentSource.PreferStashThenCarried => stashCurrency.HasValue
-				? carriedCurrency + stashCurrency.Value
-				: carriedCurrency,
-			_ => carriedCurrency
-		};
+		return GetServerStashBalance(GetActivePaymentCurrency(supportType)) ?? -1;
 	}
 
 	public static string GetEffectiveBalanceLabel(ESupportType supportType = ESupportType.None)
 	{
 		string currencyName = PaymentCurrencyInfo.GetDisplayName(GetActivePaymentCurrency(supportType));
-		return GetActivePaymentSource(supportType) switch
-		{
-			PaymentSource.StashRoubles => $"Stash {currencyName}",
-			PaymentSource.PreferCarriedThenStash => $"Available {currencyName}",
-			PaymentSource.PreferStashThenCarried => $"Available {currencyName}",
-			_ => $"Carried {currencyName}"
-		};
+		return $"Stash {currencyName}";
 	}
 
 	public static string FormatCurrency(int amount)
@@ -603,62 +569,6 @@ public static class FireSupportPayment
 		return canAfford;
 	}
 
-	private static bool TryCharge(ESupportType supportType)
-	{
-		return TryCharge(supportType, notifySuccess: true, notifyFailure: true);
-	}
-
-	private static bool TryCharge(ESupportType supportType, bool notifySuccess, bool notifyFailure = true)
-	{
-		if (!PaymentCurrencyInfo.TryParse(GetActivePaymentCurrency(supportType).ToString(), out _) ||
-		    !FireSupportServiceAvailability.IsServiceEnabled(supportType))
-		{
-			if (notifyFailure)
-			{
-				NotifyServiceUnavailable(supportType);
-			}
-
-			return false;
-		}
-
-		int cost = GetCost(supportType);
-		if (cost <= 0)
-		{
-			return true;
-		}
-
-		if (!CanSpendCarriedForActivePaymentSource(cost, supportType))
-		{
-			if (notifyFailure)
-			{
-				NotifyServerPaymentRequired(supportType);
-			}
-
-			return false;
-		}
-
-		if (!TrySpendCarriedCurrency(cost, out int carriedBalance, supportType))
-		{
-			if (notifyFailure)
-			{
-				NotifyInsufficientFunds(cost, carriedBalance, supportType);
-			}
-
-			return false;
-		}
-
-		if (notifySuccess)
-		{
-			NotificationManager.DisplayMessageNotification(
-				$"Paid {FormatCurrency(cost, GetActivePaymentCurrency(supportType))} for {GetSupportName(supportType)}.",
-				ENotificationDurationType.Default,
-				ENotificationIconType.Default,
-				null);
-		}
-
-		return true;
-	}
-
 	public static bool CanDeployFromRadial(ESupportType supportType, bool notify = false)
 	{
 		if (!PaymentCurrencyInfo.TryParse(GetActivePaymentCurrency(supportType).ToString(), out _) ||
@@ -692,62 +602,29 @@ public static class FireSupportPayment
 		{
 			return true;
 		}
+		if (paymentMode == PaymentMode.DirectRadial && !_serverPurchasePersistenceEnabled &&
+		    FireSupportAuthorizations.HasLocalDeployable(supportType))
+		{
+			// A rejected nonpersistent dispatch refunds its already-paid credit.
+			// The retry must remain available even when that purchase spent the last cash.
+			return true;
+		}
 
 		return CanAfford(supportType, notify);
 	}
 
-	private static bool TryPayForDeployment(ESupportType supportType, out bool consumedAuthorization)
-	{
-		return TryPayForDeployment(supportType, out consumedAuthorization, out _);
-	}
-
-	private static bool TryPayForDeployment(
-		ESupportType supportType,
-		out bool consumedAuthorization,
-		out ESupportType consumedAuthorizationType)
-	{
-		consumedAuthorization = false;
-		consumedAuthorizationType = supportType;
-		if (!PaymentCurrencyInfo.TryParse(GetActivePaymentCurrency(supportType).ToString(), out _) ||
-		    !FireSupportServiceAvailability.IsServiceEnabled(supportType))
-		{
-			NotifyServiceUnavailable(supportType);
-			return false;
-		}
-
-		PaymentMode paymentMode = GetActivePaymentMode();
-
-		if (paymentMode == PaymentMode.PhoneAuthorizations ||
-		    paymentMode == PaymentMode.Hybrid)
-		{
-			if (FireSupportAuthorizations.TryConsumeForDeployment(supportType, out consumedAuthorizationType))
-			{
-				consumedAuthorization = true;
-				NotificationManager.DisplayMessageNotification(
-					$"Used prepaid {GetSupportName(consumedAuthorizationType)} authorization.",
-					ENotificationDurationType.Default,
-					ENotificationIconType.Default,
-					null);
-				return true;
-			}
-		}
-
-		if (paymentMode == PaymentMode.PhoneAuthorizations)
-		{
-			NotifyAuthorizationRequired(supportType);
-			return false;
-		}
-
-		return TryCharge(supportType);
-	}
-
 	public static UniTask<FireSupportAuthorizationUse> TryPayForDeploymentAsync(ESupportType supportType) =>
-		TryPayForDeploymentCoreAsync(supportType, consumePurchasedAuthorization: false);
+		TryPayForDeploymentAsync(supportType, requirePrepaidAuthorization: false);
+
+	public static UniTask<FireSupportAuthorizationUse> TryPayForDeploymentAsync(
+		ESupportType supportType, bool requirePrepaidAuthorization) =>
+		TryPayForDeploymentCoreAsync(supportType, consumePurchasedAuthorization: false,
+			requirePrepaidAuthorization: requirePrepaidAuthorization);
 
 	private static async UniTask<FireSupportAuthorizationUse> TryPayForDeploymentCoreAsync(
 		ESupportType supportType, bool consumePurchasedAuthorization,
 		string operationId = null, string serverSessionKey = null, string serverProfileId = null,
-		bool? purchasedAuthorizationServerBacked = null)
+		bool? purchasedAuthorizationServerBacked = null, bool requirePrepaidAuthorization = false)
 	{
 		operationId ??= Guid.NewGuid().ToString("N");
 		serverSessionKey ??= FireSupportServerConfigClient.GetAuthenticatedSessionKey();
@@ -762,19 +639,6 @@ public static class FireSupportPayment
 			return FireSupportAuthorizationUse.Failed(supportType);
 		}
 		if (!IsBoundProfile()) return FireSupportAuthorizationUse.Failed(supportType);
-		if (!_serverPurchasePersistenceEnabled)
-		{
-			if (consumePurchasedAuthorization) return FireSupportAuthorizationUse.Failed(supportType);
-			bool ok = TryPayForDeployment(supportType, out bool consumedAuthorization, out ESupportType localConsumedType);
-			return new FireSupportAuthorizationUse
-			{
-				Ok = ok,
-				ConsumedAuthorization = consumedAuthorization,
-				ConsumedAuthorizationType = localConsumedType,
-				RequestId = ok ? operationId : string.Empty
-			};
-		}
-
 		if (!PaymentCurrencyInfo.TryParse(GetActivePaymentCurrency(supportType).ToString(), out _) ||
 		    !FireSupportServiceAvailability.IsServiceEnabled(supportType))
 		{
@@ -785,15 +649,16 @@ public static class FireSupportPayment
 		PaymentMode paymentMode = GetActivePaymentMode();
 		if (consumePurchasedAuthorization && !purchasedAuthorizationServerBacked.HasValue)
 			return FireSupportAuthorizationUse.Failed(supportType);
-		if ((consumePurchasedAuthorization || paymentMode == PaymentMode.PhoneAuthorizations ||
-		     paymentMode == PaymentMode.Hybrid && _serverSpendCreditsBeforeCash) &&
+		if (AuthorizationConsumePolicy.ShouldConsumeBeforeCash(paymentMode, _serverPurchasePersistenceEnabled,
+			    _serverSpendCreditsBeforeCash, consumePurchasedAuthorization, requirePrepaidAuthorization) &&
 		    FireSupportAuthorizations.TryConsumeForDeployment(supportType, out ESupportType consumedType, out bool serverBacked,
-			    requiredServerBacked: consumePurchasedAuthorization ? purchasedAuthorizationServerBacked : null))
+			    requiredServerBacked: consumePurchasedAuthorization ? purchasedAuthorizationServerBacked :
+				    paymentMode == PaymentMode.DirectRadial && !_serverPurchasePersistenceEnabled && !requirePrepaidAuthorization
+					    ? false : null))
 		{
-			// Local credits (carried-rouble purchases) have no ledger entry; asking
-			// the server to consume one gets rejected and the credit becomes
-			// unusable. Consume them purely client-side.
-			if (!serverBacked)
+			// Free, legacy carried, and nonpersistent stash credits have no ledger
+			// entry. Retain the existing local-use behavior when persistence is off.
+			if (!serverBacked || !_serverPurchasePersistenceEnabled)
 			{
 				NotificationManager.DisplayMessageNotification(
 					$"Used prepaid {GetSupportName(consumedType)} authorization.",
@@ -804,6 +669,8 @@ public static class FireSupportPayment
 				{
 					Ok = true,
 					ConsumedAuthorization = true,
+					PurchasedForBaseRequest = AuthorizationConsumePolicy.PurchasedForBaseRequest(paymentMode,
+						_serverPurchasePersistenceEnabled, consumePurchasedAuthorization, requirePrepaidAuthorization),
 					ConsumedAuthorizationType = consumedType,
 					RequestId = operationId,
 					ServerBacked = false
@@ -865,7 +732,7 @@ public static class FireSupportPayment
 			}
 		}
 
-		if (paymentMode == PaymentMode.PhoneAuthorizations)
+		if (requirePrepaidAuthorization || paymentMode == PaymentMode.PhoneAuthorizations)
 		{
 			NotifyAuthorizationRequired(supportType);
 			return FireSupportAuthorizationUse.Failed(supportType);
@@ -875,7 +742,7 @@ public static class FireSupportPayment
 		// mode. If its ledger is missing, retain the purchased credit for recovery
 		// instead of recursively purchasing until the authorization cap.
 		if (consumePurchasedAuthorization) return FireSupportAuthorizationUse.Failed(supportType);
-		if (_serverAllowAutoPurchaseOnUse && RequiresServerPurchase(GetActivePaymentSource(supportType)))
+		if (!_serverPurchasePersistenceEnabled || _serverAllowAutoPurchaseOnUse)
 		{
 			FireSupportPurchaseResponse purchase = await PurchaseAuthorizationAsync(supportType, notify: true);
 			if (AuthorizationConsumePolicy.TryGetPurchasedSource(purchase, out bool purchasedServerBacked))
@@ -887,13 +754,19 @@ public static class FireSupportPayment
 			return FireSupportAuthorizationUse.Failed(supportType);
 		}
 
-		bool charged = TryCharge(supportType);
+		// An explicitly free direct request needs neither a debit nor a new credit.
+		// Paid requests require the server-confirmed purchase above.
+		if (GetCost(supportType) > 0)
+		{
+			NotifyServerPaymentRequired(supportType);
+			return FireSupportAuthorizationUse.Failed(supportType);
+		}
 		return new FireSupportAuthorizationUse
 		{
-			Ok = charged,
+			Ok = true,
 			ConsumedAuthorization = false,
 			ConsumedAuthorizationType = supportType,
-			RequestId = charged ? operationId : string.Empty
+			RequestId = operationId
 		};
 	}
 
@@ -1222,48 +1095,6 @@ public static class FireSupportPayment
 			$"attempts={attempts}, reason={reason ?? "Unknown"}.");
 	}
 
-	private static bool TryPurchaseAuthorization(ESupportType supportType)
-	{
-		return TryPurchaseAuthorization(supportType, notify: true);
-	}
-
-	private static bool TryPurchaseAuthorization(ESupportType supportType, bool notify)
-	{
-		if (!PaymentCurrencyInfo.TryParse(GetActivePaymentCurrency(supportType).ToString(), out _) ||
-		    !FireSupportServiceAvailability.IsServiceEnabled(supportType))
-		{
-			if (notify)
-			{
-				NotifyServiceUnavailable(supportType);
-			}
-
-			return false;
-		}
-
-		if (RequiresServerPurchase(GetActivePaymentSource(supportType)))
-		{
-			if (notify)
-			{
-				NotifyServerPaymentRequired(supportType);
-			}
-
-			return false;
-		}
-
-		if (!TryCharge(supportType, notifySuccess: false, notifyFailure: notify))
-		{
-			return false;
-		}
-
-		FireSupportAuthorizations.Grant(supportType);
-		if (notify)
-		{
-			NotifyAuthorizationPurchased(supportType);
-		}
-
-		return true;
-	}
-
 	public static void TryPurchaseAuthorizationAsync(
 		ESupportType supportType,
 		bool notify,
@@ -1273,9 +1104,8 @@ public static class FireSupportPayment
 	}
 
 	/// <summary>
-	/// Menu-only server purchase path. It never falls back to carried cash or a
-	/// local authorization: a successful pre-raid purchase must return a complete
-	/// persistent ledger from the authenticated server.
+	/// Menu-only server purchase path. A successful pre-raid purchase must return
+	/// a complete persistent ledger from the authenticated server.
 	/// </summary>
 	public static async UniTask<FireSupportPurchaseResponse> PurchasePersistentAuthorizationAsync(
 		ESupportType supportType,
@@ -1525,30 +1355,11 @@ public static class FireSupportPayment
 			GrantAuthorization(supportType, notify);
 			result.Ok = true;
 			result.AuthorizationGranted = true;
+			result.PurchasedAuthorizationServerBacked = false;
 			return result;
 		}
 
-		PaymentSource paymentSource = GetActivePaymentSource(supportType);
-		if (ShouldUseCarriedForPurchase(paymentSource, result.Cost, supportType))
-		{
-			if (!TryCharge(supportType, notifySuccess: false, notifyFailure: notify))
-			{
-				result.Reason = "InsufficientRoubles";
-				result.NewBalance = GetEffectiveBalance(supportType);
-				RememberPurchaseDenial(supportType, result);
-				return result;
-			}
-
-			result.Ok = true;
-			_lastPurchaseDenial = null;
-			result.PaymentSource = nameof(PaymentSource.CarriedRoubles);
-			result.NewBalance = GetEffectiveBalance(supportType);
-			GrantAuthorization(supportType, notify);
-			result.AuthorizationGranted = true;
-			FireSupportPlugin.LogSource.LogInfo($"TSC authorization purchased: {GetSupportName(supportType)}.");
-			return result;
-		}
-
+		bool purchasePersistenceEnabled = _serverPurchasePersistenceEnabled;
 		await s_serverLedgerMutationGate.WaitAsync();
 		try
 		{
@@ -1583,8 +1394,7 @@ public static class FireSupportPayment
 			else if (!activeCurrencyMatchesRequest && !serverResult.Ok)
 			{
 				// The denial belongs to the currency pinned before the await.
-				// Do not let a hybrid payment policy fall back to carried cash
-				// after the active host/server currency has changed.
+				// Do not display an old-currency denial against the new quote.
 				serverResult.AuthorizationGranted = false;
 				serverResult.Reason = "PurchaseCurrencyMismatch";
 				serverResult.NewBalance = -1;
@@ -1603,11 +1413,6 @@ public static class FireSupportPayment
 				responseCurrencyMatches && ApplyIncludedAuthorizations(serverResult);
 			if (!serverResult.Ok)
 			{
-				if (TryFallbackToCarriedAfterStashDenial(paymentSource, supportType, serverResult, notify, out FireSupportPurchaseResponse carriedResult))
-				{
-					return carriedResult;
-				}
-
 				RememberPurchaseDenial(supportType, serverResult);
 				if (notify)
 				{
@@ -1621,9 +1426,11 @@ public static class FireSupportPayment
 
 			if (!authorizationsApplied)
 			{
-				GrantServerAuthorization(supportType, notify);
+				if (purchasePersistenceEnabled) GrantServerAuthorization(supportType, notify);
+				else GrantAuthorization(supportType, notify);
 			}
 
+			serverResult.PurchasedAuthorizationServerBacked = authorizationsApplied || purchasePersistenceEnabled;
 			serverResult.AuthorizationGranted = true;
 			_lastPurchaseDenial = null;
 			FireSupportPlugin.LogSource.LogInfo($"TSC authorization purchased: {GetSupportName(supportType)}.");
@@ -1703,51 +1510,6 @@ public static class FireSupportPayment
 		}
 
 		response.Currency = PaymentCurrencyInfo.GetCode(actualCurrency);
-		return true;
-	}
-
-	private static bool TryFallbackToCarriedAfterStashDenial(
-		PaymentSource paymentSource,
-		ESupportType supportType,
-		FireSupportPurchaseResponse stashResult,
-		bool notify,
-		out FireSupportPurchaseResponse carriedResult)
-	{
-		carriedResult = null;
-		if (paymentSource != PaymentSource.PreferStashThenCarried ||
-		    !IsInsufficientFundsReason(stashResult?.Reason))
-		{
-			return false;
-		}
-
-		int cost = stashResult.Cost > 0 ? stashResult.Cost : GetCost(supportType);
-		int carriedBeforeCharge = GetCarriedCurrency(supportType);
-		if (carriedBeforeCharge < cost)
-		{
-			return false;
-		}
-
-		if (!TryCharge(supportType, notifySuccess: false, notifyFailure: false))
-		{
-			return false;
-		}
-
-		GrantAuthorization(supportType, notify);
-		_lastPurchaseDenial = null;
-		carriedResult = new FireSupportPurchaseResponse
-		{
-			Ok = true,
-			Reason = "Accepted",
-			SupportType = supportType.ToString(),
-			Cost = cost,
-			PaymentSource = nameof(PaymentSource.CarriedRoubles),
-			Currency = PaymentCurrencyInfo.GetCode(GetActivePaymentCurrency(supportType)),
-			NewBalance = GetEffectiveBalance(supportType),
-			AuthorizationGranted = true,
-			ServerRevision = stashResult.ServerRevision
-		};
-		FireSupportPlugin.LogSource.LogInfo(
-			$"TSC purchase fallback source=Carried after stash denial supportType={supportType} cost={cost} carriedBeforeCharge={carriedBeforeCharge} stashReason={stashResult.Reason} revision={stashResult.ServerRevision}.");
 		return true;
 	}
 
@@ -1959,36 +1721,6 @@ public static class FireSupportPayment
 		       PluginSettings.RequireServerConfigInFika?.Value == true;
 	}
 
-	private static bool RequiresServerPurchase(PaymentSource paymentSource)
-	{
-		return paymentSource == PaymentSource.StashRoubles ||
-		       paymentSource == PaymentSource.PreferCarriedThenStash ||
-		       paymentSource == PaymentSource.PreferStashThenCarried;
-	}
-
-	private static bool ShouldUseCarriedForPurchase(PaymentSource paymentSource, int cost, ESupportType supportType)
-	{
-		int? stashBalance = GetServerStashBalance(GetActivePaymentCurrency(supportType));
-		return paymentSource == PaymentSource.CarriedRoubles ||
-		       paymentSource == PaymentSource.PreferCarriedThenStash && GetCarriedCurrency(supportType) >= cost ||
-		       paymentSource == PaymentSource.PreferStashThenCarried &&
-		       stashBalance.HasValue &&
-		       stashBalance.Value < cost &&
-		       GetCarriedCurrency(supportType) >= cost;
-	}
-
-	private static bool CanSpendCarriedForActivePaymentSource(int cost, ESupportType supportType)
-	{
-		PaymentSource paymentSource = GetActivePaymentSource(supportType);
-		int? stashBalance = GetServerStashBalance(GetActivePaymentCurrency(supportType));
-		return paymentSource == PaymentSource.CarriedRoubles ||
-		       paymentSource == PaymentSource.PreferCarriedThenStash && GetCarriedCurrency(supportType) >= cost ||
-		       paymentSource == PaymentSource.PreferStashThenCarried &&
-		       stashBalance.HasValue &&
-		       stashBalance.Value < cost &&
-		       GetCarriedCurrency(supportType) >= cost;
-	}
-
 	private static int? GetServerStashBalance(PaymentCurrency currency)
 	{
 		if (s_stashBalances.TryGetValue(currency, out int balance)) return balance;
@@ -2015,141 +1747,6 @@ public static class FireSupportPayment
 
 		s_lastLoggedCost[supportType] = new CostLogState(cost, source);
 		TscDiagnostics.LogPayment($"Effective TSC cost product={supportType} source={source} cost={cost}");
-	}
-
-	private static int GetCarriedCurrency(ESupportType supportType = ESupportType.None)
-	{
-		Player player = Singleton<GameWorld>.Instance?.MainPlayer;
-		if (player == null)
-		{
-			return 0;
-		}
-
-		int total = 0;
-		foreach (Item item in GetCarriedCurrencyStacks(player, supportType))
-		{
-			if (item != null && item.StackObjectsCount > 0)
-			{
-				total += item.StackObjectsCount;
-			}
-		}
-
-		return total;
-	}
-
-	private static bool TrySpendCarriedCurrency(int cost, out int carriedBalance, ESupportType supportType)
-	{
-		carriedBalance = 0;
-		Player player = Singleton<GameWorld>.Instance?.MainPlayer;
-		if (player == null)
-		{
-			return false;
-		}
-
-		var currencyStacks = new List<Item>();
-		foreach (Item item in GetCarriedCurrencyStacks(player, supportType))
-		{
-			if (item == null || item.StackObjectsCount <= 0)
-			{
-				continue;
-			}
-
-			currencyStacks.Add(item);
-			carriedBalance += item.StackObjectsCount;
-		}
-
-		if (carriedBalance < cost)
-		{
-			return false;
-		}
-
-		int remainingCost = cost;
-		foreach (Item stack in currencyStacks)
-		{
-			if (remainingCost <= 0)
-			{
-				break;
-			}
-
-			int amountToTake = Math.Min(stack.StackObjectsCount, remainingCost);
-			remainingCost -= amountToTake;
-
-			if (amountToTake >= stack.StackObjectsCount)
-			{
-				RemoveStack(stack);
-				continue;
-			}
-
-			stack.StackObjectsCount -= amountToTake;
-			stack.RaiseRefreshEvent(refreshIcon: true, checkMagazine: false);
-		}
-
-		return true;
-	}
-
-	private static IEnumerable<Item> GetCarriedCurrencyStacks(Player player, ESupportType supportType)
-	{
-		if (!PaymentCurrencyInfo.TryParse(GetActivePaymentCurrency(supportType).ToString(), out _) ||
-		    PaymentCurrencyInfo.IsStashOnly(GetActivePaymentCurrency(supportType))) yield break;
-		string currencyTemplateId =
-			PaymentCurrencyInfo.GetTemplateId(GetActivePaymentCurrency(supportType));
-		// Walk the full equipment tree rather than GetReachableItemsOfType:
-		// "reachable" excludes the secure container, so money stored there was
-		// invisible to carried-rouble counting and spending.
-		Item equipmentRoot = player?.Profile?.Inventory?.Equipment;
-		if (equipmentRoot != null)
-		{
-			foreach (Item item in equipmentRoot.GetAllItems())
-			{
-				if (IsCurrency(item, currencyTemplateId))
-				{
-					yield return item;
-				}
-			}
-
-			yield break;
-		}
-
-		if (player?.InventoryController != null)
-		{
-			foreach (Item item in player.InventoryController.GetReachableItemsOfType<Item>(
-				         item => IsCurrency(item, currencyTemplateId)))
-			{
-				yield return item;
-			}
-
-			yield break;
-		}
-
-		foreach (Item item in player.Profile.Inventory.AllRealPlayerItems)
-		{
-			if (IsCurrency(item, currencyTemplateId))
-			{
-				yield return item;
-			}
-		}
-	}
-
-	private static bool IsCurrency(Item item, string currencyTemplateId)
-	{
-		return item != null &&
-		       string.Equals(
-			       item.TemplateId,
-			       currencyTemplateId,
-			       StringComparison.OrdinalIgnoreCase);
-	}
-
-	private static void RemoveStack(Item stack)
-	{
-		ItemAddress address = stack.CurrentAddress ?? stack.Parent;
-		if (address != null)
-		{
-			address.RemoveWithoutRestrictions(stack);
-			return;
-		}
-
-		stack.StackObjectsCount = 0;
-		stack.RaiseRefreshEvent(refreshIcon: true, checkMagazine: false);
 	}
 
 	private static void NotifyInsufficientFunds(int cost, int availableBalance, ESupportType supportType)

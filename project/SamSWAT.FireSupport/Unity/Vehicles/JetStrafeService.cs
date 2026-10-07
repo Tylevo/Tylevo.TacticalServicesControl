@@ -12,7 +12,7 @@ public sealed class JetStrafeService(
 {
 	public override ESupportType SupportType => supportType;
 
-	public override async UniTaskVoid PlanRequest(CancellationToken cancellationToken)
+	public override async UniTaskVoid PlanRequest(CancellationToken cancellationToken, bool requirePrepaidAuthorization)
 	{
 		SetLocationResult locationResult = await spotter.SetLocation(checkSpace: false, cancellationToken);
 
@@ -25,7 +25,7 @@ public sealed class JetStrafeService(
 		{
 			await spotter.ConfirmLocation(targetLocation, cancellationToken);
 			FireSupportAuthorizationUse authorizationUse =
-				await FireSupportPayment.TryPayForDeploymentAsync(SupportType);
+				await FireSupportPayment.TryPayForDeploymentAsync(SupportType, requirePrepaidAuthorization);
 			if (!authorizationUse.Ok)
 			{
 				return;
@@ -45,7 +45,7 @@ public sealed class JetStrafeService(
 		CancellationToken cancellationToken)
 	{
 		requestAvailable = false;
-		bool consumedBaseRequest = !authorizationUse.ConsumedAuthorization;
+		bool consumedBaseRequest = authorizationUse.ConsumesBaseRequest;
 		ESupportType effectiveSupportType = authorizationUse.ConsumedAuthorization
 			? authorizationUse.ConsumedAuthorizationType
 			: SupportType;

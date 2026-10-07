@@ -11,7 +11,6 @@ const toggle = (path) => ({ path, label: `Label ${path}`, type: "toggle" });
 function schema() {
 	return { sections: [{ id: "settings", fields: [
 		select("paymentMode", ["PhoneAuthorizations", "DirectRadial", "Hybrid"]),
-		select("paymentSource", ["CarriedRoubles", "StashRoubles", "PreferCarriedThenStash", "PreferStashThenCarried"]),
 		select("paymentCurrency", currencies), number("requestCooldownSeconds", 0, 1800, 15),
 		toggle("purchasePersistence.enabled"), number("purchasePersistence.maxStoredAuthorizationsPerService", 1, 25),
 		number("purchasePersistence.pendingUseTimeoutSeconds", 155, 1800, 5),
@@ -31,7 +30,7 @@ function schema() {
 }
 function config() {
 	return {
-		configSchemaVersion: 4, revision: 17, paymentMode: "PhoneAuthorizations", paymentSource: "CarriedRoubles",
+		configSchemaVersion: 4, revision: 17, paymentMode: "PhoneAuthorizations", paymentSource: "StashRoubles",
 		paymentCurrency: "RUB", requestCooldownSeconds: 300,
 		prices: Object.fromEntries(services.map((key) => [key, 100])),
 		serviceCurrencies: Object.fromEntries(services.map((key) => [key, "Inherit"])),
@@ -57,6 +56,31 @@ const deepFreeze = (value) => {
 	return value;
 };
 
+test("legacy wallet presets discard the removed setting without changing prices or player state", () => {
+	for (const source of ["CarriedRoubles", "StashRoubles", "PreferCarriedThenStash", "PreferStashThenCarried"]) {
+		const legacy = partial({ paymentSource: source, paymentCurrency: "USD", "prices.A10": 73 });
+		const parsed = parsePreset(JSON.stringify(legacy), schema());
+		assert.equal("paymentSource" in parsed.settings, false);
+		assert.equal(parsed.settings.paymentCurrency, "USD");
+		assert.equal(parsed.settings["prices.A10"], 73);
+		const target = config();
+		const applied = applyPreset(target, parsed, schema());
+		assert.equal(applied.config.paymentSource, "StashRoubles");
+		assert.deepEqual(applied.config.authorizations, target.authorizations);
+		assert.deepEqual(applied.config.purchaseHistory, target.purchaseHistory);
+		assert.equal(applied.changes.some((change) => change.path === "paymentSource"), false);
+		assert.equal("paymentSource" in createPreset({ ...config(), paymentSource: source }, schema(), "Legacy").settings, false);
+		// Raw old share codes go through the same migration as old JSON files.
+		const legacyCode = `TSC1.${Buffer.from(JSON.stringify(legacy)).toString("base64url")}`;
+		assert.deepEqual(parsePreset(legacyCode, schema()), parsed);
+		assert.deepEqual(parsePreset(encodePreset(parsed), schema()), parsed);
+		assert.equal(legacy.settings.paymentSource, source);
+	}
+	assert.throws(() => validatePreset(partial({ paymentSource: "Wallet" }), schema()), /unsupported option/);
+	assert.throws(() => validatePreset(partial({ paymentSource: 1, "prices.A10": 73 }), schema()), /unsupported option/);
+	assert.throws(() => validatePreset(partial({ paymentSource: "carriedroubles", "prices.A10": 73 }), schema()), /unsupported option/);
+});
+
 test("Unicode custom and built-in metadata round-trip through JSON and canonical UTF-8 share codes", () => {
 	const original = createPreset(config(), schema(), "  \u591c\u9593 \u0440\u0435\u0439\u0434 \u{1f6f0}\ufe0f  ", "  Friends: caf\u00e9 / \u20bd / \u20ac  ");
 	assert.equal(original.name, "\u591c\u9593 \u0440\u0435\u0439\u0434 \u{1f6f0}\ufe0f");
@@ -74,7 +98,8 @@ test("exports intersect explicit gameplay paths with actual schema and omit all 
 	const before = structuredClone(source);
 	const preset = createPreset(source, schema(), "My settings");
 	const keys = Object.keys(preset.settings);
-	assert.equal(keys.length, 43);
+	assert.equal(keys.length, 42);
+	assert.equal("paymentSource" in preset.settings, false);
 	assert.equal(preset.settings["focusedSweep.scanIntervalSeconds"], 0.75);
 	assert.equal(keys.some((key) => /^(admin|revision|profile|stash|authorizations|purchaseHistory|progressionPermit)/i.test(key)), false);
 	assert.equal("priorityExfil.extractTimeSeconds" in preset.settings, false);
@@ -92,11 +117,16 @@ test("portable descriptors preserve actual bounds without mutating the input sch
 	const input = schema();
 	const before = structuredClone(input);
 	const fields = portableFields(input);
-	assert.equal(fields.length, 43);
+	assert.equal(fields.length, 42);
+	assert.equal(fields.some((field) => field.path === "paymentSource"), false);
 	assert.equal(fields.find((field) => field.path === "requestCooldownSeconds").step, 15);
 	assert.throws(() => fields[0].options.push("Injected"));
 	assert.throws(() => { fields[0].path = "adminToken"; });
 	assert.deepEqual(input, before);
+	const legacySchema = schema();
+	legacySchema.sections[0].fields.push(select("paymentSource", ["CarriedRoubles", "StashRoubles"]));
+	assert.equal(portableFields(legacySchema).some((field) => field.path === "paymentSource"), false);
+	assert.equal("paymentSource" in createPreset(config(), legacySchema, "Old schema").settings, false);
 	assert.throws(() => portableFields({}));
 	assert.throws(() => portableFields({ sections: [{ fields: null }] }));
 	input.sections[0].fields.push({ ...input.sections[0].fields[0] });
@@ -179,7 +209,7 @@ test("all-scope apply returns a detached config and exact changes while retainin
 	assert.equal(target.prices.A10, 100);
 });
 
-test("pricing scope changes only prices, currencies and wallet, preserving mode, enabled services and timing", () => {
+test("pricing scope changes only prices and currencies, preserving mode, enabled services and timing", () => {
 	const target = config();
 	const value = partial({ paymentCurrency: "USD", paymentSource: "StashRoubles", paymentMode: "Hybrid",
 		"requestCooldownSeconds": 60, "prices.Uav": 50, "serviceCurrencies.Uav": "Inherit", "enabled.Uav": false,
@@ -204,7 +234,7 @@ test("recon scope pins preset inheritance so USD prices do not become target GP 
 	const result = applyPreset(target, value, schema(), "recon");
 	assert.equal(result.config.serviceCurrencies.Uav, "USD");
 	assert.equal(result.config.paymentCurrency, "GP");
-	assert.equal(result.config.paymentSource, "CarriedRoubles");
+	assert.equal(result.config.paymentSource, "StashRoubles");
 	assert.equal(result.config.enabled.Uav, false);
 	assert.equal(result.config.uav.durationSeconds, 90);
 	assert.equal(result.config.prices.A10, 100);
