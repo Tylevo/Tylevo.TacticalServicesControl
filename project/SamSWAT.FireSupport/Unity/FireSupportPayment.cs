@@ -652,7 +652,7 @@ public static class FireSupportPayment
 		if (AuthorizationConsumePolicy.ShouldConsumeBeforeCash(paymentMode, _serverPurchasePersistenceEnabled,
 			    _serverSpendCreditsBeforeCash, consumePurchasedAuthorization, requirePrepaidAuthorization) &&
 		    FireSupportAuthorizations.TryConsumeForDeployment(supportType, out ESupportType consumedType, out bool serverBacked,
-			    requiredServerBacked: consumePurchasedAuthorization ? purchasedAuthorizationServerBacked :
+			    out bool refundedBaseRequest, requiredServerBacked: consumePurchasedAuthorization ? purchasedAuthorizationServerBacked :
 				    paymentMode == PaymentMode.DirectRadial && !_serverPurchasePersistenceEnabled && !requirePrepaidAuthorization
 					    ? false : null))
 		{
@@ -669,7 +669,7 @@ public static class FireSupportPayment
 				{
 					Ok = true,
 					ConsumedAuthorization = true,
-					PurchasedForBaseRequest = AuthorizationConsumePolicy.PurchasedForBaseRequest(paymentMode,
+					PurchasedForBaseRequest = refundedBaseRequest || AuthorizationConsumePolicy.PurchasedForBaseRequest(paymentMode,
 						_serverPurchasePersistenceEnabled, consumePurchasedAuthorization, requirePrepaidAuthorization),
 					ConsumedAuthorizationType = consumedType,
 					RequestId = operationId,
@@ -820,7 +820,8 @@ public static class FireSupportPayment
 				{
 					FireSupportAuthorizations.Refund(
 						authorizationUse.ConsumedAuthorizationType,
-						serverBacked: false);
+						serverBacked: false,
+						purchasedForBaseRequest: authorizationUse.PurchasedForBaseRequest);
 					authorizationUse.CompleteFinalization(success: true);
 				}
 				catch (Exception ex)
