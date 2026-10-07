@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <Compile Include="../../src/EscortBenchModePolicy.cs" Link="Production/EscortBenchModePolicy.cs" />
+  </ItemGroup>
+</Project>

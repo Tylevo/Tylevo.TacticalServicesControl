@@ -1,0 +1,9 @@
+<Project>
+  <!-- Copy to Shared.User.props and replace these paths with your own references.
+       The local file is ignored. Keep proprietary references outside this repo. -->
+  <PropertyGroup>
+    <SptDir>C:\BuildReferences\TSC\</SptDir>
+    <SptSharedAssembliesDir>C:\BuildReferences\EFT\</SptSharedAssembliesDir>
+    <SptVersion>410x</SptVersion>
+  </PropertyGroup>
+</Project>

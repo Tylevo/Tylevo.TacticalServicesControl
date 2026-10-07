@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <Compile Include="../../src/EscortBurstController.cs" Link="Production/EscortBurstController.cs" />
+  </ItemGroup>
+</Project>

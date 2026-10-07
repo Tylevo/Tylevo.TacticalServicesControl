@@ -1,0 +1,16 @@
+<Project>
+  <PropertyGroup Condition="'$(Hh60ValidatedCoreSha256)' != ''">
+    <DefineConstants>$(DefineConstants);HH60_VALIDATED_CORE</DefineConstants>
+  </PropertyGroup>
+  <Target Name="GenerateValidatedCoreIdentity" BeforeTargets="CoreCompile" Condition="'$(Hh60ValidatedCoreSha256)' != ''">
+    <Error Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('$(Hh60ValidatedCoreSha256)', '^[A-Fa-f0-9]{64}$'))"
+           Text="Hh60ValidatedCoreSha256 must be an explicit audited 64-digit SHA-256 hash. Use extras/hh60-visual/build.ps1 to audit before building." />
+    <WriteLinesToFile File="$(IntermediateOutputPath)Hh60ValidatedCore.g.cs"
+                      Lines="namespace TscHh60Visual { internal static class ValidatedCoreIdentity { internal const string Sha256 = &quot;$([System.String]::Copy('$(Hh60ValidatedCoreSha256)').ToUpperInvariant())&quot;%3B } }"
+                      Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <Compile Include="$(IntermediateOutputPath)Hh60ValidatedCore.g.cs" />
+      <FileWrites Include="$(IntermediateOutputPath)Hh60ValidatedCore.g.cs" />
+    </ItemGroup>
+  </Target>
+</Project>

@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Installed scene fields are populated by JSON, not source assignments. -->
+    <NoWarn>$(NoWarn);CS0649</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/ExtractionGunVisuals.cs" Link="Production/ExtractionGunVisuals.cs" />
+    <Compile Include="../selection/RuntimeStubs.cs" Link="RuntimeStubs.cs" />
+  </ItemGroup>
+</Project>

@@ -1,5 +1,22 @@
 # Changelog
 
+## Source integration - October 7, 2026 (no new release)
+
+- Preserve the original optional HH-60 companion and its contributor history,
+  then add the separately reviewed appearance selector and experimental solo
+  escort, targeting, door-gun, and inbound/pickup cover-fire work (0.10.1).
+- Fix UH-60 muzzle flashes binding to a cached HH-60 visual. Cover fire still
+  stops on departure; multiplayer firing remains disabled.
+- Keep refunded cash requests tied to their original per-raid budget and allow
+  cancelling deployment after payment has committed without cancelling settlement.
+- Use explicit ignored local reference configuration; ordinary builds do not deploy.
+  Add synthetic helicopter checks to CI and audit the exact Core binary before
+  building its hash-pinned companion.
+- Keep later A-10 audio/round-planner work on a separate development branch.
+  Private rope integration and extracted assets remain outside Git.
+
+See [validation and required in-raid checks](docs/validation/consolidation-20261007.md).
+
 ## 1.3.13 - Public Beta (unreleased)
 
 - **Choose how you pay.** Each service can use RUB, USD, EUR, GP coins or Bitcoin. GP and Bitcoin come from your stash, including containers. Changing currency doesn't convert the price.
